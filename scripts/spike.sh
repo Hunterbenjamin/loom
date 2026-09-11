@@ -51,6 +51,15 @@ if [ "$started" = 0 ]; then
   herdr agent wait "$name" --until idle --until done --timeout 600000 >/dev/null
 fi
 
-herdr agent prompt "$name" "You are running Loom spike $spike. Read AGENTS.md, spikes/README.md and spikes/$spike/BRIEF.md, then carry out the spike within its rules and timebox. Stop and report once FINDINGS.md is committed, the branch is pushed and the draft PR is open." >/dev/null
+brief="You are running Loom spike $spike. Read AGENTS.md, spikes/README.md and spikes/$spike/BRIEF.md, then carry out the spike within its rules and timebox. Stop and report once FINDINGS.md is committed, the branch is pushed and the draft PR is open."
+herdr agent prompt "$name" "$brief" >/dev/null
+
+# A successful `agent prompt` only means the text and Enter were written. A TUI that is still
+# starting up can drop them (this happened to a cold-started Codex), so confirm a turn began.
+if ! herdr agent wait "$name" --until working --until blocked --timeout 30000 >/dev/null 2>&1; then
+  printf '%s did not start working; its prompt was probably dropped.\n' "$name" >&2
+  printf 'If its input box in pane %s is empty, resend with:\n  herdr agent prompt %s '\''%s'\''\n' "$pane" "$name" "$brief" >&2
+  exit 1
+fi
 
 printf 'started %s (%s) in %s, pane %s\n' "$name" "$kind" "$worktree" "$pane"
