@@ -31,7 +31,8 @@ Approve or answer the agents' prompts in Herdr as they come up.
 
 ## Rules for every spike
 
-1. **Timebox.** Stop when the timebox in your brief runs out, and report what you have.
+1. **Timebox.** It starts at your first experiment, and time spent waiting for a human's approval doesn't
+   count. Stop when it runs out, and report what you have.
 2. **Isolation.**
    - Put throwaway repos and data under `$TMPDIR/loom-spike-<id>/`.
    - Create panes only in your own Herdr workspace.
