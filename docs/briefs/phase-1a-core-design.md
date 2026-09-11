@@ -15,8 +15,9 @@ contracts must be explicit and reviewed before any logic lands.
 - `spikes/01-codex-shared-thread/FINDINGS.md` (Codex status mapping and recovery),
   `spikes/03-embedded-terminal/FINDINGS.md` (attach rules),
   `spikes/04-pierre-diffs/FINDINGS.md` (finding anchors).
-- Spike 02 (Claude hooks) and spike 05 (restarts) are still running. Mark anything that depends on
-  them as provisional instead of guessing.
+- `spikes/02-claude-hooks/FINDINGS.md` (Claude status, hooks and prompt delivery).
+- Spike 05 (restarts) hasn't run yet. Mark anything that depends on it as provisional instead of
+  guessing.
 
 ## Deliverable
 
@@ -37,7 +38,7 @@ Prefer tables to prose, and keep it under about 600 lines.
   - an approval voided by a new commit;
   - Done only when the PR's merge is observed.
 - **Run status and attention.** How both are derived from provider observations. Use spike 01's
-  mapping for Codex; the Claude mapping is provisional.
+  mapping for Codex and spike 02's for Claude.
 - **Reconciler contract.** `reconcile(taskId)` as a pure function:
   `(TaskState, Observations) → { next: TaskState, actions: Action[] }`.
   - List the observation types and the action types (start run, send message, interrupt, create

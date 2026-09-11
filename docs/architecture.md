@@ -61,6 +61,7 @@ Done is derived from GitHub: a task is Done only once its PR is merged.
   and are logged in a `transitions` table.
 - **Join key: the worktree path.**
   - Claude hooks, Codex threads, Herdr panes and `claude agents --json` all report their working directory (`cwd`).
+  - Compare real paths: macOS reports the same folder as both `/var/…` and `/private/var/…`.
   - A branch maps to its PR.
   - Sessions started by hand inside a task's worktree attach to that task.
   - Any other session goes to an Unassigned inbox.
@@ -82,8 +83,8 @@ Each provider has four channels:
 
 | Channel | Codex | Claude Code |
 |---|---|---|
-| **Control** | App-server over a unix socket: `thread/start`, `turn/start`, `turn/steer`, `turn/interrupt`; the coordinator answers approval requests. | Headless roles: Agent SDK or `claude -p --output-format stream-json`. Interactive: `herdr agent prompt`, `herdr agent send-keys esc`. *(spike 02)* |
-| **Observe** | App-server notifications: `turn/*`, `item/*`, `turn/diff/updated`, `turn/plan/updated`, `account/rateLimits/updated`. | HTTP hooks posting to the coordinator (SessionStart, UserPromptSubmit, PermissionRequest, Notification, Stop, StopFailure, SessionEnd), plus `claude agents --json`; Herdr's state is a fallback. *(spike 02)* |
+| **Control** | App-server over a unix socket: `thread/start`, `turn/start`, `turn/steer`, `turn/interrupt`; the coordinator answers approval requests. | Headless roles: Agent SDK or `claude -p --output-format stream-json`. Interactive: `herdr agent prompt` (refusing text that starts with `/` or `!`), and `herdr agent send-keys esc` to interrupt. |
+| **Observe** | App-server notifications: `turn/*`, `item/*`, `turn/diff/updated`, `turn/plan/updated`, `account/rateLimits/updated`. | `claude agents --json` owns live status (`busy`, `waiting`, `idle`). Per-session hooks from `--settings` add detail: HTTP for most events, a `command` hook for SessionStart. Herdr's state is a fallback. See [Claude Code](#claude-code). |
 | **Attach** | A Herdr pane running `codex resume <thread> --remote unix://…` against the coordinator's server. Concurrent attach verified on 0.154.0; see [spike 01 findings](../spikes/01-codex-shared-thread/FINDINGS.md). | A Herdr pane; "take over" a headless run with `claude --resume <id>`. For the in-app view, see [Embedded terminals](#embedded-terminals). |
 | **Signal** (agent → Loom) | Loom MCP tools | Loom MCP tools |
 
@@ -114,6 +115,37 @@ Rules:
   the other". The planner may suggest a provider.
 - Herdr's Claude and Codex integrations report session identity only, on SessionStart. Herdr works out
   working and blocked states from the screen, so it's only a fallback.
+
+### Claude Code
+
+Verified in [spike 02](../spikes/02-claude-hooks/FINDINGS.md) (Claude Code 2.1.268):
+
+- **Status comes from `claude agents --json`; hooks are hints.** Poll it on every hook, and every
+  1–2 s while a Loom-launched session is busy or waiting. Hooks carry the detail: session and prompt
+  IDs, the tool, whether a dialog is a question or a permission, answers, and the last assistant
+  message. No hook fires on Esc, on a crash, or when a permission is approved.
+- **Install hooks per session with `--settings`, never at user level.** Use HTTP hooks with
+  `timeout: 1`, plus a `command` hook for SessionStart, which HTTP hooks skip. With a dead endpoint,
+  every session shows an error after every turn; a hung one adds its timeout to every hook. Sessions
+  started by hand are still found through `claude agents --json`.
+- **Status rules.** AskUserQuestion (via PreToolUse or PermissionRequest) means needs input; any other
+  PermissionRequest means needs permission. Ignore subagent events with an empty `agent_type`. Don't
+  wait for the permission Notification; it arrives about 6 s late.
+- **Turns are identified by `prompt_id`.** A prompt sent while Claude is working joins the running
+  turn, so several prompts can share one turn and one Stop.
+- **Sending text with `herdr agent prompt`** delivered 89 of 89 plain prompts exactly once. Text
+  starting with `/` runs a slash command, and text starting with `!` runs a shell command with no
+  permission prompt, so the adapter must refuse or escape both. Tabs and CR are normalized.
+  `agent_blocked` means a dialog is waiting for the human. A message counts as delivered only when
+  its UserPromptSubmit arrives.
+- **Crashes** give no SessionEnd; detect one as the `claude agents` entry disappearing. Resume with
+  `claude --resume <id> --settings <loom settings>`. The killed turn's in-flight tool call is missing
+  from the transcript.
+- **Background sessions (`claude --bg`)** ignore `--session-id` and can't be prompted while running,
+  so Loom doesn't launch runs that way. Background sessions it finds are observe-only.
+- **Trust dialog.** A new worktree shows Claude's folder-trust dialog, whose default choice exits the
+  session, so a blind Enter kills it. Loom shows the dialog to the human until pre-trusting worktrees
+  is solved.
 
 ### Embedded terminals
 
@@ -220,7 +252,7 @@ that crosses providers goes only through artifacts.
 | UI closed or crashed | Nothing happens. On reopen, the UI reconnects and gets a fresh snapshot. |
 | Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, Herdr agents, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts). |
 | Herdr or Codex daemon restart | Same process. Session IDs are what recovery relies on. *(spike 05)* |
-| Agent failure | Detected via SessionEnd/StopFailure, a failed turn, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, mark it blocked and notify the human. |
+| Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, mark it blocked and notify the human. |
 | Stall | No events for N minutes → set the attention flag. Don't kill it; the human may be typing. |
 | Rate limits | Codex `account/rateLimits/updated` or Claude StopFailure → the provider is cooling down until its reset. Queue new work, and offer to switch providers only for runs that haven't started. |
 | Duplicate or out-of-order events | Idempotent handlers, compare-and-set transitions, one reconcile at a time per task. |
@@ -268,7 +300,8 @@ guarantees that a command did not run. The broader restart matrix remains spike 
 **To be confirmed** (see `spikes/`):
 - **01 completed:** concurrent Codex attach and approval fan-out on 0.154.0. See the findings for
   bounded recovery results and remaining race/timeout questions; transport remains experimental.
-- **02:** status from Claude hooks; `herdr agent prompt` reliability; behavior when the hook endpoint is down.
+- **02 completed:** `claude agents --json` for status, per-session hooks for detail; `herdr agent prompt`
+  delivers reliably, but text starting with `/` or `!` must be refused. See the findings.
 - **03 completed:** embedded `herdr agent attach` with xterm.js works; one attached client per
   terminal; "Open in Ghostty" via AppleScript. See the findings.
 - **04 completed:** Pierre with `CodeView` and workers handles large diffs; anchoring findings across
