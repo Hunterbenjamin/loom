@@ -1,0 +1,205 @@
+{
+ "UserPromptSubmit": {
+  "session_id": "9b87a656-3e3b-4c6c-b89c-26514a09917f",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/9b87a656-3e3b-4c6c-b89c-26514a09917f.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/9b87a656-3e3b-4c6c-b89c-26514a09917f/scratchpad",
+  "prompt_id": "55227528-303d-438a-afb3-a4ccdcf75837",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "Reply with just the word: ok"
+ },
+ "Stop": {
+  "session_id": "9b87a656-3e3b-4c6c-b89c-26514a09917f",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/9b87a656-3e3b-4c6c-b89c-26514a09917f.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/9b87a656-3e3b-4c6c-b89c-26514a09917f/scratchpad",
+  "prompt_id": "55227528-303d-438a-afb3-a4ccdcf75837",
+  "permission_mode": "default",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "ok",
+  "background_tasks": [],
+  "session_crons": []
+ },
+ "SubagentStop:sub": {
+  "session_id": "9b87a656-3e3b-4c6c-b89c-26514a09917f",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/9b87a656-3e3b-4c6c-b89c-26514a09917f.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/9b87a656-3e3b-4c6c-b89c-26514a09917f/scratchpad",
+  "prompt_id": "55227528-303d-438a-afb3-a4ccdcf75837",
+  "permission_mode": "default",
+  "agent_id": "a655d7bbcdfb6b475",
+  "agent_type": "",
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/9b87a656-3e3b-4c6c-b89c-26514a09917f/subagents/agent-a655d7bbcdfb6b475.jsonl",
+  "background_tasks": [],
+  "session_crons": []
+ },
+ "SessionEnd:other": {
+  "session_id": "e71a5741-941d-4e5f-935d-acd4a36dd436",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/e71a5741-941d-4e5f-935d-acd4a36dd436.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "prompt_id": "e4c58af2-d311-40c1-a319-8d003b8f44d6",
+  "hook_event_name": "SessionEnd",
+  "reason": "other"
+ },
+ "Notification:idle_prompt": {
+  "session_id": "9b87a656-3e3b-4c6c-b89c-26514a09917f",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/9b87a656-3e3b-4c6c-b89c-26514a09917f.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/9b87a656-3e3b-4c6c-b89c-26514a09917f/scratchpad",
+  "prompt_id": "55227528-303d-438a-afb3-a4ccdcf75837",
+  "hook_event_name": "Notification",
+  "message": "Claude is waiting for your input",
+  "notification_type": "idle_prompt"
+ },
+ "SessionEnd:prompt_input_exit": {
+  "session_id": "9b87a656-3e3b-4c6c-b89c-26514a09917f",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/9b87a656-3e3b-4c6c-b89c-26514a09917f.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/9b87a656-3e3b-4c6c-b89c-26514a09917f/scratchpad",
+  "prompt_id": "dc7bb62e-b2bd-49ad-9b64-c5695b87bad3",
+  "hook_event_name": "SessionEnd",
+  "reason": "prompt_input_exit"
+ },
+ "SessionStart:startup": {
+  "session_id": "6d3b4239-0b4f-4c87-97c5-ee6146088430",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430/scratchpad",
+  "hook_event_name": "SessionStart",
+  "source": "startup",
+  "model": "claude-haiku-4-5-20251001"
+ },
+ "PreToolUse": {
+  "session_id": "6d3b4239-0b4f-4c87-97c5-ee6146088430",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430/scratchpad",
+  "prompt_id": "3ccf437b-799c-4a09-9d60-04ce5c162fc9",
+  "permission_mode": "default",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+   "command": "touch perm-test.txt",
+   "description": "Create a test file"
+  },
+  "tool_use_id": "toolu_01KsqWezwHZq4tge4SC8k7Hw"
+ },
+ "PermissionRequest:Bash": {
+  "session_id": "6d3b4239-0b4f-4c87-97c5-ee6146088430",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430/scratchpad",
+  "prompt_id": "3ccf437b-799c-4a09-9d60-04ce5c162fc9",
+  "permission_mode": "default",
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "Bash",
+  "tool_input": {
+   "command": "touch perm-test.txt",
+   "description": "Create a test file"
+  },
+  "permission_suggestions": [
+   {
+    "type": "addDirectories",
+    "directories": [
+     "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo"
+    ],
+    "destination": "session"
+   },
+   {
+    "type": "setMode",
+    "mode": "acceptEdits",
+    "destination": "session"
+   }
+  ]
+ },
+ "Notification:permission_prompt": {
+  "session_id": "6d3b4239-0b4f-4c87-97c5-ee6146088430",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430/scratchpad",
+  "prompt_id": "3ccf437b-799c-4a09-9d60-04ce5c162fc9",
+  "hook_event_name": "Notification",
+  "message": "Claude needs your permission",
+  "notification_type": "permission_prompt"
+ },
+ "PostToolUse": {
+  "session_id": "6d3b4239-0b4f-4c87-97c5-ee6146088430",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430/scratchpad",
+  "prompt_id": "3ccf437b-799c-4a09-9d60-04ce5c162fc9",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+   "command": "touch perm-test.txt",
+   "description": "Create a test file"
+  },
+  "tool_response": {
+   "stdout": "",
+   "stderr": "",
+   "interrupted": false,
+   "isImage": false,
+   "noOutputExpected": true
+  },
+  "tool_use_id": "toolu_01KsqWezwHZq4tge4SC8k7Hw",
+  "duration_ms": 894
+ },
+ "PermissionRequest:AskUserQuestion": {
+  "session_id": "6d3b4239-0b4f-4c87-97c5-ee6146088430",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430/scratchpad",
+  "prompt_id": "593ccb19-f782-40ce-919f-86bdf0ee2feb",
+  "permission_mode": "default",
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+   "questions": [
+    {
+     "question": "Do you prefer tea or coffee?",
+     "header": "Beverage",
+     "options": [
+      {
+       "label": "Tea",
+       "description": "A warm tea beverage"
+      },
+      {
+       "label": "Coffee",
+       "description": "A warm coffee beverage"
+      }
+     ],
+     "multiSelect": false
+    }
+   ]
+  }
+ },
+ "SessionStart:resume": {
+  "session_id": "6d3b4239-0b4f-4c87-97c5-ee6146088430",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-repo/6d3b4239-0b4f-4c87-97c5-ee6146088430/scratchpad",
+  "hook_event_name": "SessionStart",
+  "source": "resume",
+  "seconds_since_last_response": 59,
+  "context_tokens": 31469,
+  "prompt_cache_likely_expired": false,
+  "estimated_cache_write_usd": 0.0629
+ },
+ "SessionStart:fork": {
+  "session_id": "9eed8c1d-cf55-4dae-9e75-7eb180bce29b",
+  "transcript_path": "~/.claude/projects/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-bgrepo/9eed8c1d-cf55-4dae-9e75-7eb180bce29b.jsonl",
+  "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/bgrepo",
+  "scratchpad_dir": "/private/tmp/claude-501/-private-var-folders-q4-40hztcsn5pl4nj5rx75sgzlr0000gn-T-loom-spike-02-bgrepo/9eed8c1d-cf55-4dae-9e75-7eb180bce29b/scratchpad",
+  "hook_event_name": "SessionStart",
+  "source": "fork",
+  "seconds_since_last_response": 93,
+  "context_tokens": 28769,
+  "prompt_cache_likely_expired": false,
+  "estimated_cache_write_usd": 0.0575
+ }
+}
