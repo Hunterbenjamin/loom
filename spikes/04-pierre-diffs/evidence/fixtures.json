@@ -1,0 +1,65 @@
+[
+  {
+    "id": "medium",
+    "description": "50 real Vue source files; 2000 mechanically changed lines",
+    "source": "vuejs/core v3.5.21 4b6cb1f52a0f6c5af2a0114b70000e23028eed15",
+    "files": 50,
+    "added": 1000,
+    "deleted": 1000,
+    "sha256": "52ee277e835a9f36b4bfc4e610a0f32455f1e30096ad7807e3f0ab9f82abae06"
+  },
+  {
+    "id": "large",
+    "description": "300 real Vue source files; 20000 mechanically changed lines",
+    "source": "vuejs/core v3.5.21 4b6cb1f52a0f6c5af2a0114b70000e23028eed15",
+    "files": 300,
+    "added": 10000,
+    "deleted": 10000,
+    "sha256": "9f22652da4a98a1bd8935bc9abcf019b36f10213bf37159f276e003cf9fc3eb0"
+  },
+  {
+    "id": "single",
+    "description": "10,000-line concatenated Vue source stress file, every line modified",
+    "source": "vuejs/core v3.5.21 4b6cb1f52a0f6c5af2a0114b70000e23028eed15",
+    "files": 1,
+    "added": 10000,
+    "deleted": 10000,
+    "sha256": "39430847e9c64fa59c3b2247b00a4d7c9ff51abfc9ecd7443d721a406bd86e88"
+  },
+  {
+    "id": "lockfile",
+    "description": "Real pnpm-lock.yaml, 500 mechanically edited integrity lines",
+    "source": "vuejs/core v3.5.21 4b6cb1f52a0f6c5af2a0114b70000e23028eed15",
+    "files": 1,
+    "added": 500,
+    "deleted": 500,
+    "sha256": "7b2d7d923a14af346e2c340d076c52e5816d9ee300645ddacb310a669d39d2db"
+  },
+  {
+    "id": "commits",
+    "description": "Unmodified diff between two actual Vue commits",
+    "source": "vuejs/core v3.5.21 4b6cb1f52a0f6c5af2a0114b70000e23028eed15; parent 5d75a170c8d23acd11ef2513173d4cbc4d0b54de",
+    "files": 13,
+    "added": 38,
+    "deleted": 12,
+    "sha256": "99d04869f22e988a093ed8b683a74969866e5e3068cb0b4883a594accad46f8d"
+  },
+  {
+    "id": "github",
+    "description": "Unmodified gh pr diff 15477 --repo vuejs/core",
+    "source": "https://github.com/vuejs/core/pull/15477",
+    "files": 3,
+    "added": 77,
+    "deleted": 8,
+    "sha256": "48b19232f7a62749ced1280ae20aec78dbc113fe15a81a1893b87fccae5d140b"
+  },
+  {
+    "id": "edges",
+    "description": "Git tree diff: add, delete, rename, binary, Unicode path, no final newline",
+    "source": "Isolated Git tree fixture",
+    "files": 6,
+    "added": 3,
+    "deleted": 3,
+    "sha256": "af498342c2ac9bbc4db5eee36edd71478986821d215b0e6df1115cffc0f3b5df"
+  }
+]
