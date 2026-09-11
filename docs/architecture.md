@@ -61,6 +61,7 @@ Done is derived from GitHub: a task is Done only once its PR is merged.
   and are logged in a `transitions` table.
 - **Join key: the worktree path.**
   - Claude hooks, Codex threads, Herdr panes and `claude agents --json` all report their working directory (`cwd`).
+  - Compare real paths: macOS reports the same folder as both `/var/…` and `/private/var/…`.
   - A branch maps to its PR.
   - Sessions started by hand inside a task's worktree attach to that task.
   - Any other session goes to an Unassigned inbox.
@@ -82,9 +83,9 @@ Each provider has four channels:
 
 | Channel | Codex | Claude Code |
 |---|---|---|
-| **Control** | App-server over a unix socket: `thread/start`, `turn/start`, `turn/steer`, `turn/interrupt`; the coordinator answers approval requests. | Headless roles: Agent SDK or `claude -p --output-format stream-json`. Interactive: `herdr agent prompt`, `herdr agent send-keys esc`. *(spike 02)* |
-| **Observe** | App-server notifications: `turn/*`, `item/*`, `turn/diff/updated`, `turn/plan/updated`, `account/rateLimits/updated`. | HTTP hooks posting to the coordinator (SessionStart, UserPromptSubmit, PermissionRequest, Notification, Stop, StopFailure, SessionEnd), plus `claude agents --json`; Herdr's state is a fallback. *(spike 02)* |
-| **Attach** | A Herdr pane running `codex resume <thread> --remote unix://…` against the coordinator's server. Concurrent attach verified on 0.154.0; see [spike 01 findings](../spikes/01-codex-shared-thread/FINDINGS.md). | A Herdr pane, embedded via `herdr agent attach`; "take over" a headless run with `claude --resume <id>`. *(spike 03)* |
+| **Control** | App-server over a unix socket: `thread/start`, `turn/start`, `turn/steer`, `turn/interrupt`; the coordinator answers approval requests. | Headless roles: Agent SDK or `claude -p --output-format stream-json`. Interactive: `herdr agent prompt` (refusing text that starts with `/` or `!`), and `herdr agent send-keys esc` to interrupt. |
+| **Observe** | App-server notifications: `turn/*`, `item/*`, `turn/diff/updated`, `turn/plan/updated`, `account/rateLimits/updated`. | `claude agents --json` owns live status (`busy`, `waiting`, `idle`). Per-session hooks from `--settings` add detail: HTTP for most events, a `command` hook for SessionStart. Herdr's state is a fallback. See [Claude Code](#claude-code). |
+| **Attach** | A Herdr pane running `codex resume <thread> --remote unix://…` against the coordinator's server. Concurrent attach verified on 0.154.0; see [spike 01 findings](../spikes/01-codex-shared-thread/FINDINGS.md). | A Herdr pane; "take over" a headless run with `claude --resume <id>`. For the in-app view, see [Embedded terminals](#embedded-terminals). |
 | **Signal** (agent → Loom) | Loom MCP tools | Loom MCP tools |
 
 The Loom MCP tools are `get_task_context`, `submit_plan`, `report_progress`, `ask_human`,
@@ -114,6 +115,59 @@ Rules:
   the other". The planner may suggest a provider.
 - Herdr's Claude and Codex integrations report session identity only, on SessionStart. Herdr works out
   working and blocked states from the screen, so it's only a fallback.
+
+### Claude Code
+
+Verified in [spike 02](../spikes/02-claude-hooks/FINDINGS.md) (Claude Code 2.1.268):
+
+- **Status comes from `claude agents --json`; hooks are hints.** Poll it on every hook, and every
+  1–2 s while a Loom-launched session is busy or waiting. Hooks carry the detail: session and prompt
+  IDs, the tool, whether a dialog is a question or a permission, answers, and the last assistant
+  message. No hook fires on Esc, on a crash, or when a permission is approved.
+- **Install hooks per session with `--settings`, never at user level.** Use HTTP hooks with
+  `timeout: 1`, plus a `command` hook for SessionStart, which HTTP hooks skip. With a dead endpoint,
+  every session shows an error after every turn; a hung one adds its timeout to every hook. Sessions
+  started by hand are still found through `claude agents --json`.
+- **Status rules.** AskUserQuestion (via PreToolUse or PermissionRequest) means needs input; any other
+  PermissionRequest means needs permission. Ignore subagent events with an empty `agent_type`. Don't
+  wait for the permission Notification; it arrives about 6 s late.
+- **Turns are identified by `prompt_id`.** A prompt sent while Claude is working joins the running
+  turn, so several prompts can share one turn and one Stop.
+- **Sending text with `herdr agent prompt`** delivered 89 of 89 plain prompts exactly once. Text
+  starting with `/` runs a slash command, and text starting with `!` runs a shell command with no
+  permission prompt, so the adapter must refuse or escape both. Tabs and CR are normalized.
+  `agent_blocked` means a dialog is waiting for the human. A message counts as delivered only when
+  its UserPromptSubmit arrives.
+- **Crashes** give no SessionEnd; detect one as the `claude agents` entry disappearing. Resume with
+  `claude --resume <id> --settings <loom settings>`. The killed turn's in-flight tool call is missing
+  from the transcript.
+- **Background sessions (`claude --bg`)** ignore `--session-id` and can't be prompted while running,
+  so Loom doesn't launch runs that way. Background sessions it finds are observe-only.
+- **Trust dialog.** A new worktree shows Claude's folder-trust dialog, whose default choice exits the
+  session, so a blind Enter kills it. Loom shows the dialog to the human until pre-trusting worktrees
+  is solved.
+
+### Embedded terminals
+
+Verified for both providers in [spike 03](../spikes/03-embedded-terminal/FINDINGS.md) (herdr 0.9.0):
+
+- The in-app view is node-pty in the Electron main process running `herdr agent attach <name>`,
+  rendered with xterm.js.
+- **One attached client per terminal.** A second attach is refused, and `--takeover` evicts the
+  current client. Taking over is always the user's choice, never automatic: offer "Open elsewhere ·
+  Take over here", and show "Taken over · Reattach" when Loom's own client is evicted. Herdr doesn't
+  report whether a terminal has a client attached, so Loom finds out by trying.
+- **The attached client sets the pane's size, and the size sticks after detach.** Give the embedded
+  terminal a minimum width (about 100 columns), and resize only when the panel resizes, debounced.
+- **Scrollback lives in Herdr.** Attach runs on the alternate screen, so history and search read
+  provider transcripts, not the terminal buffer.
+- Closing a panel sends SIGHUP: the attach exits and the agent keeps running. Quitting or crashing the
+  app leaves no stale attachment.
+- **Start Herdr servers and agents with a scrubbed environment**, without `CLAUDE_CODE_*` or `HERDR_*`
+  variables. An inherited `CLAUDE_CODE_CHILD_SESSION` turned off transcript saving in Claude agents,
+  which breaks resuming (principle 7).
+- "Open in Ghostty" uses AppleScript (`new window with configuration`, with an absolute path to
+  `herdr`) and keeps the returned window ID, so Loom can focus that window later.
 
 ## Stage rules: code versus agents
 
@@ -169,8 +223,22 @@ that crosses providers goes only through artifacts.
 
 - The reviewer runs in the worktree with editing disabled. It runs the tests and submits findings
   through MCP. Codex's `review/start` can add a second opinion. CI checks from GitHub are included.
-- The diff view uses `@pierre/diffs`, with findings, human comments and CI annotations shown inline. It can
-  show the whole branch or only the changes since the last review round. *(spike 04)*
+- The diff view uses `@pierre/diffs` with `CodeView` and a bounded worker pool. Findings, human comments
+  and CI annotations render in its annotation slots. It can show the whole branch or only the changes
+  since the last review round. From [spike 04](../spikes/04-pierre-diffs/FINDINGS.md):
+  - Feed it Git patches, or compute content diffs off the renderer thread. The workers only offload
+    syntax highlighting.
+  - Give each file a stable ID, and bump its version whenever its content or annotations change.
+    Pierre ignores a changed file whose version didn't change.
+  - Take file status, binary and rename facts, and paths from Git metadata, not from the patch text.
+    Treat empty or unparseable input as an error, never as a clean diff.
+  - Loom builds the review shell: file list, viewed state, keyboard navigation, outdated findings.
+- **Finding anchors.** Pierre keeps a finding on its old line number even after a new commit moves the
+  code. The coordinator stores an immutable original anchor (base and head SHA, path, blob ID, side,
+  line range, hashes of the selected and surrounding text) plus a current location with a mapping
+  status: exact, moved, ambiguous or outdated. On a new head it maps ranges through Git hunks and
+  renames. It never silently picks the nearest duplicate, and never resolves a finding because its
+  line disappeared.
 - The coordinator records an approval against three things: the head commit, a snapshot of the findings, and the CI state.
   Any new commit voids it. "Request changes" turns the human's comments into blocking findings.
 - Merging runs `gh pr merge --squash --match-head-commit <approvedSHA>`, or adds `--auto` while CI is still
@@ -184,14 +252,16 @@ that crosses providers goes only through artifacts.
 | UI closed or crashed | Nothing happens. On reopen, the UI reconnects and gets a fresh snapshot. |
 | Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, Herdr agents, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts). |
 | Herdr or Codex daemon restart | Same process. Session IDs are what recovery relies on. *(spike 05)* |
-| Agent failure | Detected via SessionEnd/StopFailure, a failed turn, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, mark it blocked and notify the human. |
+| Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, mark it blocked and notify the human. |
 | Stall | No events for N minutes → set the attention flag. Don't kill it; the human may be typing. |
 | Rate limits | Codex `account/rateLimits/updated` or Claude StopFailure → the provider is cooling down until its reset. Queue new work, and offer to switch providers only for runs that haven't started. |
 | Duplicate or out-of-order events | Idempotent handlers, compare-and-set transitions, one reconcile at a time per task. |
 | Review loops | At most 3 rounds. Escalate when a finding is reopened or the number of findings stops dropping. Each task has a time and cost budget. |
 
 Out of scope: message brokers, event-sourcing frameworks, multi-machine support, sync engines,
-plugins, a custom terminal emulator, a custom diff renderer.
+plugins, a custom terminal emulator, a custom diff renderer. One exception: a small key encoder in the
+terminal renderer that sends Shift+Enter and other modified keys in the kitty keyboard format, until
+xterm.js supports that protocol itself.
 
 Codex 0.154.0 observations from spike 01: a running turn survived the last subscriber disconnecting;
 `thread/resume` restored its current state and subsequent events. A server crash recovered saved
@@ -210,7 +280,7 @@ guarantees that a command did not run. The broader restart matrix remains spike 
 | Command palette | cmdk |
 | Keyboard shortcuts | tinykeys |
 | UI primitives | Radix |
-| Terminal | xterm.js or ghostty-web *(spike 03)*, with node-pty |
+| Terminal | xterm.js 6 with the WebGL, fit and unicode-graphemes addons, plus node-pty. ghostty-web 0.4.0 failed spike 03 (no mouse, broken keys, high idle CPU). |
 | Diffs | `@pierre/diffs` |
 | Storage | better-sqlite3 |
 | Codex | TypeScript bindings from `codex app-server generate-ts` |
@@ -230,7 +300,10 @@ guarantees that a command did not run. The broader restart matrix remains spike 
 **To be confirmed** (see `spikes/`):
 - **01 completed:** concurrent Codex attach and approval fan-out on 0.154.0. See the findings for
   bounded recovery results and remaining race/timeout questions; transport remains experimental.
-- **02:** status from Claude hooks; `herdr agent prompt` reliability; behavior when the hook endpoint is down.
-- **03:** `herdr agent attach` embedded in Electron; renderer fidelity; opening in Ghostty.
-- **04:** Pierre performance and annotation anchoring.
+- **02 completed:** `claude agents --json` for status, per-session hooks for detail; `herdr agent prompt`
+  delivers reliably, but text starting with `/` or `!` must be refused. See the findings.
+- **03 completed:** embedded `herdr agent attach` with xterm.js works; one attached client per
+  terminal; "Open in Ghostty" via AppleScript. See the findings.
+- **04 completed:** Pierre with `CodeView` and workers handles large diffs; anchoring findings across
+  commits is Loom's job. See the findings.
 - **05:** what survives each kind of restart, and how to recover.
