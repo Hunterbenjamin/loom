@@ -1,0 +1,17 @@
+{"cond":"up","what":"turn:done","ms":5907}
+{"cond":"up","what":"turn:done","ms":4453}
+{"cond":"up","what":"turn:done","ms":4467}
+{"cond":"down","what":"turn:done","ms":4263}
+{"cond":"down","what":"turn:done","ms":4162}
+{"cond":"down","what":"turn:done","ms":4159}
+{"cond":"hang","what":"turn:done","ms":12807}
+{"cond":"hang","what":"turn:done","ms":12572}
+{"cond":"hang","what":"turn:done","ms":12325}
+{"cond":"hang","what":"exit","ms":3838}
+{"cond":"hang","what":"start:idle","ms":3561}
+{"cond":"down","what":"exit","ms":1786}
+{"cond":"down","what":"start:idle","ms":3666}
+{"cond":"down","what":"turn:done","ms":5926}
+{"cond":"up","what":"exit","ms":1904}
+{"cond":"up","what":"start:idle","ms":3573}
+{"cond":"up","what":"turn:done","ms":5069}
