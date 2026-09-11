@@ -84,7 +84,7 @@ Each provider has four channels:
 |---|---|---|
 | **Control** | App-server over a unix socket: `thread/start`, `turn/start`, `turn/steer`, `turn/interrupt`; the coordinator answers approval requests. | Headless roles: Agent SDK or `claude -p --output-format stream-json`. Interactive: `herdr agent prompt`, `herdr agent send-keys esc`. *(spike 02)* |
 | **Observe** | App-server notifications: `turn/*`, `item/*`, `turn/diff/updated`, `turn/plan/updated`, `account/rateLimits/updated`. | HTTP hooks posting to the coordinator (SessionStart, UserPromptSubmit, PermissionRequest, Notification, Stop, StopFailure, SessionEnd), plus `claude agents --json`; Herdr's state is a fallback. *(spike 02)* |
-| **Attach** | A Herdr pane running `codex resume <thread> --remote unix://…`. *(spike 01)* | A Herdr pane, embedded via `herdr agent attach`; "take over" a headless run with `claude --resume <id>`. *(spike 03)* |
+| **Attach** | A Herdr pane running `codex resume <thread> --remote unix://…` against the coordinator's server. Concurrent attach verified on 0.154.0; see [spike 01 findings](../spikes/01-codex-shared-thread/FINDINGS.md). | A Herdr pane, embedded via `herdr agent attach`; "take over" a headless run with `claude --resume <id>`. *(spike 03)* |
 | **Signal** (agent → Loom) | Loom MCP tools | Loom MCP tools |
 
 The Loom MCP tools are `get_task_context`, `submit_plan`, `report_progress`, `ask_human`,
@@ -94,8 +94,22 @@ against a schema before any transition.
 Rules:
 - Choose and record the session ID before launch: `claude --session-id <uuid>`, or the Codex thread ID
   returned by `thread/start`.
-- Planners and reviewers run headless; the implementer runs interactively. A headless run can be
-  handed over to a terminal, but never shared with one at the same time.
+- Planners and reviewers run headless; the implementer runs interactively. Codex clients can share
+  a live thread on the same app-server. Resume to subscribe, hydrate current state, then reconcile
+  notifications. Use `turn/steer` with `expectedTurnId` for mid-turn input.
+- Codex approval requests reach all subscribed clients, including a client resuming while a request
+  is pending. Either client can answer; clear the prompt on `serverRequest/resolved`. Scope pending
+  request IDs to the server connection generation, since IDs restart after a server restart.
+- Codex `thread/status/changed` supplies `active`, `idle`, `systemError`, and `notLoaded`, with
+  `waitingOnApproval` and `waitingOnUserInput` flags. Re-read current state; preserve the distinction
+  between the last turn's outcome and whether the thread is currently executing. A disconnected
+  observer has unknown live status, not proof of failure. A rate-limit update triggers a fresh
+  snapshot; receiving an update alone does not mean the provider is blocked.
+- Plain Codex without `--remote` used an embedded runtime in spike 01. Another server sharing its
+  data directory could discover/read its transcript, but reported `notLoaded` and synthesized
+  `interrupted` for a still-running unfinished turn. Do not resume it concurrently through a different
+  server or derive live status from that disk view. Require an explicit handoff before control.
+  Claude's headless-to-terminal handoff remains exclusive, pending its own spike.
 - Provider choice is a rule the human can override, for example "implement with one provider, review with
   the other". The planner may suggest a provider.
 - Herdr's Claude and Codex integrations report session identity only, on SessionStart. Herdr works out
@@ -179,6 +193,13 @@ that crosses providers goes only through artifacts.
 Out of scope: message brokers, event-sourcing frameworks, multi-machine support, sync engines,
 plugins, a custom terminal emulator, a custom diff renderer.
 
+Codex 0.154.0 observations from spike 01: a running turn survived the last subscriber disconnecting;
+`thread/resume` restored its current state and subsequent events. A server crash recovered saved
+history with the unfinished turn marked interrupted, but a pending command visible in live events
+was absent from disk history. `turn/interrupt` also left a running shell command alive. Before retrying
+side effects, reconcile the actual worktree and tool state; neither interruption nor crash recovery
+guarantees that a command did not run. The broader restart matrix remains spike 05.
+
 ## Stack
 
 | Area | Choice |
@@ -207,7 +228,8 @@ plugins, a custom terminal emulator, a custom diff renderer.
 - **ghostty-web:** 0.4.0 (MIT), with the xterm.js API.
 
 **To be confirmed** (see `spikes/`):
-- **01:** the Codex TUI and another client sharing a live thread; where approvals go.
+- **01 completed:** concurrent Codex attach and approval fan-out on 0.154.0. See the findings for
+  bounded recovery results and remaining race/timeout questions; transport remains experimental.
 - **02:** status from Claude hooks; `herdr agent prompt` reliability; behavior when the hook endpoint is down.
 - **03:** `herdr agent attach` embedded in Electron; renderer fidelity; opening in Ghostty.
 - **04:** Pierre performance and annotation anchoring.
