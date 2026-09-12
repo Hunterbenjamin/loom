@@ -19,13 +19,29 @@ const KNOWN_STATUSES = new Set(["busy", "waiting", "idle"]);
 const KNOWN_KINDS = new Set(["interactive", "background"]);
 
 /** Loose: 2.1.269 adds `name` and `startedAt`, and background entries carry `id` and `state`. */
-export const agentsEntrySchema = z.looseObject({
+const statusEntrySchema = z.looseObject({
   sessionId: z.string().min(1),
   cwd: z.string().min(1),
   status: z.string().min(1),
   kind: z.string().min(1),
   pid: z.number().int().nullish(),
 });
+
+// Native background records use `state` instead of `status`. Validate that shape explicitly;
+// missing status on an interactive session must still fail rather than imply it is idle.
+export const agentsEntrySchema = z.union([
+  statusEntrySchema,
+  z
+    .looseObject({
+      sessionId: z.string().min(1),
+      cwd: z.string().min(1),
+      kind: z.literal("background"),
+      status: z.undefined().optional(),
+      state: z.string().min(1),
+      pid: z.number().int().nullish(),
+    })
+    .transform((entry) => ({ ...entry, status: entry.state })),
+]);
 
 export const agentsOutputSchema = z.array(agentsEntrySchema);
 
@@ -53,68 +69,6 @@ export const toAgentsEntry = (raw: RawAgentsEntry): ClaudeAgentsEntry => ({
 
 export const parseAgentsOutput = (stdout: string): ClaudeAgentsEntry[] =>
   agentsOutputSchema.parse(JSON.parse(stdout)).map(toAgentsEntry);
-
-/**
- * Check if a process ID is alive. Uses process.kill(pid, 0) to test existence without sending a signal.
- * Returns true if the process exists, false if it definitely doesn't. On permission errors, returns true
- * (conservative: assume the process exists if we can't verify).
- */
-export function isPidAlive(pid: number | null | undefined): boolean {
-  if (!pid) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // ESRCH: no such process
-    if (error instanceof Error && "code" in error && error.code === "ESRCH") {
-      return false;
-    }
-    // EPERM or other errors: assume it's alive (conservative)
-    return true;
-  }
-}
-
-/**
- * Check if a Claude registry entry is stale. A stale entry is one where:
- * - The pid is not alive, OR
- * - The pid is null AND hook activity is older than stallAfterMs
- * Returns true if the entry is stale (should be filtered out), false if it's live.
- * When hook information is unavailable, conservatively assumes the entry is live.
- */
-export function isStaleEntry(
-  entry: ClaudeAgentsEntry,
-  options?: {
-    hookLastEventAt: string | null;
-    stallAfterMs: number;
-    now: string;
-  },
-): boolean {
-  // If pid is set and alive, entry is live
-  if (entry.pid !== null && isPidAlive(entry.pid)) {
-    return false;
-  }
-
-  // If pid is dead, entry is stale
-  if (entry.pid !== null && !isPidAlive(entry.pid)) {
-    return true;
-  }
-
-  // pid is null: use hook activity if available to make a determination
-  if (options && options.hookLastEventAt) {
-    const lastEventTime = new Date(options.hookLastEventAt).getTime();
-    const nowTime = new Date(options.now).getTime();
-    const staleSince = nowTime - options.stallAfterMs;
-    if (lastEventTime < staleSince) {
-      // Hook activity is stale
-      return true;
-    }
-    // Hook activity is recent: entry is live
-    return false;
-  }
-
-  // No pid and no hook info available: conservatively assume entry is live
-  return false;
-}
 
 export interface AgentsReaderOptions {
   /** Defaults to `claude` on PATH. */
