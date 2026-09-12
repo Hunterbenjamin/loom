@@ -1,0 +1,48 @@
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+Etag: W/"7ed713dca59097bc5cae7310ff1490df5f15c6c85799bfcac3d94837aac21cf0"
+
+[
+  {
+    "id": 3976844880,
+    "body": "[Public comment body removed from fixture]",
+    "created_at": "2026-09-10T07:58:30Z",
+    "pull_request_review_id": 5164348217,
+    "path": "scripts/inline-enums.js",
+    "line": 250,
+    "side": "RIGHT",
+    "commit_id": "05c50f86b5fb9a95f30a4116e3bf4ab4d4bafa64",
+    "user": {
+      "login": "coderabbitai[bot]",
+      "type": "Bot"
+    }
+  },
+  {
+    "id": 3976934237,
+    "body": "[Public comment body removed from fixture]",
+    "created_at": "2026-09-10T08:08:53Z",
+    "pull_request_review_id": 5164473684,
+    "path": "scripts/inline-enums.js",
+    "line": 250,
+    "side": "RIGHT",
+    "commit_id": "05c50f86b5fb9a95f30a4116e3bf4ab4d4bafa64",
+    "user": {
+      "login": "edison1105",
+      "type": "User"
+    }
+  },
+  {
+    "id": 3977000265,
+    "body": "[Public comment body removed from fixture]",
+    "created_at": "2026-09-10T08:16:05Z",
+    "pull_request_review_id": 5164565577,
+    "path": "scripts/inline-enums.js",
+    "line": 250,
+    "side": "RIGHT",
+    "commit_id": "05c50f86b5fb9a95f30a4116e3bf4ab4d4bafa64",
+    "user": {
+      "login": "coderabbitai[bot]",
+      "type": "Bot"
+    }
+  }
+]

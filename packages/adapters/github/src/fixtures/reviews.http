@@ -1,0 +1,42 @@
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+Etag: W/"b948cac364a1f5c970bd4b1c1364a6c92479f4a0b504d3244cae20de7646f89a"
+
+[
+  {
+    "id": 5164348217,
+    "node_id": "PRR_kwDOCCum188AAAABM9GzOQ",
+    "body": "[Public comment body removed from fixture]",
+    "commit_id": "05c50f86b5fb9a95f30a4116e3bf4ab4d4bafa64",
+    "state": "COMMENTED",
+    "submitted_at": "2026-09-10T07:58:31Z",
+    "user": {
+      "login": "coderabbitai[bot]",
+      "type": "Bot"
+    }
+  },
+  {
+    "id": 5164473684,
+    "node_id": "PRR_kwDOCCum188AAAABM9OdVA",
+    "body": "",
+    "commit_id": "05c50f86b5fb9a95f30a4116e3bf4ab4d4bafa64",
+    "state": "COMMENTED",
+    "submitted_at": "2026-09-10T08:08:53Z",
+    "user": {
+      "login": "edison1105",
+      "type": "User"
+    }
+  },
+  {
+    "id": 5164565577,
+    "node_id": "PRR_kwDOCCum188AAAABM9UESQ",
+    "body": "",
+    "commit_id": "05c50f86b5fb9a95f30a4116e3bf4ab4d4bafa64",
+    "state": "COMMENTED",
+    "submitted_at": "2026-09-10T08:16:05Z",
+    "user": {
+      "login": "coderabbitai[bot]",
+      "type": "Bot"
+    }
+  }
+]

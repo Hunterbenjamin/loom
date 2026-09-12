@@ -1,0 +1,33 @@
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+Etag: W/"95e1d9dffb582e42126f48206b20d22a1edd4650e99a68a659e2b3f31865ec73"
+
+[
+  {
+    "id": 5615121583,
+    "body": "[Public comment body removed from fixture]",
+    "created_at": "2026-09-10T07:55:01Z",
+    "user": {
+      "login": "coderabbitai[bot]",
+      "type": "Bot"
+    }
+  },
+  {
+    "id": 5615130887,
+    "body": "[Public comment body removed from fixture]",
+    "created_at": "2026-09-10T07:55:48Z",
+    "user": {
+      "login": "pkg-pr-new[bot]",
+      "type": "Bot"
+    }
+  },
+  {
+    "id": 5615146025,
+    "body": "[Public comment body removed from fixture]",
+    "created_at": "2026-09-10T07:57:06Z",
+    "user": {
+      "login": "github-actions[bot]",
+      "type": "Bot"
+    }
+  }
+]
