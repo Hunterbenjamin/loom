@@ -20,6 +20,7 @@ export const viewName = z.enum([
 export type ViewName = z.output<typeof viewName>;
 
 export const subscription = z.union([
+  z.strictObject({ kind: z.literal("panes") }),
   /** A task list: the client receives the tasks these views match, and nothing else changes. */
   z.strictObject({
     kind: z.literal("views"),
@@ -69,6 +70,7 @@ export function taskInView(task: Task, view: ViewName): boolean {
 const ALWAYS: CollectionName[] = ["repo", "inbox", "lead"];
 
 export interface Scope {
+  panes: boolean;
   views: { views: ViewName[]; repoIds: Set<string> | null }[];
   tasks: Set<string>;
   diffs: Set<string>;
@@ -77,6 +79,7 @@ export interface Scope {
 
 export function scopeOf(subscriptions: readonly Subscription[]): Scope {
   const scope: Scope = {
+    panes: false,
     views: [],
     tasks: new Set(),
     diffs: new Set(),
@@ -90,6 +93,7 @@ export function scopeOf(subscriptions: readonly Subscription[]): Scope {
       });
     else if (s.kind === "task") scope.tasks.add(s.taskId);
     else if (s.kind === "diff") scope.diffs.add(`${s.taskId}#${s.mode}`);
+    else if (s.kind === "panes") scope.panes = true;
     else scope.runs.add(s.runId);
   }
   return scope;
@@ -111,13 +115,20 @@ export function taskInScope(scope: Scope, task: Task): boolean {
 /** The task a change belongs to, or null when it isn't task-scoped. */
 export function ownerTask(change: Change): string | null {
   if (change.op === "delete") return change.taskId;
-  if (change.collection === "repo" || change.collection === "lead") return null;
+  if (
+    change.collection === "repo" ||
+    change.collection === "lead" ||
+    change.collection === "pane_inventory"
+  )
+    return null;
   if (change.collection === "task") return change.value.id;
   return change.value.taskId;
 }
 
 /** Does this change belong on this client's stream? */
 export function inScope(scope: Scope, change: Change): boolean {
+  if (change.collection === "pane" || change.collection === "pane_inventory")
+    return scope.panes;
   if (ALWAYS.includes(change.collection)) return true;
   if (change.collection === "task") {
     if (change.op === "delete") return true;

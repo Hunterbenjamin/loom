@@ -154,6 +154,15 @@ export interface PaneHost {
     args: string[];
     env: Record<string, string>;
   }): Promise<PaneRef>;
+  /** Human shell in an existing workspace, idempotent on key within a host generation. */
+  createScratch(req: {
+    workspaceId: string;
+    key: string;
+    cwd: WorktreePath;
+    executable: string;
+    args: string[];
+    env: Record<string, string>;
+  }): Promise<PaneRef>;
   /** Null: no such pane in this host generation. A dead pane is still a pane. */
   getPane(ref: PaneRef): Promise<PaneObservation | null>;
   /** Every pane on the host, dead ones included. Join on `startCwd` (principle 6). */

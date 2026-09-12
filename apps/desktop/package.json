@@ -12,10 +12,12 @@
     "perf": "node perf/harness.mjs",
     "test:terminal": "node perf/terminal-resize.mjs",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "postinstall": "node scripts/fix-spawn-helper.mjs"
+    "postinstall": "node scripts/fix-spawn-helper.mjs",
+    "test:workbench": "tsx scripts/workbench-smoke.ts"
   },
   "dependencies": {
     "@loom/core": "workspace:*",
+    "@loom/protocol": "workspace:*",
     "@pierre/diffs": "1.4.2",
     "@tanstack/react-virtual": "^3.14.12",
     "@xterm/addon-fit": "^0.11.0",
@@ -23,10 +25,10 @@
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
     "cmdk": "^1.1.1",
+    "dockview": "4.13.1",
     "node-pty": "^1.1.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "@loom/protocol": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

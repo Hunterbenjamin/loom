@@ -188,6 +188,9 @@ export interface ClaudeSessionObservation {
  * and provider identity is never inferred from a pane (spike 06 §4).
  */
 export interface PaneObservation {
+  sessionId?: string | null;
+  windowName?: string | null;
+  title?: string | null;
   ref: PaneRef;
   /** The pane's current working directory; null once the pane is dead. */
   cwd: WorktreePath | null;

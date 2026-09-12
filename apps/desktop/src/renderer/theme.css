@@ -583,6 +583,14 @@ ul.plain {
 
 /* ------------------------------------------------------------------ terminal */
 
+.terminal-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .terminal-wrap {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -592,6 +600,11 @@ ul.plain {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.terminal-tab > .terminal-wrap {
+  flex: 1;
+  height: auto;
 }
 
 .terminal-bar {

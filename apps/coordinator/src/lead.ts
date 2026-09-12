@@ -102,6 +102,10 @@ export class LeadSession {
     await rename(temporary, join(this.directory, "recipe.json"));
     this.recipe = value;
   }
+  get paneRef() {
+    return this.recipe?.pane ?? null;
+  }
+
   private async pane() {
     const recipe = this.recipe;
     if (!recipe) return null;

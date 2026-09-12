@@ -3,17 +3,48 @@
     "label": "Keystroke to glyph in the terminal, p95",
     "max": 16
   },
-  "listScrollFps": { "label": "Scrolling a 500-row list", "min": 110 },
+  "listScrollFps": {
+    "label": "Scrolling a 500-row list",
+    "min": 110
+  },
   "listScrollMaxFrameGapMs": {
     "label": "Scrolling a 500-row list, worst frame gap",
     "max": 32
   },
-  "viewSwitchP95Ms": { "label": "Switching view, p95", "max": 50 },
-  "openIssueP95Ms": { "label": "Opening an issue, p95", "max": 50 },
+  "viewSwitchP95Ms": {
+    "label": "Switching view, p95",
+    "max": 50
+  },
+  "openIssueP95Ms": {
+    "label": "Opening an issue, p95",
+    "max": 50
+  },
   "diffFirstPaintMs": {
     "label": "Rendering a 50-file diff, first paint",
     "max": 400
   },
-  "coldStartMs": { "label": "Cold start to interactive", "max": 1500 },
-  "idleCpuPercent": { "label": "Idle CPU with the window open", "max": 3 }
+  "coldStartMs": {
+    "label": "Cold start to interactive",
+    "max": 1500
+  },
+  "idleCpuPercent": {
+    "label": "Idle CPU with the window open",
+    "max": 3
+  },
+  "workbenchOpenMs": {
+    "label": "Workbench command to usable sidebar (30 panes, prepared window)",
+    "max": 300
+  },
+  "workbenchEchoP95Ms": {
+    "label": "Workbench four-panel echo p95",
+    "max": 16
+  },
+  "workbenchIdleCpuPercent": {
+    "label": "Workbench six-terminal idle CPU",
+    "max": 3
+  },
+  "workbenchTerminalRerenders": {
+    "label": "Terminal rerenders on a panes patch",
+    "max": 0
+  }
 }

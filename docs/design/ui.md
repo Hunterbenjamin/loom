@@ -1,59 +1,63 @@
 # UI design
 
-The window has two modes, and can be open more than once. This note records the direction agreed on
-2026-09-12 so the Phase 4 briefs derive from it. The Tracker mode exists (`apps/desktop`, on fixtures);
-the Workbench is new.
+Tracker and Workbench are independently opened, fixed-mode windows on the same coordinator.
+This note describes the first terminal Workbench slice.
 
 ## Modes
 
 | Mode | Use | Input | Status |
 |---|---|---|---|
-| **Tracker** | Tasks, the Needs-you inbox, git and PR state, plan approval, diff review | Mouse-friendly, Linear-like density; keyboard for everything too | Built as the fixture shell |
-| **Workbench** | Where the human talks to agents: a keyboard-first multiplexer with a task-aware sidebar, tabs and split panes | Keyboard first, tmux-style prefix bindings | To build |
+| **Tracker** | Tasks, the Needs-you inbox, git and PR state, plan approval, diff review | Mouse-friendly, Linear-like density; keyboard for everything too | Live and fixture shell |
+| **Workbench** | Where the human talks to agents: a keyboard-first multiplexer with a task-aware sidebar, tabs and split panes | Keyboard first, tmux-style prefix bindings | Terminal slice |
 
 A **Code** panel (file tree plus a read-only viewer) lives inside the Workbench as a panel type, not a
 third mode. Agents write; the human reads and reviews. Editing is out of v1.
 
 ## Windows
 
-Every window is a client of the same coordinator snapshot; none holds durable state (architecture
-principle 5). On a large monitor, two windows, each pinned to a mode. On a laptop, one window and
-`cmd+1` / `cmd+2` to switch. Opening a window is instant because the snapshot is already in memory in
-the coordinator; the window only renders it.
+Every window has its own coordinator connection and immutable Tracker or Workbench mode.
+Command+Shift+W, the command palette, and the bottom-bar Workbench button open a new Workbench.
+The palette also offers New Tracker. Existing windows keep their mode.
 
-Window layouts, pinned modes, open tabs and split arrangements are per-window conveniences. They are
-saved locally so a window reopens as it was, and they are always reconstructible from the snapshot,
-so losing them costs nothing.
+Tabs, splits, focused panel, filter and zoom exist only in that window's memory. Closing a window
+loses its layout and detaches its terminal clients; the underlying pane-host processes survive.
+New windows read the coordinator's cached, published inventory, without scanning the host on connect.
+After the first live window paints, the app prepares one hidden, empty Workbench with its own
+connection. Opening consumes that prepared window and prepares its replacement after a second.
+This keeps command-to-usable presentation within the opening budget; preparation time is recorded
+separately in the performance report. Fixture startup does not prepare a spare window.
 
 ## Workbench
 
-```
-┌ sidebar ──────┬ tabs ─────────────────────────────────────────────┐
-│ ▾ loom        │ [LOOM-12 impl] [LOOM-12 review] [LOOM-9 impl]     │
-│   ▾ LOOM-12   ├───────────────────────────┬───────────────────────┤
-│     ● impl ⚠  │                           │                       │
-│     ○ review  │   terminal: LOOM-12 impl  │  diff: LOOM-12        │
-│   ▸ LOOM-9    │                           │                       │
-│ ▸ bloom       ├───────────────────────────┴───────────────────────┤
-│               │   plan: LOOM-12                                   │
-└───────────────┴───────────────────────────────────────────────────┘
-```
-
-- **Sidebar:** repos → tasks → runs, with the run's status and attention badge (needs permission,
-  question, blocked, vanished) drawn from the snapshot, never from the terminal. This is what a terminal's
-  sidebar shows for agents, made task-aware.
-- **Tabs and splits:** a tab holds a binary split tree; every leaf is a panel. Layout comes from a
-  proven grid library (dockview-style: tabs, splits, drag), not hand-rolled.
-- **Panel types:** terminal (an xterm.js attached to one pane-host target), diff (Pierre, as in the
-  Tracker's review), plan, activity, code (tree plus read-only CodeMirror viewer; Monaco is too heavy
-  for the budget), and a scratch shell in the task's worktree.
-- **Bindings:** a prefix key (default `ctrl+a`), then `|` and `-` to split, `h j k l` to move focus,
-  `c` new tab, `n` / `p` next and previous tab, `x` close panel, `z` zoom, `g` jump to a run by name,
-  `?` for the map. Chosen to match tmux so muscle memory transfers to a raw terminal. Everything is
-  reachable without the prefix through the command palette.
-- **Terminals:** each terminal panel is its own attach client. Two windows, and a Ghostty window,
-  can show the same agent at the same time; the pane host allows multiple clients (see below).
-  Closing a panel detaches; it never stops the agent.
+- **Sidebar:** native tmux sessions (spaces) → canonical physical panes. Recorded task workspaces
+  show a task label; Lead and unlinked sessions keep their native names. Run linkage is only by a
+  unique recorded generation + pane ID, never cwd, title, command or native run tags. Dead panes
+  remain visible and dimmed. Filtering matches session/task/role/provider/pane names; each word
+  supports ordered-character fuzzy matching. Clicking replaces the focused panel's target; Enter
+  opens the agent in a new tab.
+- **Tabs and splits:** each outer tab owns a Dockview 4.13.1 Gridview. Splitting replaces a leaf
+  with two panels; the library handles sizing and may flatten equivalent adjacent axes. Drag a
+  panel header to an edge of another panel in the same tab to move it. Terminal mounts live as
+  stable siblings over the library's cells, so moving cells, switching tabs and zooming do not
+  dispose attach clients. Layout never leaves the window.
+- **Panel types in this slice:** terminal and task scratch shell. Scratch resolves the stored
+  worktree and existing workspace in the coordinator and creates an idempotent native shell pane.
+  It is not a provider run. Closing its panel leaves the shell running. Plan, diff, activity and
+  code panels are deferred; Tracker retains its existing review surface.
+- **Bindings:** Ctrl+A then `|` / `-` splits right/down; `h j k l` focuses left/down/up/right;
+  `c` opens an empty tab; `n` / `p` switches tabs; `x` closes a panel; `z` toggles zoom;
+  `g` focuses the fuzzy agent filter; `?` opens the map. The prefix expires after 1.5 seconds;
+  Escape cancels it, Ctrl+A Ctrl+A sends a literal Ctrl+A, and an unknown suffix cancels and
+  passes through normally. Each action has the same dispatcher in the Command+K palette.
+  Directional focus returns input focus to xterm. Command+J toggles the shared Lead panel.
+- **Attention:** the separate agent count counts distinct flagged panes from coordinator attention,
+  including Lead's native waiting status. It does not count reason rows. Workbench attention
+  navigation clears any hiding filter and selects the first flagged pane in sidebar order.
+  The Lead toggle retains Tracker's existing inbox reason count and restart behavior.
+- **Terminals:** each panel owns an independent authenticated attach client. Replacing/closing a
+  panel kills only that client. Electron keys resources by webContents and panel/client identity,
+  including pending spawns and late exit callbacks. Metadata patches update labels without
+  rendering or remounting terminal components; theme changes update xterm options in place.
 
 ## Pane host
 
@@ -66,6 +70,14 @@ tmux is the pane host (`packages/adapters/tmux`). Herdr's one-attached-client ru
 multi-window model above, and its agent-awareness duplicated Loom's. The Workbench attaches through a
 *grouped* session per view — clients on the same tmux session share its current window, so each view
 needs its own — and any number of clients, Ghostty included, may attach to the same pane.
+tmux 3.7c clients use `active-pane`, with explicit client-local selection initialization, so
+existing sibling panes in one native window receive independent input. Grouped aliases and Loom's
+control-monitor session are excluded from the logical inventory. Attached-client counts describe
+session-group membership, not the number of viewers focused on a particular pane. Observation
+failures retain the last good rows with an unavailable flag, including an explicit inventory health
+row when the last good inventory was empty. Host hints and metadata changes invalidate one serialized
+refresh; a 2-second poll catches changes without hints. Unchanged observations publish no patches.
+
 The coordinator owning PTYs itself stays a later option if the multiplexer's redraw layer ever shows
 in the latency numbers.
 

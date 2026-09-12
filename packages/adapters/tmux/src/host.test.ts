@@ -31,6 +31,10 @@ const TMUX = await execFile("/usr/bin/which", [
   () => "",
 );
 const available = TMUX !== "";
+const PYTHON = await execFile("/usr/bin/which", ["python3"]).then(
+  ({ stdout }) => stdout.trim(),
+  () => "",
+);
 
 async function tmux(...args: string[]): Promise<string> {
   const { stdout } = await execFile(TMUX, ["-L", socket, ...args]);
@@ -78,6 +82,31 @@ describe.skipIf(!available)("tmux pane host", () => {
   afterAll(async () => {
     await tmux("kill-server").catch(() => undefined);
     await rm(dir, { recursive: true, force: true });
+  });
+
+  it("keeps scratch creation idempotent after a window rename", async () => {
+    const workspace = await host.ensureWorkspace({
+      taskId: "t-scratch" as TaskId,
+      cwd,
+      label: "scratch",
+    });
+    const request = {
+      workspaceId: workspace.workspaceId,
+      key: crypto.randomUUID(),
+      cwd,
+      executable: "/bin/sh",
+      args: [],
+      env: paneEnv(),
+    };
+    const first = await host.createScratch(request);
+    await tmux("rename-window", "-t", first.windowId as string, "human name");
+    expect(await host.createScratch(request)).toEqual(first);
+    expect(
+      (await host.listPanes()).filter(
+        (p) => p.ref.sessionName === workspace.workspaceId,
+      ),
+    ).toHaveLength(2);
+    expect((await host.getPane(first))?.dead).toBe(false);
   });
 
   it("loads the private config before any pane exists", async () => {
@@ -311,6 +340,111 @@ describe.skipIf(!available)("tmux pane host", () => {
       for (const ref of panes) await host.closePane(ref);
     }
   });
+
+  it("isolates input between sibling panes with per-client active panes", async () => {
+    const workspace = await host.ensureWorkspace({
+      taskId: "t-siblings" as TaskId,
+      cwd,
+      label: "siblings",
+    });
+    const a = await host.ensurePane({
+      workspaceId: workspace.workspaceId,
+      runId: "sibling-a" as RunId,
+      cwd,
+      executable: "/bin/sh",
+      args: [
+        "-c",
+        'stty -echo; while IFS= read -r line; do printf "%s\\n" "$line" >> a.txt; done',
+      ],
+      env: paneEnv(),
+    });
+    const paneId = (
+      await tmux(
+        "split-window",
+        "-d",
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "-t",
+        a.paneId,
+        "-c",
+        cwd,
+        "/bin/sh",
+        "-c",
+        'stty -echo; while IFS= read -r line; do printf "%s\\n" "$line" >> b.txt; done',
+      )
+    ).trim();
+    const b = { ...a, paneId };
+    let output = "";
+    const viewer = (ref: PaneRef) => {
+      const args = host.attachArgs(ref);
+      const child = spawn(
+        PYTHON,
+        [
+          "-c",
+          `
+import os, pty, select, sys
+pid, fd = pty.fork()
+if pid == 0:
+    os.execv(sys.argv[1], sys.argv[1:])
+while True:
+    ready, _, _ = select.select([0, fd], [], [])
+    for source in ready:
+        data = os.read(source, 65536)
+        if not data:
+            sys.exit(0)
+        os.write(fd if source == 0 else 1, data)
+`,
+          ...args,
+        ],
+        {
+          env: {
+            PATH: "/usr/bin:/bin",
+            HOME: process.env.HOME,
+            TERM: "xterm-256color",
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+        },
+      );
+      child.stdout.on("data", (data) => {
+        output += data.toString();
+      });
+      child.stderr.on("data", (data) => {
+        output += data.toString();
+      });
+      return child;
+    };
+    const first = viewer(a);
+    const second = viewer(b);
+    try {
+      await until(async () => (await host.listClients(a)).length === 2);
+      await delay(150);
+      first.stdin.write("alpha\n");
+      second.stdin.write("bravo\n");
+      await until(async () =>
+        (await readFile(join(dir, "a.txt"), "utf8").catch(() => "")).includes(
+          "alpha",
+        ),
+      );
+      expect(await readFile(join(dir, "a.txt"), "utf8")).toBe("alpha\n");
+      expect(await readFile(join(dir, "b.txt"), "utf8")).toBe("bravo\n");
+      first.kill("SIGKILL");
+      second.stdin.write("survives\n");
+      await until(async () =>
+        (await readFile(join(dir, "b.txt"), "utf8")).includes("survives"),
+      );
+      expect((await host.getPane(a))?.dead).toBe(false);
+      expect((await host.getPane(b))?.dead).toBe(false);
+    } catch (error) {
+      throw new Error(
+        `${String(error)}; output=${JSON.stringify(output)}; clients=${await tmux("list-clients", "-F", "#{client_name} #{session_name} #{pane_id} #{client_flags}")}; a=${await readFile(join(dir, "a.txt"), "utf8").catch(() => "missing")}; b=${await readFile(join(dir, "b.txt"), "utf8").catch(() => "missing")}`,
+      );
+    } finally {
+      first.kill("SIGKILL");
+      second.kill("SIGKILL");
+      await tmux("kill-session", "-t", workspace.workspaceId);
+    }
+  }, 15000);
 
   it("scopes pane refs to a host generation across a kill-server", async () => {
     const workspace = await host.ensureWorkspace({
