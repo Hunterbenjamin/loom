@@ -190,10 +190,14 @@ export class Executor {
           await (await adapters.codex(action.taskId)).unsubscribe(
             run.sessionId,
           );
-        else if (run.mode === "headless")
+        else if (run.mode === "headless") {
           await adapters.claude
             .interruptHeadless(run.sessionId)
             .catch(() => undefined);
+          await adapters.claude
+            .closeHeadless(run.sessionId)
+            .catch(() => undefined);
+        }
         return {};
       }
       case "push_branch": {

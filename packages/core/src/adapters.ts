@@ -282,6 +282,8 @@ export interface ClaudeAdapter {
     text: string;
   }): Promise<void>;
   interruptHeadless(sessionId: ProviderSessionId): Promise<void>;
+  /** Closes the headless run and terminates its subprocess. */
+  closeHeadless(sessionId: ProviderSessionId): Promise<void>;
   headlessState(
     sessionId: ProviderSessionId,
   ): Promise<ClaudeSessionObservation["headless"]>;

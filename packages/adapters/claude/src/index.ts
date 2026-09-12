@@ -159,6 +159,11 @@ export async function createClaudeAdapter(
       await run(sessionId).interrupt();
     },
 
+    closeHeadless: async (sessionId: ProviderSessionId): Promise<void> => {
+      run(sessionId).close();
+      headlessRuns.delete(sessionId);
+    },
+
     headlessState: async (
       sessionId: ProviderSessionId,
     ): Promise<ClaudeSessionObservation["headless"]> =>

@@ -140,4 +140,30 @@ describe("createClaudeAdapter", () => {
       ),
     ).toBe(false);
   });
+
+  test("closeHeadless() terminates the headless run", async () => {
+    const settingsPath = join(dir, "settings.json");
+    await adapter.writeSettings(settingsPath);
+
+    await adapter.startHeadless({
+      sessionId: SESSION,
+      resume: false,
+      cwd: dir as never,
+      model: "haiku",
+      settingsPath,
+      readOnly: false,
+      prompt: "test",
+    });
+
+    // Before close, the session should be known
+    expect(await adapter.headlessState(SESSION)).not.toBeNull();
+
+    // Close the headless run
+    await adapter.closeHeadless(SESSION);
+
+    // After close, subsequent operations should fail since the run is removed
+    await expect(
+      adapter.sendHeadless({ sessionId: SESSION, text: "hello" }),
+    ).rejects.toThrow(/no headless run/);
+  });
 });
