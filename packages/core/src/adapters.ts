@@ -211,7 +211,7 @@ export interface CodexAdapter {
   startThread(req: {
     cwd: WorktreePath;
     model: string;
-    sandbox: "read-only" | "workspace-write";
+    sandbox: "read-only" | "workspace-write" | "danger-full-access";
     developerInstructions: string;
     config: Record<string, unknown>;
   }): Promise<{ threadId: ProviderSessionId; generation: number }>;
