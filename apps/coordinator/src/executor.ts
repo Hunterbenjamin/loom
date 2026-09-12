@@ -271,6 +271,19 @@ export class Executor {
       case "notify":
         this.deps.notify(action.level, action.title, action.body);
         return {};
+      default: {
+        // Handle unknown action kinds that may exist in the database but not in this executor version
+        const unknownAction = action as unknown as {
+          kind: string;
+          key: string;
+        };
+        throw new Fatal(
+          `Unknown action kind '${unknownAction.kind}' (key: ${unknownAction.key}). ` +
+            `This may indicate a schema drift between core and store. ` +
+            `Ensure the action kind is added to both packages/core/src/actions.ts ActionOutputs ` +
+            `and packages/store/src/action-schemas.ts.`,
+        );
+      }
     }
   }
 
