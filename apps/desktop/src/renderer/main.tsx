@@ -45,11 +45,12 @@ if (config.mode === "live") {
     const { openTask, openRun } = store.getState().ui;
     client.setDetail([
       { kind: "panes" },
+      { kind: "agents" },
       ...(openTask ? [{ kind: "task" as const, taskId: openTask }] : []),
       ...(openRun ? [{ kind: "run" as const, runId: openRun }] : []),
     ]);
   });
-  client.setDetail([{ kind: "panes" }]);
+  client.setDetail([{ kind: "panes" }, { kind: "agents" }]);
   client.start();
   window.addEventListener("beforeunload", () => client.stop(), { once: true });
 } else if (config.mode === "unconfigured") store.setConnection(config.message);

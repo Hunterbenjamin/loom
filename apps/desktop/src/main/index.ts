@@ -148,13 +148,20 @@ function wire(): void {
       const target =
         connection.mode === "fixtures"
           ? null
-          : request.pane
-            ? await resolveAttach(connection, request.pane)
-            : request.lead
-              ? await resolveAttach(connection, "lead")
-              : request.runId
-                ? await resolveAttach(connection, request.runId)
-                : null;
+          : request.shellKey
+            ? await resolveAttach(connection, {
+                shellKey: request.shellKey,
+                shellName: request.shellName,
+              })
+            : request.pane
+              ? await resolveAttach(connection, request.pane)
+              : request.operator
+                ? await resolveAttach(connection, "operator")
+                : request.lead
+                  ? await resolveAttach(connection, "lead")
+                  : request.runId
+                    ? await resolveAttach(connection, request.runId)
+                    : null;
       if (connection.mode !== "fixtures" && !target?.attach)
         throw new Error("Select a run with a live terminal pane");
       if (window.isDestroyed()) throw new Error("Window closed");

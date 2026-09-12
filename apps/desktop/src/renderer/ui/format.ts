@@ -54,3 +54,13 @@ export function severityTone(severity: string): string {
   if (severity === "nit") return "";
   return "accent";
 }
+
+/** Stable model family for compact labels; retain unfamiliar model names as a fallback. */
+export function shortModelName(model: string): string {
+  const family = model.match(
+    /(?:^|[-_\s])(haiku|sonnet|opus|astra|sol|terra|luna|spark)(?=$|[-_\s])/i,
+  )?.[1];
+  if (family) return family.toLowerCase();
+  if (/(?:^|[-_\s])codex(?=$|[-_\s])/i.test(model)) return "codex";
+  return model.trim() || "—";
+}

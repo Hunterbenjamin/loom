@@ -54,6 +54,21 @@ describe("scope", () => {
   const upsert = (collection: Change["collection"], value: unknown): Change =>
     ({ op: "upsert", collection, value }) as Change;
 
+  it("streams headless agents and questions without subscribing to every task detail", () => {
+    const scope = scopeOf([{ kind: "agents" }]);
+    expect(inScope(scope, upsert("run", body.runs[0]))).toBe(true);
+    expect(inScope(scope, upsert("question", body.questions[0]))).toBe(true);
+    expect(inScope(scope, upsert("finding", body.findings[0]))).toBe(false);
+    expect(
+      inScope(scope, {
+        op: "delete",
+        collection: "run",
+        key: id.run("removed"),
+        taskId: other,
+      }),
+    ).toBe(true);
+  });
+
   it("gives every client the repo list", () => {
     expect(inScope(scopeOf([]), upsert("repo", body.repos[0]))).toBe(true);
   });

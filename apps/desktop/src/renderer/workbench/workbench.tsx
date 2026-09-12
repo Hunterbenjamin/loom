@@ -1,3 +1,4 @@
+import type { TaskId } from "@loom/core";
 import type { PaneIdentity, PaneView } from "@loom/protocol";
 import { Command } from "cmdk";
 import {
@@ -19,11 +20,23 @@ import { useStore, useStoreApi } from "../store/react.js";
 import { LeadBar } from "../ui/lead.js";
 import { TerminalSession } from "../ui/terminal.js";
 import { type Action, actions, prefixKeys } from "./actions.js";
-import { attentionPanes, spaces } from "./selectors.js";
+import {
+  attentionPanes,
+  sameTerminal,
+  terminalList,
+  terminalName,
+} from "./selectors.js";
 import "./workbench.css";
+import { NewTerminalDialog } from "./new-terminal.js";
+import { Sidebar } from "./sidebar.js";
 
-type Panel = { id: string; target?: PaneIdentity };
-type Tab = { id: string; panels: Panel[] };
+type Panel = {
+  id: string;
+  target?: PaneIdentity;
+  name?: string;
+  system?: "main" | "operator";
+};
+type Tab = { id: string; name: string; panels: Panel[] };
 type Rect = { left: number; top: number; width: number; height: number };
 const newPanel = (target?: PaneIdentity): Panel => ({
   id: crypto.randomUUID(),
@@ -40,78 +53,13 @@ const Placeholder = ({ api }: IGridviewPanelProps) => (
 );
 const components = { cell: Placeholder };
 
-function Sidebar({
-  filter,
-  setFilter,
-  choose,
+const PanelLabel = ({
+  target,
+  name,
 }: {
-  filter: string;
-  setFilter: (s: string) => void;
-  choose: (p: PaneView, tab: boolean) => void;
-}) {
-  const panes = useStore((s) => s.panes);
-  const unavailable = useStore((s) => s.panesUnavailable);
-  const groups = spaces(panes, filter);
-  useEffect(() => {
-    window.loomHost.interactive();
-  }, []);
-  return (
-    <aside className="wb-sidebar" aria-label="Spaces and agents">
-      <input
-        id="agent-filter"
-        aria-label="Find agent"
-        placeholder="Find an agent…"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-      />
-      {unavailable && (
-        <p role="status">
-          Pane host unavailable. Showing last known inventory.
-        </p>
-      )}
-      {!groups.length && (
-        <p>
-          {panes.length ? "No matching agents" : "No panes on this instance"}
-        </p>
-      )}
-      {groups.map((g) => (
-        <section key={g.name}>
-          <h3 title={g.name}>{g.label}</h3>
-          {g.panes.map((p) => (
-            <button
-              type="button"
-              key={p.id}
-              className={p.dead ? "wb-agent dead" : "wb-agent"}
-              onClick={() => choose(p, false)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  choose(p, true);
-                }
-              }}
-              title={`${p.startCwd}\n${p.attachedClients} session-group clients`}
-            >
-              <span>
-                {p.attention ? "● " : ""}
-                {p.role
-                  ? `${p.role} · ${p.provider}`
-                  : p.title || p.windowName || p.command || p.paneId}
-              </span>
-              <small>
-                {p.windowName} · {p.paneId} ·{" "}
-                {p.dead
-                  ? `exited ${p.exitStatus ?? "unknown"}`
-                  : (p.status ?? p.command)}
-              </small>
-            </button>
-          ))}
-        </section>
-      ))}
-    </aside>
-  );
-}
-
-const PanelLabel = ({ target }: { target?: PaneIdentity }) => {
+  target?: PaneIdentity;
+  name?: string;
+}) => {
   const pane = useStore((s) =>
     s.panes.find(
       (p) =>
@@ -124,9 +72,9 @@ const PanelLabel = ({ target }: { target?: PaneIdentity }) => {
     <span>
       {target
         ? pane
-          ? `${pane.role ?? pane.title ?? pane.command} · ${pane.paneId}${pane.dead ? " · exited" : pane.unavailable ? " · unavailable" : ""}`
+          ? `${pane.role ?? pane.windowName ?? pane.title ?? pane.command} · ${pane.paneId}${pane.dead ? " · exited" : pane.unavailable ? " · unavailable" : ""}`
           : "Pane unavailable"
-        : "Choose an agent"}
+        : (name ?? "Terminal")}
     </span>
   );
 };
@@ -154,6 +102,7 @@ const TabGrid = memo(function TabGrid({
   const [rects, setRects] = useState<Record<string, Rect>>({});
   const live = useStore((s) => s.live);
   const theme = useStore((s) => s.ui.theme);
+  const runs = useStore((s) => s.snapshot.runs);
   const measure = useCallback(() => {
     const element = host.current;
     if (!element?.clientWidth) return;
@@ -283,28 +232,56 @@ const TabGrid = memo(function TabGrid({
               e.dataTransfer.setData("application/loom-panel", p.id)
             }
           >
-            <PanelLabel target={p.target} />
+            <PanelLabel
+              target={p.target}
+              name={
+                p.system === "main"
+                  ? "Main"
+                  : p.system === "operator"
+                    ? "Operator"
+                    : p.name
+              }
+            />
             <button
               type="button"
-              aria-label="Close panel"
+              aria-label={
+                p.system ||
+                runs.some(
+                  (run) =>
+                    !run.endedAt &&
+                    run.pane &&
+                    p.target &&
+                    sameTerminal(run.pane, p.target),
+                )
+                  ? "Hide agent view"
+                  : "Close terminal"
+              }
+              title={
+                p.system ||
+                runs.some(
+                  (run) =>
+                    !run.endedAt &&
+                    run.pane &&
+                    p.target &&
+                    sameTerminal(run.pane, p.target),
+                )
+                  ? "Hide view; the agent keeps running"
+                  : "Close terminal session"
+              }
               onClick={() => close(p.id)}
             >
               ×
             </button>
           </header>
-          {p.target ? (
-            <TerminalSession
-              panelId={p.id}
-              pane={p.target}
-              live={live}
-              theme={theme}
-              label="Workbench"
-            />
-          ) : (
-            <div className="wb-empty">
-              Click an agent to attach here. Enter opens a new tab.
-            </div>
-          )}
+          <TerminalSession
+            panelId={p.id}
+            pane={p.target}
+            lead={p.system === "main"}
+            operator={p.system === "operator"}
+            live={live}
+            theme={theme}
+            label={p.system === "main" ? "Main" : "Workbench"}
+          />
         </fieldset>
       ))}
     </div>
@@ -313,9 +290,11 @@ const TabGrid = memo(function TabGrid({
 
 export function Workbench() {
   const store = useStoreApi();
-  const [tabs, setTabs] = useState<Tab[]>(() => [
-    { id: crypto.randomUUID(), panels: [newPanel()] },
-  ]);
+  const panes = useStore((s) => s.panes);
+  const unavailable = useStore((s) => s.panesUnavailable);
+  const connection = useStore((s) => s.connection);
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const initialized = useRef(false);
   const [active, setActive] = useState(tabs[0]?.id ?? "");
   const [focused, setFocused] = useState(tabs[0]?.panels[0]?.id ?? "");
   const [zoom, setZoom] = useState<string | null>(null);
@@ -323,6 +302,10 @@ export function Workbench() {
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [error, setError] = useState("");
+  const [pendingTab, setPendingTab] = useState<{
+    taskId?: TaskId;
+    split?: { tabId: string; panelId: string; direction: "right" | "below" };
+  } | null>(null);
   const grids = useRef(new Map<string, GridviewApi>());
   const register = useCallback((id: string, api: GridviewApi | null) => {
     if (api) grids.current.set(id, api);
@@ -337,50 +320,203 @@ export function Workbench() {
       (window.loom.terms?.[id] as { focus(): void } | undefined)?.focus(),
     );
   }, []);
-  const newTab = (target?: PaneIdentity) => {
-    const p = newPanel(target);
-    const tab = { id: crypto.randomUUID(), panels: [p] };
-    setTabs((ts) => [...ts, tab]);
-    setActive(tab.id);
+  const newTab = () => setPendingTab({});
+  const createTab = async (name: string) => {
+    const pending = pendingTab;
+    const result = await store.command(
+      pending?.taskId
+        ? {
+            kind: "create_scratch",
+            taskId: pending.taskId,
+            key: crypto.randomUUID(),
+            label: name,
+          }
+        : {
+            kind: "open_workbench_terminal",
+            key: crypto.randomUUID(),
+            label: name,
+          },
+    );
+    if (!result.ok) throw new Error(result.error.message);
+    const target =
+      result.result.kind === "scratch_created"
+        ? identity(result.result.pane)
+        : result.result.kind === "attach_session" &&
+            "identity" in result.result.target &&
+            result.result.target.identity === "pane"
+          ? result.result.target.target
+          : null;
+    if (!target) throw new Error("Terminal creation was not confirmed");
+    const p = { ...newPanel(target), name };
+    const split = pending?.split;
+    const grid = split && grids.current.get(split.tabId);
+    if (split && grid?.getPanel(split.panelId)) {
+      grid.addPanel({
+        id: p.id,
+        component: "cell",
+        minimumWidth: 280,
+        minimumHeight: 150,
+        position: { referencePanel: split.panelId, direction: split.direction },
+      });
+      setTabs((ts) =>
+        ts.map((t) =>
+          t.id === split.tabId ? { ...t, panels: [...t.panels, p] } : t,
+        ),
+      );
+      setActive(split.tabId);
+    } else {
+      const tab = { id: crypto.randomUUID(), name, panels: [p] };
+      setTabs((ts) => [...ts, tab]);
+      setActive(tab.id);
+    }
+    setPendingTab(null);
     setZoom(null);
     keyboardFocus(p.id);
   };
-  const choose = (pane: PaneView, tab: boolean) => {
-    if (tab || !tabs.length) {
-      newTab(identity(pane));
+  const openPinned = (system: "main" | "operator") => {
+    const existing = tabs
+      .flatMap((tab) => tab.panels.map((panel) => ({ tab, panel })))
+      .find(({ panel }) => panel.system === system);
+    if (existing) {
+      setActive(existing.tab.id);
+      keyboardFocus(existing.panel.id);
       return;
     }
-    setTabs((ts) =>
-      ts.map((t) =>
-        t.id === active
-          ? {
-              ...t,
-              panels: t.panels.map((p) =>
-                p.id === focused ? { ...p, target: identity(pane) } : p,
-              ),
-            }
-          : t,
-      ),
-    );
-    keyboardFocus(focused);
+    const panel: Panel = { id: crypto.randomUUID(), system };
+    const tab = {
+      id: crypto.randomUUID(),
+      name: system === "main" ? "Main" : "Operator",
+      panels: [panel],
+    };
+    setTabs((tabs) => [...tabs, tab]);
+    setActive(tab.id);
+    setZoom(null);
+    keyboardFocus(panel.id);
   };
-  const close = useCallback(
-    (id: string) => {
+  const choose = (pane: PaneView) => {
+    if (pane.dead || pane.unavailable) return;
+    const existing = tabs
+      .flatMap((tab) => tab.panels.map((panel) => ({ tab, panel })))
+      .find(({ panel }) => panel.target && sameTerminal(panel.target, pane));
+    if (existing) {
+      setActive(existing.tab.id);
       setZoom(null);
-      setTabs((ts) => {
-        const next = ts
-          .map((t) => ({ ...t, panels: t.panels.filter((p) => p.id !== id) }))
-          .filter((t) => t.panels.length);
-        const tab = next.find((t) => t.id === active) ?? next[0];
-        if (tab) {
-          setActive(tab.id);
-          keyboardFocus(tab.panels[0]?.id ?? "");
-        }
-        return next;
-      });
-    },
-    [active, keyboardFocus],
-  );
+      keyboardFocus(existing.panel.id);
+      return;
+    }
+    // Selecting an existing session only attaches. Creation is exclusively a New action.
+    const panel = newPanel(identity(pane));
+    const tab = {
+      id: crypto.randomUUID(),
+      name: terminalName(pane),
+      panels: [panel],
+    };
+    setTabs((ts) => [...ts, tab]);
+    setActive(tab.id);
+    setZoom(null);
+    keyboardFocus(panel.id);
+  };
+  useEffect(() => {
+    if (unavailable || connection !== "connected") return;
+    // The host owns existence. A native exit/close removes every view of that terminal.
+    setTabs((ts) => {
+      const next = ts
+        .map((tab) => ({
+          ...tab,
+          panels: tab.panels.filter(
+            (panel) =>
+              !panel.target ||
+              panes.some(
+                (pane) =>
+                  !pane.dead &&
+                  sameTerminal(pane, panel.target as PaneIdentity),
+              ),
+          ),
+        }))
+        .filter((tab) => tab.panels.length);
+      return next.length === ts.length &&
+        next.every((tab, i) => tab.panels.length === ts[i]?.panels.length)
+        ? ts
+        : next;
+    });
+    if (!initialized.current) {
+      initialized.current = true;
+      const first = terminalList(panes).find(({ pane }) => !pane.unavailable);
+      if (first) {
+        const panel = newPanel(identity(first.pane));
+        const tab = {
+          id: crypto.randomUUID(),
+          name: first.name,
+          panels: [panel],
+        };
+        setTabs((ts) => (ts.length ? ts : [tab]));
+        setActive(tab.id);
+        setFocused(panel.id);
+      }
+    }
+  }, [panes, unavailable, connection]);
+  useEffect(() => {
+    const tab = tabs.find((t) => t.id === active) ?? tabs[0];
+    if (
+      tab &&
+      (!tabs.some((t) => t.id === active) ||
+        !tab.panels.some((p) => p.id === focused))
+    ) {
+      setActive(tab.id);
+      keyboardFocus(tab.panels[0]?.id ?? "");
+      setZoom(null);
+    }
+  }, [tabs, active, focused, keyboardFocus]);
+  const closing = useRef(new Set<string>());
+  const close = (id: string) => {
+    const panel = tabs.flatMap((t) => t.panels).find((p) => p.id === id);
+    if (!panel || closing.current.has(id)) return;
+    const target = panel.target;
+    const managed =
+      panel.system ||
+      store
+        .getState()
+        .snapshot.runs.some(
+          (run) =>
+            !run.endedAt &&
+            run.pane &&
+            target &&
+            sameTerminal(run.pane, target),
+        );
+    const remove = () => {
+      setZoom(null);
+      setTabs((ts) =>
+        ts
+          .map((t) => ({
+            ...t,
+            panels: t.panels.filter(
+              (p) =>
+                p.id !== id &&
+                (managed ||
+                  !target ||
+                  !p.target ||
+                  !sameTerminal(p.target, target)),
+            ),
+          }))
+          .filter((t) => t.panels.length),
+      );
+    };
+    if (managed || !target) {
+      remove();
+      return;
+    }
+    closing.current.add(id);
+    void store
+      .command({ kind: "close_terminal", target })
+      .then((result) => {
+        if (!result.ok) throw new Error(result.error.message);
+        if (result.result.kind !== "terminal_closed")
+          throw new Error("Terminal closure was not confirmed");
+        remove();
+      })
+      .catch((error: unknown) => setError(String(error)))
+      .finally(() => closing.current.delete(id));
+  };
   const dispatch = (action: Action) => {
     const tab = tabs.find((t) => t.id === active);
     const grid = grids.current.get(active);
@@ -411,24 +547,13 @@ export function Workbench() {
     }
     if (!tab || !grid) return;
     if (action === "split-right" || action === "split-down") {
-      const p = newPanel(tab.panels.find((p) => p.id === focused)?.target);
-      grid.addPanel({
-        id: p.id,
-        component: "cell",
-        minimumWidth: 280,
-        minimumHeight: 150,
-        position: {
-          referencePanel: focused,
+      setPendingTab({
+        split: {
+          tabId: tab.id,
+          panelId: focused,
           direction: action === "split-right" ? "right" : "below",
         },
       });
-      setTabs((ts) =>
-        ts.map((t) =>
-          t.id === active ? { ...t, panels: [...t.panels, p] } : t,
-        ),
-      );
-      setZoom(null);
-      keyboardFocus(p.id);
       return;
     }
     const current = document
@@ -474,6 +599,7 @@ export function Workbench() {
         )?.input("\x01", true),
     );
     const key = (e: KeyboardEvent) => {
+      if (document.querySelector("dialog[open]")) return;
       if (e.metaKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         e.stopPropagation();
@@ -501,25 +627,31 @@ export function Workbench() {
           p.paneId === target.paneId,
       )?.taskId;
     if (!taskId) {
-      setError("Select a task agent to create a scratch shell.");
+      newTab();
       return;
     }
-    const result = await store.command({
-      kind: "create_scratch",
-      taskId,
-      key: crypto.randomUUID(),
-    });
-    if (result.ok && result.result.kind === "scratch_created")
-      newTab(identity(result.result.pane));
-    else if (!result.ok) setError(result.error.message);
+    setPendingTab({ taskId });
   };
   return (
     <div className="workbench">
+      {pendingTab && (
+        <NewTerminalDialog
+          initialName={`Terminal ${tabs.length + 1}`}
+          create={createTab}
+          cancel={() => setPendingTab(null)}
+        />
+      )}
       <div className="wb-body">
-        <Sidebar filter={filter} setFilter={setFilter} choose={choose} />
+        <Sidebar
+          filter={filter}
+          setFilter={setFilter}
+          choose={choose}
+          newTerminal={() => newTab()}
+          openPinned={openPinned}
+        />
         <main className="wb-main">
           <nav className="wb-tabs" aria-label="Workbench tabs">
-            {tabs.map((t, i) => (
+            {tabs.map((t) => (
               <button
                 type="button"
                 key={t.id}
@@ -530,7 +662,7 @@ export function Workbench() {
                   keyboardFocus(t.panels[0]?.id ?? "");
                 }}
               >
-                Terminal {i + 1}
+                {t.name}
               </button>
             ))}
             <button type="button" onClick={() => newTab()}>
@@ -558,7 +690,7 @@ export function Workbench() {
             ))}
             {!tabs.length && (
               <button type="button" onClick={() => newTab()}>
-                Open an empty tab
+                New terminal
               </button>
             )}
           </div>
@@ -576,7 +708,7 @@ export function Workbench() {
         onAttention={() => {
           setFilter("");
           const first = attentionPanes(store.getState().panes)[0];
-          if (first) choose(first, false);
+          if (first) choose(first);
         }}
       />
       {palette && (

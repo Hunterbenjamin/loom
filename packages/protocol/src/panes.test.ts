@@ -45,6 +45,15 @@ test("validates identities, native fields and scratch acknowledgements", () => {
   expect(command.safeParse({ kind: "open_pane_session", target }).success).toBe(
     true,
   );
+  expect(command.safeParse({ kind: "close_terminal", target }).success).toBe(
+    true,
+  );
+  expect(
+    command.safeParse({
+      kind: "close_terminal",
+      target: { ...target, paneId: "*" },
+    }).success,
+  ).toBe(false);
   expect(
     command.safeParse({
       kind: "open_pane_session",

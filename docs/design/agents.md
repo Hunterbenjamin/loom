@@ -62,8 +62,8 @@ delegated to them, and every approval is an input on the task like any other.
 
 ### The Operator
 
-The layer the first day was missing. It is a headless session the coordinator owns, like the Lead's
-but without a terminal, woken by events rather than by a human:
+The layer the first day was missing. It is an interactive session with a pinned terminal, woken by coordinator events
+and available for a human to inspect:
 
 - **Trigger:** a Needs-you row appears or changes (attention reasons, design §3), a run ends with
   committed work and no submission, a review round closes, a PR's checks change.
@@ -121,7 +121,7 @@ human can audit it and widen or narrow the row.
   generated settings; rename the session and panel from Lead to Main in the next UI pass. The Lead
   brief's rule "always create tasks rather than editing repositories" becomes enforced rather than
   requested.
-- **Operator:** a new coordinator-owned headless session, launched and recovered like the Lead's
+- **Operator:** a coordinator-owned interactive session, launched and recovered like the Lead's
   (recipe, per-session settings, stable MCP registration), with a lead-style MCP identity of its
   own so its tools are the human commands and nothing else. It gets the `provider_input` /
   `provider_permission` rows first, since those are what a human answered by hand all day.
@@ -150,13 +150,15 @@ diagnostics, plus attention and ended-run hints, independently of desktop public
 adapter diagnostics are emitted at their source; no terminal or log parsing is involved. Duplicate
 hints cannot duplicate actions. Identical runtime failures within an hour retain occurrence counts.
 Events that arrive during a turn are returned at the next MCP call, or included in the next turn
-following the SDK's native result. Delivery attempts are distinct from processing receipts: only
+following the matching native Stop receipt. Delivery attempts are distinct from processing receipts: only
 durable decisions acknowledge processing.
 
-The identity is an MCP-only headless Claude session. Its recipe/token is saved before launch;
+The identity is an MCP-only interactive Claude session. Its recipe/token is saved before launch;
 settings and MCP registration are rewritten at launch, and resume requires provider confirmation.
-If that identity is still live without a local owned-child handle, recovery refuses a duplicate
-launch and exposes an error. Stop intent, event queue, retry ledger, filing quota and notes survive
+The recorded tmux pane is reused across coordinator and viewer restarts. If that identity is still
+live without its recorded pane, recovery refuses a duplicate launch and exposes an error.
+Only native idle status permits queued input; delivery hashes are saved before paste and matched
+to UserPromptSubmit receipts. Uncertain delivery is retained without automatically pasting again. Stop intent, event queue, retry ledger, filing quota and notes survive
 restart. Operator failures do not produce recursive Operator events.
 
 Policy row identifiers are `permission.allowed`, `permission.other`, `headless.retry`,

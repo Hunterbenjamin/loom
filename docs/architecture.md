@@ -206,8 +206,16 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   terminal a minimum width (about 100 columns), and resize only when the panel resizes, debounced.
 - **Scrollback lives in tmux.** The mouse wheel enters copy mode and reaches tmux history; search
   and history still read provider transcripts, not the terminal buffer.
-- Closing a panel detaches that client; the pane and its process keep running. A host restart kills
-  every pane process, and Loom relaunches each run from the stored command line and environment.
+- Closing a human terminal explicitly ends its native pane through `close_terminal`, then refreshes
+  the inventory. Selecting an existing terminal only attaches; it never creates or resurrects a shell.
+  Native exits remove terminal rows and their views. Closing the app or switching modes only detaches
+  clients. Pinned and supervised agents use a separately labelled **Hide agent view** action; their
+  existing stop controls own stopping work, so a terminal close cannot accidentally trigger recovery.
+  A host restart kills every pane process, and Loom relaunches runs from stored recipes.
+- The terminal sidebar is a projection of live native panes, independent of task history and local
+  view layout. No default shell is recreated on render or navigation. New Terminal and Split are the
+  only shell-creation paths, and capture the native identity before mounting a viewer. This follows
+  [Herdr's pane close/runtime lifecycle](https://github.com/herdrdev/herdr/blob/d184b41fa36923c132629af725ff98bb02aa1b61/src/app/api/panes.rs#L1853).
 - **Shift+Enter needs `extended-keys always`, `extended-keys-format csi-u` and
   `terminal-features ",xterm*:extkeys"`**, loaded before the pane exists — and still needs the
   renderer's CSI-u shim. Changing the options afterwards does not reach an existing pane.
@@ -376,11 +384,17 @@ guarantees that a command did not run. The broader restart matrix remains spike 
 
 ### Operator integration
 
-One coordinator-owned headless Claude Operator consumes durable structured hints outside the
+One coordinator-owned interactive Claude Operator consumes durable structured hints outside the
 per-task run/capacity model. SQLite owns its queue, decisions, notes, processing receipts, retry
 ledger and bug-filing accounting. A private recipe under the instance's `operator` directory owns
-its launch identity; the adapter still owns the process/session observation. MCP-only capability
-configuration and a separate authenticated identity prevent task-run, shell and attach access.
+its launch identity and recorded pane. Its terminal lives on the private tmux server and survives
+coordinator and viewer restarts. MCP-only capability
+configuration (`--tools ""`, strict MCP config and per-process settings) and a separate authenticated
+identity prevent the Operator agent from using task-run, shell and attach tools. Humans can attach
+its terminal through the pinned Workbench entry. Native Claude status gates queued input: busy,
+waiting and unknown sessions receive no paste. A durable prompt hash is recorded before paste;
+UserPromptSubmit confirms delivery and the matching Stop receipt finishes a turn. Uncertain
+delivery is never automatically replayed after restart.
 Every mutation is checked against policy v1 using fresh observations. Rescue commands reuse the
 core/outbox/executor path, without a submission or stage transition; automatic bug planning uses
 the existing `todo` input. Runtime bug repository routing is explicit. Desktop status and authored

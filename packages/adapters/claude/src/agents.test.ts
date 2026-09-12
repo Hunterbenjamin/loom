@@ -150,3 +150,30 @@ describe("stale entry detection", () => {
     ).toBe(false);
   });
 });
+
+describe("native background state field", () => {
+  test("preserves interactive entries alongside background records without status", () => {
+    const entries = parseAgentsOutput(
+      JSON.stringify([
+        {
+          sessionId: "foreground",
+          cwd: "/tmp",
+          kind: "interactive",
+          status: "idle",
+        },
+        {
+          sessionId: "background",
+          cwd: "/tmp",
+          kind: "background",
+          state: "running",
+        },
+      ]),
+    );
+    expect(
+      entries.map((entry) => [entry.sessionId, entry.status, entry.rawStatus]),
+    ).toEqual([
+      ["foreground", "idle", "idle"],
+      ["background", "other", "running"],
+    ]);
+  });
+});

@@ -66,20 +66,26 @@ export function TerminalTab({
 /** The shared attach client for task runs and the instance Lead. Unmount only detaches. */
 export const TerminalSession = memo(function TerminalSession({
   panelId,
+  shellKey,
+  shellName,
   pane,
   onKey,
   label,
   runId = null,
   lead = false,
+  operator = false,
   theme,
   live,
 }: {
   panelId?: string;
+  shellKey?: string;
+  shellName?: string;
   pane?: import("@loom/protocol").PaneIdentity;
   onKey?: (event: KeyboardEvent, literal: () => void) => boolean;
   label: string;
   runId?: RunId | null;
   lead?: boolean;
+  operator?: boolean;
   theme: "dark" | "light";
   live: boolean;
 }) {
@@ -101,7 +107,7 @@ export const TerminalSession = memo(function TerminalSession({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    if (live && !runId && !lead && !pane) {
+    if (live && !runId && !lead && !operator && !pane && !shellKey) {
       setStatus("Select a run to attach");
       return;
     }
@@ -179,7 +185,10 @@ export const TerminalSession = memo(function TerminalSession({
         rows: terminal.rows,
         label: settings.current.label,
         pane,
+        shellKey,
+        shellName,
         lead,
+        operator,
         runId,
       })
       .then((result) => {
@@ -232,7 +241,7 @@ export const TerminalSession = memo(function TerminalSession({
       void window.loomTerminal.kill(id);
       terminal.dispose();
     };
-  }, [panelId, pane, live, runId, lead]);
+  }, [panelId, pane, live, runId, lead, operator, shellKey, shellName]);
 
   return (
     <div className="terminal-wrap">
