@@ -1,0 +1,6 @@
+{
+  "name": "loom-spike-05",
+  "private": true,
+  "type": "module",
+  "dependencies": { "ws": "^8.18.0" }
+}

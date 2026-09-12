@@ -48,7 +48,7 @@ Tasks can also be Canceled. Three things are tracked separately and must not be 
 | Branches, PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time |
 | Diffs | The worktree or the PR | Computed on demand |
 | Session transcripts and live status | Codex daemon / Claude Code | Cache + references |
-| Terminal processes | Herdr | References (pane IDs, agent names) |
+| Terminal processes | Herdr, only while its server is alive | References (pane IDs, agent names), plus each run's intended command line and environment, so Loom can relaunch it |
 
 Done is derived from GitHub: a task is Done only once its PR is merged.
 
@@ -111,10 +111,22 @@ Rules:
   `interrupted` for a still-running unfinished turn. Do not resume it concurrently through a different
   server or derive live status from that disk view. Require an explicit handoff before control.
   Claude's headless-to-terminal handoff remains exclusive, pending its own spike.
-- Provider choice is a rule the human can override, for example "implement with one provider, review with
-  the other". The planner may suggest a provider.
+- Provider choice is a rule the human can override; the planner may suggest one. The default routing
+  follows both cost and quality: planners and reviewers on Claude (Opus, or Fable for planning),
+  quality-critical implementation on Claude, and bulk or tightly specified implementation on Codex,
+  whose budget is larger. Review is cross-provider wherever it can be, so a second model reads the
+  first one's work. Name the model explicitly when launching a run; never rely on a tool's default.
 - Herdr's Claude and Codex integrations report session identity only, on SessionStart. Herdr works out
   working and blocked states from the screen, so it's only a fallback.
+- Run one Codex app-server per task as a Loom child process, never in a Herdr pane. Outside Herdr a
+  mid-flight turn completes through a Herdr restart; in a pane it ends interrupted (spike 05).
+- Never make a decision from Herdr's agent status, and never call `herdr agent prompt --wait`. The
+  status is derived from the terminal title and can stay stale indefinitely after a restart, which
+  makes `--wait` hang on a prompt that was delivered and answered. Confirm from the provider.
+- Record Codex thread IDs into Herdr yourself with `herdr pane report-agent-session --source herdr:codex`.
+  The integration hook doesn't fire on resume, so after any recovery the reference is otherwise missing.
+- `--settings` is part of a Claude session's identity. Whatever relaunches a Claude agent must pass it
+  again; a session running without it is unobservable even though it has the right ID.
 
 ### Claude Code
 
@@ -251,7 +263,8 @@ that crosses providers goes only through artifacts.
 |---|---|
 | UI closed or crashed | Nothing happens. On reopen, the UI reconnects and gets a fresh snapshot. |
 | Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, Herdr agents, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts). |
-| Herdr or Codex daemon restart | Same process. Session IDs are what recovery relies on. *(spike 05)* |
+| Herdr server stop, crash or kill | Every pane process dies, shells included (spike 05). Loom-managed sessions run with `resume_agents_on_restore = false`, so panes come back as bare shells in the right worktree and Loom relaunches each agent from stored state: session or thread ID, kind, full command line and environment. Measured at about 20 s for two agents. A Codex turn in flight completes if its app-server runs outside Herdr; Claude's is lost and re-sent. |
+| Codex app-server restart | Runs are `unknown` until `thread/resume`; the interrupted turn is a failed attempt and is re-sent (spike 01). |
 | Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, flag the task failed and notify the human (see `docs/design/core.md` §3). |
 | Stall | No events for N minutes → set the attention flag. Don't kill it; the human may be typing. |
 | Rate limits | Codex `account/rateLimits/updated` or Claude StopFailure → the provider is cooling down until its reset. Queue new work, and offer to switch providers only for runs that haven't started. |
@@ -306,4 +319,5 @@ guarantees that a command did not run. The broader restart matrix remains spike 
   terminal; "Open in Ghostty" via AppleScript. See the findings.
 - **04 completed:** Pierre with `CodeView` and workers handles large diffs; anchoring findings across
   commits is Loom's job. See the findings.
-- **05:** what survives each kind of restart, and how to recover.
+- **05 completed:** nothing in a pane survives a Herdr restart; `resume_agents_on_restore = false` and
+  Loom relaunches from stored state; the Codex app-server lives outside Herdr. See the findings.
