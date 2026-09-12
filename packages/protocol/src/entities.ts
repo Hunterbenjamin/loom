@@ -534,6 +534,15 @@ export const humanCommand = z.union([
     decision: z.enum(["accept", "decline", "cancel"]),
     answers: z.record(z.string(), z.array(text)).nullable(),
   }),
+  z.strictObject({
+    type: z.literal("answer_pane_prompt"),
+    runId,
+    choice: z.union([
+      z.number().int().min(0).max(9),
+      z.enum(["enter", "escape"]),
+    ]),
+    text: text.optional(),
+  }),
   z.strictObject({ type: z.literal("send_message"), runId, text }),
   z.strictObject({ type: z.literal("retry") }),
   z.strictObject({ type: z.literal("grant_review_round") }),

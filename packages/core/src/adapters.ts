@@ -165,8 +165,23 @@ export interface PaneHost {
    * the provider's status and confirm delivery from the provider's own channel.
    */
   pasteText(ref: PaneRef, text: string): Promise<"written">;
-  /** Escape only. Confirmation comes from the provider's status, never from the host. */
-  sendKey(ref: PaneRef, key: "Escape"): Promise<void>;
+  /** Escape or digit keys (0-9). Confirmation comes from the provider's status, never from the host. */
+  sendKey(
+    ref: PaneRef,
+    key:
+      | "Escape"
+      | "Enter"
+      | "0"
+      | "1"
+      | "2"
+      | "3"
+      | "4"
+      | "5"
+      | "6"
+      | "7"
+      | "8"
+      | "9",
+  ): Promise<void>;
   /** Full argv for a human terminal: explicit socket, session and pane. No takeover; clients share. */
   attachArgs(ref: PaneRef): string[];
   /** The clients currently attached to the pane's session, for the UI's attach indicator. */
