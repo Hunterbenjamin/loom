@@ -384,6 +384,7 @@ export class Coordinator {
         headers: { Authorization: `Bearer ${token}` },
       }),
       now: () => this.now(),
+      dataDirectory: this.store.dataDirectory,
     };
   }
 
