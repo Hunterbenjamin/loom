@@ -217,6 +217,48 @@ reached (e.g., Claude rate limit).
 **Resolution:** The human can paste `continue` in an interactive run to retry the operation, or
 wait for the provider's limit to reset before the next attempt.
 
+## Recovery contract: panes and Codex sockets
+
+### Pane persistence during recovery
+
+When the coordinator restarts and finds a dead pane for a live run that still owns it, the pane is
+relaunched from its recipe (the command line and environment). The new pane's info
+(sessionName, windowId, paneId, hostGeneration) is immediately persisted to the run record before
+any subsequent pane operation. This ensures pane-scoped sends target the new pane, not the old,
+dead one.
+
+**Idempotency:** If recovery is rerun on the same relaunched pane, the run record is updated to the
+same pane info and is not duplicated.
+
+### Recognizing pane recovery stalls
+
+If a coordinator restart leaves a run observable-to-nobody but the pane is alive and working,
+look for:
+
+1. **Attention reason:** `observability_failure` or `status_unknown` (instead of a human-input wait like
+   `provider_input`). The `observability_failure` reason specifically indicates the provider cannot be
+   observed.
+2. **Startup log:** `serve.log` shows `recovered: 0 recorded, 0 requeued, 0 Codex threads resumed, 1 panes relaunched`
+   while the pane is alive and actively working.
+3. **Provider status:** The run remains in `unknown` status even though the pane is running and the
+   process is progressing.
+
+**Cause:** The pane was relaunched but (a) its info was not persisted, causing pane operations to target
+the dead pane, or (b) a Codex app-server socket issue prevented thread resume. See task t-d5033ac7 for
+Codex socket probing and adoption behavior.
+
+### Debugging pane persistence
+
+Run `loom task inspect <taskId> --json` and check:
+- `runs[].pane.windowId` and `runs[].pane.paneId` — should match the live pane (e.g., `@63`, `%63`).
+- `runs[].status` — should be `working` or another live status if the pane is active and working.
+- `runs[].unknownSince` — if this is set and holds for longer than `unknownGraceMs` (default 30s),
+  the run will raise `observability_failure`.
+
+If the recorded pane IDs do not match the live pane but the live pane is working, the run record was
+not updated during recovery. Manually update the run record or restart the coordinator and check
+recovery logs for errors.
+
 ## Tests
 
 `src/*.test.ts`, against `@loom/fake-agent`'s providers, pane host and GitHub, a throwaway Git
