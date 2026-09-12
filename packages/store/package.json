@@ -1,0 +1,23 @@
+{
+  "name": "@loom/store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Transactional SQLite persistence for the Loom coordinator.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@loom/core": "workspace:*",
+    "better-sqlite3": "^12.4.1",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@loom/adapter-claude": "workspace:*",
+    "@types/better-sqlite3": "^7.6.13",
+    "typescript": "^7.0.2"
+  }
+}
