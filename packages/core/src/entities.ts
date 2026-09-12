@@ -281,6 +281,11 @@ export interface Run {
   launchedAt: IsoTime | null;
   endedAt: IsoTime | null;
   endReason: RunEndReason | null;
+  seenAt?: IsoTime | null;
+  unknownSince?: IsoTime | null;
+  observedAttempt?: number;
+  /** Attempts remain monotonic for action keys; human retry resets this budget offset. */
+  retryBaseAttempt?: number;
 }
 
 // ---------------------------------------------------------------- Messages and questions
@@ -319,6 +324,10 @@ export interface Message {
   transportRef: string | null;
   sentAt: IsoTime | null;
   delivered: (DeliveryConfirmation & { at: IsoTime }) | null;
+  via?: import("./actions.js").SendVia;
+  expectedTurnId?: string | null;
+  baselineTurnId?: string | null;
+  deliveryAttention?: boolean;
 }
 
 export interface Question {
@@ -492,6 +501,8 @@ export interface CiCheck {
   status: "queued" | "in_progress" | "completed";
   conclusion: string | null;
   url: string | null;
+  /** GitHub adapter: stable check-run ID (stringified); never synthesize from name/head. */
+  id: string;
 }
 
 /** (cache: GitHub) */

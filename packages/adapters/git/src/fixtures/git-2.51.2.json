@@ -1,0 +1,7 @@
+{
+  "gitVersion": "git version 2.51.2",
+  "raw": ":000000 100644 0000000000000000000000000000000000000000 c3027df660b44a7a17b1411eed91fe252dd4f46b A\u0000binary\u0000:100644 000000 286c5f5776916d7d7d5849988ca9d83e722cf9c2 0000000000000000000000000000000000000000 D\u0000deleted.txt\u0000:000000 100644 0000000000000000000000000000000000000000 e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 A\u0000empty\u0000:100644 100644 0fdf397db08b5cecda1b6394d4fef7395c1933ba 8a54bc3caf229b1d73d601920f03f3e8eb6db5b1 R055\u0000old\"雪\n.txt\u0000new\"葉\n.txt\u0000",
+  "numstat": "-\t-\tbinary\u00000\t1\tdeleted.txt\u00000\t0\tempty\u00001\t1\t\u0000old\"雪\n.txt\u0000new\"葉\n.txt\u0000",
+  "patch": "diff --git \"a/old\\\"\\351\\233\\252\\n.txt\" \"b/new\\\"\\350\\221\\211\\n.txt\"\nindex 0fdf397..8a54bc3 100644\n--- \"a/old\\\"\\351\\233\\252\\n.txt\"\n+++ \"b/new\\\"\\350\\221\\211\\n.txt\"\n@@ -3 +3 @@ b\n-c\n+changed\n",
+  "status": " M new\"葉\n.txt\u0000?? untracked 雪\u0000"
+}

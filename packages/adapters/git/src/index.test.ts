@@ -1,0 +1,409 @@
+import { execFile } from "node:child_process";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import type { BlobOid, Sha, WorktreePath } from "@loom/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createGitAdapter } from "./index.js";
+
+const exec = promisify(execFile);
+let directory: string;
+let repo: WorktreePath;
+const adapter = createGitAdapter();
+async function command(cwd: string, ...args: string[]) {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
+  );
+  return (
+    await exec("git", args, {
+      cwd,
+      env: {
+        ...env,
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_AUTHOR_NAME: "Fixture",
+        GIT_COMMITTER_NAME: "Fixture",
+        GIT_AUTHOR_EMAIL: "",
+        GIT_COMMITTER_EMAIL: "",
+      },
+    })
+  ).stdout.trim();
+}
+async function git(...args: string[]) {
+  return command(repo, ...args);
+}
+async function save(name: string, content: string | Buffer) {
+  await writeFile(join(repo, name), content);
+}
+async function commitAll(message = "fixture") {
+  await git("add", "-A");
+  await git("-c", "user.useConfigOnly=false", "commit", "-m", message);
+  return (await git("rev-parse", "HEAD")) as Sha;
+}
+
+beforeEach(async () => {
+  directory = await realpath(await mkdtemp(join(tmpdir(), "loom-git-test-")));
+  repo = join(directory, "repo") as WorktreePath;
+  await mkdir(repo);
+  await git("init", "--initial-branch=main", "--object-format=sha1");
+  await save("tracked.txt", "one\ntwo\nthree\n");
+  await save(".gitignore", "build/\n");
+  await commitAll();
+});
+afterEach(async () => {
+  await rm(directory, { recursive: true, force: true });
+});
+
+describe("worktree observations", () => {
+  it("canonicalizes symlinks and macOS /var aliases", async () => {
+    const alias = join(directory, "alias");
+    await symlink(repo, alias);
+    expect(await adapter.realpath(alias)).toBe(repo);
+    if (repo.startsWith("/private/var/"))
+      expect(await adapter.realpath(repo.replace(/^\/private/, ""))).toBe(repo);
+  });
+  it("reports complete staged, unstaged, renamed and untracked paths, excluding task/build files", async () => {
+    await save("tracked.txt", "changed\n");
+    await save('quote"雪\nnew.txt', "new\n");
+    await mkdir(join(repo, "build"));
+    await save("build/output", "ignored");
+    await mkdir(join(repo, ".task"));
+    await save(".task/brief.md", "ignored even without exclude");
+    const result = await adapter.readWorktree(repo, "main");
+    expect(result.dirtyPaths).toEqual(['quote"雪\nnew.txt', "tracked.txt"]);
+    expect(result.dirty).toBe(true);
+    await git("mv", "tracked.txt", "renamed.txt");
+    expect((await adapter.readWorktree(repo, "main")).dirtyPaths).toEqual([
+      'quote"雪\nnew.txt',
+      "renamed.txt",
+      "tracked.txt",
+    ]);
+  });
+  it("ignores tracked .task changes too", async () => {
+    await mkdir(join(repo, ".task"));
+    await save(".task/brief.md", "first");
+    await commitAll();
+    await save(".task/brief.md", "second");
+    expect((await adapter.readWorktree(repo, "main")).dirty).toBe(false);
+  });
+  it("reports clean counts and only requested reachable commits", async () => {
+    const base = (await git("rev-parse", "HEAD")) as Sha;
+    await git("checkout", "-b", "feat/work");
+    await save("new", "feature");
+    const head = await commitAll();
+    await git("checkout", "main");
+    await save("other", "base");
+    const unrelated = await commitAll();
+    await git("checkout", "feat/work");
+    expect(
+      await adapter.readWorktree(repo, "main", [base, head, unrelated, base]),
+    ).toMatchObject({
+      exists: true,
+      branch: "feat/work",
+      headSha: head,
+      dirty: false,
+      dirtyPaths: [],
+      aheadOfBase: 1,
+      behindBase: 1,
+      conflictsWithBase: false,
+      remoteHeadSha: null,
+      reachableCommits: [base, head],
+    });
+    await expect(
+      adapter.readWorktree(repo, "main", ["1".repeat(40) as Sha]),
+    ).rejects.toThrow();
+  });
+  it("detects merge-tree conflicts without changing HEAD, index or worktree", async () => {
+    await git("checkout", "-b", "feat/conflict");
+    await save("tracked.txt", "feature\n");
+    const head = await commitAll();
+    await git("checkout", "main");
+    await save("tracked.txt", "base\n");
+    await commitAll();
+    await git("checkout", "feat/conflict");
+    const index = await readFile(join(repo, ".git/index"));
+    expect((await adapter.readWorktree(repo, "main")).conflictsWithBase).toBe(
+      true,
+    );
+    expect(await git("rev-parse", "HEAD")).toBe(head);
+    expect(await readFile(join(repo, ".git/index"))).toEqual(index);
+    expect(await readFile(join(repo, "tracked.txt"), "utf8")).toBe("feature\n");
+  });
+  it("distinguishes missing, invalid, unborn and detached worktrees", async () => {
+    expect(
+      (
+        await adapter.readWorktree(
+          join(directory, "missing") as WorktreePath,
+          "main",
+        )
+      ).exists,
+    ).toBe(false);
+    await expect(
+      adapter.readWorktree(directory as WorktreePath, "main"),
+    ).rejects.toThrow();
+    await git("checkout", "--detach");
+    expect((await adapter.readWorktree(repo, "main")).branch).toBeNull();
+    const empty = join(directory, "empty") as WorktreePath;
+    await mkdir(empty);
+    await command(empty, "init", "--initial-branch=main");
+    expect(await adapter.readWorktree(empty, "main")).toMatchObject({
+      exists: true,
+      headSha: null,
+      branch: "main",
+      conflictsWithBase: null,
+    });
+    await expect(adapter.readWorktree(repo, "missing-base")).rejects.toThrow();
+  });
+  it("uses last fetched remote head without contacting the remote", async () => {
+    const remote = join(directory, "remote.git");
+    await command(directory, "init", "--bare", remote);
+    await git("remote", "add", "origin", remote);
+    await git("push", "origin", "main");
+    await git("fetch", "origin");
+    const fetched = await git("rev-parse", "HEAD");
+    await save("new", "new");
+    const local = await commitAll();
+    await command(remote, "fetch", repo, local);
+    await command(remote, "update-ref", "refs/heads/main", local);
+    expect(await command(remote, "rev-parse", "main")).toBe(local);
+    await rename(remote, `${remote}-offline`);
+    expect((await adapter.readWorktree(repo, "main")).remoteHeadSha).toBe(
+      fetched,
+    );
+  });
+});
+
+describe("worktree actions", () => {
+  it("creates once, adopts the existing branch worktree and preserves its changes", async () => {
+    const req = {
+      repoRoot: repo,
+      path: join(directory, "work tree 雪"),
+      branch: "feat/work",
+      baseBranch: "main",
+    };
+    const first = await adapter.createWorktree(req);
+    await writeFile(join(first.path, "untracked"), "preserve");
+    expect(
+      await adapter.createWorktree({
+        ...req,
+        path: join(directory, "different"),
+      }),
+    ).toEqual(first);
+    expect(await readFile(join(first.path, "untracked"), "utf8")).toBe(
+      "preserve",
+    );
+    expect((await adapter.readWorktree(first.path, "main")).branch).toBe(
+      req.branch,
+    );
+  });
+  it("checks out a preexisting branch without resetting it", async () => {
+    await git("branch", "feat/existing");
+    const created = await adapter.createWorktree({
+      repoRoot: repo,
+      path: join(directory, "existing"),
+      branch: "feat/existing",
+      baseBranch: "main",
+    });
+    expect(created.headSha).toBe(await git("rev-parse", "feat/existing"));
+  });
+  it("refuses an occupied destination and invalid branch", async () => {
+    const req = {
+      repoRoot: repo,
+      path: repo,
+      branch: "feat/new",
+      baseBranch: "main",
+    };
+    await expect(adapter.createWorktree(req)).rejects.toThrow();
+    await expect(
+      adapter.createWorktree({ ...req, branch: "--evil" }),
+    ).rejects.toThrow();
+  });
+  it("refuses a stale SHA or wrong branch, pushes exactly the expected SHA and rejects non-fast-forward", async () => {
+    const remote = join(directory, "remote.git");
+    await command(directory, "init", "--bare", remote);
+    await git("remote", "add", "origin", remote);
+    const old = (await git("rev-parse", "HEAD")) as Sha;
+    await save("new", "new");
+    const head = await commitAll();
+    await expect(
+      adapter.push({
+        worktreePath: repo,
+        branch: "main",
+        expectedHeadSha: old,
+      }),
+    ).rejects.toThrow("Refusing push");
+    await expect(
+      adapter.push({
+        worktreePath: repo,
+        branch: "other",
+        expectedHeadSha: head,
+      }),
+    ).rejects.toThrow("Refusing push");
+    expect(
+      await adapter.push({
+        worktreePath: repo,
+        branch: "main",
+        expectedHeadSha: head,
+      }),
+    ).toEqual({ remoteHeadSha: head });
+    expect(await command(remote, "rev-parse", "main")).toBe(head);
+    expect(
+      await adapter.push({
+        worktreePath: repo,
+        branch: "main",
+        expectedHeadSha: head,
+      }),
+    ).toEqual({ remoteHeadSha: head });
+    await git("reset", "--hard", old);
+    await save("diverged", "diverged");
+    const diverged = await commitAll();
+    await expect(
+      adapter.push({
+        worktreePath: repo,
+        branch: "main",
+        expectedHeadSha: diverged,
+      }),
+    ).rejects.toThrow();
+    expect(await command(remote, "rev-parse", "main")).toBe(head);
+  });
+  it("writes task files repeatedly and excludes them in the shared Git directory", async () => {
+    const work = await adapter.createWorktree({
+      repoRoot: repo,
+      path: join(directory, "linked"),
+      branch: "feat/linked",
+      baseBranch: "main",
+    });
+    const exclude = join(repo, ".git/info/exclude");
+    await writeFile(exclude, "# preserve without newline");
+    await adapter.writeTaskFiles(work.path, [
+      { name: "brief.md", content: "first" },
+    ]);
+    await adapter.writeTaskFiles(work.path, [
+      { name: "brief.md", content: "second" },
+    ]);
+    expect(await readFile(join(work.path, ".task/brief.md"), "utf8")).toBe(
+      "second",
+    );
+    expect(await readFile(exclude, "utf8")).toBe(
+      "# preserve without newline\n/.task/\n",
+    );
+    expect(await command(work.path, "status", "--porcelain")).toBe("");
+  });
+  it("refuses traversal and .task symlinks, replaces file symlinks safely", async () => {
+    const target = join(directory, "outside");
+    await writeFile(target, "preserve");
+    await expect(
+      adapter.writeTaskFiles(repo, [{ name: "../outside", content: "bad" }]),
+    ).rejects.toThrow();
+    await symlink(directory, join(repo, ".task"));
+    await expect(
+      adapter.writeTaskFiles(repo, [{ name: "outside", content: "bad" }]),
+    ).rejects.toThrow();
+    await rm(join(repo, ".task"));
+    await mkdir(join(repo, ".task"));
+    await symlink(target, join(repo, ".task/brief.md"));
+    await adapter.writeTaskFiles(repo, [{ name: "brief.md", content: "new" }]);
+    expect(await readFile(target, "utf8")).toBe("preserve");
+  });
+});
+
+describe("diffs and blobs", () => {
+  it("returns renames and unicode/quoted/newline paths from metadata with precise hunks", async () => {
+    const old = 'original"雪\n.txt';
+    const next = 'renamed"葉\n.txt';
+    await save(old, "a\nb\nc\nd\ne\nf\n");
+    const from = await commitAll();
+    await git("mv", old, next);
+    await save(next, "a\nb\nchanged\nd\ne\nf\n");
+    await save("added 雪.txt", "new\n");
+    await save("tracked.txt", "one\ntwo\nthree\nlast\n");
+    const to = await commitAll();
+    await git("config", "core.quotePath", "true");
+    const changes = await adapter.changedFiles({
+      repoRoot: repo,
+      fromSha: from,
+      toSha: to,
+    });
+    expect(changes.find((c) => c.status === "renamed")).toMatchObject({
+      oldPath: old,
+      newPath: next,
+      binary: false,
+      hunks: [{ oldStart: 3, oldLines: 1, newStart: 3, newLines: 1 }],
+    });
+    expect(changes.find((c) => c.status === "added")).toMatchObject({
+      oldPath: null,
+      oldBlobOid: null,
+      newPath: "added 雪.txt",
+      hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1 }],
+    });
+    expect(changes.find((c) => c.newPath === "tracked.txt")?.hunks).toEqual([
+      { oldStart: 3, oldLines: 0, newStart: 4, newLines: 1 },
+    ]);
+    expect(
+      await adapter.changedFiles({ repoRoot: repo, fromSha: to, toSha: to }),
+    ).toEqual([]);
+  });
+  it("handles deletions, empty files, binary metadata and binary readBlob", async () => {
+    const from = (await git("rev-parse", "HEAD")) as Sha;
+    await rm(join(repo, "tracked.txt"));
+    await save("empty", "");
+    await save("binary", Buffer.from([1, 0, 2]));
+    await save(".gitattributes", "attribute-binary -diff\n");
+    await save("attribute-binary", "text but binary attribute\n");
+    const to = await commitAll();
+    const changes = await adapter.changedFiles({
+      repoRoot: repo,
+      fromSha: from,
+      toSha: to,
+    });
+    expect(changes.find((c) => c.status === "deleted")).toMatchObject({
+      newPath: null,
+      newBlobOid: null,
+      hunks: [{ oldStart: 1, oldLines: 3, newStart: 0, newLines: 0 }],
+    });
+    expect(changes.find((c) => c.newPath === "empty")?.hunks).toEqual([]);
+    expect(changes.find((c) => c.newPath === "attribute-binary")?.binary).toBe(
+      true,
+    );
+    const binary = changes.find((c) => c.newPath === "binary");
+    expect(binary).toMatchObject({ binary: true, hunks: [] });
+    expect(
+      await adapter.readBlob(repo, binary?.newBlobOid as BlobOid),
+    ).toBeNull();
+    const empty = changes.find((c) => c.newPath === "empty");
+    expect(await adapter.readBlob(repo, empty?.newBlobOid as BlobOid)).toBe("");
+    await expect(
+      adapter.readBlob(repo, "1".repeat(40) as BlobOid),
+    ).rejects.toThrow();
+  });
+  it("handles a regular file becoming a symlink", async () => {
+    const from = (await git("rev-parse", "HEAD")) as Sha;
+    await rm(join(repo, "tracked.txt"));
+    await symlink(".gitignore", join(repo, "tracked.txt"));
+    const to = await commitAll();
+    const [change] = await adapter.changedFiles({
+      repoRoot: repo,
+      fromSha: from,
+      toSha: to,
+    });
+    expect(change).toMatchObject({
+      status: "type_changed",
+      oldPath: "tracked.txt",
+      newPath: "tracked.txt",
+      binary: false,
+    });
+    expect(await adapter.readBlob(repo, change?.newBlobOid as BlobOid)).toBe(
+      ".gitignore",
+    );
+  });
+});

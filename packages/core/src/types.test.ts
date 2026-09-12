@@ -1,4 +1,4 @@
-// Phase 1a has no logic. These checks prove the contracts compile and stay internally consistent;
+// These checks prove the contracts compile and stay internally consistent;
 // `pnpm typecheck` does the real work, and vitest runs them as no-ops.
 
 import { describe, expectTypeOf, it } from "vitest";
@@ -89,7 +89,20 @@ const state: TaskState = {
   approvals: [],
   artifacts: [],
   outbox: [],
+  consumedInputIds: [],
+  artifactContents: {},
+  plan: null,
+  review: null,
+  desiredRun: null,
+  activeElapsedMs: 0,
+  budgetObservedAt: now,
+  progress: null,
   config: {
+    deriveClaudeSessionId: (id, epoch) => `${id}#${epoch}` as ProviderSessionId,
+    sha256: (text) => `hash:${text}`,
+    worktreeRoot: "/tmp/loom",
+    baseBranch: "main",
+    models: { codex: "test", claude: "test" },
     retry: { baseMs: 10_000, capMs: 300_000, maxAttempts: 3 },
     stallAfterMs: 15 * 60_000,
     unknownGraceMs: 60_000,
@@ -105,6 +118,8 @@ const observations: Observations = {
   runs: [
     {
       runId: run.id,
+      resumable: null,
+      activityAt: null,
       provider: { ok: false, reason: "app-server socket closed", at: now },
       herdr: null,
     },
@@ -170,4 +185,53 @@ describe("core contracts", () => {
       | "canceled"
     >();
   });
+});
+
+// These checks fail typecheck if an adapter/store can omit required evidence again.
+type OptionalKeys<T> = {
+  [K in keyof T]-?: Record<never, never> extends Pick<T, K> ? K : never;
+}[keyof T];
+
+it("requires every persisted task-context field", () => {
+  type ContextFields = Pick<
+    TaskState,
+    | "consumedInputIds"
+    | "plan"
+    | "review"
+    | "desiredRun"
+    | "activeElapsedMs"
+    | "budgetObservedAt"
+    | "progress"
+    | "artifactContents"
+  >;
+  expectTypeOf<OptionalKeys<ContextFields>>().toEqualTypeOf<never>();
+  expectTypeOf<TaskState["review"]>()
+    .extract<undefined>()
+    .toEqualTypeOf<never>();
+  expectTypeOf<TaskState["progress"]>()
+    .extract<undefined>()
+    .toEqualTypeOf<never>();
+  expectTypeOf<null>().toExtend<TaskState["plan"]>();
+  expectTypeOf<null>().toExtend<TaskState["review"]>();
+  expectTypeOf<null>().toExtend<TaskState["desiredRun"]>();
+  expectTypeOf<null>().toExtend<TaskState["progress"]>();
+});
+
+it("requires owner evidence with explicit unknown semantics", () => {
+  type RunEvidence = Pick<
+    import("./observations.js").RunObservation,
+    "resumable" | "activityAt"
+  >;
+  type GitEvidence = Pick<
+    import("./observations.js").GitWorktreeObservation,
+    "dirtyPaths" | "reachableCommits"
+  >;
+  expectTypeOf<OptionalKeys<RunEvidence>>().toEqualTypeOf<never>();
+  expectTypeOf<OptionalKeys<GitEvidence>>().toEqualTypeOf<never>();
+  expectTypeOf<
+    OptionalKeys<Pick<import("./entities.js").CiCheck, "id">>
+  >().toEqualTypeOf<never>();
+  expectTypeOf<RunEvidence["resumable"]>().toEqualTypeOf<boolean | null>();
+  expectTypeOf<RunEvidence["activityAt"]>().toEqualTypeOf<IsoTime | null>();
+  expectTypeOf<import("./entities.js").CiCheck["id"]>().toEqualTypeOf<string>();
 });

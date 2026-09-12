@@ -1,18 +1,28 @@
-// The reconciler contract. Phase 1b implements `Reconcile`; this file only fixes its shape.
+// The pure reconciler contract. See engine.ts for the implementation and ../README.md for persistence requirements.
 
-import type { Action, ActionKind } from "./actions.js";
+import type { Action, ActionError, ActionKind } from "./actions.js";
 import type {
   Approval,
   Artifact,
   Finding,
   Message,
+  Plan,
+  Provider,
   Question,
+  Role,
   Run,
   Task,
   Transition,
   Worktree,
 } from "./entities.js";
-import type { ActionKey, InputId, IsoTime } from "./ids.js";
+import type {
+  ActionKey,
+  InputId,
+  IsoTime,
+  ProviderSessionId,
+  RunId,
+  Sha,
+} from "./ids.js";
 import type { McpError, McpToolName, McpTools } from "./mcp.js";
 import type { Observations } from "./observations.js";
 
@@ -33,15 +43,30 @@ export interface ReconcileConfig {
   /** A sent message with no provider confirmation after this long needs a decision. */
   deliveryTimeoutMs: number;
   githubPollMs: number;
+  /** Pure caller-supplied UUIDv5 of `${runId}#${epoch}` in Loom's namespace. */
+  deriveClaudeSessionId: (runId: RunId, epoch: number) => ProviderSessionId;
+  /** Pure SHA-256; receives already normalized message text or serialized JSON. */
+  sha256: (text: string) => string;
+  worktreeRoot: string;
+  baseBranch: string;
+  models: Record<Provider, string>;
 }
 
 export interface OutboxEntry {
   key: ActionKey;
   kind: ActionKind;
-  status: "pending" | "running" | "succeeded" | "failed";
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
   attempts: number;
   createdAt: IsoTime;
   finishedAt: IsoTime | null;
+  /** Retained so results and retries can recover the original intent. */
+  action?: Action;
+  retryAt?: IsoTime;
+  /** Executor must wait for these intents to succeed before executing this row. */
+  dependsOn?: ActionKey[];
+  retriedBy?: ActionKey;
+  retryBaseAttempt?: number;
+  error?: ActionError;
 }
 
 /** Everything Loom owns about one task, loaded in one read transaction. */
@@ -62,6 +87,33 @@ export interface TaskState {
   /** Actions that haven't finished, and ones that finished since the last reconcile. */
   outbox: OutboxEntry[];
   config: ReconcileConfig;
+
+  /** Store supplies persisted receipts; [] only for a task with no consumed inputs. */
+  consumedInputIds: InputId[];
+  /** Store loads contents matching artifact versions; {} only before any artifact exists. */
+  artifactContents: Partial<Record<Artifact["kind"], unknown>>;
+  /** Store: null before the first submitted plan; accepted survives parking. */
+  plan: (Plan & { version: number; accepted: boolean }) | null;
+  /** Store: null before the first review; persists round head and verdict targets. */
+  review: {
+    headSha: Sha;
+    lastReviewedHead: Sha | null;
+    previousBlocking: number | null;
+    verdictIds: Finding["id"][];
+  } | null;
+  /** Store: null when no launch/resume intent is waiting. */
+  desiredRun: { role: Role; round: number; resume: boolean } | null;
+  /** Store: accumulated active-stage milliseconds; initialize to 0. */
+  activeElapsedMs: number;
+  /** Store: last budget accounting time; initialize to task.createdAt. */
+  budgetObservedAt: IsoTime;
+  /** Store: latest accepted progress report, or null before any report. */
+  progress: {
+    runId: RunId;
+    summary: string;
+    stepIndex: number | null;
+    at: IsoTime;
+  } | null;
 }
 
 type SubmittingTool = Exclude<McpToolName, "get_task_context">;
@@ -82,6 +134,8 @@ export interface ReconcileResult {
   transitions: Transition[];
   /** Exactly one per input in `observations.inputs` that this pass consumed. */
   inputs: InputDisposition[];
+  /** Executor/store must CAS this version when starts or ends reserve/release capacity. */
+  capacityVersion?: number;
 }
 
 /**

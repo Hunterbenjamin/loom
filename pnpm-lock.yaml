@@ -82,6 +82,15 @@ importers:
         specifier: ^7.3.6
         version: 7.3.6(@types/node@24.13.4)(lightningcss@1.33.0)
 
+  packages/adapters/git:
+    dependencies:
+      '@loom/core':
+        specifier: workspace:*
+        version: link:../../core
+      zod:
+        specifier: ^4.0.0
+        version: 4.6.2
+
   packages/core:
     devDependencies:
       typescript:
@@ -1881,6 +1890,9 @@ packages:
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
 
+  zod@4.6.2:
+    resolution: {integrity: sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ==}
+
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
@@ -3334,5 +3346,7 @@ snapshots:
       stackback: 0.0.2
 
   yallist@3.1.1: {}
+
+  zod@4.6.2: {}
 
   zwitch@2.0.4: {}
