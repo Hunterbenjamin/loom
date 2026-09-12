@@ -249,6 +249,25 @@ describe("Codex status table", () => {
       endReason: "vanished",
     });
   });
+  it("an unreadable headless session the owner says is gone has crashed", () => {
+    const f = codex();
+    f.run.mode = "headless";
+    f.observation.provider = { ok: false, reason: "not loaded", at: now };
+    f.observation.resumable = false;
+    expect(deriveStatus(f.run, f.observation)).toMatchObject({
+      status: "failed",
+      endReason: "crashed",
+    });
+  });
+  it("an unreadable interactive session the owner says is gone vanished", () => {
+    const f = codex();
+    f.observation.provider = { ok: false, reason: "not loaded", at: now };
+    f.observation.resumable = false;
+    expect(deriveStatus(f.run, f.observation)).toMatchObject({
+      status: "ended",
+      endReason: "vanished",
+    });
+  });
   it("absence alone does not prove Codex vanished", () => {
     const f = codex();
     f.observation.provider = { ok: true, at: now, value: null };

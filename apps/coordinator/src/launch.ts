@@ -7,6 +7,7 @@
 
 import { join } from "node:path";
 import { mcpConfigPathFor } from "@loom/adapter-claude";
+import { codexMcpServer } from "@loom/adapter-codex";
 import type {
   Action,
   ActionOutputs,
@@ -150,7 +151,7 @@ export async function startRun(
         ? "read-only"
         : "workspace-write",
       developerInstructions: prompt,
-      config: { mcp_servers: { loom: deps.mcpEntry(token) } },
+      config: { mcp_servers: { loom: codexMcpServer(deps.mcpEntry(token)) } },
     });
     threadId = started.threadId;
     generation = started.generation;

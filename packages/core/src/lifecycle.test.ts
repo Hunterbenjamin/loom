@@ -100,6 +100,27 @@ describe("headless retries and interactive control", () => {
     expect(r.next.task.attention.reasons).toContain("run_vanished");
     expect(r.actions.some((a) => a.kind === "start_run")).toBe(false);
   });
+  it("a Codex thread with no rollout is retried on a fresh thread", () => {
+    // The first real reviewer run: `thread/resume` said "no rollout found", so every read failed
+    // and the run sat in `unknown` with nothing left to send its first message to.
+    const f = failure();
+    f.observation.provider = { ok: false, reason: "not loaded", at: now };
+    f.observation.resumable = false;
+    const failed = reconcile(f.state, f.observations);
+    expect(failed.next.runs[0]).toMatchObject({
+      status: "failed",
+      retryAt: "2026-09-12T00:00:10.000Z",
+    });
+    f.observations.now = "2026-09-12T00:00:10.000Z" as typeof now;
+    const r = fixed(failed.next, f.observations);
+    expect(r.actions.find((a) => a.kind === "start_run")).toMatchObject({
+      key: `start_run:${f.run.id}#2`,
+      attempt: 2,
+      sessionEpoch: 1,
+      sessionId: null,
+      resume: false,
+    });
+  });
   it("Claude session epoch changes only when resume is impossible", () => {
     const f = fixture("in_review");
     const run = f.state.runs[2] as Run;

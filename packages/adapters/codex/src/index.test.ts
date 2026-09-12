@@ -8,7 +8,34 @@ import type {
 } from "@loom/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeServer } from "./fake-server.js";
-import { createCodexAdapter } from "./index.js";
+import { codexMcpServer, createCodexAdapter } from "./index.js";
+
+describe("codexMcpServer", () => {
+  it("translates an HTTP registration to Codex's http_headers key", () => {
+    expect(
+      codexMcpServer({
+        type: "http",
+        url: "http://127.0.0.1:1/mcp",
+        headers: { Authorization: "Bearer t" },
+      }),
+    ).toEqual({
+      url: "http://127.0.0.1:1/mcp",
+      http_headers: { Authorization: "Bearer t" },
+    });
+    expect(
+      codexMcpServer({ type: "http", url: "http://127.0.0.1:1/mcp" }),
+    ).toEqual({ url: "http://127.0.0.1:1/mcp" });
+  });
+  it("passes a stdio registration through", () => {
+    expect(
+      codexMcpServer({
+        command: "loom-mcp",
+        args: ["--stdio"],
+        env: { A: "1" },
+      }),
+    ).toEqual({ command: "loom-mcp", args: ["--stdio"], env: { A: "1" } });
+  });
+});
 
 const traffic = JSON.parse(
   await readFile(new URL("./fixtures/traffic.json", import.meta.url), "utf8"),
@@ -269,6 +296,18 @@ describe("Codex app-server adapter", () => {
     expect(await adapter.checkResumable("gone" as ProviderSessionId)).toBe(
       false,
     );
+    // Known to Codex's state database but its rollout file is gone: metadata reads fine, resume fails.
+    fake.handle((method) =>
+      method === "thread/resume"
+        ? {
+            error: {
+              code: -32600,
+              message: `failed to resolve rollout path \`/x/rollout-${threadId}.jsonl\`: file does not exist`,
+            },
+          }
+        : { result: { thread } },
+    );
+    expect(await adapter.checkResumable(threadId)).toBe(false);
     fake.handle(() => ({
       error: { code: -32600, message: "permission denied" },
     }));
