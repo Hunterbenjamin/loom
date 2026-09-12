@@ -11,30 +11,75 @@ describe("claude agents --json", () => {
   test("parses recorded output", () => {
     expect(parseAgentsOutput(fixture)).toEqual([
       {
-        sessionId: "17f1f804-b30f-444a-a4ec-f6d6ba8c7842",
+        sessionId: "03527ae3-6eda-4a19-9a8f-2f1c7f4c18b1",
+        status: "other",
+        rawStatus: "blocked",
+        kind: "background",
+        pid: null,
+        cwd: "/Users/example/.loom/worktrees/lead-agent-setup",
+      },
+      {
+        sessionId: "bf14014a-b30f-444a-a4ec-f6d6ba8c7842",
         status: "busy",
         rawStatus: "busy",
         kind: "interactive",
-        pid: 80216,
-        cwd: "/Users/example/.herdr/worktrees/loom/feat-ui-shell",
-      },
-      {
-        sessionId: "03f930c5-6f2b-492c-a82a-5d6a68cd35aa",
-        status: "waiting",
-        rawStatus: "waiting",
-        kind: "interactive",
-        pid: 87154,
-        cwd: "/Users/example/.herdr/worktrees/loom/feat-adapter-claude",
-      },
-      {
-        sessionId: "3ceeb489-6eda-4a19-9a8f-2f1c7f4c18b1",
-        status: "idle",
-        rawStatus: "idle",
-        kind: "background",
-        pid: 86722,
-        cwd: "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/bgrepo",
+        pid: 61856,
+        cwd: "/Users/example/.loom/worktrees/loom/dev-57",
       },
     ]);
+  });
+
+  test("parses a background-only response using state", () => {
+    expect(
+      parseAgentsOutput(
+        JSON.stringify([
+          {
+            sessionId: "background-session",
+            cwd: "/background",
+            kind: "background",
+            state: "blocked",
+          },
+        ]),
+      ),
+    ).toEqual([
+      {
+        sessionId: "background-session",
+        status: "other",
+        rawStatus: "blocked",
+        kind: "background",
+        pid: null,
+        cwd: "/background",
+      },
+    ]);
+  });
+
+  test.each(["busy", "waiting", "idle"])(
+    "keeps the interactive %s status mapping",
+    (status) => {
+      expect(
+        parseAgentsOutput(
+          JSON.stringify([
+            { sessionId: "s", cwd: "/w", kind: "interactive", status },
+          ]),
+        )[0]?.status,
+      ).toBe(status);
+    },
+  );
+
+  test("prefers status when both status and state are present", () => {
+    expect(
+      parseAgentsOutput(
+        JSON.stringify([
+          {
+            sessionId: "s",
+            cwd: "/w",
+            kind: "background",
+            status: "idle",
+            state: "blocked",
+          },
+        ]),
+      )[0],
+    ).toMatchObject({ status: "idle", rawStatus: "idle" });
   });
 
   test("an unseen status falls back to other, keeping the raw value", () => {
@@ -62,8 +107,33 @@ describe("claude agents --json", () => {
     expect(parseAgentsOutput("[]")).toEqual([]);
   });
 
-  test("output that isn't the documented shape is rejected, never guessed at", () => {
-    expect(() => parseAgentsOutput('[{"sessionId":"s"}]')).toThrow();
+  test("malformed entries are omitted without hiding valid siblings", () => {
+    expect(
+      parseAgentsOutput(
+        JSON.stringify([
+          { sessionId: "missing-status", cwd: "/w", kind: "interactive" },
+          { sessionId: 42, cwd: "/w", kind: "interactive", status: "busy" },
+          {
+            sessionId: "valid",
+            cwd: "/w",
+            kind: "interactive",
+            status: "waiting",
+          },
+        ]),
+      ),
+    ).toEqual([
+      {
+        sessionId: "valid",
+        status: "waiting",
+        rawStatus: "waiting",
+        kind: "interactive",
+        pid: null,
+        cwd: "/w",
+      },
+    ]);
+  });
+
+  test("invalid JSON and non-array top-level output are rejected", () => {
     expect(() => parseAgentsOutput('{"agents":[]}')).toThrow();
     expect(() => parseAgentsOutput("not json")).toThrow();
   });

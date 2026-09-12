@@ -22,12 +22,13 @@ const KNOWN_KINDS = new Set(["interactive", "background"]);
 export const agentsEntrySchema = z.looseObject({
   sessionId: z.string().min(1),
   cwd: z.string().min(1),
-  status: z.string().min(1),
+  status: z.string().min(1).optional(),
+  state: z.string().min(1).optional(),
   kind: z.string().min(1),
   pid: z.number().int().nullish(),
 });
 
-export const agentsOutputSchema = z.array(agentsEntrySchema);
+export const agentsOutputSchema = z.array(z.unknown());
 
 export type RawAgentsEntry = z.infer<typeof agentsEntrySchema>;
 
@@ -35,24 +36,43 @@ export type RawAgentsEntry = z.infer<typeof agentsEntrySchema>;
  * `cwd` is already the realpath: Claude reports `/private/var/...` where `$TMPDIR` says
  * `/var/...` (spike 02, §1), which is what makes it usable as the join key (principle 6).
  */
-export const toAgentsEntry = (raw: RawAgentsEntry): ClaudeAgentsEntry => ({
-  sessionId: raw.sessionId as ProviderSessionId,
-  status: (KNOWN_STATUSES.has(raw.status) ? raw.status : "other") as
-    | "busy"
-    | "waiting"
-    | "idle"
-    | "other",
-  rawStatus: raw.status,
-  kind: (KNOWN_KINDS.has(raw.kind) ? raw.kind : "other") as
-    | "interactive"
-    | "background"
-    | "other",
-  pid: raw.pid ?? null,
-  cwd: raw.cwd as WorktreePath,
-});
+export const toAgentsEntry = (
+  raw: RawAgentsEntry,
+): ClaudeAgentsEntry | null => {
+  const rawStatus = raw.status ?? raw.state;
+  if (rawStatus === undefined) return null;
 
-export const parseAgentsOutput = (stdout: string): ClaudeAgentsEntry[] =>
-  agentsOutputSchema.parse(JSON.parse(stdout)).map(toAgentsEntry);
+  return {
+    sessionId: raw.sessionId as ProviderSessionId,
+    status: (KNOWN_STATUSES.has(rawStatus) ? rawStatus : "other") as
+      | "busy"
+      | "waiting"
+      | "idle"
+      | "other",
+    rawStatus,
+    kind: (KNOWN_KINDS.has(raw.kind) ? raw.kind : "other") as
+      | "interactive"
+      | "background"
+      | "other",
+    pid: raw.pid ?? null,
+    cwd: raw.cwd as WorktreePath,
+  };
+};
+
+export const parseAgentsOutput = (stdout: string): ClaudeAgentsEntry[] => {
+  const rows = agentsOutputSchema.parse(JSON.parse(stdout));
+  const entries: ClaudeAgentsEntry[] = [];
+
+  for (const row of rows) {
+    const parsed = agentsEntrySchema.safeParse(row);
+    if (!parsed.success) continue;
+
+    const entry = toAgentsEntry(parsed.data);
+    if (entry) entries.push(entry);
+  }
+
+  return entries;
+};
 
 /**
  * Check if a process ID is alive. Uses process.kill(pid, 0) to test existence without sending a signal.
