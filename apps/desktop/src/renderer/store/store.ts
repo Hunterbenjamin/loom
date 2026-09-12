@@ -15,6 +15,7 @@ import type {
   ClientState,
   Command,
   LeadState,
+  PaneView,
   PatchFrame,
   RunTarget,
   TaskInbox,
@@ -71,6 +72,8 @@ export interface State {
   live: boolean;
   connection: string;
   inbox: TaskInbox[];
+  panes: PaneView[];
+  panesUnavailable: boolean;
   runTargets: RunTarget[];
   lead: LeadState;
   instance: string;
@@ -155,6 +158,8 @@ export function createStore(
     live,
     connection: live ? "connecting" : "fixtures",
     inbox: [],
+    panes: [],
+    panesUnavailable: false,
     runTargets: [],
     instance,
     lead: { id: "lead", sessionId: null, status: live ? "stopped" : "idle" },
@@ -226,6 +231,12 @@ export function createStore(
             ? [...client.collections.inbox.values()]
             : state.inbox,
         lead: client.collections.lead.get("lead") ?? state.lead,
+        panes:
+          !patch || patch.changes.some((c) => c.collection === "pane")
+            ? [...client.collections.pane.values()]
+            : state.panes,
+        panesUnavailable:
+          client.collections.pane_inventory.get("panes")?.unavailable ?? false,
         runTargets:
           !patch || patch.changes.some((c) => c.collection === "run_target")
             ? [...client.collections.run_target.values()]
@@ -439,6 +450,7 @@ export function createStore(
         },
         blockedBy: [],
         budgetMinutes: null,
+        size: "normal",
         createdAt: at,
         updatedAt: at,
         worktreePath: null,

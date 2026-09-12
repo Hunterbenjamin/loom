@@ -63,6 +63,9 @@ describe("pane rows", () => {
       "/real/path" as WorktreePath,
     );
     expect(observation).toEqual({
+      sessionId: "$1",
+      windowName: "agent",
+      title: "terminal",
       ref: {
         hostGeneration: "loom-dev#4242",
         sessionName: "loom-t-42",
@@ -80,7 +83,7 @@ describe("pane rows", () => {
   });
 
   it("asks tmux for exactly the fields it parses", () => {
-    expect(PANE_FORMAT.split("")).toHaveLength(12);
+    expect(PANE_FORMAT.split("")).toHaveLength(15);
     expect(PANE_FORMAT).toContain("#{pane_start_path}");
     expect(PANE_FORMAT).toContain("#{pane_dead_status}");
   });

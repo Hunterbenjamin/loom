@@ -90,6 +90,20 @@ export function Palette() {
           </Command.Group>
 
           <Command.Group heading="Window">
+            <Command.Item
+              onSelect={() =>
+                run(() => void window.loomHost.openWindow("workbench"))
+              }
+            >
+              New Workbench
+            </Command.Item>
+            <Command.Item
+              onSelect={() =>
+                run(() => void window.loomHost.openWindow("tracker"))
+              }
+            >
+              New Tracker
+            </Command.Item>
             <Command.Item onSelect={() => run(() => store.toggleTheme())}>
               Toggle theme
             </Command.Item>

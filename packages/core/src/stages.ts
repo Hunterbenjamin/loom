@@ -139,6 +139,30 @@ export function reconcileStages(c: Context): void {
       );
     else if (!missing.length && task.blocked?.reason === "dependencies")
       c.block(null);
+
+    // For small tasks, auto-generate a plan and skip the planning stage
+    if (task.size === "small" && !state.plan) {
+      const autoPlan = {
+        goal: task.title,
+        nonGoals: [],
+        steps: task.description
+          .split("\n")
+          .filter((line) => line.trim().length > 0)
+          .map((line) => ({
+            title: line.trim(),
+            detail: "",
+          })),
+        areas: [],
+        acceptanceCriteria: [],
+        testPlan: [],
+        risks: [],
+        openQuestions: [],
+        suggestedImplementer: null,
+      };
+      const version = c.artifact("plan", autoPlan);
+      state.plan = { ...autoPlan, version, accepted: true };
+    }
+
     const role = state.plan?.accepted ? "implementer" : "planner";
     if (!task.blocked && !task.failed && !missing.length && c.capacity(role)) {
       c.stage(

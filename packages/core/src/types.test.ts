@@ -45,6 +45,7 @@ const task: Task = {
   providers: { planner: "claude", implementer: "codex", reviewer: "claude" },
   blockedBy: [],
   budgetMinutes: null,
+  size: "normal",
   createdAt: now,
   updatedAt: now,
   worktreePath,

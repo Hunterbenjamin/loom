@@ -1,13 +1,26 @@
-import { type ComponentType, type ReactNode, useEffect, useState } from "react";
+import {
+  type ComponentType,
+  lazy,
+  type ReactNode,
+  Suspense,
+  useEffect,
+  useState,
+} from "react";
 import { createRoot } from "react-dom/client";
 import { TrackerClient } from "../shared/client.js";
 import { connectionConfig } from "../shared/connection.js";
-import { App } from "./app.js";
+
+const App = lazy(() => import("./app.js").then((m) => ({ default: m.App })));
+const Workbench = lazy(() =>
+  import("./workbench/workbench.js").then((m) => ({ default: m.Workbench })),
+);
+
 import { emptySnapshot } from "./live/snapshot.js";
 import { StoreProvider } from "./store/react.js";
 import { createStore } from "./store/store.js";
 import "./theme.css";
 
+const mode = await window.loomHost.mode();
 const config = connectionConfig.parse(await window.loomHost.connection());
 const store =
   config.mode === "fixtures"
@@ -29,10 +42,12 @@ if (config.mode === "live") {
   store.subscribe(() => {
     const { openTask, openRun } = store.getState().ui;
     client.setDetail([
+      { kind: "panes" },
       ...(openTask ? [{ kind: "task" as const, taskId: openTask }] : []),
       ...(openRun ? [{ kind: "run" as const, runId: openRun }] : []),
     ]);
   });
+  client.setDetail([{ kind: "panes" }]);
   client.start();
   window.addEventListener("beforeunload", () => client.stop(), { once: true });
 } else if (config.mode === "unconfigured") store.setConnection(config.message);
@@ -46,6 +61,7 @@ function Boot() {
     children: ReactNode;
   }> | null>(null);
   useEffect(() => {
+    if (mode === "workbench") return;
     let cancelled = false;
     void import("./ui/pool.js").then((module) => {
       if (!cancelled) setPool(() => module.DiffPool);
@@ -57,7 +73,9 @@ function Boot() {
 
   const app = (
     <StoreProvider store={store}>
-      <App />
+      <Suspense fallback={<div>Opening {mode}…</div>}>
+        {mode === "workbench" ? <Workbench /> : <App />}
+      </Suspense>
     </StoreProvider>
   );
   return Pool ? <Pool>{app}</Pool> : app;
@@ -77,6 +95,8 @@ declare global {
       diffPaintedAt: number | null;
       /** The live xterm instance, so the harness can time keystroke to glyph. */
       term: unknown;
+      terms?: Record<string, unknown>;
+      terminalRenders?: Record<string, number>;
     };
   }
 }

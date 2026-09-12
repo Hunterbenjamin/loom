@@ -120,3 +120,30 @@ src/renderer
   ui/            sidebar, list, board, detail and its tabs, palette, terminal, diff
 perf/            the Playwright harness, its budgets and its last report
 ```
+
+## Workbench
+
+Command+Shift+W, the palette, and the shared bottom bar open independent Workbench windows.
+New Tracker is also available in either palette. `LOOM_WINDOW_MODE=workbench` chooses the initial
+window mode independently of live/fixture connection settings. Layouts are memory-only.
+
+The sidebar lists canonical native sessions and panes, including dead and unlinked panes. A click
+replaces the focused panel; Enter opens a new tab. Ctrl+A then `| - h j k l c n p x z g ?` controls
+splits, focus, tabs, close, zoom, search and help. Ctrl+A Ctrl+A sends the literal prefix; Escape or
+1.5 seconds cancels it. Drag headers to panel edges to rearrange splits. Every prefix action has a
+Command+K palette entry. Command+J and the Lead toggle/restart are shared with Tracker.
+
+Scratch shell creates a native shell in the selected task's recorded worktree/session. Closing a
+panel or window only detaches. Plan, diff, activity and code panels are deferred in this slice.
+Client counts mean session-group attachments, not exact pane viewers.
+
+`pnpm --filter @loom/desktop test:workbench` runs the built Workbench smoke/performance fixture with
+30 native panes, fake provider metadata, and real attach clients on its own `loom-test-<pid>` server.
+It checks terminal mount counts during patches/layout changes, four-panel echo latency, six-terminal
+idle CPU, independent window closure and scratch creation. It writes `perf/workbench-report.json`.
+Run it after the desktop build and separately from other performance harnesses to avoid contention.
+
+The live desktop prepares one empty hidden Workbench after a visible window is ready, and replenishes
+it after opening. The report records preparation time separately from native open-command latency.
+`pnpm --filter @loom/desktop perf` runs Tracker measurements followed by this Workbench fixture and
+checks both against `perf/budgets.json`; `perf/report.json` retains the combined measurements.

@@ -625,4 +625,33 @@ describe("review and merge precedence", () => {
       findings: { openBlocking: 0 },
     });
   });
+  describe("small task fast path", () => {
+    it("small task auto-generates plan and skips planning stage", () => {
+      const f = fixture("todo");
+      f.state.task.size = "small";
+      f.state.task.title = "Fix typo";
+      f.state.task.description = "Update documentation\nFix spelling";
+      f.state.plan = null;
+      const r = fixed(f.state, f.observations);
+      expect(r.next.plan).toBeDefined();
+      expect(r.next.plan?.goal).toBe("Fix typo");
+      expect(r.next.plan?.accepted).toBe(true);
+      expect(r.next.plan?.steps).toHaveLength(2);
+      expect(r.next.plan?.steps[0]?.title).toBe("Update documentation");
+    });
+    it("small task goes directly to in_progress when capacity allows", () => {
+      const f = fixture("todo");
+      f.state.task.size = "small";
+      f.state.plan = null;
+      const r = fixed(f.state, f.observations);
+      expect(r.next.task.stage).toBe("in_progress");
+    });
+    it("normal task still goes through planning", () => {
+      const f = fixture("todo");
+      f.state.task.size = "normal";
+      f.state.plan = null;
+      const r = fixed(f.state, f.observations);
+      expect(r.next.task.stage).toBe("planning");
+    });
+  });
 });
