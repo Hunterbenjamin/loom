@@ -67,6 +67,7 @@ export const command = z.union([
     requirePlanApproval: z.boolean().nullable(),
     blockedBy: z.array(taskId),
     budgetMinutes: z.number().int().positive().nullable(),
+    size: z.enum(["small", "normal"]).nullable(),
   }),
   /**
    * Where to attach a terminal to this run. Returns the argv and the pane state; it starts no

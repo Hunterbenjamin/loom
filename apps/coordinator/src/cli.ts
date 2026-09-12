@@ -20,7 +20,7 @@ import {
   reconcileConfig,
 } from "./config.js";
 import { Coordinator } from "./coordinator.js";
-import { formatInspection, inspectTask } from "./inspect.js";
+import { formatInspection, getTaskTimings, inspectTask } from "./inspect.js";
 import { createRealAdapters } from "./real-adapters.js";
 
 const USAGE = `loom — Loom's coordinator and its client
@@ -28,7 +28,7 @@ const USAGE = `loom — Loom's coordinator and its client
   loom serve                            run the coordinator for this instance
   loom status                           what every task is doing
   loom repo add <root> <owner/name>     register a repository with this instance
-  loom task create <repo> <title> [description]
+  loom task create <repo> <title> [description] [--small]
   loom task list [--view needs_you]
   loom task show <task>
   loom task inspect <task> [--json]     read persisted diagnostics without a coordinator
@@ -41,6 +41,7 @@ const USAGE = `loom — Loom's coordinator and its client
   loom task answer-request <task> <runId> <requestId> accept|decline|cancel
   loom task retry <task>
   loom task cancel <task> <reason>
+  loom task timings <task>               show per-stage durations from transitions
   loom attach <task> [role] [--exec]    print, or run, the pane host's attach command
 
 Environment: LOOM_INSTANCE, LOOM_DATA_ROOT, LOOM_TOKEN, LOOM_BIND, LOOM_WORKTREE_ROOT.`;
@@ -322,6 +323,7 @@ export async function main(argv: string[]): Promise<void> {
         requirePlanApproval: has(argv, "require-plan-approval") ? true : null,
         blockedBy: [],
         budgetMinutes: null,
+        size: has(argv, "small") ? "small" : null,
       });
     }
     case "list":
@@ -345,6 +347,47 @@ export async function main(argv: string[]): Promise<void> {
             ? `${JSON.stringify(data, null, 2)}\n`
             : formatInspection(data),
         );
+      } finally {
+        store.close();
+      }
+      return;
+    }
+    case "timings": {
+      if (!taskId) throw new Error("loom task timings <task>");
+      const store = openReadOnlyStore({
+        dataRoot: config.dataRoot,
+        instance: config.instance,
+        config: reconcileConfig(config),
+      });
+      try {
+        if (!store.tasks().some((task) => task.id === taskId)) {
+          process.stderr.write(`unknown_task: ${taskId}\n`);
+          process.exitCode = 1;
+          return;
+        }
+        const timings = getTaskTimings(store, taskId);
+        if (timings.stageTimings.length === 0) {
+          process.stdout.write(`${timings.message}\n`);
+          return;
+        }
+
+        const lines: string[] = [];
+        lines.push(`Task: ${taskId}`);
+        lines.push(
+          `Total duration: ${(timings.totalDuration! / 1000 / 60).toFixed(2)} minutes`,
+        );
+        lines.push("");
+        lines.push("Stage transitions:");
+
+        for (const timing of timings.stageTimings) {
+          const durationSec = (timing.duration / 1000).toFixed(2);
+          const durationMin = (timing.duration / 1000 / 60).toFixed(2);
+          lines.push(
+            `  ${timing.from} → ${timing.to}: ${durationSec}s (${durationMin}min) at ${timing.at}`,
+          );
+        }
+
+        process.stdout.write(`${lines.join("\n")}\n`);
       } finally {
         store.close();
       }

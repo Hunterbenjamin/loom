@@ -170,3 +170,48 @@ export function formatInspection(data: Inspection): string {
   }
   return `${lines.join("\n").trimEnd()}\n`;
 }
+
+export function getTaskTimings(store: Store, taskId: TaskId) {
+  const transitions = store.transitions(taskId);
+  if (transitions.length === 0) {
+    return {
+      stageTimings: [],
+      totalDuration: null,
+      message: "No transitions found",
+    };
+  }
+
+  const stageTimings: Array<{
+    from: string;
+    to: string;
+    duration: number;
+    at: string;
+  }> = [];
+
+  for (const transition of transitions) {
+    const duration = new Date(transition.at).getTime();
+    const prevTime =
+      transitions.indexOf(transition) > 0
+        ? new Date(
+            transitions[transitions.indexOf(transition) - 1]?.at ?? "",
+          ).getTime()
+        : duration;
+
+    const durationMs = duration - prevTime;
+
+    stageTimings.push({
+      from: transition.from,
+      to: transition.to,
+      duration: durationMs,
+      at: transition.at,
+    });
+  }
+
+  const startTime = new Date(transitions[0]?.at ?? "").getTime();
+  const endTime = new Date(
+    transitions[transitions.length - 1]?.at ?? "",
+  ).getTime();
+  const totalDuration = endTime - startTime;
+
+  return { stageTimings, totalDuration };
+}
