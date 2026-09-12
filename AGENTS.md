@@ -5,10 +5,11 @@ Loom is a local desktop app with a background coordinator. The coordinator runs 
 GitHub, tmux, Codex and Claude Code stay independent tools. Loom observes and drives them; it
 doesn't replace them.
 
-**Current phase: 2, adapters** (see `docs/build-plan.md`). `packages/core` holds the reconciler and
-the contracts, and `docs/design/core.md` is their specification. Your brief is the file named when you
-were launched, under `docs/briefs/`; Phase 2 briefs share `docs/briefs/phase-2-common.md`. The spikes
-in `spikes/` are finished reference material, never imported.
+**Current phase: 3, the walking skeleton** (see `docs/build-plan.md`). `packages/core` holds the
+reconciler and the contracts, and `docs/design/core.md` is their specification; `apps/coordinator` is
+the process that runs them, and its README says how. Your brief is the file named when you were
+launched, under `docs/briefs/`; Phase 2 briefs share `docs/briefs/phase-2-common.md`. The spikes in
+`spikes/` are finished reference material, never imported.
 
 Read `docs/architecture.md` before any change to how Loom talks to external tools, stores state,
 or moves tasks between stages.

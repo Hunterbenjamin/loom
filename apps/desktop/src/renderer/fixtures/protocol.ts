@@ -165,7 +165,7 @@ export function toSnapshot(fixture: Snapshot): {
         env: {},
       },
       pane: {
-        hostGeneration: 1,
+        hostGeneration: run.pane?.hostGeneration ?? "loom-dev#1",
         sessionName: run.pane?.sessionName ?? "",
         windowId: run.pane?.windowId ?? null,
         paneId: run.pane?.paneId ?? "%0",

@@ -62,8 +62,11 @@ export const attachTarget = z.strictObject({
 
 /** The pane host's own reading of a run's pane. A hint for the UI, never a source of run status. */
 export const paneState = z.strictObject({
-  /** Pane IDs restart at `%0` after the host dies, so a reference is only valid in its generation. */
-  hostGeneration: count,
+  /**
+   * Pane IDs restart at `%0` after the host dies, so a reference is only valid in its generation.
+   * The same string `PaneRef.hostGeneration` carries (`loom-<instance>#<server pid>`).
+   */
+  hostGeneration: z.string().min(1),
   sessionName: z.string().min(1),
   windowId: z.string().min(1).nullable(),
   paneId: z.string().min(1),

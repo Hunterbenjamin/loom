@@ -1,0 +1,63 @@
+[
+  {
+    "name": "planner",
+    "agent": {
+      "provider": "claude",
+      "role": "planner",
+      "mode": "headless"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "tool": "submit_plan",
+        "input": {
+          "plan": {
+            "goal": "Change the example file",
+            "nonGoals": [],
+            "steps": [
+              {
+                "title": "Edit",
+                "detail": "Write the new value"
+              }
+            ],
+            "areas": ["example.txt"],
+            "acceptanceCriteria": ["example.txt holds the new value"],
+            "testPlan": ["read the file"],
+            "risks": [],
+            "openQuestions": [],
+            "suggestedImplementer": null
+          }
+        }
+      },
+      {
+        "status": "idle"
+      }
+    ]
+  },
+  {
+    "name": "implementer asks the human",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "interactive"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "tool": "ask_human",
+        "input": {
+          "question": "Which value?",
+          "options": ["a", "b"],
+          "blocking": true
+        }
+      },
+      {
+        "status": "idle"
+      }
+    ]
+  }
+]

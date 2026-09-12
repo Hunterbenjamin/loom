@@ -1,0 +1,45 @@
+[
+  {
+    "name": "planner crashes mid-turn",
+    "agent": {
+      "provider": "claude",
+      "role": "planner",
+      "mode": "headless",
+      "attempt": 1
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "crash": true
+      }
+    ]
+  },
+  {
+    "name": "planner retries the same session",
+    "agent": {
+      "provider": "claude",
+      "role": "planner",
+      "mode": "headless",
+      "attempt": 2
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "tool": "report_progress",
+        "input": {
+          "summary": "Alive",
+          "stepIndex": null,
+          "decisions": [],
+          "testResults": []
+        }
+      },
+      {
+        "status": "idle"
+      }
+    ]
+  }
+]

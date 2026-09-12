@@ -28,7 +28,11 @@ import {
 import type { HookReceiver } from "./receiver.js";
 import { startHookReceiver } from "./receiver.js";
 import type { McpServerEntry } from "./settings.js";
-import { mcpConfigPathFor, writeSettingsFiles } from "./settings.js";
+import {
+  mcpConfigPathFor,
+  readMcpConfig,
+  writeSettingsFiles,
+} from "./settings.js";
 
 export * from "./agents.js";
 export * from "./headless.js";
@@ -106,8 +110,14 @@ export async function createClaudeAdapter(
     ): Promise<ClaudeHookSummary> =>
       foldHookSummary(await log.bySession(sessionId)),
 
-    writeSettings: async (settingsPath: string): Promise<void> => {
-      await writeSettingsFiles(settingsPath, settingsRequest);
+    writeSettings: async (
+      settingsPath: string,
+      mcpServer?: McpServerEntry,
+    ): Promise<void> => {
+      await writeSettingsFiles(settingsPath, {
+        ...settingsRequest,
+        mcpServer: mcpServer ?? config.mcpServer,
+      });
     },
 
     interactiveArgs: ({ sessionId, resume, model, settingsPath }) => [
@@ -123,9 +133,19 @@ export async function createClaudeAdapter(
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {
       headlessRuns.get(request.sessionId)?.close();
+      // The run's own registration lives beside its settings file, so a headless run carries the
+      // same per-run token an interactive one does. The adapter default is only a fallback.
+      const servers =
+        (await readMcpConfig(mcpConfigPathFor(request.settingsPath)))
+          ?.mcpServers ?? {};
       headlessRuns.set(
         request.sessionId,
-        new HeadlessRun(request, { [mcpServerName]: config.mcpServer }),
+        new HeadlessRun(
+          request,
+          Object.keys(servers).length
+            ? servers
+            : { [mcpServerName]: config.mcpServer },
+        ),
       );
     },
 

@@ -1,0 +1,125 @@
+[
+  {
+    "name": "planner",
+    "agent": { "provider": "claude", "role": "planner", "mode": "headless" },
+    "steps": [
+      { "expect": "message" },
+      {
+        "tool": "submit_plan",
+        "input": {
+          "plan": {
+            "goal": "Change the example file",
+            "nonGoals": [],
+            "steps": [{ "title": "Edit", "detail": "Write the new value" }],
+            "areas": ["example.txt"],
+            "acceptanceCriteria": ["example.txt holds the new value"],
+            "testPlan": ["read the file"],
+            "risks": [],
+            "openQuestions": [],
+            "suggestedImplementer": null
+          }
+        }
+      },
+      { "status": "idle" }
+    ]
+  },
+  {
+    "name": "implementer with one fix round",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "interactive"
+    },
+    "steps": [
+      { "expect": "message" },
+      { "status": "working" },
+      {
+        "git": "commit",
+        "files": { "example.txt": "first implementation\n" },
+        "message": "first implementation"
+      },
+      {
+        "tool": "submit_for_review",
+        "input": {
+          "headSha": "$HEAD",
+          "summary": "Ready",
+          "testResults": [],
+          "handoff": { "summary": "Ready", "nextSteps": [] }
+        }
+      },
+      { "status": "idle" },
+      { "expect": "message", "match": "findings" },
+      {
+        "git": "commit",
+        "files": { "example.txt": "fixed implementation\n" },
+        "message": "fixed implementation"
+      },
+      {
+        "tool": "resolve_finding",
+        "input": {
+          "findingId": "$FINDING_0",
+          "resolution": "fixed",
+          "note": "Fixed",
+          "commitSha": "$HEAD"
+        }
+      },
+      {
+        "tool": "submit_for_review",
+        "input": {
+          "headSha": "$HEAD",
+          "summary": "Ready",
+          "testResults": [],
+          "handoff": { "summary": "Ready", "nextSteps": [] }
+        }
+      },
+      { "status": "idle" }
+    ]
+  },
+  {
+    "name": "first review",
+    "agent": { "provider": "claude", "role": "reviewer", "mode": "headless" },
+    "steps": [
+      { "expect": "message" },
+      {
+        "tool": "submit_review",
+        "input": {
+          "reviewedSha": "$HEAD",
+          "summary": "Reviewed",
+          "findings": [
+            {
+              "severity": "major",
+              "title": "Fix the value",
+              "body": "The value is wrong",
+              "location": null
+            }
+          ],
+          "verdicts": [],
+          "testResults": []
+        }
+      }
+    ]
+  },
+  {
+    "name": "verify the fix",
+    "agent": { "provider": "claude", "role": "reviewer", "mode": "headless" },
+    "steps": [
+      { "expect": "message" },
+      {
+        "tool": "submit_review",
+        "input": {
+          "reviewedSha": "$HEAD",
+          "summary": "Reviewed",
+          "findings": [],
+          "verdicts": [
+            {
+              "findingId": "$FINDING_0",
+              "status": "resolved",
+              "note": "Verified"
+            }
+          ],
+          "testResults": []
+        }
+      }
+    ]
+  }
+]
