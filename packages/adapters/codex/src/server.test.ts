@@ -7,10 +7,12 @@ import {
   rm,
   stat,
   symlink,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ProviderSessionId } from "@loom/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createCodexAdapter } from "./index.js";
 import { serverEnvironment, TaskServer } from "./server.js";
@@ -61,23 +63,13 @@ it("owns one private child, preserves it across reconnect, and stops/restarts id
     await adapter.stopServer();
   }
 });
-it("replaces a preexisting socket file and spawns a new server", async () => {
-  vi.stubEnv("HERDR_TEST", "fixture");
+it("refuses a preexisting non-socket path and leaves it untouched", async () => {
   const socket = join(directory, "app-server.sock");
-  // Write a fake socket file (not a real Unix socket)
   await writeFile(socket, "belongs to someone else");
   const server = new TaskServer(directory, executable);
-  try {
-    // Should remove the fake socket and spawn a new server
-    await server.start();
-    // Wait for socket to be created as a real Unix socket
-    await vi.waitFor(async () => {
-      const stats = await lstat(socket);
-      expect(stats.isSocket()).toBe(true);
-    });
-  } finally {
-    await server.stop();
-  }
+  await expect(server.start()).rejects.toThrow("non-socket");
+  await server.stop();
+  expect(await readFile(socket, "utf8")).toBe("belongs to someone else");
 });
 it("refuses a home symlink and scrubs inherited provider context", async () => {
   await symlink(directory, join(directory, "codex-home"));
@@ -157,149 +149,163 @@ fi
   }
 });
 
-it("adopts a live app-server on startup", async () => {
-  vi.stubEnv("HERDR_TEST", "fixture");
-  // Start a server and keep it running (don't kill it)
-  const server1 = new TaskServer(directory, executable);
-  await server1.start();
+const pidOf = async () =>
+  JSON.parse(await readFile(join(directory, "fake-process.json"), "utf8"))
+    .pid as number;
+const spawns = async () =>
+  (await readFile(join(directory, "fake-spawns.log"), "utf8"))
+    .trim()
+    .split("\n")
+    .map(Number);
 
-  // Wait for the server to fully initialize and write fake-process.json
-  let firstPid: number | null = null;
-  await vi.waitFor(async () => {
+it.each(["recorded", "numeric", "missing"])(
+  "adopts a %s owner and terminates it on shutdown",
+  async (metadata) => {
+    const first = new TaskServer(directory, executable);
+    const recovered = new TaskServer(directory, executable);
     try {
-      const processData = await readFile(
-        join(directory, "fake-process.json"),
-        "utf8",
-      );
-      const process = JSON.parse(processData);
-      firstPid = process.pid;
-      expect(firstPid).toBeGreaterThan(0);
-    } catch {
-      throw new Error("fake-process.json not ready");
+      await first.start();
+      const pid = await pidOf();
+      if (metadata === "missing") await unlink(first.pidfile);
+      if (metadata === "numeric") await writeFile(first.pidfile, String(pid));
+      await recovered.start();
+      expect(recovered.running).toBe(true);
+      expect(await spawns()).toEqual([pid]);
+      expect(
+        JSON.parse(await readFile(recovered.pidfile, "utf8")),
+      ).toMatchObject({ pid, startedAt: expect.any(String) });
+      await recovered.stop();
+      await recovered.stop();
+      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+      await expect(lstat(first.socket)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(lstat(first.pidfile)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await recovered.stop();
+      await first.stop();
     }
-  });
+  },
+);
 
-  // Read the pidfile to verify it was written
-  const pidfileContent = await readFile(
+it.each(["dead", "unlinked"])(
+  "reaps a %s predecessor before replacing its ownership record",
+  async (kind) => {
+    const first = new TaskServer(directory, executable);
+    const replacement = new TaskServer(directory, executable);
+    try {
+      await first.start();
+      const pid = await pidOf();
+      if (kind === "dead") {
+        process.kill(pid, "SIGKILL");
+        await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+      } else await unlink(first.socket);
+      await replacement.start();
+      expect(() => process.kill(pid, 0)).toThrow();
+      const nextPid = await pidOf();
+      expect(nextPid).not.toBe(pid);
+      expect(await spawns()).toEqual([pid, nextPid]);
+      // A stale handle must not unlink the newer server's socket or PID file.
+      await first.stop();
+      expect((await lstat(replacement.socket)).isSocket()).toBe(true);
+      expect(
+        JSON.parse(await readFile(replacement.pidfile, "utf8")),
+      ).toMatchObject({ pid: nextPid });
+    } finally {
+      await replacement.stop();
+      await first.stop();
+    }
+  },
+);
+
+it("serializes simultaneous starts from independent adapters", async () => {
+  const first = createCodexAdapter({ taskDirectory: directory, executable });
+  const second = createCodexAdapter({ taskDirectory: directory, executable });
+  try {
+    await Promise.all([first.startServer(), second.startServer()]);
+    expect(await spawns()).toEqual([await pidOf()]);
+    const generation = second.generation();
+    await second.startServer();
+    expect(second.generation()).toBe(generation);
+  } finally {
+    await second.stopServer();
+    await first.stopServer();
+  }
+});
+
+it("preserves a live socket whose server reports a different CODEX_HOME", async () => {
+  vi.stubEnv("FAKE_SERVER_HOME", directory);
+  const first = new TaskServer(directory, executable);
+  const other = new TaskServer(directory, executable);
+  try {
+    await first.start();
+    const pid = await pidOf();
+    await expect(other.start()).rejects.toThrow("different CODEX_HOME");
+    await other.stop();
+    expect((await lstat(first.socket)).isSocket()).toBe(true);
+    expect(() => process.kill(pid, 0)).not.toThrow();
+    expect(await spawns()).toEqual([pid]);
+  } finally {
+    await other.stop();
+    await first.stop();
+  }
+});
+
+it("never signals an unrelated process named by a stale pidfile", async () => {
+  await writeFile(
     join(directory, "app-server.pid"),
-    "utf8",
+    JSON.stringify({ pid: process.pid, startedAt: "stale identity" }),
   );
-  const spawnedPid = parseInt(pidfileContent.trim(), 10);
-  expect(spawnedPid).toBe(firstPid);
-
-  // Create a second TaskServer pointing to the same directory
-  // This simulates a coordinator restart
-  const server2 = new TaskServer(directory, executable);
-  try {
-    await server2.start();
-
-    // The server should have been adopted (same pid in pidfile)
-    const pidfile2Content = await readFile(
-      join(directory, "app-server.pid"),
-      "utf8",
-    );
-    const adoptedPid = parseInt(pidfile2Content.trim(), 10);
-    expect(adoptedPid).toBe(firstPid);
-  } finally {
-    await server2.stop();
-  }
-
-  // Kill the first server to clean up
-  server1.stop().catch(() => {
-    // May already be stopped
-  });
-});
-
-it("replaces a dead server when connection fails", async () => {
-  vi.stubEnv("HERDR_TEST", "fixture");
-  const socket = join(directory, "app-server.sock");
-  const pidfile = join(directory, "app-server.pid");
-
-  // Create a fake socket file (stale) and stale pidfile
-  await writeFile(socket, "stale");
-  await writeFile(pidfile, "99999", { mode: 0o600 }); // Fake PID that doesn't exist
-
   const server = new TaskServer(directory, executable);
+  const signals = vi.spyOn(process, "kill");
   try {
-    // Start should fail to adopt (socket is not a valid Unix socket, connection fails),
-    // remove the stale socket, and spawn a new server
     await server.start();
+    await server.stop();
+    expect(
+      signals.mock.calls.filter(
+        ([pid, signal]) => pid === process.pid && signal !== 0,
+      ),
+    ).toEqual([]);
+  } finally {
+    signals.mockRestore();
+    await server.stop();
+  }
+});
 
-    // Wait for server to fully initialize
-    await vi.waitFor(async () => {
-      await lstat(socket);
+it("rejects malformed process ownership without signaling a process group", async () => {
+  await writeFile(join(directory, "app-server.pid"), "-1");
+  const server = new TaskServer(directory, executable);
+  await expect(server.start()).rejects.toThrow();
+  await server.stop();
+  expect(await readFile(server.pidfile, "utf8")).toBe("-1");
+});
+
+it("a fresh adapter resumes and reads the existing thread after coordinator recovery", async () => {
+  const first = createCodexAdapter({ taskDirectory: directory, executable });
+  const recovered = createCodexAdapter({
+    taskDirectory: directory,
+    executable,
+  });
+  const threadId = "existing-thread" as ProviderSessionId;
+  try {
+    await first.startServer();
+    await first.resumeThread(threadId);
+    const pid = await pidOf();
+    // A new coordinator has no ChildProcess handle or subscriptions from the old adapter.
+    await recovered.startServer();
+    await recovered.resumeThread(threadId);
+    expect(await recovered.readThread(threadId)).toMatchObject({
+      threadId,
+      status: "active",
+      turns: [{ id: "surviving-turn", status: "inProgress" }],
     });
-
-    // Verify socket is now a real Unix socket (created by spawn, not our fake file)
-    const stats = await lstat(socket);
-    expect(stats.isSocket()).toBe(true);
-
-    // Verify pidfile was updated with the new process pid
-    const pidContent = await readFile(pidfile, "utf8");
-    const pid = parseInt(pidContent.trim(), 10);
-    expect(Number.isFinite(pid) && pid > 0 && pid !== 99999).toBe(true);
-
-    await server.stop();
+    expect(await spawns()).toEqual([pid]);
+    await recovered.stopServer();
+    await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
   } finally {
-    await server.stop();
-  }
-});
-
-it("never spawns duplicate servers on concurrent starts", async () => {
-  vi.stubEnv("HERDR_TEST", "fixture");
-  const adapter = createCodexAdapter({ taskDirectory: directory, executable });
-  try {
-    // Start two adapters pointing to the same directory concurrently
-    // The first should spawn; the second should adopt
-    await Promise.all([
-      adapter.startServer(),
-      (async () => {
-        await new Promise((resolve) => setTimeout(resolve, 50)); // Small delay
-        const adapter2 = createCodexAdapter({
-          taskDirectory: directory,
-          executable,
-        });
-        try {
-          await adapter2.startServer();
-        } finally {
-          await adapter2.stopServer();
-        }
-      })(),
-    ]);
-
-    // Verify only one fake-process.json exists (one process)
-    const process1 = JSON.parse(
-      await readFile(join(directory, "fake-process.json"), "utf8"),
-    );
-    expect(process1.pid).toBeGreaterThan(0);
-
-    await adapter.stopServer();
-  } finally {
-    await adapter.stopServer();
-  }
-});
-
-it("coordinator recovery reads thread after simulated restart", async () => {
-  vi.stubEnv("HERDR_TEST", "fixture");
-  const adapter = createCodexAdapter({ taskDirectory: directory, executable });
-  try {
-    // Start server and verify generation
-    await adapter.startServer();
-    const generation1 = adapter.generation();
-    expect(generation1).not.toBeNull();
-
-    // Simulate coordinator restart by reconnecting
-    await adapter.reconnect();
-    const generation2 = adapter.generation();
-
-    // Generation should increment (new connection) but same server should be adopted
-    expect(generation2).toBeGreaterThan(generation1 ?? 0);
-
-    // Socket should still exist
-    await lstat(join(directory, "app-server.sock"));
-
-    await adapter.stopServer();
-  } finally {
-    await adapter.stopServer();
+    await recovered.stopServer();
+    await first.stopServer();
   }
 });
