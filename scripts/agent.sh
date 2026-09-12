@@ -7,7 +7,7 @@
 #        scripts/agent.sh ui-shell claude feat/ui-shell docs/briefs/ui-shell.md --model opus
 # <brief> is relative to the repo root and must be committed: the worktree only has committed files.
 # Without --model the agent uses its own default. --auto reduces approval prompts: Codex runs
-# --full-auto (writes sandboxed to the worktree; it asks only when a sandboxed command fails) and
+# --approve-for-me (approvals go to Codex's automatic reviewer in the workspace-write sandbox) and
 # Claude runs --permission-mode acceptEdits. Use it for Loom's own agents in isolated worktrees.
 #
 # It uses the same server as the coordinator's pane host, `-L loom-<instance>`, so there is one
@@ -116,7 +116,7 @@ case "$kind" in
     ;;
   codex)
     [ -n "$model" ] && cmd+=(-c "model=\"$model\"")
-    [ "$auto" = 1 ] && cmd+=(--full-auto)
+    [ "$auto" = 1 ] && cmd+=(--approve-for-me)
     ;;
 esac
 # An escape hatch for testing this script's plumbing without starting a provider.
