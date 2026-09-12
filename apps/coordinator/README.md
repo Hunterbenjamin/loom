@@ -123,6 +123,55 @@ pnpm loom serve          # a root script over tsx, which is a workspace dev depe
 
 `main(argv)` is exported from `src/cli.ts`, so the command table is callable directly as well.
 
+## Troubleshooting
+
+### Claude folder-trust dialog on first launch
+
+**Symptom:** An interactive Claude run stops at the folder-trust dialog on first launch in a new
+worktree.
+
+**Cause:** Claude Code requires folder trust to open the worktree directory.
+
+**Resolution:** Click the Trust button in Claude's dialog to allow access to the worktree.
+
+### MCP `unknown_run` error
+
+**Symptom:** An MCP tool call fails with `unknown_run`.
+
+**Cause:** Codex registration lacked the bearer header in http_headers, preventing authentication
+of MCP requests.
+
+**Resolution:** Fixed; the coordinator now includes http_headers with the bearer token in all
+Codex registrations.
+
+### Codex reviewer stuck in `unknown` state
+
+**Symptom:** A Codex reviewer gets stuck in `unknown` state and does not progress.
+
+**Cause:** The reviewer's thread had no rollout, meaning the state machine did not transition.
+
+**Resolution:** Fixed; the coordinator now rotates the session when `resumable=false`, ensuring
+proper state transitions on resumable runs.
+
+### Codex per-task home missing auth
+
+**Symptom:** Codex cannot authenticate within the per-task home directory.
+
+**Cause:** The `auth.json` file was not accessible in the per-task home.
+
+**Resolution:** Fixed; the coordinator now links `auth.json` from `~/.codex` into each task's
+home directory on startup.
+
+### Run stalls on provider usage limit
+
+**Symptom:** A run stalls and does not proceed, with the provider reporting a usage limit
+reached (e.g., Claude rate limit).
+
+**Cause:** The provider's API usage limit has been reached.
+
+**Resolution:** The human can paste `continue` in an interactive run to retry the operation, or
+wait for the provider's limit to reset before the next attempt.
+
 ## Tests
 
 `src/*.test.ts`, against `@loom/fake-agent`'s providers, pane host and GitHub, a throwaway Git
