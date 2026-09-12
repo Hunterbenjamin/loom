@@ -18,6 +18,57 @@ export function human(
     error("wrong_stage", `${cmd.type} is not allowed in ${task.stage}`);
   const guard = (...details: string[]) => error("guard_failed", ...details);
   switch (cmd.type) {
+    case "push_branch":
+    case "open_pr": {
+      if (task.stage !== "in_progress") return wrong();
+      const git = c.git;
+      if (
+        !state.worktree ||
+        !task.branch ||
+        !git?.exists ||
+        git.path !== state.worktree.path ||
+        git.branch !== task.branch ||
+        git.dirty ||
+        git.aheadOfBase < 1 ||
+        git.headSha !== cmd.headSha
+      )
+        return guard(
+          "Rescue requires the recorded clean branch and exact committed HEAD ahead of base",
+        );
+      if (
+        state.review ||
+        state.runs.some((r) => !r.endedAt) ||
+        !state.runs.some((r) => r.endReason === "vanished") ||
+        state.runs.some(
+          (r) => r.role === "implementer" && r.endReason === "submitted",
+        )
+      )
+        return guard(
+          "Rescue requires vanished work without a submission or a live run",
+        );
+      if (cmd.type === "push_branch")
+        c.emit(`rescue:push:${task.id}:${cmd.headSha}`, {
+          kind: "push_branch",
+          worktreePath: state.worktree.path,
+          branch: task.branch,
+          expectedHeadSha: cmd.headSha,
+        });
+      else {
+        if (git.remoteHeadSha !== cmd.headSha)
+          return guard("Confirm push of this HEAD before opening a PR");
+        if (!task.prNumber)
+          c.emit(`rescue:pr:${task.id}:${cmd.headSha}`, {
+            kind: "open_pr",
+            rescueHeadSha: cmd.headSha,
+            repoId: task.repoId,
+            branch: task.branch,
+            baseBranch: state.worktree.baseBranch,
+            title: task.title,
+            body: "Operator rescued committed work from a vanished run. No implementation submission was accepted; human follow-up is required.",
+          });
+      }
+      return null;
+    }
     case "move":
       if (cmd.to === "todo" && task.stage === "backlog") {
         c.stage("todo", "Human queued task");
@@ -205,12 +256,16 @@ export function human(
         (r) => r.id === cmd.runId && r.origin === "loom" && !r.endedAt,
       );
       if (!run) return guard("Choose a live Loom run");
-      c.emit(`answer_pane_prompt:${run.id}`, {
-        kind: "answer_pane_prompt",
-        runId: cmd.runId,
-        choice: cmd.choice,
-        text: cmd.text,
-      });
+      c.emit(
+        `answer_pane_prompt:${run.id}${cmd.expectedDialog ? `:${cmd.expectedDialog.sessionEpoch}:${cmd.expectedDialog.requestId}:${cmd.expectedDialog.at}` : ""}`,
+        {
+          kind: "answer_pane_prompt",
+          runId: cmd.runId,
+          choice: cmd.choice,
+          text: cmd.text,
+          ...(cmd.expectedDialog ? { expectedDialog: cmd.expectedDialog } : {}),
+        },
+      );
       return null;
     }
     case "retry": {

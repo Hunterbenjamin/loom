@@ -843,3 +843,20 @@ These notes were raised during design review. Resolutions below are part of the 
 | 2 | **Resolved:** clean means no tracked or non-ignored untracked changes; `dirtyPaths` is required and appears in failed-guard details (§5.2). |
 | 3 | **Assigned to the future coordinator/MCP boundary:** load and validate `WORKFLOW.md` for read-only `get_task_context`; it is not a reconcile input or a core I/O action. Cache location and missing/malformed-file policy must be settled in that phase before exposing commands. |
 | 4 | **`packages/protocol` is still undrafted.** It's Phase 1's fifth deliverable, and the Phase 4 UI work depends on it. Its snapshot is mostly these entities plus derived views: attention, and the review shell state from spike 04. |
+
+### Operator commands and persistence
+
+The instance Operator is outside task runs and capacity. It cannot call task-run MCP tools.
+Its mutation boundary rechecks policy v1 and records an authored TaskNote and durable event/action
+receipt. Generic create/move and plan/merge approvals are refused. The `push_branch` and `open_pr`
+human commands require the exact clean committed HEAD of vanished implementation work, no live
+run or submission, and confirmed push before PR creation. They emit existing outbox actions and
+never produce a synthetic submission or stage transition. Executor guards repeat those owner
+checks; recovery may recognize an existing remote head or PR.
+
+Task `signature` is an additive nullable/optional field for older records. Operator notes, events,
+retry ledger, signatures, filings and quota live in additive SQLite tables. File creation,
+deduplicated evidence notes, quota accounting and optional autoFix `todo` input are one transaction.
+Tags reference a particular attention occurrence and disappear from the projection when it changes.
+The Operator retry allowance is one existing human `retry` input per role/round, not a change to
+core's automatic attempt budget.

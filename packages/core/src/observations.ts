@@ -108,6 +108,7 @@ export interface CodexTurnObservation {
 }
 
 export interface CodexRequestObservation {
+  command?: string;
   requestId: string;
   kind: ProviderRequestKind;
   isBlocking: boolean | null;
@@ -152,6 +153,8 @@ export interface ClaudeHookSummary {
   lastEventAt: IsoTime | null;
   /** From the latest PreToolUse/PermissionRequest not yet followed by PostToolUse. */
   pendingDialog: {
+    command?: string;
+    requestId?: string;
     kind: "permission" | "input";
     tool: string;
     at: IsoTime;
@@ -175,6 +178,7 @@ export interface ClaudeSessionObservation {
   hooks: ClaudeHookSummary;
   /** Headless runs the coordinator spawned: the process's own exit. */
   headless: {
+    completedTurns?: number;
     exited: boolean;
     exitCode: number | null;
     error: string | null;
@@ -240,6 +244,8 @@ export interface DependencyObservation {
 // ---------------------------------------------------------------- inputs
 
 export type HumanCommand =
+  | { type: "push_branch"; headSha: Sha }
+  | { type: "open_pr"; headSha: Sha }
   | { type: "move"; to: "backlog" | "todo" }
   | { type: "approve_plan"; planVersion: number }
   | { type: "reject_plan"; feedback: string }
@@ -267,6 +273,12 @@ export type HumanCommand =
       type: "answer_pane_prompt";
       runId: RunId;
       choice: number | "enter" | "escape";
+      expectedDialog?: {
+        requestId: string;
+        at: IsoTime;
+        command: string;
+        sessionEpoch: number;
+      };
       text?: string;
     }
   | { type: "send_message"; runId: RunId; text: string }

@@ -17,7 +17,10 @@ export function inspectTask(store: Store, taskId: TaskId) {
   };
   for (const finding of state.findings) counts[finding.status]++;
   return {
+    notes: store.operator.notes(taskId),
+    reviewHistory: state.findings,
     task: {
+      signature: store.operator.signature(taskId),
       id: task.id,
       title: task.title,
       stage: task.stage,
@@ -44,6 +47,7 @@ export function inspectTask(store: Store, taskId: TaskId) {
       unknownSince: run.unknownSince ?? null,
       lastTurn: run.lastTurn,
       pendingRequests: run.pendingRequests.length,
+      requests: run.pendingRequests,
       endedAt: run.endedAt,
       endReason: run.endReason,
     })),
@@ -161,6 +165,10 @@ export function formatInspection(data: Inspection): string {
   for (const row of data.outbox) {
     facts(row);
     lines.push("");
+  }
+  if (data.notes.length) {
+    lines.push("", "Notes");
+    for (const note of data.notes) facts(note);
   }
   lines.push("Findings");
   facts(data.findings.counts);

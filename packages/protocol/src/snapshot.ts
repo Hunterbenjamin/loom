@@ -36,6 +36,7 @@ import {
   transitionId,
   worktreePath,
 } from "./ids.js";
+import { operatorState, taskNote } from "./operator.js";
 import {
   commentThread,
   leadState,
@@ -53,6 +54,16 @@ import {
  * task-list level and reaches every client; the rest follow subscriptions.
  */
 export const collections = {
+  operator: {
+    value: operatorState,
+    key: z.literal("operator"),
+    keyOf: (v: z.output<typeof operatorState>) => v.id,
+  },
+  note: {
+    value: taskNote,
+    key: z.string(),
+    keyOf: (v: z.output<typeof taskNote>) => v.id,
+  },
   lead: {
     value: leadState,
     key: z.literal("lead"),
@@ -135,6 +146,8 @@ export function keyOf<N extends CollectionName>(
 }
 
 export const snapshotBody = z.strictObject({
+  operators: z.array(operatorState).default([]),
+  notes: z.array(taskNote).default([]),
   leads: z.array(leadState).default([]),
   inbox: z.array(taskInbox),
   repos: z.array(repo),
@@ -156,6 +169,8 @@ export const snapshotBody = z.strictObject({
 
 /** Which snapshot collection each patch collection lands in. */
 export const COLLECTION_FIELDS = {
+  operator: "operators",
+  note: "notes",
   lead: "leads",
   inbox: "inbox",
   repo: "repos",
@@ -178,6 +193,8 @@ export const COLLECTION_FIELDS = {
 export type SnapshotBody = z.output<typeof snapshotBody>;
 
 export const emptySnapshotBody = (): SnapshotBody => ({
+  operators: [],
+  notes: [],
   leads: [],
   inbox: [],
   repos: [],

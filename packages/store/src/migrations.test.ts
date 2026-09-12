@@ -93,7 +93,7 @@ describe("numbered migrations", () => {
   it("rolls back a failed migration and its version while retaining completed migrations", async () => {
     const db = open();
     const invalid = {
-      version: 3,
+      version: migrations.length + 1,
       name: "0003_invalid.sql",
       breaking: false,
       sql: "CREATE TABLE must_rollback (id TEXT); INSERT INTO missing VALUES (1);",
@@ -101,7 +101,7 @@ describe("numbered migrations", () => {
     await expect(
       migrate(db, join(root, "backups"), [...migrations, invalid]),
     ).rejects.toThrow();
-    expect(schemaVersion(db)).toBe(2);
+    expect(schemaVersion(db)).toBe(migrations.length);
     expect(
       db
         .prepare("SELECT name FROM sqlite_master WHERE name = 'must_rollback'")
@@ -109,12 +109,12 @@ describe("numbered migrations", () => {
     ).toBeUndefined();
     expect(
       db.prepare("SELECT MAX(version) FROM schema_migrations").pluck().get(),
-    ).toBe(2);
+    ).toBe(migrations.length);
   });
   it("opens unknown additive versions but refuses an unknown breaking migration", async () => {
     const db = open();
     const future = {
-      version: 3,
+      version: migrations.length + 1,
       name: "0003_future.sql",
       breaking: false,
       sql: "ALTER TABLE repos ADD COLUMN future TEXT;",
@@ -122,7 +122,7 @@ describe("numbered migrations", () => {
     await migrate(db, join(root, "backups"), [...migrations, future]);
     await expect(migrate(db, join(root, "backups"))).resolves.toEqual([]);
     const breaking = {
-      version: 4,
+      version: migrations.length + 2,
       name: "0004_remove_future.sql",
       breaking: true,
       sql: "ALTER TABLE repos DROP COLUMN future;",

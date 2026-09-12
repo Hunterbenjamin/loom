@@ -38,6 +38,10 @@ const remove = <N extends CollectionName>(name: N) =>
   });
 
 export const change = z.union([
+  upsert("operator"),
+  remove("operator"),
+  upsert("note"),
+  remove("note"),
   upsert("lead"),
   remove("lead"),
   upsert("inbox"),
@@ -97,6 +101,8 @@ export interface ClientState {
 }
 
 const emptyCollections = (): ClientState["collections"] => ({
+  operator: new Map(),
+  note: new Map(),
   lead: new Map(),
   inbox: new Map(),
   repo: new Map(),
@@ -128,7 +134,8 @@ export function stateFromSnapshot(
     collections: emptyCollections(),
   };
   for (const name of Object.keys(collections) as CollectionName[]) {
-    const rows = body[COLLECTION_FIELDS[name]] as Entities[typeof name][];
+    const rows = (body[COLLECTION_FIELDS[name]] ??
+      []) as Entities[typeof name][];
     const map = state.collections[name] as Map<string, Entities[typeof name]>;
     for (const row of rows) map.set(keyOf(name, row), row);
   }

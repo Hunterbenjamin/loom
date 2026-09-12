@@ -65,6 +65,7 @@ const attentionReason = z.enum([
 
 export const taskSchema = contract<Task>()(
   z.object({
+    signature: z.string().nullable().optional(),
     id,
     repoId: id,
     title: text,

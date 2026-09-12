@@ -125,6 +125,7 @@ export interface Attention {
 }
 
 export interface Task {
+  signature?: string | null;
   id: TaskId;
   repoId: RepoId;
   title: string;
@@ -577,4 +578,18 @@ export interface Transition {
   reason: string;
   /** Task version after this change. */
   taskVersion: number;
+}
+
+/** Authored decisions have their own persistence and never imply a stage transition. */
+export interface TaskNote {
+  id: string;
+  taskId: string | null;
+  author: "operator" | "lead" | "human";
+  at: string;
+  eventId: string;
+  row: string;
+  outcome: string;
+  body: string;
+  forHuman: boolean;
+  occurrence: string;
 }

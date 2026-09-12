@@ -78,6 +78,7 @@ export class PendingRequests {
             ),
             availableDecisions: params.availableDecisions,
           };
+          if (params.command) pending.observation.command = params.command;
           break;
         }
         case "item/fileChange/requestApproval": {

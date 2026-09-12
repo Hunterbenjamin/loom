@@ -30,6 +30,7 @@ export interface StartHeadlessRequest {
   cwd: WorktreePath;
   model: string;
   settingsPath: string;
+  mcpOnly?: boolean;
   readOnly: boolean;
   prompt: string;
 }
@@ -80,6 +81,7 @@ class MessageQueue implements AsyncIterable<SDKUserMessage> {
 export class HeadlessRun {
   readonly #input = new MessageQueue();
   readonly #query: Query;
+  #completedTurns = 0;
   #state: HeadlessState = { exited: false, exitCode: null, error: null };
 
   constructor(
@@ -88,6 +90,19 @@ export class HeadlessRun {
   ) {
     this.#input.push(request.prompt);
     const options: Options = {
+      ...(request.mcpOnly
+        ? {
+            tools: [],
+            settingSources: [],
+            canUseTool: async (name: string, input: Record<string, unknown>) =>
+              name.startsWith("mcp__loom__")
+                ? { behavior: "allow" as const, updatedInput: input }
+                : {
+                    behavior: "deny" as const,
+                    message: "Operator has only Loom MCP capabilities",
+                  },
+          }
+        : {}),
       cwd: request.cwd,
       model: request.model,
       settings: request.settingsPath,
@@ -119,6 +134,7 @@ export class HeadlessRun {
     try {
       let lastError: string | null = null;
       for await (const message of this.#query) {
+        if (message.type === "result") this.#completedTurns++;
         if (message.type === "result" && message.subtype !== "success")
           lastError = message.errors.join("; ") || message.subtype;
       }
@@ -133,7 +149,7 @@ export class HeadlessRun {
   }
 
   get state(): HeadlessState {
-    return { ...this.#state };
+    return { ...this.#state, completedTurns: this.#completedTurns };
   }
 
   send(text: string): void {

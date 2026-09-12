@@ -364,3 +364,16 @@ guarantees that a command did not run. The broader restart matrix remains spike 
   commits is Loom's job. See the findings.
 - **05 completed:** nothing in a pane survives a host restart; Loom relaunches from stored state, and
   the Codex app-server lives outside the pane host. See the findings.
+
+### Operator integration
+
+One coordinator-owned headless Claude Operator consumes durable structured hints outside the
+per-task run/capacity model. SQLite owns its queue, decisions, notes, processing receipts, retry
+ledger and bug-filing accounting. A private recipe under the instance's `operator` directory owns
+its launch identity; the adapter still owns the process/session observation. MCP-only capability
+configuration and a separate authenticated identity prevent task-run, shell and attach access.
+Every mutation is checked against policy v1 using fresh observations. Rescue commands reuse the
+core/outbox/executor path, without a submission or stage transition; automatic bug planning uses
+the existing `todo` input. Runtime bug repository routing is explicit. Desktop status and authored
+notes are projections, and notification dedupe is coordinator-owned. See the
+[Operator contract](design/agents.md#operator-implementation-contract).

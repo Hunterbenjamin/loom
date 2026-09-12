@@ -269,6 +269,10 @@ export type ReviewStateChange = z.output<typeof reviewStateChange>;
 
 /** Small task-list metadata for the inbox; no detail subscriptions or Git reads required. */
 export const taskInbox = z.strictObject({
+  forHuman: z
+    .object({ occurrence: z.string(), summary: z.string(), noteId: z.string() })
+    .nullable()
+    .optional(),
   taskId,
   reasonRuns: z.partialRecord(attentionReason, z.array(run)),
   reviewedHead: sha.nullable(),

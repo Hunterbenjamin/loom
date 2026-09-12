@@ -43,6 +43,7 @@ export interface TerminalBridge {
 }
 
 export interface HostBridge {
+  notify?(request: { id: string; title: string; body: string }): void;
   connection(): Promise<ConnectionConfig>;
   /** Called once, after the first list paint. The cold-start measurement reads it. */
   interactive(): void;

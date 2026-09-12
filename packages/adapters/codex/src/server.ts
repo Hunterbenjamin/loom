@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
+import type { AdapterDiagnostic } from "@loom/core";
 import { z } from "zod";
 import {
   inspectProcess,
@@ -58,6 +59,7 @@ export class TaskServer {
      * file. Absent source: no link, and the first turn fails with Codex's own auth error.
      */
     readonly credentialsSource: string = join(homedir(), ".codex", "auth.json"),
+    readonly onDiagnostic?: (event: AdapterDiagnostic) => void,
   ) {
     if (!isAbsolute(directory))
       throw new Error("Codex task directory must be absolute");
@@ -179,7 +181,15 @@ export class TaskServer {
         : info
           ? await socketOwner(this.socket)
           : null;
-    if (stale) await terminateOwned(stale, this.socket);
+    if (stale) {
+      this.onDiagnostic?.({
+        kind: "stale_process",
+        resource: "codex_server",
+        sessionId: null,
+        message: "Recovering a verified stale private task app-server process",
+      });
+      await terminateOwned(stale, this.socket);
+    }
     await this.removeFiles();
     this.owner = null;
     return false;

@@ -2,7 +2,8 @@
 // no durable task state: the coordinator remains the owner.
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, Notification } from "electron";
+import { z } from "zod";
 import { connectionFromEnvironment } from "../shared/connection.js";
 import {
   type PtyExit,
@@ -33,6 +34,25 @@ interface Session {
 }
 
 const sessions = new Map<string, Session>();
+const notified = new Set<string>();
+ipcMain.on("app:notify", (_event, raw: unknown) => {
+  const parsed = z
+    .strictObject({
+      id: z.string().max(10000),
+      title: z.string().max(200),
+      body: z.string().max(8000),
+    })
+    .safeParse(raw);
+  if (!parsed.success || notified.has(parsed.data.id)) return;
+  notified.add(parsed.data.id);
+  if (notified.size > 10000)
+    notified.delete(notified.values().next().value as string);
+  if (Notification.isSupported())
+    new Notification({
+      title: parsed.data.title,
+      body: parsed.data.body,
+    }).show();
+});
 
 /**
  * A plain login shell by default. `LOOM_ATTACH_PANE=<session>:<window-id>` attaches to a pane on

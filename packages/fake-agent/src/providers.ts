@@ -221,6 +221,9 @@ export class FakeProviders {
       s.value.lastError = nativeError;
       s.value.status = outcome === "failed" ? "systemError" : "idle";
     } else {
+      if (s.value.headless)
+        s.value.headless.completedTurns =
+          (s.value.headless.completedTurns ?? 0) + 1;
       if (s.value.agentsEntry)
         s.value.agentsEntry.status = s.value.agentsEntry.rawStatus = "idle";
       if (outcome === "completed")
@@ -306,6 +309,9 @@ export class FakeProviders {
         },
       ];
     } else {
+      if (s.value.headless)
+        s.value.headless.completedTurns =
+          (s.value.headless.completedTurns ?? 0) + 1;
       if (s.value.agentsEntry)
         s.value.agentsEntry.status = s.value.agentsEntry.rawStatus = "waiting";
       s.value.hooks.pendingDialog = {
@@ -494,6 +500,13 @@ export class FakeProviders {
     sendHeadless: async (req) => {
       this.enqueue(req.sessionId, req.text);
     },
+    stopHeadless: async (id) => {
+      const s = this.sessions.get(id);
+      if (s?.value.provider === "claude") {
+        s.value.agentsEntry = null;
+        s.value.headless = { exited: true, exitCode: 0, error: null };
+      }
+    },
     interruptHeadless: async (id) => {
       this.finish(id, "interrupted");
     },
@@ -507,7 +520,9 @@ export class FakeProviders {
       this.event(id);
     },
     headlessState: async (id) => {
-      const v = this.get(id).value;
+      const found = this.sessions.get(id);
+      if (!found) return null;
+      const v = found.value;
       if (v.provider !== "claude") throw new Error("Wrong provider");
       return structuredClone(v.headless);
     },

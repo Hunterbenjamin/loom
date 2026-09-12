@@ -40,6 +40,7 @@ export const hookPayloadSchema = z.looseObject({
   cwd: z.string().optional(),
   prompt_id: z.string().optional(),
   tool_name: z.string().optional(),
+  tool_input: z.object({ command: z.string().optional() }).optional(),
   tool_use_id: z.string().optional(),
   agent_id: z.string().optional(),
   agent_type: z.string().optional(),
@@ -157,6 +158,15 @@ export function foldHookSummary(receipts: HookReceipt[]): ClaudeHookSummary {
         summary.pendingDialog = {
           kind: tool === ASK_QUESTION_TOOL ? "input" : "permission",
           tool,
+          ...(receipt.event === "PermissionRequest" &&
+          tool === "Bash" &&
+          payload.tool_input?.command &&
+          payload.tool_use_id
+            ? {
+                command: payload.tool_input.command,
+                requestId: payload.tool_use_id,
+              }
+            : {}),
           at: receivedAt,
         };
         break;

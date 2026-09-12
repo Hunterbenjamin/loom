@@ -86,6 +86,12 @@ export type Action = ActionBase &
         kind: "answer_pane_prompt";
         runId: RunId;
         choice: number | "enter" | "escape";
+        expectedDialog?: {
+          requestId: string;
+          at: IsoTime;
+          command: string;
+          sessionEpoch: number;
+        };
         text?: string;
       }
     | {
@@ -107,6 +113,7 @@ export type Action = ActionBase &
       }
     | {
         kind: "open_pr";
+        rescueHeadSha?: Sha;
         repoId: RepoId;
         branch: string;
         baseBranch: string;

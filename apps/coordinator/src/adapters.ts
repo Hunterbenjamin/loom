@@ -12,6 +12,11 @@ import type {
 } from "@loom/core";
 
 export interface Adapters {
+  subscribeDiagnostics?(
+    listener: (
+      event: import("@loom/core").AdapterDiagnostic & { taskId: string | null },
+    ) => void,
+  ): () => void;
   git: GitAdapter;
   github: GitHubAdapter;
   paneHost: PaneHost;

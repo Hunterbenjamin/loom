@@ -24,6 +24,7 @@ import { leadCommand, serveHttp } from "@loom/mcp";
 import type { Change, Subscription } from "@loom/protocol";
 import { command as commandSchema } from "@loom/protocol";
 import type { Store } from "@loom/store";
+import { z } from "zod";
 import type { Adapters } from "./adapters.js";
 import {
   COORDINATOR_VERSION,
@@ -37,6 +38,7 @@ import { LeadSession } from "./lead.js";
 import { Loop } from "./loop.js";
 import { createMcpHost } from "./mcp-host.js";
 import { observe as observeOwners, PullRequestCache } from "./observe.js";
+import { OperatorSession } from "./operator.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
 import { ProtocolServer } from "./server.js";
@@ -70,6 +72,7 @@ export interface CoordinatorOptions {
 }
 
 export interface CreateTaskInput {
+  signature?: string;
   repoId: RepoId;
   title: string;
   description: string;
@@ -85,6 +88,7 @@ export class Coordinator {
   readonly adapters: Adapters;
   readonly recipes: RecipeStore;
   readonly lead: LeadSession;
+  readonly operator: OperatorSession;
   private leadPoll: NodeJS.Timeout | null = null;
   private pollingLead = false;
   readonly loop: Loop;
@@ -135,13 +139,50 @@ export class Coordinator {
       now: () => this.now(),
     });
 
+    this.operator = new OperatorSession({
+      store: this.store,
+      adapters: this.adapters,
+      config: this.config,
+      mcpEntry: (token) => this.launchDeps().mcpEntry(token),
+      now: () => this.now(),
+      observe: (state) => this.observe(state, []),
+      workflow: (state) => this.workflow.read(this.repo(state.task.id).root),
+      reconcile: (taskId) => this.loop.pass(taskId),
+      enqueue: (taskId) => this.loop.enqueue(taskId),
+      changed: async (taskId) => {
+        await this.publishOperator();
+        if (taskId) this.protocol.publish(await this.refreshTask(taskId));
+      },
+      createBug: (title, description, signature) =>
+        this.createTask({
+          repoId: this.config.operator.repoId as RepoId,
+          title,
+          description,
+          signature,
+        }),
+    });
+    const diagnosticSubscription = this.adapters.subscribeDiagnostics?.(
+      (event) => {
+        if (event.sessionId && event.sessionId === this.operator.sessionId)
+          return;
+        this.operator.failure(
+          "stale_process",
+          event.taskId,
+          event.message,
+          event.sessionId,
+        );
+      },
+    );
+    if (diagnosticSubscription) this.timers.add(diagnosticSubscription);
     this.loop = new Loop({
       store: this.store,
       drainExecutor: () => this.executor.drain(),
       observe: (state, inputs) => this.observe(state, inputs),
       onCommit: ({ taskId, result }) => this.onCommit(taskId, result),
-      onError: (error, taskId) =>
-        this.log(`Pass for ${taskId} failed: ${error.message}`),
+      onError: (error, taskId) => {
+        this.log(`Pass for ${taskId} failed: ${error.message}`);
+        this.operator.failure("pass_failed", taskId, error.message);
+      },
     });
     this.executor = new Executor({
       store: this.store,
@@ -194,8 +235,10 @@ export class Coordinator {
   async start(): Promise<RecoveryReport> {
     await this.recipes.load();
     await this.lead.load();
+    await this.operator.load();
     // Stable instance configuration wins; only ephemeral instances reuse the Lead recipe's port.
-    const mcpPort = this.config.mcpPort || this.lead.mcpPort;
+    const mcpPort =
+      this.config.mcpPort || this.lead.mcpPort || this.operator.mcpPort;
     try {
       this.mcp = await serveHttp(this.mcpOptions(), mcpPort);
     } catch (error) {
@@ -222,6 +265,9 @@ export class Coordinator {
       this.store.outbox.runningAtStartup(),
     );
     for (const taskId of report.reconciled) this.loop.enqueue(taskId);
+    for (const task of this.store.tasks())
+      this.operator.capture(this.store.loadTaskState(task.id));
+    await this.operator.recover();
     this.subscribeHints();
     if (this.options.serveProtocol !== false) await this.protocol.start();
     return report;
@@ -231,6 +277,10 @@ export class Coordinator {
   run(): void {
     this.leadPoll = setInterval(() => {
       void this.publishLead();
+      void this.operator
+        .pump()
+        .then(() => this.publishOperator())
+        .catch(() => {});
     }, 1500);
     this.leadPoll.unref?.();
     this.pump = setInterval(() => {
@@ -251,6 +301,7 @@ export class Coordinator {
     for (const cancel of this.timers) cancel();
     this.timers.clear();
     this.publishFailures.clear();
+    await this.operator.close();
     await this.protocol.stop();
     await this.mcp?.close();
     this.mcp = null;
@@ -297,6 +348,7 @@ export class Coordinator {
       branch: null,
       prNumber: null,
       attention: EMPTY_ATTENTION,
+      ...(input.signature ? { signature: input.signature } : {}),
     };
     const state = this.store.createTask(task);
     this.loop.enqueue(id);
@@ -361,7 +413,13 @@ export class Coordinator {
       host,
       buildAnchor,
       resolveToken: (token: string) =>
-        this.lead.resolve(token) ?? resolveToken(token),
+        this.operator.resolve(token) ??
+        this.lead.resolve(token) ??
+        resolveToken(token),
+      operatorHost: {
+        invoke: (name: string, input: Record<string, unknown>) =>
+          this.operator.invoke(name, input),
+      },
       leadHost: {
         invoke: async (name: string, input: Record<string, unknown>) => {
           if (name === "list_tasks") return this.store.tasks();
@@ -418,7 +476,9 @@ export class Coordinator {
               .all()
               .flatMap((recipe) => (recipe.sessionId ? [recipe.sessionId] : []))
               .concat(
-                this.lead.sessionId ? [this.lead.sessionId as never] : [],
+                [this.lead.sessionId, this.operator.sessionId].filter(
+                  Boolean,
+                ) as never[],
               ),
           ),
         coolingDownUntil: () => ({
@@ -450,6 +510,7 @@ export class Coordinator {
   }
 
   private onCommit(taskId: TaskId, result: ReconcileResult): void {
+    this.operator.capture(result.next);
     void this.publishTask(taskId, result).catch((error) => {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -462,6 +523,7 @@ export class Coordinator {
           `Could not publish ${taskId}: ${errorMessage} (further failures for this task/cause suppressed)`,
         );
       }
+      this.operator.failure("publish_failed", taskId, errorMessage);
     });
   }
 
@@ -503,6 +565,17 @@ export class Coordinator {
     return changes;
   }
 
+  private async publishOperator(): Promise<void> {
+    this.protocol.publish(
+      this.published.replace("operator", null, [
+        {
+          collection: "operator",
+          key: "operator",
+          value: this.operator.state(),
+        },
+      ]),
+    );
+  }
   private async publishLead(): Promise<void> {
     if (this.pollingLead) return;
     this.pollingLead = true;
@@ -522,6 +595,9 @@ export class Coordinator {
 
   private async refreshAll(scope: readonly Subscription[]): Promise<void> {
     await this.ensure(scope);
+    this.published.replace("operator", null, [
+      { collection: "operator", key: "operator", value: this.operator.state() },
+    ]);
     this.published.replace("lead", null, [
       { collection: "lead", key: "lead", value: await this.lead.state() },
     ]);
@@ -569,6 +645,38 @@ export class Coordinator {
     } & Record<string, unknown>;
     try {
       switch (command.kind) {
+        case "claim_notification": {
+          const note = this.store.operator.noteById(String(command.noteId));
+          const notice = this.store.operator.atomic(() => {
+            if (
+              !note?.forHuman ||
+              this.store.operator.get(`notified:${note.id}`, z.boolean())
+            )
+              return null;
+            this.store.operator.set(`notified:${note.id}`, true);
+            return { id: note.id, title: "Loom needs you", body: note.body };
+          });
+          return { ok: true, result: { kind: "notification", notice } };
+        }
+        case "open_operator_session":
+          await this.operator.open();
+          await this.publishOperator();
+          return {
+            ok: true,
+            result: { kind: "operator_state", state: this.operator.state() },
+          };
+        case "stop_operator_session":
+          await this.operator.stop();
+          await this.publishOperator();
+          return {
+            ok: true,
+            result: { kind: "operator_state", state: this.operator.state() },
+          };
+        case "operator_status":
+          return {
+            ok: true,
+            result: { kind: "operator_state", state: this.operator.state() },
+          };
         case "open_lead_session": {
           const target = await this.lead.open();
           await this.publishLead();

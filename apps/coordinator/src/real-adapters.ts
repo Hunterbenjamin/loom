@@ -25,6 +25,15 @@ export async function createRealAdapters(
   store: Store,
   onError: (error: Error) => void = () => {},
 ): Promise<Adapters> {
+  type Diagnostic = import("@loom/core").AdapterDiagnostic & {
+    taskId: string | null;
+  };
+  const listeners = new Set<(event: Diagnostic) => void>();
+  const pending: Diagnostic[] = [];
+  const diagnostic = (event: Diagnostic) => {
+    if (!listeners.size) pending.push(event);
+    for (const listener of listeners) listener(event);
+  };
   const git = createGitAdapter();
   const github = createGitHubAdapter({
     excludedAuthors: config.excludedAuthors,
@@ -41,6 +50,16 @@ export async function createRealAdapters(
       log: store.hooks,
       receiver: { port: config.hookPort },
       onError,
+      onDiagnostic: (event) =>
+        diagnostic({
+          ...event,
+          taskId:
+            store
+              .tasks()
+              .find((t) =>
+                store.runs(t.id).some((r) => r.sessionId === event.sessionId),
+              )?.id ?? null,
+        }),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -51,10 +70,21 @@ export async function createRealAdapters(
     }
     throw error;
   }
-  const codex = codexPerTask(store.dataDirectory, (_taskId, taskDirectory) =>
-    createCodexAdapter({ taskDirectory, executable: config.codexExecutable }),
+  const codex = codexPerTask(store.dataDirectory, (taskId, taskDirectory) =>
+    createCodexAdapter({
+      taskDirectory,
+      executable: config.codexExecutable,
+      onDiagnostic: (event) => diagnostic({ ...event, taskId }),
+    }),
   );
   return {
+    subscribeDiagnostics(listener) {
+      listeners.add(listener);
+      for (const event of pending.splice(0)) listener(event);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
     git,
     github,
     paneHost,
