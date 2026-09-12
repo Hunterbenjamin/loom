@@ -1,6 +1,7 @@
 // Fresh reads from every owner, outside any transaction (design §5.1 step 3). Nothing here
 // decides anything: a failed read is `ok: false`, which core treats as unknown, never as proof.
 
+import { isStaleEntry } from "@loom/adapter-claude";
 import type {
   CapacityObservation,
   ClaudeSessionObservation,
@@ -158,6 +159,8 @@ export async function observeExternal(
   ]);
   const external: ExternalSessionObservation[] = [];
   for (const entry of sessions) {
+    // Filter out stale entries (dead process)
+    if (isStaleEntry(entry)) continue;
     if (known.has(`claude ${entry.sessionId}`)) continue;
     let cwd: WorktreePath;
     try {

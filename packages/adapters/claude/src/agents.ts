@@ -54,6 +54,37 @@ export const toAgentsEntry = (raw: RawAgentsEntry): ClaudeAgentsEntry => ({
 export const parseAgentsOutput = (stdout: string): ClaudeAgentsEntry[] =>
   agentsOutputSchema.parse(JSON.parse(stdout)).map(toAgentsEntry);
 
+/**
+ * Check if a process ID is alive. Uses process.kill(pid, 0) to test existence without sending a signal.
+ * Returns true if the process exists, false if it definitely doesn't. On permission errors, returns true
+ * (conservative: assume the process exists if we can't verify).
+ */
+export function isPidAlive(pid: number | null | undefined): boolean {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // ESRCH: no such process
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") {
+      return false;
+    }
+    // EPERM or other errors: assume it's alive (conservative)
+    return true;
+  }
+}
+
+/**
+ * Check if a Claude registry entry is stale. A stale entry is one where the pid is not alive.
+ * Returns true if the entry is stale (should be filtered out), false if it's live.
+ */
+export function isStaleEntry(entry: ClaudeAgentsEntry): boolean {
+  // If pid is explicitly set to null, we can't determine if it's stale from pid alone.
+  // For now, we trust the agents output for null pids (conservative).
+  if (entry.pid === null) return false;
+  return !isPidAlive(entry.pid);
+}
+
 export interface AgentsReaderOptions {
   /** Defaults to `claude` on PATH. */
   binary?: string;
