@@ -158,8 +158,28 @@ async function open(
   store.putRepo(repo);
   // Core picks the branch name, and the fake is scoped to one branch, so the first call fixes it.
   const github = new FakeGitHub(clock, repo.github, "loom/pending", null);
-  const scope = <T extends { branch: string }>(request: T): T => {
+  // A real GitHub survives a coordinator restart; this in-memory one does not, so on the first
+  // call after a restart it reads the real remote back, which is what GitHub would already know.
+  let seeded = false;
+  const scope = async <T extends { branch: string }>(
+    request: T,
+  ): Promise<T> => {
     (github as unknown as { branch: string }).branch = request.branch;
+    if (!seeded) {
+      seeded = true;
+      try {
+        github.setHead(
+          (
+            await exec("git", ["rev-parse", `origin/${request.branch}`], {
+              cwd: repoRoot,
+              env: { ...process.env, ...GIT_ENVIRONMENT },
+            })
+          ).stdout.trim() as Sha,
+        );
+      } catch {
+        // The branch has never been pushed; the fake has nothing to catch up on.
+      }
+    }
     return request;
   };
   const gitAdapter = createGitAdapter();
@@ -169,6 +189,7 @@ async function open(
     ...gitAdapter,
     push: async (request) => {
       const result = await gitAdapter.push(request);
+      seeded = true;
       github.setHead(result.remoteHeadSha);
       return result;
     },
@@ -176,8 +197,10 @@ async function open(
   const adapters: Adapters = {
     git: git2,
     github: {
-      findPullRequest: (request) => github.findPullRequest(scope(request)),
-      openPullRequest: (request) => github.openPullRequest(scope(request)),
+      findPullRequest: async (request) =>
+        github.findPullRequest(await scope(request)),
+      openPullRequest: async (request) =>
+        github.openPullRequest(await scope(request)),
       mergePullRequest: (request) => github.mergePullRequest(request),
       disableAutoMerge: (request) => github.disableAutoMerge(request),
     },
@@ -197,6 +220,23 @@ async function open(
     serveProtocol: options.serveProtocol ?? false,
   });
   await coordinator.start();
+
+  // An interactive Claude session is created by the process in the pane, which is exactly what the
+  // pane host cannot report (spike 06 §4). The test stands in for that process: it creates the fake
+  // session under the ID Loom recorded before launch, which is what a real `--session-id` does.
+  const ensurePane = paneHost.ensurePane.bind(paneHost);
+  paneHost.ensurePane = async (request) => {
+    const ref = await ensurePane(request);
+    for (const task of store.tasks())
+      for (const run of store.loadTaskState(task.id).runs)
+        if (
+          run.id === request.runId &&
+          run.provider === "claude" &&
+          run.sessionId
+        )
+          providers.create("claude", request.cwd, run.sessionId, "interactive");
+    return ref;
+  };
 
   // Interactive Claude sends reach the provider only because this test connects the pane write to
   // the session; the pane host itself records bytes and can neither name a session nor confirm one.

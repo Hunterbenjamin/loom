@@ -1,0 +1,75 @@
+[
+  {
+    "name": "planner",
+    "agent": {
+      "provider": "claude",
+      "role": "planner",
+      "mode": "headless"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "tool": "submit_plan",
+        "input": {
+          "plan": {
+            "goal": "Change the example file",
+            "nonGoals": [],
+            "steps": [
+              {
+                "title": "Edit",
+                "detail": "Write the new value"
+              }
+            ],
+            "areas": ["example.txt"],
+            "acceptanceCriteria": ["example.txt holds the new value"],
+            "testPlan": ["read the file"],
+            "risks": [],
+            "openQuestions": [],
+            "suggestedImplementer": null
+          }
+        }
+      },
+      {
+        "status": "idle"
+      }
+    ]
+  },
+  {
+    "name": "implementer sees a duplicate hint and a rate limit",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "interactive"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "status": "idle"
+      },
+      {
+        "duplicate": "last_event"
+      },
+      {
+        "rateLimit": {
+          "resetsInMs": 5000
+        }
+      },
+      {
+        "stall": 5000
+      },
+      {
+        "tool": "report_progress",
+        "input": {
+          "summary": "Alive",
+          "stepIndex": null,
+          "decisions": [],
+          "testResults": []
+        }
+      }
+    ]
+  }
+]
