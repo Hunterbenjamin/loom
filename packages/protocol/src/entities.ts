@@ -140,6 +140,7 @@ export const task = z.strictObject({
   providers: providerRules,
   blockedBy: z.array(taskId),
   budgetMinutes: z.number().int().positive().nullable(),
+  size: z.enum(["small", "normal"]).default("normal"),
   createdAt: isoTime,
   updatedAt: isoTime,
   worktreePath: worktreePath.nullable(),

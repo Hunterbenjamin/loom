@@ -439,6 +439,7 @@ export function createStore(
         },
         blockedBy: [],
         budgetMinutes: null,
+        size: "normal",
         createdAt: at,
         updatedAt: at,
         worktreePath: null,
