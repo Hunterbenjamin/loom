@@ -168,46 +168,50 @@ describe.skipIf(!available)("tmux pane host", () => {
     await host.closePane(second);
   });
 
-  it("reports a pane's exit natively and hints within a second", async () => {
-    const workspace = await host.ensureWorkspace({
-      taskId: "t-exit" as TaskId,
-      cwd,
-      label: "exit",
-    });
-    let hints = 0;
-    const unsubscribe = host.subscribe(() => {
-      hints++;
-    });
-    const ref = await host.ensurePane({
-      workspaceId: workspace.workspaceId,
-      runId: "run-exit" as RunId,
-      cwd,
-      executable: "/bin/sh",
-      args: ["-c", "read line; exit 7"],
-      env: paneEnv(),
-    });
-    await until(async () => (await host.getPane(ref))?.dead === false);
-    const before = hints;
-    const at = Date.now();
-    await host.pasteText(ref, "go");
-    const snapshot = await until(async () => {
-      const pane = await host.getPane(ref);
-      return pane?.dead ? pane : null;
-    });
-    const deadAt = Date.now();
-    expect(snapshot.exitCode).toBe(7);
-    expect(snapshot.cwd).toBeNull();
-    // `pane_start_path` outlives the process, which is what keeps the task join working.
-    expect(snapshot.startCwd).toBe(await realpath(dir));
-    // The hook bumps a global option; the subscription reports it at most a second later.
-    await until(async () => hints > before, 4000);
-    // The brief asks for this latency; it is reported rather than asserted on.
-    console.log(
-      `pane exit: dead in ${deadAt - at} ms, hint within ${Date.now() - deadAt} ms of that`,
-    );
-    unsubscribe();
-    await host.closePane(ref);
-  });
+  // Real clients and sub-second exit hints need a terminal and an idle machine; CI has neither.
+  it.skipIf(process.env.CI)(
+    "reports a pane's exit natively and hints within a second",
+    async () => {
+      const workspace = await host.ensureWorkspace({
+        taskId: "t-exit" as TaskId,
+        cwd,
+        label: "exit",
+      });
+      let hints = 0;
+      const unsubscribe = host.subscribe(() => {
+        hints++;
+      });
+      const ref = await host.ensurePane({
+        workspaceId: workspace.workspaceId,
+        runId: "run-exit" as RunId,
+        cwd,
+        executable: "/bin/sh",
+        args: ["-c", "read line; exit 7"],
+        env: paneEnv(),
+      });
+      await until(async () => (await host.getPane(ref))?.dead === false);
+      const before = hints;
+      const at = Date.now();
+      await host.pasteText(ref, "go");
+      const snapshot = await until(async () => {
+        const pane = await host.getPane(ref);
+        return pane?.dead ? pane : null;
+      });
+      const deadAt = Date.now();
+      expect(snapshot.exitCode).toBe(7);
+      expect(snapshot.cwd).toBeNull();
+      // `pane_start_path` outlives the process, which is what keeps the task join working.
+      expect(snapshot.startCwd).toBe(await realpath(dir));
+      // The hook bumps a global option; the subscription reports it at most a second later.
+      await until(async () => hints > before, 4000);
+      // The brief asks for this latency; it is reported rather than asserted on.
+      console.log(
+        `pane exit: dead in ${deadAt - at} ms, hint within ${Date.now() - deadAt} ms of that`,
+      );
+      unsubscribe();
+      await host.closePane(ref);
+    },
+  );
 
   it("pastes 20 KB in byte-bounded chunks, byte-identical, with CRLF normalized", async () => {
     const workspace = await host.ensureWorkspace({
@@ -264,56 +268,59 @@ describe.skipIf(!available)("tmux pane host", () => {
     await host.closePane(ref);
   });
 
-  it("lets two clients watch one pane, and two views of one task pick windows apart", async () => {
-    const workspace = await host.ensureWorkspace({
-      taskId: "t-view" as TaskId,
-      cwd,
-      label: "view",
-    });
-    const panes: PaneRef[] = [];
-    for (const runId of ["run-a", "run-b"] as RunId[])
-      panes.push(
-        await host.ensurePane({
-          workspaceId: workspace.workspaceId,
-          runId,
-          cwd,
-          executable: "/bin/sh",
-          args: ["-c", "sleep 60"],
-          env: paneEnv(),
-        }),
-      );
-    const [a, b] = panes as [PaneRef, PaneRef];
-    // Two ordinary clients on one pane, plus a third viewing a different run of the same task.
-    const clients = [
-      attach(host.attachArgs(a)),
-      attach(host.attachArgs(a)),
-      attach(host.attachArgs(b)),
-    ];
-    try {
-      // Two ordinary clients share one pane: no takeover, no eviction.
-      await until(async () => (await host.listClients(a)).length >= 2);
-      expect((await host.listClients(a)).length).toBeGreaterThanOrEqual(2);
-      // The task's two views are grouped sessions, so each has its own current window.
-      const windowOf = async (ref: PaneRef) =>
-        (
-          await tmux(
-            "display-message",
-            "-p",
-            "-t",
-            `${ref.sessionName}-v${ref.paneId.slice(1)}`,
-            "#{window_id}",
-          )
-        ).trim();
-      await until(async () => (await windowOf(b)) === b.windowId);
-      expect(await windowOf(a)).toBe(a.windowId);
-      expect(await windowOf(b)).toBe(b.windowId);
-      expect(a.windowId).not.toBe(b.windowId);
-    } finally {
-      for (const client of clients) client.kill("SIGKILL");
-      await delay(200);
-      for (const ref of panes) await host.closePane(ref);
-    }
-  });
+  it.skipIf(process.env.CI)(
+    "lets two clients watch one pane, and two views of one task pick windows apart",
+    async () => {
+      const workspace = await host.ensureWorkspace({
+        taskId: "t-view" as TaskId,
+        cwd,
+        label: "view",
+      });
+      const panes: PaneRef[] = [];
+      for (const runId of ["run-a", "run-b"] as RunId[])
+        panes.push(
+          await host.ensurePane({
+            workspaceId: workspace.workspaceId,
+            runId,
+            cwd,
+            executable: "/bin/sh",
+            args: ["-c", "sleep 60"],
+            env: paneEnv(),
+          }),
+        );
+      const [a, b] = panes as [PaneRef, PaneRef];
+      // Two ordinary clients on one pane, plus a third viewing a different run of the same task.
+      const clients = [
+        attach(host.attachArgs(a)),
+        attach(host.attachArgs(a)),
+        attach(host.attachArgs(b)),
+      ];
+      try {
+        // Two ordinary clients share one pane: no takeover, no eviction.
+        await until(async () => (await host.listClients(a)).length >= 2);
+        expect((await host.listClients(a)).length).toBeGreaterThanOrEqual(2);
+        // The task's two views are grouped sessions, so each has its own current window.
+        const windowOf = async (ref: PaneRef) =>
+          (
+            await tmux(
+              "display-message",
+              "-p",
+              "-t",
+              `${ref.sessionName}-v${ref.paneId.slice(1)}`,
+              "#{window_id}",
+            )
+          ).trim();
+        await until(async () => (await windowOf(b)) === b.windowId);
+        expect(await windowOf(a)).toBe(a.windowId);
+        expect(await windowOf(b)).toBe(b.windowId);
+        expect(a.windowId).not.toBe(b.windowId);
+      } finally {
+        for (const client of clients) client.kill("SIGKILL");
+        await delay(200);
+        for (const ref of panes) await host.closePane(ref);
+      }
+    },
+  );
 
   it("scopes pane refs to a host generation across a kill-server", async () => {
     const workspace = await host.ensureWorkspace({
