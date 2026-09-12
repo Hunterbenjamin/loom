@@ -23,6 +23,12 @@ export const HTTP_HOOK_EVENTS = HOOK_EVENTS.filter(
 export type { McpServerEntry } from "@loom/core";
 
 export interface ClaudeSettingsFile {
+  /**
+   * Loom's own MCP tools are pre-allowed: they are the sanctioned channel, every guard lives on
+   * the server, and a headless run has nobody to answer a permission prompt. Without this the
+   * first real planner stopped at `submit_plan` with "requested permissions ... not granted".
+   */
+  permissions: { allow: string[] };
   hooks: Record<
     string,
     {
@@ -97,7 +103,10 @@ export function buildSettings(request: SettingsRequest): ClaudeSettingsFile {
       },
     ];
   }
-  return { hooks };
+  return {
+    permissions: { allow: [`mcp__${request.mcpServerName}`] },
+    hooks,
+  };
 }
 
 export const buildMcpConfig = (request: SettingsRequest): McpConfigFile => ({

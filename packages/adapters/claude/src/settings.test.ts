@@ -23,7 +23,14 @@ const request: SettingsRequest = {
 
 describe("per-run settings", () => {
   test("every event is registered", () => {
-    expect(Object.keys(buildSettings(request)).sort()).toEqual(["hooks"]);
+    expect(Object.keys(buildSettings(request)).sort()).toEqual([
+      "hooks",
+      "permissions",
+    ]);
+    // Loom's tools are pre-allowed at server level; a headless run cannot answer a prompt.
+    expect(buildSettings(request).permissions).toEqual({
+      allow: [`mcp__${request.mcpServerName}`],
+    });
     expect(Object.keys(buildSettings(request).hooks).sort()).toEqual(
       [...HOOK_EVENTS].sort(),
     );

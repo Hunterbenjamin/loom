@@ -99,8 +99,14 @@ export class HeadlessRun {
       ...(request.readOnly
         ? { disallowedTools: [...READ_ONLY_DISALLOWED_TOOLS] }
         : {}),
-      // Claude Code ignores `mcpServers` in a settings file, so they are passed natively here.
-      ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
+      // Claude Code ignores `mcpServers` in a settings file, so they are passed natively here,
+      // and their tools are allowed up front: nobody can grant a permission to a headless run.
+      ...(Object.keys(mcpServers).length > 0
+        ? {
+            mcpServers,
+            allowedTools: Object.keys(mcpServers).map((name) => `mcp__${name}`),
+          }
+        : {}),
     };
     this.#query = query({ prompt: this.#input, options });
     void this.#drain();
