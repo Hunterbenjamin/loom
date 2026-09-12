@@ -31,6 +31,7 @@ vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     cols = 100;
     rows = 24;
+    options = {};
     unicode = { activeVersion: "" };
     loadAddon() {}
     open() {}
@@ -84,6 +85,8 @@ for (const live of [false, true])
       off: vi.fn(),
     };
     window.loomHost = {
+      mode: vi.fn(),
+      openWindow: vi.fn(),
       interactive() {},
       connection: vi.fn(),
       metrics: vi.fn(),
@@ -115,7 +118,10 @@ for (const live of [false, true])
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
-    expect(spawn).toHaveBeenCalledTimes(1);
+    await vi.waitFor(async () => {
+      await act(async () => {});
+      expect(spawn).toHaveBeenCalledTimes(1);
+    });
     expect(spawn.mock.calls[0]).toMatchObject([
       { label: "Lead", lead: true, runId: null },
     ]);

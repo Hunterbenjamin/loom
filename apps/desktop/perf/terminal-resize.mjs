@@ -79,12 +79,24 @@ try {
       window.loom.term &&
       document.querySelector(".terminal-bar").textContent.includes("pid "),
   );
-  await page.waitForFunction(() =>
-    window.loom.term?.buffer.active
-      .getLine(0)
-      ?.translateToString()
-      .includes("00000"),
-  );
+  await page
+    .waitForFunction(() =>
+      window.loom.term?.buffer.active
+        .getLine(0)
+        ?.translateToString()
+        .includes("00000"),
+    )
+    .catch(async (error) => {
+      console.error(
+        await page.evaluate(() => ({
+          status: document.querySelector(".terminal-bar")?.textContent,
+          lines: Array.from({ length: window.loom.term?.rows ?? 0 }, (_, i) =>
+            window.loom.term.buffer.active.getLine(i)?.translateToString(),
+          ),
+        })),
+      );
+      throw error;
+    });
 
   for (const [width, height] of [
     [1440, 900],

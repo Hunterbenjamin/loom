@@ -84,3 +84,14 @@ const host = createTmuxPaneHost({
 `pnpm test` runs them against a throwaway server of their own, `-L loom-test-<pid>`, killed
 afterwards; they never name another socket and never start an agent. They are skipped when tmux
 is not installed. Real-provider probes stay in spike 06 and are not run from here.
+
+Workbench inventory includes session ID, window name and pane title as native metadata. It excludes
+the monitor and grouped view aliases, and retains dead panes. `listClients` counts clients in the
+canonical session group, not exact pane-focused viewers. `createScratch` uses its own UUID key,
+existing session, executable argv and allowlisted environment without minting a run.
+
+Attach clients on tmux 3.7c use `active-pane`. Selecting the next pane then the requested pane after
+attach initializes client-local pane selection even when the requested pane was already globally
+active (tmux otherwise returns early). The owned PTY integration test verifies two sibling shells
+receive distinct input and survive a viewer detaching. Tests require Python 3 for this PTY bridge;
+they never read or type into existing user panes.
