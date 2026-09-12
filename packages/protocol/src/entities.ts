@@ -63,7 +63,6 @@ export const blockedReason = z.enum([
   "review_not_converging",
   "provider_cooling_down",
   "pr_closed",
-  "trust_dialog",
 ]);
 export const blockedFlag = z.strictObject({
   reason: blockedReason,
@@ -89,7 +88,6 @@ export const attentionReason = z.enum([
   "question",
   "provider_permission",
   "provider_input",
-  "provider_dialog",
   "blocked",
   "failed",
   "run_vanished",
@@ -157,7 +155,7 @@ export const worktree = z.strictObject({
   baseBranch: z.string().min(1),
   baseSha: sha,
   portSlot: count.nullable(),
-  herdrWorkspaceId: z.string().min(1).nullable(),
+  paneWorkspaceId: z.string().min(1).nullable(),
   createdAt: isoTime,
   removedAt: isoTime.nullable(),
   git: z
@@ -182,12 +180,7 @@ export const runStatus = z.enum([
   "ended",
   "unknown",
 ]);
-export const runBlockedOn = z.enum([
-  "permission",
-  "input",
-  "dialog",
-  "rate_limit",
-]);
+export const runBlockedOn = z.enum(["permission", "input", "rate_limit"]);
 export const providerRequestKind = z.enum([
   "command_approval",
   "file_approval",
@@ -221,10 +214,12 @@ export const run = z.strictObject({
   sessionId: providerSessionId.nullable(),
   sessionEpoch: count,
   codexGeneration: count.nullable(),
-  herdr: z
+  pane: z
     .strictObject({
-      agentName: z.string().min(1),
-      paneId: z.string().min(1).nullable(),
+      hostGeneration: z.string().min(1),
+      sessionName: z.string().min(1),
+      windowId: z.string().min(1),
+      paneId: z.string().min(1),
     })
     .nullable(),
   status: runStatus,
@@ -263,7 +258,7 @@ export const run = z.strictObject({
 export const sendVia = z.enum([
   "codex_turn_start",
   "codex_turn_steer",
-  "herdr_prompt",
+  "pane_paste",
   "claude_sdk",
 ]);
 export const message = z.strictObject({

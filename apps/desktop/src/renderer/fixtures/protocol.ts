@@ -145,7 +145,7 @@ export function toSnapshot(fixture: Snapshot): {
   }
 
   const runTargets: RunTarget[] = fixture.runs
-    .filter((run) => run.herdr !== null && run.endedAt === null)
+    .filter((run) => run.pane !== null && run.endedAt === null)
     .map((run) => ({
       runId: run.id,
       taskId: run.taskId,
@@ -153,15 +153,22 @@ export function toSnapshot(fixture: Snapshot): {
       attach: {
         // Whichever host runs the pane fills this in; the shell predates the tmux one.
         kind: "pane_host",
-        argv: ["herdr", "agent", "attach", run.herdr?.agentName ?? ""],
+        argv: [
+          "tmux",
+          "-L",
+          "loom-dev",
+          "attach",
+          "-t",
+          `${run.pane?.sessionName ?? ""}:${run.pane?.windowId ?? ""}`,
+        ],
         cwd: canonical(run.worktreePath),
         env: {},
       },
       pane: {
         hostGeneration: 1,
-        sessionName: run.herdr?.agentName ?? "",
-        windowId: null,
-        paneId: run.herdr?.paneId ?? "%0",
+        sessionName: run.pane?.sessionName ?? "",
+        windowId: run.pane?.windowId ?? null,
+        paneId: run.pane?.paneId ?? "%0",
         dead: false,
         exitStatus: null,
         attachedClients: 1,

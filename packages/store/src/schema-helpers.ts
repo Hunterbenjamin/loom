@@ -59,7 +59,7 @@ export const requestKind = z.enum([
 export const sendVia = z.enum([
   "codex_turn_start",
   "codex_turn_steer",
-  "herdr_prompt",
+  "pane_paste",
   "claude_sdk",
 ]);
 export const blockedReason = z.enum([
@@ -69,7 +69,6 @@ export const blockedReason = z.enum([
   "review_not_converging",
   "provider_cooling_down",
   "pr_closed",
-  "trust_dialog",
 ]);
 export const failedReason = z.enum([
   "retries_exhausted",
@@ -81,7 +80,12 @@ export const providerRules = z.object({
   implementer: provider,
   reviewer: provider,
 });
-export const herdrRef = z.object({ agentName: text, paneId: text.nullable() });
+export const paneRef = z.object({
+  hostGeneration: text,
+  sessionName: text,
+  windowId: text,
+  paneId: text,
+});
 export const errorSchema = z.object({
   code: z.enum(["retryable", "precondition", "fatal"]),
   message: text,
