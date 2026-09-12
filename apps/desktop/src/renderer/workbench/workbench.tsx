@@ -536,12 +536,6 @@ export function Workbench() {
             <button type="button" onClick={() => newTab()}>
               ＋
             </button>
-            <button type="button" onClick={() => setPalette(true)}>
-              Commands ⌘K
-            </button>
-            <button type="button" onClick={() => void scratch()}>
-              Scratch shell
-            </button>
           </nav>
           <div className="wb-layout">
             {tabs.map((t) => (
