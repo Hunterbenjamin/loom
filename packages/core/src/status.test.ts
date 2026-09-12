@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fixture, now } from "./fixtures.js";
+import { fixture, now } from "../test/fixtures.js";
 import type {
   ClaudeSessionObservation,
   CodexThreadObservation,

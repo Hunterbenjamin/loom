@@ -12,7 +12,7 @@ import {
   plan,
   reviewCall,
   submit,
-} from "./fixtures.js";
+} from "../test/fixtures.js";
 import type { Action, Input, Stage } from "./index.js";
 
 type Setup = (f: ReturnType<typeof fixture>) => void;
@@ -515,7 +515,7 @@ describe("transition guards fail independently", () => {
       (f) => {
         if (mutation === "head")
           f.observations.inputs = [command({ type: "approve", headSha: base })];
-        if (mutation === "review-head") f.state.review = undefined;
+        if (mutation === "review-head") f.state.review = null;
         if (mutation === "blocking") f.state.findings = [finding()];
         if (mutation === "github-unknown")
           f.observations.github = { ok: false, at: now, reason: "offline" };

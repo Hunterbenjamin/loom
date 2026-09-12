@@ -342,7 +342,6 @@ export class Context {
       createdBy: run ? { runId: run.id } : "coordinator",
       createdAt: this.now,
     });
-    this.state.artifactContents ??= {};
     this.state.artifactContents[kind] = clone(content);
     return version;
   }

@@ -6,7 +6,7 @@ import {
   fixed,
   fixture,
   now,
-} from "./fixtures.js";
+} from "../test/fixtures.js";
 import type { Action, Run, RunObservation } from "./index.js";
 import { normalizeText, reconcile } from "./index.js";
 

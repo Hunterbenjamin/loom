@@ -148,7 +148,7 @@ export function attention(c: Context): void {
       reasons.add("provider_input");
     if (
       task.budgetMinutes !== null &&
-      (state.activeElapsedMs ?? 0) > task.budgetMinutes * 60_000
+      state.activeElapsedMs > task.budgetMinutes * 60_000
     )
       reasons.add("over_budget");
   }
@@ -166,10 +166,9 @@ export function attention(c: Context): void {
 }
 
 export function budget(c: Context): void {
-  const previous = c.state.budgetObservedAt ?? c.task.stageEnteredAt;
+  const previous = c.state.budgetObservedAt;
   if (budgetStage(c.task.stage))
     c.state.activeElapsedMs =
-      (c.state.activeElapsedMs ?? 0) +
-      Math.max(0, millis(c.now) - millis(previous));
+      c.state.activeElapsedMs + Math.max(0, millis(c.now) - millis(previous));
   c.state.budgetObservedAt = c.now;
 }

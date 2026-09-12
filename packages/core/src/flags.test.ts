@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { command, fixed, fixture, mcp, now } from "./fixtures.js";
+import { command, fixed, fixture, mcp, now } from "../test/fixtures.js";
 import type { AttentionReason, Run, RunObservation } from "./index.js";
 import { reconcile } from "./index.js";
 
@@ -275,6 +275,8 @@ describe("every attention reason", () => {
         run.unknownSince = now;
         f.observations.runs[1] = {
           runId: run.id,
+          resumable: null,
+          activityAt: null,
           provider: { ok: false, at: now, reason: "Offline" },
           herdr: null,
         };

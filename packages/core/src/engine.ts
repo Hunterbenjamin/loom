@@ -1,6 +1,7 @@
 import { Context } from "./context.js";
 import { delivery } from "./delivery.js";
 import { attention, budget, reconcileFlags } from "./flags.js";
+import { structurallyEqual } from "./helpers.js";
 import { human } from "./human.js";
 import { observeRuns, startDesired } from "./lifecycle.js";
 import type { Reconcile } from "./reconcile.js";
@@ -15,7 +16,7 @@ export const reconcile: Reconcile = (state, observations) => {
   // Observed merge/head/CI changes win over commands submitted against an old snapshot.
   reconcileStages(c);
   reconcileFlags(c);
-  const consumed = new Set(c.state.consumedInputIds ?? []);
+  const consumed = new Set(c.state.consumedInputIds);
   for (const input of observations.inputs) {
     if (consumed.has(input.id)) continue;
     c.trigger =
@@ -57,9 +58,8 @@ export const reconcile: Reconcile = (state, observations) => {
   reconcileFlags(c);
   retryActions(c);
   if (
-    (c.state.findings.length || c.state.artifactContents?.findings) &&
-    JSON.stringify(c.state.artifactContents?.findings) !==
-      JSON.stringify(c.state.findings)
+    (c.state.findings.length || c.state.artifactContents.findings) &&
+    !structurallyEqual(c.state.artifactContents.findings, c.state.findings)
   ) {
     c.artifact("findings", c.state.findings);
     c.files();
@@ -67,7 +67,7 @@ export const reconcile: Reconcile = (state, observations) => {
   startDesired(c);
   delivery(c);
   attention(c);
-  if (JSON.stringify(c.state) !== JSON.stringify(state)) {
+  if (!structurallyEqual(c.state, state)) {
     c.task.version = state.task.version + 1;
     c.task.updatedAt = c.now;
   }

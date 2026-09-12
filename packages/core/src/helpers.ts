@@ -29,3 +29,35 @@ export const clone = <T>(value: T): T => {
     ) as T;
   return value;
 };
+
+/** Equality for core's acyclic plain records/arrays; object key order is immaterial.
+ * Short-circuits identical references and the first difference, without serializing state.
+ * Arrays remain ordered. Functions (in config) compare by identity.
+ */
+export function structurallyEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (
+    left === null ||
+    right === null ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  )
+    return false;
+  if (Array.isArray(left)) {
+    return (
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => structurallyEqual(value, right[index]))
+    );
+  }
+  if (Array.isArray(right)) return false;
+  const a = left as Record<string, unknown>;
+  const b = right as Record<string, unknown>;
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every(
+      (key) => Object.hasOwn(b, key) && structurallyEqual(a[key], b[key]),
+    )
+  );
+}

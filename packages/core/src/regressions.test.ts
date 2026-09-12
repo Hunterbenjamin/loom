@@ -11,7 +11,7 @@ import {
   plan,
   run,
   submit,
-} from "./fixtures.js";
+} from "../test/fixtures.js";
 import type { Input, RunObservation } from "./index.js";
 import { reconcile } from "./index.js";
 
@@ -147,6 +147,8 @@ describe("reconciliation ordering and recovery regressions", () => {
     r.status = "failed";
     f.observations.runs[0] = {
       runId: r.id,
+      resumable: null,
+      activityAt: null,
       provider: { ok: false, at: now, reason: "Disconnected" },
       herdr: null,
     };
@@ -172,7 +174,7 @@ describe("reconciliation ordering and recovery regressions", () => {
       }),
     ];
     const r = fixed(initial.next, f.observations);
-    expect(r.next.artifactContents?.findings).toMatchObject([
+    expect(r.next.artifactContents.findings).toMatchObject([
       { status: "addressed" },
     ]);
     expect(r.next.artifacts.find((a) => a.kind === "findings")?.version).toBe(
@@ -196,7 +198,7 @@ describe("reconciliation ordering and recovery regressions", () => {
     ];
     const r = fixed(f.state, f.observations);
     expect(r.next.progress?.summary).toBe("Verified");
-    expect(r.next.artifactContents?.test_results).toMatchObject([
+    expect(r.next.artifactContents.test_results).toMatchObject([
       { headSha: head, runId: run().id, ranAt: now },
     ]);
   });

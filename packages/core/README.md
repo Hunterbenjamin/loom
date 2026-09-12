@@ -6,7 +6,8 @@ new outbox actions, audit transitions, and inbox dispositions. It never performs
 reads a clock, starts a provider, or imports a runtime dependency.
 
 Run `pnpm test`, `pnpm lint`, and `pnpm typecheck` from the repository root.
-Tests use in-memory fixtures and injected fake hashes/session IDs; no real agents run.
+Tests use in-memory fixtures in `test/fixtures.ts` and injected fake hashes/session IDs; no real agents run.
+Shared test support is outside `src`; colocated `*.test.ts` files import it only for verification.
 
 ## Caller responsibilities
 
@@ -39,8 +40,10 @@ Tests use in-memory fixtures and injected fake hashes/session IDs; no real agent
 
 ## Contract additions and interpretations
 
-The types-only design omitted several facts needed by its own guards. All changes
-are within this package; no architecture ownership principle changes.
+The types-only design omitted several facts needed by its own guards. The current
+[design contract](../../docs/design/core.md) now incorporates these choices, including
+required fields, their suppliers and initial/null semantics. PR #12 preserves the original
+deviations list as history; no architecture ownership principle changes.
 
 | Area | Phase 1b choice and reason |
 | --- | --- |
@@ -51,7 +54,7 @@ are within this package; no architecture ownership principle changes.
 | Capacity | Resolve design note 13.1 by counting starting/working/blocked runs, releasing idle implementers. Sending new work to an idle run reserves capacity again; queued fix messages wait when full. A terminating active planner can transfer its slot in the same CAS commit. |
 | Git evidence | Add non-ignored `dirtyPaths` for actionable errors, and `reachableCommits` for fixed-finding validation. Ignored `.task/` and build output do not make a tree dirty. |
 | Finding anchors | The boundary must verify blob existence/line bounds when constructing drafts. Core checks the supplied anchor's head, path, side, range and blob identity; it cannot read blobs itself. |
-| CI identity | Add optional check-run `id`. The boundary should supply it; older snapshots fall back to head plus check name for deterministic deduplication. |
+| CI identity | Require check-run `id` from the GitHub adapter. There is no name/head fallback; missing identity invalidates the reading. |
 | Delivery | Persist transport path, baseline/expected turn IDs and attention state. A timeout resend keeps the message ID but uses `send_message:<id>#2` because the original outbox key has already succeeded. Transport failures separately use the bounded action retry policy. Messages to one run are serialized until provider delivery is known. |
 | Uncertain delivery | Use existing `provider_input` attention plus a notification; the design has no delivery-specific attention reason. Ended runs retire their undelivered messages so old prompts cannot block a later resumed attempt. |
 | Mergeability | Require positively observed `mergeable`, rather than accepting `unknown` as evidence of no conflict. New-head reconciliation takes precedence over old-head CI/precondition failures; observed merge takes precedence over every command. |
@@ -75,6 +78,7 @@ reconciler. Protocol, store, fake-agent and executor packages remain outside Pha
 
 Transition tests name every design row and exercise failed guards. Status tests cover
 both provider tables. Delivery tests distinguish transport acceptance from native
-confirmation. Most behavioral cases also assert determinism and a fixed point with
+confirmation. Structural comparisons ignore object key order and short-circuit without serializing whole
+state; worst-case comparison remains linear. Most behavioral cases also assert determinism and a fixed point with
 the same readings and replayed inputs; multi-pass tests cover launch, retry, cancellation,
 capacity, provider generations, artifacts and outbox dependencies.

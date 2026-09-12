@@ -8,7 +8,7 @@ import {
   head,
   run as makeRun,
   now,
-} from "./fixtures.js";
+} from "../test/fixtures.js";
 import type { Input, Run, RunObservation } from "./index.js";
 import { reconcile, runId } from "./index.js";
 
@@ -199,6 +199,8 @@ describe("launch results and persisted outbox", () => {
     f.observations.runs = [
       {
         runId: start.runId,
+        resumable: null,
+        activityAt: null,
         provider: {
           ok: true,
           at: now,

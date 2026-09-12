@@ -49,7 +49,7 @@ export function submission(
       c.artifact(
         "test_results",
         [
-          ...((state.artifactContents?.test_results as unknown[]) ?? []),
+          ...((state.artifactContents.test_results as unknown[]) ?? []),
           ...values.map((value) => ({
             ...value,
             headSha: testHead,
@@ -115,7 +115,7 @@ export function submission(
         c.artifact(
           "decisions",
           [
-            ...((state.artifactContents?.decisions as string[]) ?? []),
+            ...((state.artifactContents.decisions as string[]) ?? []),
             ...progress.decisions,
           ],
           run,
@@ -160,7 +160,7 @@ export function submission(
         (!commitSha ||
           !git?.exists ||
           (git.headSha !== commitSha &&
-            !git.reachableCommits?.includes(commitSha)))
+            !git.reachableCommits.includes(commitSha)))
       )
         failures.push(
           "A fixed finding needs a commit reachable from the current HEAD",
@@ -175,9 +175,9 @@ export function submission(
       const failures: string[] = [];
       if (!git?.exists || git.headSha !== call.input.headSha)
         failures.push("Read git and submit the current worktree HEAD");
-      if (!git || git.dirty || git.dirtyPaths?.length)
+      if (!git || git.dirty || git.dirtyPaths.length)
         failures.push(
-          `Clean the worktree (ignored files excluded): ${git?.dirtyPaths?.join(", ") || "dirty paths unavailable; refresh git status"}`,
+          `Clean the worktree (ignored files excluded): ${git?.dirtyPaths.join(", ") || "dirty paths unavailable; refresh git status"}`,
         );
       if (!git || git.aheadOfBase <= 0)
         failures.push("Commit changes ahead of the base branch");

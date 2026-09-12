@@ -68,7 +68,7 @@ export function reconcileStages(c: Context): void {
           check.conclusion !== null &&
           !["success", "neutral", "skipped"].includes(check.conclusion),
       )) {
-        const externalId = check.id ?? `${pr.headSha}:${check.name}`;
+        const externalId = check.id;
         if (
           !state.findings.some(
             (f) => f.source === "ci" && f.externalId === externalId,

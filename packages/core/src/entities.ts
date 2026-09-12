@@ -237,11 +237,6 @@ export interface HerdrRef {
 }
 
 export interface Run {
-  seenAt?: IsoTime | null;
-  unknownSince?: IsoTime | null;
-  observedAttempt?: number;
-  /** Attempts remain monotonic for action keys; human retry resets this budget offset. */
-  retryBaseAttempt?: number;
   id: RunId;
   taskId: TaskId;
   role: Role;
@@ -286,6 +281,11 @@ export interface Run {
   launchedAt: IsoTime | null;
   endedAt: IsoTime | null;
   endReason: RunEndReason | null;
+  seenAt?: IsoTime | null;
+  unknownSince?: IsoTime | null;
+  observedAttempt?: number;
+  /** Attempts remain monotonic for action keys; human retry resets this budget offset. */
+  retryBaseAttempt?: number;
 }
 
 // ---------------------------------------------------------------- Messages and questions
@@ -312,10 +312,6 @@ export type DeliveryConfirmation =
   | { via: "claude_user_prompt_submit"; promptId: string };
 
 export interface Message {
-  via?: import("./actions.js").SendVia;
-  expectedTurnId?: string | null;
-  baselineTurnId?: string | null;
-  deliveryAttention?: boolean;
   id: MessageId;
   runId: RunId;
   purpose: MessagePurpose;
@@ -328,6 +324,10 @@ export interface Message {
   transportRef: string | null;
   sentAt: IsoTime | null;
   delivered: (DeliveryConfirmation & { at: IsoTime }) | null;
+  via?: import("./actions.js").SendVia;
+  expectedTurnId?: string | null;
+  baselineTurnId?: string | null;
+  deliveryAttention?: boolean;
 }
 
 export interface Question {
@@ -497,12 +497,12 @@ export interface FindingsSnapshot {
 export type CiConclusion = "success" | "pending" | "failure" | "none";
 
 export interface CiCheck {
-  /** GitHub check-run ID, required when importing a failed check as a finding. */
-  id?: string;
   name: string;
   status: "queued" | "in_progress" | "completed";
   conclusion: string | null;
   url: string | null;
+  /** GitHub adapter: stable check-run ID (stringified); never synthesize from name/head. */
+  id: string;
 }
 
 /** (cache: GitHub) */

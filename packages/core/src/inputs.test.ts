@@ -10,7 +10,7 @@ import {
   now,
   plan,
   submit,
-} from "./fixtures.js";
+} from "../test/fixtures.js";
 import type { Run, RunObservation } from "./index.js";
 import { reconcile } from "./index.js";
 
@@ -29,7 +29,7 @@ describe("input consumption and MCP dispositions", () => {
     f.observations.inputs = [input, input];
     const r = fixed(f.state, f.observations);
     expect(r.inputs).toHaveLength(1);
-    expect(r.next.artifactContents?.decisions).toEqual(["Decision"]);
+    expect(r.next.artifactContents.decisions).toEqual(["Decision"]);
     expect(reconcile(r.next, f.observations).inputs).toEqual([]);
   });
   it("rejected IDs are consumed too, without applying their payload", () => {

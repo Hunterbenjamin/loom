@@ -32,10 +32,6 @@ export type Reading<T> =
 // ---------------------------------------------------------------- git
 
 export interface GitWorktreeObservation {
-  /** Tracked changes and non-ignored untracked paths; ignored output is excluded. */
-  dirtyPaths?: string[];
-  /** Reachability checks supplied by the git boundary for resolve_finding inputs. */
-  reachableCommits?: Sha[];
   path: WorktreePath;
   exists: boolean;
   branch: string | null;
@@ -47,6 +43,10 @@ export interface GitWorktreeObservation {
   conflictsWithBase: boolean | null;
   /** The branch's head on the remote, from the last fetch. */
   remoteHeadSha: Sha | null;
+  /** Git adapter: complete tracked/non-ignored untracked dirty paths; [] means clean. */
+  dirtyPaths: string[];
+  /** Git boundary: queried commits proven reachable from this HEAD; [] means none. */
+  reachableCommits: Sha[];
 }
 
 // ---------------------------------------------------------------- GitHub
@@ -194,14 +194,14 @@ export interface HerdrAgentObservation {
 // ---------------------------------------------------------------- per run, per task
 
 export interface RunObservation {
-  /** False only after an authoritative provider resume check. */
-  resumable?: boolean;
-  /** Provider activity time, not the time of a no-change poll. */
-  activityAt?: IsoTime;
   runId: RunId;
   provider: Reading<CodexThreadObservation | ClaudeSessionObservation | null>;
   /** Null for headless runs. `value: null` means Herdr has no such agent. */
   herdr: Reading<HerdrAgentObservation | null> | null;
+  /** Provider adapter: true = resume verified, false = cannot resume, null = not yet known. */
+  resumable: boolean | null;
+  /** Provider adapter: latest known activity time; null = no activity evidence, not fetch time. */
+  activityAt: IsoTime | null;
 }
 
 /** A session in this task's worktree that Loom didn't launch. Observe-only. */

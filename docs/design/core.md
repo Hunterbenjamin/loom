@@ -1,7 +1,9 @@
 # Core design
 
-Phase 1a proposal, for review. The contracts are also written as TypeScript in
-[`packages/core/src`](../../packages/core/src) (types only). Phase 1b implements this once it's approved.
+Current contract, updated with the Phase 1b implementation and PR #12 review corrections.
+The types and pure implementation live in [`packages/core/src`](../../packages/core/src).
+Phase 2 adapters and the future store/executor must implement this contract. PR #12 retains the
+original deviations list as the history of what changed and why.
 Built on [`docs/architecture.md`](../architecture.md) and the findings of spikes 01–04. Anything that
 depends on spike 05 (restarts) is marked **provisional**.
 
@@ -20,7 +22,7 @@ Types: [`entities.ts`](../../packages/core/src/entities.ts), [`ids.ts`](../../pa
 | `id`, `repoId`, `title`, `description` | A | |
 | `stage` | A | §2. Changes only in a reconcile commit. |
 | `stageEnteredAt` | A | |
-| `version` | A | Compare-and-set counter; +1 per commit. |
+| `version` | A | Compare-and-set counter; +1 when the returned owned state changes, once per committed reconcile pass. |
 | `blocked` | A | `{reason, since, detail, until, questionId}` or null. §3. |
 | `failed` | A | `{reason, since, detail, runId}` or null. §3. |
 | `requirePlanApproval` | A | Defaults from the repo; forced on for tasks labeled `core`. |
@@ -53,9 +55,25 @@ human relaunches an interactive run (§3).
 | `status`, `blockedOn` | D | From provider observations; §4. |
 | `lastTurn` | C provider | `{id, outcome, error}`. Kept apart from `status`. |
 | `pendingRequests` | C provider | Approvals and questions the provider is waiting on. |
-| `lastActivityAt` | A | Last provider observation of any kind. Drives stall detection. |
+| `lastActivityAt` | A | Latest provider activity evidence from `RunObservation.activityAt` (or Claude hook activity), not the timestamp of a no-change poll. Drives stall detection. |
 | `retryAt` | A | Backoff: `min(10s·2^(n−1), cap)`. |
 | `launchedAt`, `endedAt`, `endReason` | A | `submitted`, `superseded`, `canceled`, `crashed`, `vanished`, `failed`, `task_done`. |
+
+The following lifecycle fields are written by core and retained by the store whenever present.
+They follow the original fields in `Run`; their optional representation has these explicit initial defaults:
+
+| Field | Own | Meaning / initial value |
+|---|---|---|
+| `seenAt` | A | First authoritative evidence of this session; absent/null means never seen. Required to distinguish a not-yet-present Claude start from a vanished session after restart. |
+| `unknownSince` | A | Start of the current unknown-status interval; absent/null means no such interval. Repeated unavailable reads do not reset it. |
+| `observedAttempt` | A | Attempt whose failure was already scheduled; absent means no failure handled for this attempt. |
+| `retryBaseAttempt` | A | Monotonic attempt offset at the last human retry reset; absent means 0. Attempts themselves never reset, so action keys cannot be reused. |
+
+A launch clears `launchedAt` until its matching `start_run` result commits. Old snapshots do not
+unlock messages while that launch is pending. The provider adapter supplies explicit resumability
+(§5.2); only a fresh `resumable: false` can cause a new session epoch. Provider recovery cancels a
+scheduled run retry. Automatic headless retries require fresh provider and git evidence and capacity;
+interactive failure recovery remains a human action.
 
 ### Worktree
 
@@ -70,7 +88,8 @@ human relaunches an interactive run (§3).
 
 ### Artifact
 
-Metadata in SQLite; content as files in the data directory, mirrored to `<worktree>/.task/`.
+Metadata and versioned content are committed durably together (§8), then materialized as files in
+the data directory and mirrored to `<worktree>/.task/` by the executor.
 
 | Field | Own | Notes |
 |---|---|---|
@@ -81,7 +100,10 @@ Metadata in SQLite; content as files in the data directory, mirrored to `<worktr
 
 `findings.json` is a projection of the findings table, written for agents; the table is the source.
 Plan content is the `Plan` type (goal, non-goals, steps, areas, acceptance criteria, test plan, risks,
-open questions, suggested implementer).
+open questions, suggested implementer). Core serializes versioned contents as JSON and hashes those
+bytes with the injected SHA-256 function. Decisions and test evidence accumulate. A test record
+includes `runId`, `ranAt` and `headSha`; nonempty progress test reports require a fresh git HEAD.
+Every findings mutation updates its artifact projection. Object key order alone is not a mutation.
 
 ### Finding
 
@@ -130,9 +152,18 @@ Append-only; one row per committed stage change or flag change.
 
 | Entity | Fields | Notes |
 |---|---|---|
-| Message | `id, runId, purpose, text, textHash, status, attempts, transportRef, sentAt, delivered` | Status `pending → sent → delivered` (or `failed`). §5.4. |
+| Message | `id, runId, purpose, text, textHash, status, attempts, transportRef, sentAt, delivered`, plus delivery metadata below | Status `pending → sent → delivered` (or `failed`). §5.5. |
 | Question | `id, taskId, runId, question, options, blocking, askedAt, answer, answeredAt` | From `ask_human`. |
 | Repo | `id, root, github, baseBranch, defaultProviders, serialTests` | |
+
+Delivery metadata follows the original `Message` fields. Core writes it and the store must retain it:
+`via` identifies the transport path (absent before send), `expectedTurnId` identifies a steered turn,
+`baselineTurnId` identifies the last observed turn before sending (absent/null means none), and
+`deliveryAttention` defaults to false. These fields are not reconstructed from Herdr output.
+
+`CiCheck.id` is required: the GitHub adapter supplies the stringified stable check-run ID. Core uses
+it as the CI finding's external identity; name/head fallbacks are no longer permitted. The ID remains
+part of the CI snapshot captured in a merge approval.
 
 ### IDs
 
@@ -140,6 +171,13 @@ Reconcile is pure, so it can't draw random IDs. IDs it creates are derived from 
 from `(task, role, round)`, Claude session IDs as UUIDv5 of `<runId>#<sessionEpoch>`, message IDs from
 `(run, purpose, sequence)`, action keys from the intent (§5.5). IDs that arrive with an input (finding
 IDs, question IDs) are assigned by the I/O layer when the input is persisted.
+
+The coordinator injects pure `deriveClaudeSessionId(runId, epoch)` (UUIDv5 in a stable Loom namespace)
+and `sha256(text)` functions through `ReconcileConfig`. SHA-256 covers normalized message text,
+serialized artifact content, and sorted finding snapshot triples. The namespace and hash implementation
+must be stable across restarts. These functions are runtime configuration, never serialized store data.
+The same config also supplies `worktreeRoot`, `baseBranch`, and `models` by provider in addition to
+retry/timing thresholds. `githubPollMs` is the coordinator's polling policy; core does not perform polling.
 
 ## 2. Stage rules
 
@@ -158,7 +196,10 @@ IDs, question IDs) are assigned by the I/O layer when the input is persisted.
 Triggers: **H** human command, **M** MCP tool call from the task's *current* run for that role, **R** a fact
 found by reconcile. "Start X" means insert the run row (with its session ID for Claude), then `start_run`,
 then the first `send_message` once the session ID is recorded. "Resume X" reuses the existing run row and
-its session, with `start_run` carrying `resume: true`.
+its session, with `start_run` carrying `resume: true` when it is resumable. Missing worktrees are
+created before constructing run rows. `TaskState.desiredRun` durably holds a role/round/resume intent
+when setup, flags or capacity defer its start. Claude IDs exist before launch; both providers require
+a committed launch/session result and an authoritative usable reading before the first prompt.
 
 | # | From | To | Trigger | Guard | Actions |
 |---|---|---|---|---|---|
@@ -171,12 +212,12 @@ its session, with `start_run` carrying `resume: true`.
 | 7 | plan_approval | in_progress | H `approve_plan(v)` | `v` is the latest plan version; capacity CAS | Insert plan Approval; `write_task_files`; start implementer |
 | 8 | plan_approval | planning | H `reject_plan(feedback)` | — | Resume the planner's session; `send_message` feedback |
 | 9 | in_progress | in_review | M `submit_for_review` | `headSha` = worktree HEAD; tree clean; ahead of base | `reviewRound += 1`; store handoff; `push_branch(headSha)`; `open_pr` (if none); start reviewer for the round |
-| 10 | in_review | awaiting_approval | M `submit_review` | `reviewedSha` = round head = PR head; a verdict for every `addressed`/`disputed` finding; after applying it, 0 open blocking; PR not conflicting; CI not failing | Store findings and verdicts; `stop_run` reviewer; `notify` attention |
+| 10 | in_review | awaiting_approval | M `submit_review` | `reviewedSha` = round head = PR head; a verdict for every `addressed`/`disputed` finding; after applying it, 0 open blocking; PR positively `mergeable`; CI for that head not failing | Store findings and verdicts; `stop_run` reviewer; `notify` attention |
 | 11 | in_review | in_progress | M `submit_review` | Same SHA and verdict guards; open blocking > 0; `reviewRound < reviewRoundCap`; converging | Store findings; `stop_run` reviewer; `send_message` fix round to the implementer (resume it if it ended) |
 | 12 | in_review | in_review, flag | M `submit_review` | Open blocking > 0 and `reviewRound ≥ cap` → `blocked: review_round_cap`. A finding reopened, or open blocking ≥ last round's → `blocked: review_not_converging` | Store findings; `stop_run` reviewer; `notify` attention |
 | 13 | in_review (blocked by #12) | in_progress | H `grant_review_round` | — | For `review_round_cap`, `reviewRoundCap += 1`; clear flag; `send_message` fix round to the implementer (resuming its run if it ended) |
 | 14 | in_review (blocked by #12) | awaiting_approval | H `waive_finding` × n | 0 open blocking afterwards | Clear flag; `notify` |
-| 15 | awaiting_approval | merging | H `approve(headSha)` | `headSha` = PR head = last reviewed head; 0 open blocking; CI `success`, `pending` or `none`; not conflicting | Insert merge Approval (head, findings snapshot, CI); `merge_pr(matchHeadSha, auto = CI pending)` |
+| 15 | awaiting_approval | merging | H `approve(headSha)` | `headSha` = PR head = last reviewed head; 0 open blocking; CI for that head `success`, `pending` or `none`; PR positively `mergeable` | Insert merge Approval (head, findings snapshot, CI); `merge_pr(matchHeadSha, auto = CI pending)` |
 | 16 | awaiting_approval, merging | in_review | R new commit: PR head ≠ last reviewed head | — | Void approval (`new_commit`); `disable_auto_merge` if enabled; `map_findings` to the new head; `reviewRound += 1`; start reviewer |
 | 17 | awaiting_approval, merging | in_progress | R CI `failure` on the head | — | One blocking `ci` finding per failed check (deduped by check-run ID); void approval (`ci_failed`); `disable_auto_merge` if enabled; `send_message` fix round to the implementer (resuming its run if it ended) |
 | 18 | awaiting_approval | in_progress | H `request_changes(findings)` | At least one finding | Store them as blocking `human` findings; `send_message` fix round to the implementer (resuming its run if it ended). Doesn't count against the cap. |
@@ -187,6 +228,21 @@ its session, with `start_run` carrying `resume: true`.
 | 23 | planning … awaiting_approval | backlog | H `move backlog` | — | `interrupt_run` working runs; `stop_run` headless runs; void approvals (`stage_left`). Plan and findings are kept. |
 
 Notes on the rules:
+
+- **Precedence.** An observed merge wins over all commands. For `awaiting_approval`/`merging`, a new
+  PR head wins over old-head CI failures or a merge-precondition failure. `mergeable: unknown` is
+  insufficient for #10/#15. If GitHub is unavailable when a merge precondition fails, retain the
+  failed outbox result and apply #16 or #19 after a fresh read.
+- **Deferred work and capacity.** The stage can change while its desired run or fix message waits.
+  Capacity and executor ordering are defined in §5.4. The executor must honor persisted dependencies
+  and canceled intents, rather than treating an action array as freely parallelizable work.
+- **Review evidence.** `review.headSha` is the round's immutable target; `lastReviewedHead` advances
+  only on a valid review submission. `verdictIds` captures addressed/disputed findings at round start.
+  The prior completed round's blocking count is used for convergence. The MCP boundary verifies blob
+  existence and line bounds before constructing drafts; core verifies each anchor's head, path, side,
+  range and blob identity against the submission.
+- **Clean tree.** The git adapter excludes ignored files, including `.task/` and ignored build output,
+  and supplies all offending paths in `dirtyPaths` for actionable `guard_failed` details.
 
 - **Plan-approval gate.** Its own stage (#5, #7, #8), so "waiting for the human" is a visible state with its
   own CAS and audit row. The board may draw it inside the Planning column.
@@ -216,7 +272,7 @@ no retries for the task. MCP submissions from the current run and human commands
 | `blocked: provider_cooling_down` | Codex: `usageAllowed: false` or a `rateLimitExceeded`/`usageLimitExceeded` error. Claude: StopFailure with a rate-limit error. Only for a run that needs to start or continue. | `until` passes and a fresh snapshot allows usage |
 | `blocked: pr_closed` | PR read as `closed` without merge | PR reopened (read), or cancel |
 | `blocked: trust_dialog` | Interactive Claude start reports not ready, or Herdr `blocked` before any SessionStart | SessionStart arrives and the session is busy or idle |
-| `failed: retries_exhausted` | A run failed `maxAttempts` (3) times | Human `retry` (new attempt, count starts again) |
+| `failed: retries_exhausted` | A run failed `maxAttempts` (3) times | Human `retry` (new monotonic attempt, retry-budget offset resets) |
 | `failed: non_retryable_error` | Provider error with no retry (for example, Codex `willRetry: false` with an unsupported model) | Human `retry` |
 | `failed: action_failed` | An action returned `fatal` | Human `retry` |
 
@@ -247,11 +303,18 @@ still has it). Closing a Codex pane is different: it only detaches, and the thre
 | `status_unknown` | A run has been `unknown` for longer than `unknownGraceMs` |
 | `over_budget` | Time in stages `planning` through `awaiting_approval` exceeds `budgetMinutes` |
 
+Terminal tasks (`done`, `canceled`) suppress attention while retaining historical questions and failures.
+Uncertain delivery uses `provider_input` attention plus a notification. `activeElapsedMs` accumulates
+only time in `planning`, `plan_approval`, `in_progress`, `in_review`, and `awaiting_approval`; parked,
+queued, merging and terminal time do not count. The store must reload this counter and its accounting
+timestamp instead of recomputing elapsed time from `stageEnteredAt`.
+
 ## 4. Run status
 
 Status comes from the provider's own channel. The terminal is never parsed. Herdr's screen-derived state
-is used only when the provider reading is unavailable, and a status derived from Herdr never triggers a
-stage transition. `status` and `lastTurn.outcome` are separate: an idle thread can have a failed last turn.
+does not replace an unavailable provider reading: that run remains `unknown`. Herdr may explain a
+pre-session Claude trust dialog or pane presence, but never supplies status that triggers a stage
+transition. `status` and `lastTurn.outcome` are separate: an idle thread can have a failed last turn.
 
 ### Codex (spike 01)
 
@@ -314,10 +377,35 @@ interface ReconcileResult {
   actions: Action[];
   transitions: Transition[];     // new audit rows
   inputs: InputDisposition[];    // one per consumed input: accepted (with the MCP reply) or rejected
+  capacityVersion?: number;      // CAS required for capacity reservations/releases; absent otherwise
 }
 ```
 
 It is pure: no clock (`observations.now`), no randomness (§1 "IDs"), no I/O.
+
+### 5.0 Required TaskState context
+
+The store loads all original entity collections plus **every** field below in the same read transaction.
+None may be omitted. Null is a known lifecycle state, not a substitute for missing persisted data.
+The coordinator initializes a new task with the initial values shown, core updates them, and the store
+persists/reloads each returned value. `config` is supplied separately by the coordinator at runtime.
+
+| Field | Type / initial value | Meaning and supplier |
+|---|---|---|
+| `consumedInputIds` | `InputId[]`, initially `[]` | Store supplies consumed inbox receipt IDs, including rejected inputs. Replay protection must survive restart; only archive when those IDs can no longer be replayed. |
+| `plan` | `(Plan & {version, accepted}) \| null`, initially null | Store supplies latest submitted plan content and its acceptance state; accepted plans survive parking. It must agree with plan artifact version/content. |
+| `review` | `{headSha, lastReviewedHead, previousBlocking, verdictIds} \| null`, initially null | Store supplies current round context. `lastReviewedHead: null` means no completed review; `previousBlocking: null` means no prior completed round. `verdictIds: []` means no findings require verdicts. |
+| `desiredRun` | `{role, round, resume} \| null`, initially null | Store supplies a deferred launch/resume intent. Null means none is pending; it is not inferred from the board stage. |
+| `activeElapsedMs` | `number`, initially 0 | Store supplies accumulated active-stage budget time in milliseconds. |
+| `budgetObservedAt` | `IsoTime`, initially `task.createdAt` | Store supplies the last accounting time, used with this pass's `observations.now`; never reset on reload. |
+| `progress` | `{runId, summary, stepIndex, at} \| null`, initially null | Store supplies latest accepted progress report; `stepIndex: null` means not tied to a plan step. |
+| `artifactContents` | `Partial<Record<ArtifactKind, unknown>>`, initially `{}` | Store supplies contents matching the loaded latest artifact metadata. A missing kind means no artifact of that kind exists; missing content for an existing artifact is a load error. Validate each kind at the boundary. |
+
+Collections in `TaskState` must include every row the next reconcile can reference: latest artifacts
+and matching contents, current/deferred runs, outstanding messages/questions, input receipts, and
+outbox payloads/dependencies/retry receipts. Returned ended runs, answered questions, failed messages
+and voided approvals are durable updates even when a later snapshot filters them from active views.
+Do not prune an outbox receipt while a live intent/dependency or a replayable result can reference it.
 
 ### 5.1 One pass
 
@@ -330,8 +418,8 @@ It is pure: no clock (`observations.now`), no randomness (§1 "IDs"), no I/O.
 4. Call `reconcile`.
 5. Commit in one write transaction (§5.4). If the compare-and-set fails, drop the result and go back
    to step 2 (up to 3 times, then re-enqueue).
-6. The executor runs pending outbox actions. Each result is persisted as an `action_result` input,
-   which enqueues step 1.
+6. The executor runs eligible pending outbox actions after dependency success and cancellation checks.
+   Each result is persisted as an `action_result` input, which enqueues step 1.
 
 ### 5.2 Observations
 
@@ -340,7 +428,7 @@ It is pure: no clock (`observations.now`), no randomness (§1 "IDs"), no I/O.
 | `git: Reading<GitWorktreeObservation>` | git: HEAD, branch, dirty, ahead/behind, `merge-tree` conflicts, remote head | Guards #9, #10, #15; new-commit detection |
 | `github: Reading<PullRequestObservation \| null>` | GitHub, conditional GET with ETag | PR head, state, mergeability, CI, reviews and human comments |
 | `runs[].provider` | Codex thread snapshot or Claude session (agents entry + hooks + headless exit) | §4 status, pending requests, delivery confirmation |
-| `runs[].herdr` | Herdr agent (interactive runs) | Fallback status, trust dialog, pane presence |
+| `runs[].herdr` | Herdr agent (interactive runs) | Trust-dialog explanation and pane presence; never authoritative run status |
 | `externalSessions` | `claude agents --json`, Codex thread list, both joined on realpath `cwd` | Recorded as `origin: external` runs |
 | `capacity` | Coordinator (across tasks) | Global and per-provider caps, cooling-down providers; `version` for CAS |
 | `dependencies` | Coordinator (other tasks) | `blockedBy` |
@@ -348,6 +436,20 @@ It is pure: no clock (`observations.now`), no randomness (§1 "IDs"), no I/O.
 
 `Reading.ok: false` means the owner couldn't be read. Reconcile treats that fact as unknown: no
 transition whose guard needs it, and runs whose provider can't be read become `unknown`.
+
+Required evidence is appended after the original fields in each observation interface:
+
+| Field | Type / empty or null semantics | Who supplies it |
+|---|---|---|
+| `RunObservation.resumable` | `boolean \| null`: true means provider-confirmed resumability, false means confirmed unable to resume, null means no authoritative determination yet | Provider adapter/integration boundary, assembled by the coordinator. After a missing Codex reading, perform a native resume/existence check; do not leave null indefinitely or infer false from socket failure or pane disappearance. An unavailable read remains `unknown` regardless of this field. |
+| `RunObservation.activityAt` | `IsoTime \| null`: latest known provider activity timestamp, or null if there is no evidence | Provider adapter, from native events/state changes; never use a no-change poll's fetch time. The coordinator persists receipt evidence across observer restarts. Claude's folded `lastEventAt` remains an additional source when this field is null. |
+| `GitWorktreeObservation.dirtyPaths` | Required `string[]`: all tracked/non-ignored untracked dirty paths; `[]` means clean | Git adapter from git status metadata, consistent with `dirty`. Failed status collection means a failed `Reading`, not an empty array. |
+| `GitWorktreeObservation.reachableCommits` | Required `Sha[]`: commits verified reachable from this reading's HEAD; `[]` means none verified | Git adapter/boundary must cover every non-null fixing commit in pending `resolve_finding` inputs, or return full HEAD ancestry. The coordinator must not submit a guard check with unqueried candidates silently represented as an empty list. Collection failure means a failed git `Reading`. HEAD itself is accepted directly. |
+| `CiCheck.id` | Required `string`: stable GitHub check-run ID, including in approval CI snapshots | GitHub adapter, stringifying the native ID. Missing identity invalidates the reading; never synthesize it from a name or head SHA. |
+
+The boundary validates both field presence and these semantics before core sees a typed value. A
+store/adapter must not manufacture empty arrays/nulls to paper over missing data. `resumable: null`
+is intentionally uncertainty and must trigger further owner reads when recovery needs it.
 
 ### 5.3 Actions and how results come back
 
@@ -385,6 +487,26 @@ backoff (`<key>#<n>`). `precondition` means the world moved: re-read and decide 
 | interrupt | `turn/interrupt` | `turn/interrupt` | SDK interrupt | `herdr agent send-keys esc` |
 | resume | `thread/resume` | `thread/resume`, then reattach the pane | SDK resume | Herdr pane: `claude --resume <id> --settings <per-run>` |
 
+#### Outbox record and execution rules
+
+In addition to `key`, `kind`, `status`, `attempts`, `createdAt`, and nullable `finishedAt`, retain:
+
+| Field | Supplier / meaning |
+|---|---|
+| `action` | Core emits the full payload; executor/store must retain it for result routing and retry. Its type permits omission only for receipt rows no future result/retry needs; a result without a matching payload is rejected. |
+| `retryAt` | Core's backoff deadline; absent means no action retry scheduled. |
+| `dependsOn` | Core's ordered intent dependencies; absent/empty means none. Execute only after all dependency keys succeeded. This enforces push-before-PR/reviewer launch and disarm-before-new work, including across passes. |
+| `retriedBy` | Core's replacement retry key; absent means not replaced. Pending dependents are rewired to that key. |
+| `retryBaseAttempt` | Core's retry-budget offset after a human retry; absent means 0. Attempt numbers stay monotonic. |
+| `error` | Executor error retained by core on failed results, including preconditions that need later fresh evidence; absent means no recorded error. |
+
+Status is `pending`, `running`, `succeeded`, `failed`, or `canceled`. The store persists all changes
+atomically with task state. Before side effects the executor rechecks eligibility and current intent;
+never launch superseded/canceled work. Cancellation retires pending start/send/request actions, and
+parking/cancel/Done retires obsolete task work. Already-running work may finish, but canceled rows'
+late results cannot resurrect state. A canceled generic intent requested anew receives a suffixed key
+instead of reusing the old receipt. These guarantees do not undo an external side effect already made.
+
 ### 5.4 Idempotency and compare-and-set
 
 1. **Deterministic.** The same state and observations give the same result.
@@ -402,8 +524,20 @@ backoff (`<key>#<n>`). `precondition` means the world moved: re-read and decide 
 5. **Inputs are consumed exactly once**, in the same transaction as the compare-and-set. A pass that
    loses the race consumes nothing.
 6. **Stage CAS**: `UPDATE tasks SET …, version = version + 1 WHERE id = ? AND version = ?`.
-7. **Capacity CAS.** A global `capacity_version` is bumped whenever a run starts or ends. A commit that
-   emits `start_run` also requires it unchanged, so two tasks can't take the last slot.
+   Core bumps the version once when owned state changes. No-op detection compares plain records
+   structurally, ignoring object key insertion order while preserving array order and primitive values.
+   It short-circuits equal references/first differences and does not serialize the entire state or findings
+   projection. Worst-case structural comparison is still linear in the compared data; there is no claim
+   of constant-time reconciliation. The same equality rule prevents unnecessary findings artifact versions.
+7. **Capacity CAS (resolved note 13.1).** The coordinator supplies global/per-provider counts of
+   `starting`/`working`/`blocked` runs and pending work reservations, excluding idle implementers.
+   Idle implementers keep their sessions through review/approval without holding a slot. Sending work
+   to an idle run re-acquires a slot; its pending fix message waits when full. Count a queued launch or
+   accepted send reservation exactly once until native status confirms it, rather than freeing it during
+   the transport gap. An ending active planner can transfer its slot in the same commit.
+   A result with `capacityVersion` requires CAS on that version for starts, idle-run sends and ends;
+   the coordinator also bumps its version when authoritative observation reconciliation changes these
+   counts. Pure reads of capacity do not reserve a slot. Two tasks cannot take the last slot concurrently.
 8. **Caches never decide.** Guards use this pass's readings. Cached fields (C) are for the UI and for
    diffing (for example, "the head changed since the last pass").
 9. **Crashes don't prove a command didn't run** (spike 01). Before a new attempt after a crash or
@@ -424,6 +558,14 @@ Several prompts can join one Claude turn and share a `prompt_id`; each is still 
 idle and shows no new turn, resend once under the same message ID; otherwise add attention. Herdr
 `blocked` means a dialog is up (`provider_dialog`). Loom never generates text that starts with `/` or `!`,
 and the Herdr adapter refuses it anyway (`refused` → the message fails and the human is notified).
+
+The timeout resend keeps the message ID but uses `send_message:<id>#2`, since the first action key
+already succeeded. Transport failures separately use bounded action retries with suffixed keys.
+Persist `via`, expected/baseline turn IDs and delivery attention; confirmation must match the session
+and cannot use a receipt older than the send. Serialize outstanding messages per run until native
+delivery is known. Ending a run retires its undelivered messages, so stale prompts cannot block a
+resumed attempt. For ambiguous timeout delivery, notify and set existing `provider_input` attention.
+Native executor idempotence checks remain necessary: core never infers delivery from transport success.
 
 ## 6. Adapter interfaces
 
@@ -461,7 +603,7 @@ read-only and never becomes an input.
 |---|---|---|---|---|
 | `get_task_context` | any run | `{}` | task, role, run, worktree, brief, plan, decisions, handoff, role-filtered findings, test results, answered questions, WORKFLOW commands | — |
 | `submit_plan` | planner / `planning` | `{plan: Plan}` | `{planVersion, next}` | Plan has a goal, at least one step and one acceptance criterion |
-| `report_progress` | any current run | `{summary, stepIndex, decisions[], testResults[]}` | `{recorded}` | `stepIndex` within the plan |
+| `report_progress` | any current run | `{summary, stepIndex, decisions[], testResults[]}` | `{recorded}` | `stepIndex` null or within the plan; nonempty test results need a fresh git HEAD |
 | `ask_human` | any current run | `{question, options[], blocking}` | `{questionId, delivery: "message"}` | — |
 | `submit_for_review` | implementer / `in_progress` | `{headSha, summary, testResults[], handoff}` | `{round}` | `headSha` = HEAD; clean tree; ahead of base; every finding `addressed` in this round names a commit |
 | `submit_review` | reviewer / `in_review` | `{reviewedSha, summary, findings[], verdicts[], testResults[]}` | `{round, openBlocking, next}` | `reviewedSha` = round head; locations exist in that commit; a verdict for every `addressed`/`disputed` finding |
@@ -474,8 +616,10 @@ Errors: `invalid_input`, `unknown_run`, `stale_run` (the run was superseded or e
 ## 8. Storage
 
 SQLite in WAL mode (better-sqlite3), one database per instance data directory (`LOOM_INSTANCE`).
-Artifact content lives beside it at `tasks/<taskId>/<kind>/v<N>.<ext>`. JSON columns are validated with
-zod when read. Times are ISO-8601 text.
+Artifact content is committed with its metadata (the schema sketch below uses `artifacts.content`),
+then materialized beside the database at `tasks/<taskId>/<kind>/v<N>.json`. JSON columns are validated
+with zod when read. Times are ISO-8601 text. The schema is a contract sketch for the future store,
+not a migration already shipped in Phase 1b.
 
 ```sql
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- schema_version, capacity_version
@@ -490,6 +634,10 @@ CREATE TABLE tasks (id TEXT PRIMARY KEY, repo_id TEXT NOT NULL REFERENCES repos(
   worktree_path TEXT UNIQUE, branch TEXT, pr_number INTEGER,
   attention TEXT NOT NULL,                                     -- derived
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE task_context (task_id TEXT PRIMARY KEY REFERENCES tasks(id),
+  plan TEXT, review TEXT, desired_run TEXT, progress TEXT,        -- JSON; SQL NULL maps to explicit null
+  active_elapsed_ms INTEGER NOT NULL DEFAULT 0,
+  budget_observed_at TEXT NOT NULL);                            -- initialize to task.created_at
 CREATE TABLE task_dependencies (task_id TEXT NOT NULL REFERENCES tasks(id),
   blocked_by TEXT NOT NULL REFERENCES tasks(id), PRIMARY KEY (task_id, blocked_by));
 CREATE TABLE worktrees (path TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
@@ -502,15 +650,18 @@ CREATE TABLE runs (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(i
   session_id TEXT, session_epoch INTEGER NOT NULL DEFAULT 0, codex_generation INTEGER, herdr TEXT,
   status TEXT NOT NULL, blocked_on TEXT, last_turn TEXT, pending_requests TEXT NOT NULL,
   last_activity_at TEXT, retry_at TEXT, launched_at TEXT, ended_at TEXT, end_reason TEXT,
+  seen_at TEXT, unknown_since TEXT, observed_attempt INTEGER, retry_base_attempt INTEGER DEFAULT 0,
   UNIQUE (provider, session_id));
 CREATE INDEX runs_live ON runs(task_id) WHERE ended_at IS NULL;
 CREATE TABLE messages (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), purpose TEXT NOT NULL,
   text TEXT NOT NULL, text_hash TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL,
-  transport_ref TEXT, sent_at TEXT, delivered TEXT);
+  transport_ref TEXT, sent_at TEXT, delivered TEXT,
+  via TEXT, expected_turn_id TEXT, baseline_turn_id TEXT, delivery_attention INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE questions (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT NOT NULL, question TEXT NOT NULL,
   options TEXT NOT NULL, blocking INTEGER NOT NULL, asked_at TEXT NOT NULL, answer TEXT, answered_at TEXT);
 CREATE TABLE artifacts (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, kind TEXT NOT NULL, version INTEGER NOT NULL,
-  path TEXT NOT NULL, sha256 TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+  path TEXT NOT NULL, sha256 TEXT NOT NULL, content TEXT NOT NULL, -- JSON bytes hashed by core
+  created_by TEXT NOT NULL, created_at TEXT NOT NULL,
   UNIQUE (task_id, kind, version));
 CREATE TABLE findings (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, round INTEGER NOT NULL,
   source TEXT NOT NULL, external_id TEXT, created_by_run_id TEXT,
@@ -533,12 +684,22 @@ CREATE TABLE inbox (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, received_at TEXT
   type TEXT NOT NULL, payload TEXT NOT NULL, consumed_at TEXT, disposition TEXT);
 CREATE TABLE outbox (key TEXT PRIMARY KEY, task_id TEXT NOT NULL, kind TEXT NOT NULL,
   payload TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, result_input_id TEXT);
+  created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, result_input_id TEXT,
+  retry_at TEXT, depends_on TEXT NOT NULL DEFAULT '[]', retried_by TEXT,
+  retry_base_attempt INTEGER NOT NULL DEFAULT 0, error TEXT);
 CREATE TABLE claude_hooks (seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
   event TEXT NOT NULL, prompt_id TEXT, received_at TEXT NOT NULL, payload TEXT NOT NULL);
 CREATE TABLE github_cache (repo_id TEXT NOT NULL, branch TEXT NOT NULL, etag TEXT,
   pr TEXT, fetched_at TEXT NOT NULL, PRIMARY KEY (repo_id, branch));
 ```
+
+The store reconstructs required `TaskState` fields explicitly: `task_context` supplies plan/review/
+desired run/progress and budget counters; latest `artifacts` rows supply `artifactContents`; consumed
+`inbox` rows supply `consumedInputIds` (including rejected dispositions). Empty values are only valid
+for their documented initial/absent states. Missing rows or version/content disagreement must fail
+loading, rather than silently falling back to `{}`, `[]`, zero or null. Materialization must read the
+exact artifact version named by an action even when a newer version now exists. Retain outbox
+payloads/error/retry/dependency receipts according to §5.3 and replayable inbox receipts according to §5.0.
 
 `claude_hooks` is a receipt log, not a second owner: hooks can't be re-read from Claude, so the
 coordinator keeps them to fold into `ClaudeHookSummary` after a restart. It's pruned after 7 days.
@@ -603,8 +764,8 @@ These parts follow the architecture's restart table but aren't verified:
 | Area | Current assumption |
 |---|---|
 | Coordinator restart | Load SQLite; run `pending`/`running` outbox rows again; `thread/resume` every live Codex run; poll `claude agents`; reconcile every task that isn't terminal. |
-| Codex app-server restart | Generation + 1; requests from older generations are dropped, never answered. Runs are `unknown` until `thread/resume`. A turn that shows as `interrupted` after the crash counts as a failed attempt. |
-| Herdr server restart | Interactive runs go `unknown`. Claude runs are still found through `claude agents`, Codex runs through the app-server. Whether panes survive, and what to restart, is open. |
+| Codex app-server restart | Generation + 1; requests from older generations are dropped, never answered. Runs are `unknown` until `thread/resume`. A recovered `interrupted` turn alone maps to idle (§4), not a failed attempt; any additional crash/retry classification requires authoritative supervisor evidence and remains provisional. |
+| Herdr server restart | Provider status remains authoritative: use `claude agents` or the app-server even if Herdr is unavailable. Only unavailable provider readings go `unknown`. Whether panes survive, and what to restart, is open. |
 | Resume attempts | "N attempts" is `retry.maxAttempts` (3) for now. |
 | Thresholds | `unknownGraceMs` 60 s, `deliveryTimeoutMs` 10 s, `stallAfterMs` 15 min: placeholders. |
 | Hook spooling | Whether Claude hooks should go to a spool file while the coordinator is down. |
@@ -621,12 +782,12 @@ These parts follow the architecture's restart table but aren't verified:
 - Cost budgets (only a wall-clock budget, which adds attention); GitHub App identity for agents.
 - Phase 5 items: ports and dev servers, overlap warnings, the rebase queue, issue import.
 
-## 12. Decisions for review
+## 12. Decisions
 
 | # | Decision | Why |
 |---|---|---|
 | 1 | Plan approval is its own stage, `plan_approval`. | "Waiting on the human" gets its own CAS, audit row and attention reason. The board can still show it under Planning. |
-| 2 | Exhausted retries set `failed`, not `blocked` (`architecture.md` updated in this PR). | `blocked` means waiting on something outside Loom; `failed` means Loom's automatic path gave up. The human acts differently on each. |
+| 2 | Exhausted retries set `failed`, not `blocked` (also reflected in `architecture.md`). | `blocked` means waiting on something outside Loom; `failed` means Loom's automatic path gave up. The human acts differently on each. |
 | 3 | `reviewRound` counts reviewer runs. The cap limits going back to `in_progress`; a re-review after a new commit always runs; `request_changes` isn't capped. | Nothing merges unreviewed, and the human stays in charge of their own requests. |
 | 4 | `blocker` and `major` findings block. GitHub comments block only under a `changes_requested` review. A failed CI check becomes a blocking `ci` finding. | Agents choose severity and code chooses what it means (architecture: code decides guards). |
 | 5 | CI failing after approval goes to `in_progress`; a new commit goes to `in_review`. | A CI failure needs a fix; a new commit needs a review. |
@@ -647,13 +808,13 @@ These parts follow the architecture's restart table but aren't verified:
 | 20 | Flags stop automatic starts and retries, not submissions or human commands. | A submission is still valid work; the human always has control. |
 | 21 | Interactive runs are never relaunched automatically. They end as `vanished` and raise attention. | A human closing the pane and a crash are indistinguishable, and reopening a terminal someone just closed is worse than asking. Headless retries are unaffected. |
 
-## 13. Notes for Phase 1b
+## 13. Phase 1b review notes and resolution
 
-Raised in review. No design change now, but each has to be settled while implementing.
+These notes were raised during design review. Resolutions below are part of the current contract.
 
 | # | Note |
 |---|---|
-| 1 | **Capacity counts idle runs.** An idle implementer holds its slot through `in_review` and `awaiting_approval`, so a cap of 4 fills up with tasks nobody is working on. Either count only runs that are `working` or `blocked`, or release the slot when the implementer goes idle and re-acquire it for a fix round, which needs a wait state for when the cap is full. |
-| 2 | **The clean-tree guard needs a definition.** `submit_for_review` (#9) must ignore git-ignored files (`.task/` among them) and ignored build output, and its `guard_failed` details must name the offending paths so the agent can act on them. |
-| 3 | **Nothing reads `WORKFLOW.md` yet.** `get_task_context` returns its commands, but no entity, action or adapter method loads or validates it. Decide where it's read and cached (the repo row, or per worktree), and what happens when it's missing or malformed. |
+| 1 | **Resolved:** exclude idle implementers from capacity and re-acquire a reservation on their next message. Pending fix messages are the wait state; starts, sends and releases use capacity CAS (§5.4). |
+| 2 | **Resolved:** clean means no tracked or non-ignored untracked changes; `dirtyPaths` is required and appears in failed-guard details (§5.2). |
+| 3 | **Assigned to the future coordinator/MCP boundary:** load and validate `WORKFLOW.md` for read-only `get_task_context`; it is not a reconcile input or a core I/O action. Cache location and missing/malformed-file policy must be settled in that phase before exposing commands. |
 | 4 | **`packages/protocol` is still undrafted.** It's Phase 1's fifth deliverable, and the Phase 4 UI work depends on it. Its snapshot is mostly these entities plus derived views: attention, and the review shell state from spike 04. |

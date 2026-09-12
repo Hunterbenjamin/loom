@@ -35,13 +35,6 @@ export interface RetryPolicy {
 }
 
 export interface ReconcileConfig {
-  /** Pure caller-supplied UUIDv5 of `${runId}#${epoch}` in Loom's namespace. */
-  deriveClaudeSessionId: (runId: RunId, epoch: number) => ProviderSessionId;
-  /** Pure SHA-256; receives already normalized message text or canonical JSON. */
-  sha256: (text: string) => string;
-  worktreeRoot: string;
-  baseBranch: string;
-  models: Record<Provider, string>;
   retry: RetryPolicy;
   /** No provider activity for this long while working: `stalled` attention. Nothing is killed. */
   stallAfterMs: number;
@@ -50,9 +43,22 @@ export interface ReconcileConfig {
   /** A sent message with no provider confirmation after this long needs a decision. */
   deliveryTimeoutMs: number;
   githubPollMs: number;
+  /** Pure caller-supplied UUIDv5 of `${runId}#${epoch}` in Loom's namespace. */
+  deriveClaudeSessionId: (runId: RunId, epoch: number) => ProviderSessionId;
+  /** Pure SHA-256; receives already normalized message text or serialized JSON. */
+  sha256: (text: string) => string;
+  worktreeRoot: string;
+  baseBranch: string;
+  models: Record<Provider, string>;
 }
 
 export interface OutboxEntry {
+  key: ActionKey;
+  kind: ActionKind;
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
+  attempts: number;
+  createdAt: IsoTime;
+  finishedAt: IsoTime | null;
   /** Retained so results and retries can recover the original intent. */
   action?: Action;
   retryAt?: IsoTime;
@@ -61,35 +67,10 @@ export interface OutboxEntry {
   retriedBy?: ActionKey;
   retryBaseAttempt?: number;
   error?: ActionError;
-  key: ActionKey;
-  kind: ActionKind;
-  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
-  attempts: number;
-  createdAt: IsoTime;
-  finishedAt: IsoTime | null;
 }
 
 /** Everything Loom owns about one task, loaded in one read transaction. */
 export interface TaskState {
-  /** Persist these alongside the original entity records. */
-  consumedInputIds?: InputId[];
-  artifactContents?: Partial<Record<Artifact["kind"], unknown>>;
-  plan?: (Plan & { version: number; accepted: boolean }) | null;
-  review?: {
-    headSha: Sha;
-    lastReviewedHead: Sha | null;
-    previousBlocking: number | null;
-    verdictIds: Finding["id"][];
-  };
-  desiredRun?: { role: Role; round: number; resume: boolean } | null;
-  activeElapsedMs?: number;
-  budgetObservedAt?: IsoTime;
-  progress?: {
-    runId: RunId;
-    summary: string;
-    stepIndex: number | null;
-    at: IsoTime;
-  };
   task: Task;
   worktree: Worktree | null;
   /** Runs that haven't ended, plus the latest ended run per role. */
@@ -106,6 +87,33 @@ export interface TaskState {
   /** Actions that haven't finished, and ones that finished since the last reconcile. */
   outbox: OutboxEntry[];
   config: ReconcileConfig;
+
+  /** Store supplies persisted receipts; [] only for a task with no consumed inputs. */
+  consumedInputIds: InputId[];
+  /** Store loads contents matching artifact versions; {} only before any artifact exists. */
+  artifactContents: Partial<Record<Artifact["kind"], unknown>>;
+  /** Store: null before the first submitted plan; accepted survives parking. */
+  plan: (Plan & { version: number; accepted: boolean }) | null;
+  /** Store: null before the first review; persists round head and verdict targets. */
+  review: {
+    headSha: Sha;
+    lastReviewedHead: Sha | null;
+    previousBlocking: number | null;
+    verdictIds: Finding["id"][];
+  } | null;
+  /** Store: null when no launch/resume intent is waiting. */
+  desiredRun: { role: Role; round: number; resume: boolean } | null;
+  /** Store: accumulated active-stage milliseconds; initialize to 0. */
+  activeElapsedMs: number;
+  /** Store: last budget accounting time; initialize to task.createdAt. */
+  budgetObservedAt: IsoTime;
+  /** Store: latest accepted progress report, or null before any report. */
+  progress: {
+    runId: RunId;
+    summary: string;
+    stepIndex: number | null;
+    at: IsoTime;
+  } | null;
 }
 
 type SubmittingTool = Exclude<McpToolName, "get_task_context">;
@@ -120,14 +128,14 @@ export type InputDisposition =
   | { inputId: InputId; accepted: false; error: McpError };
 
 export interface ReconcileResult {
-  /** Executor/store must CAS this version when starts or ends reserve/release capacity. */
-  capacityVersion?: number;
   next: TaskState;
   actions: Action[];
   /** New audit rows. */
   transitions: Transition[];
   /** Exactly one per input in `observations.inputs` that this pass consumed. */
   inputs: InputDisposition[];
+  /** Executor/store must CAS this version when starts or ends reserve/release capacity. */
+  capacityVersion?: number;
 }
 
 /**

@@ -17,8 +17,8 @@ import type {
   TaskId,
   TaskState,
   WorktreePath,
-} from "./index.js";
-import { reconcile, runId } from "./index.js";
+} from "../src/index.js";
+import { reconcile, runId } from "../src/index.js";
 
 export const now = "2026-09-12T00:00:00.000Z" as IsoTime;
 export const head = "a".repeat(40) as Sha;
@@ -131,6 +131,12 @@ export function fixture(stage: Stage = "in_progress"): {
     artifacts: [],
     outbox: [],
     config,
+    consumedInputIds: [],
+    artifactContents: {},
+    desiredRun: null,
+    activeElapsedMs: 0,
+    budgetObservedAt: now,
+    progress: null,
     plan: { ...plan, version: 1, accepted: true },
     review: {
       headSha: head,
@@ -194,6 +200,8 @@ export function fixture(stage: Stage = "in_progress"): {
   };
   observations.runs = state.runs.map((r) => ({
     runId: r.id,
+    resumable: true,
+    activityAt: null,
     herdr: null,
     provider: {
       ok: true,
