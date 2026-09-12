@@ -14,6 +14,7 @@ exports[`empty task diagnostics omit questions and approvals in text 1`] = `
   branch:                 -
   prNumber:               -
   worktreePath:           -
+  codexServerRunning:     false
 
 Runs (0, newest last)
 Messages
@@ -42,6 +43,7 @@ exports[`task inspect prints a complete fixture without a coordinator 1`] = `
   branch:                 feat/core
   prNumber:               1
   worktreePath:           /tmp/loom/t1
+  codexServerRunning:     false
 
 Runs (4, newest last)
   id:                     t1/reviewer/0

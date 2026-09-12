@@ -71,6 +71,7 @@ test("a command is acknowledged, recorded as an input, and shows up as patches",
     requirePlanApproval: null,
     blockedBy: [],
     budgetMinutes: null,
+    size: null,
   });
   expect(created).toMatchObject({ ok: true, result: { kind: "task_created" } });
   const taskId = (created as { result: { taskId: TaskId } }).result.taskId;
@@ -112,6 +113,7 @@ test("a forced sequence gap is detected and only a fresh snapshot recovers", asy
     requirePlanApproval: null,
     blockedBy: [],
     budgetMinutes: null,
+    size: null,
   });
   const taskId = (created as { result: { taskId: TaskId } }).result.taskId;
   const first = client.await((frame) => frame.type === "patch");

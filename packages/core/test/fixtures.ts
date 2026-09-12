@@ -103,6 +103,7 @@ export function fixture(stage: Stage = "in_progress"): {
       providers: { planner: "codex", implementer: "codex", reviewer: "claude" },
       blockedBy: [],
       budgetMinutes: null,
+      size: "normal",
       createdAt: now,
       updatedAt: now,
       worktreePath: path,
@@ -188,7 +189,7 @@ export function fixture(stage: Stage = "in_progress"): {
       },
     },
     runs: [],
-    externalSessions: [],
+    externalSessions: { ok: true, value: [], at: now },
     capacity: {
       version: 4,
       active: { codex: 0, claude: 0 },

@@ -54,6 +54,68 @@ export const toAgentsEntry = (raw: RawAgentsEntry): ClaudeAgentsEntry => ({
 export const parseAgentsOutput = (stdout: string): ClaudeAgentsEntry[] =>
   agentsOutputSchema.parse(JSON.parse(stdout)).map(toAgentsEntry);
 
+/**
+ * Check if a process ID is alive. Uses process.kill(pid, 0) to test existence without sending a signal.
+ * Returns true if the process exists, false if it definitely doesn't. On permission errors, returns true
+ * (conservative: assume the process exists if we can't verify).
+ */
+export function isPidAlive(pid: number | null | undefined): boolean {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // ESRCH: no such process
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") {
+      return false;
+    }
+    // EPERM or other errors: assume it's alive (conservative)
+    return true;
+  }
+}
+
+/**
+ * Check if a Claude registry entry is stale. A stale entry is one where:
+ * - The pid is not alive, OR
+ * - The pid is null AND hook activity is older than stallAfterMs
+ * Returns true if the entry is stale (should be filtered out), false if it's live.
+ * When hook information is unavailable, conservatively assumes the entry is live.
+ */
+export function isStaleEntry(
+  entry: ClaudeAgentsEntry,
+  options?: {
+    hookLastEventAt: string | null;
+    stallAfterMs: number;
+    now: string;
+  },
+): boolean {
+  // If pid is set and alive, entry is live
+  if (entry.pid !== null && isPidAlive(entry.pid)) {
+    return false;
+  }
+
+  // If pid is dead, entry is stale
+  if (entry.pid !== null && !isPidAlive(entry.pid)) {
+    return true;
+  }
+
+  // pid is null: use hook activity if available to make a determination
+  if (options && options.hookLastEventAt) {
+    const lastEventTime = new Date(options.hookLastEventAt).getTime();
+    const nowTime = new Date(options.now).getTime();
+    const staleSince = nowTime - options.stallAfterMs;
+    if (lastEventTime < staleSince) {
+      // Hook activity is stale
+      return true;
+    }
+    // Hook activity is recent: entry is live
+    return false;
+  }
+
+  // No pid and no hook info available: conservatively assume entry is live
+  return false;
+}
+
 export interface AgentsReaderOptions {
   /** Defaults to `claude` on PATH. */
   binary?: string;

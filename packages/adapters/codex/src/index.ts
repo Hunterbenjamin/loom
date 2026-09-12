@@ -208,6 +208,58 @@ class AppServerAdapter implements CodexAdapter {
       );
     return this.connection;
   }
+  private async reconnectAfterDisconnection(): Promise<void> {
+    // Attempt to restart or adopt the app-server, then reconnect
+    try {
+      await this.server.start();
+      await this.connect();
+    } catch (error) {
+      // If reconnection fails, the error will be re-thrown by rpcWithReconnect
+      throw error;
+    }
+  }
+  /** Wraps an RPC action to automatically reconnect if the connection is lost. */
+  private async rpcWithReconnect<T>(action: () => Promise<T>): Promise<T> {
+    let originalError: Error | null = null;
+    try {
+      return await action();
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      const message = error.message;
+      // Detect disconnection: either pre-flight check or mid-flight socket termination
+      const isDisconnected =
+        message ===
+          "Codex disconnected; reconnect and resume the recorded thread" ||
+        message === "Codex connection closed" ||
+        message === "Codex connection unavailable";
+      if (!isDisconnected) {
+        // Not a disconnection error; re-throw as-is
+        throw error;
+      }
+      // Connection lost; attempt reconnection once
+      originalError = error;
+      try {
+        await this.reconnectAfterDisconnection();
+        // Reconnection successful; retry the action once
+        return await action();
+      } catch (reconnectError) {
+        // Reconnection failed; prefer to throw the original error if it's more informative
+        const reconnectMessage =
+          reconnectError instanceof Error
+            ? reconnectError.message
+            : String(reconnectError);
+        // If the reconnection error is about process verification, throw the original error
+        if (
+          reconnectMessage.includes("Cannot verify") ||
+          reconnectMessage.includes("Multiple")
+        ) {
+          throw originalError;
+        }
+        // Otherwise throw the reconnection error
+        throw reconnectError;
+      }
+    }
+  }
   private receive(message: Incoming) {
     const request = this.pending.receive(message);
     if (request) {
@@ -245,66 +297,74 @@ class AppServerAdapter implements CodexAdapter {
     this.hint(threadId);
   }
   async startThread(req: Parameters<CodexAdapter["startThread"]>[0]) {
-    const connection = this.rpc();
-    const generation = this.currentGeneration;
-    const params: ThreadStartParams = {
-      ...req,
-      config: z.record(z.string(), z.json()).parse(req.config),
-      // Never prompt (user decision, 2026-09-12): a command the sandbox forbids fails visibly
-      // in the transcript instead of parking the run on a request nobody is watching.
-      approvalPolicy: "never",
-      approvalsReviewer: "user",
-      ephemeral: false,
-      historyMode: "legacy",
-      allowProviderModelFallback: false,
-    };
-    const { thread } = await connection.rpc(
-      "thread/start",
-      params,
-      schemas.metadataResult,
-    );
-    this.assertCurrent(connection);
-    this.paths.set(thread.id, (await realpath(thread.cwd)) as WorktreePath);
-    this.assertCurrent(connection);
-    this.markActivity(thread.id, iso(thread.updatedAt));
-    this.subscribed.add(thread.id);
-    return {
-      threadId: thread.id as ProviderSessionId,
-      generation: generation as number,
-    };
+    return this.rpcWithReconnect(async () => {
+      const connection = this.rpc();
+      const generation = this.currentGeneration;
+      const params: ThreadStartParams = {
+        ...req,
+        config: z.record(z.string(), z.json()).parse(req.config),
+        // Never prompt (user decision, 2026-09-12): a command the sandbox forbids fails visibly
+        // in the transcript instead of parking the run on a request nobody is watching.
+        approvalPolicy: "never",
+        approvalsReviewer: "user",
+        ephemeral: false,
+        historyMode: "legacy",
+        allowProviderModelFallback: false,
+      };
+      const { thread } = await connection.rpc(
+        "thread/start",
+        params,
+        schemas.metadataResult,
+      );
+      this.assertCurrent(connection);
+      this.paths.set(thread.id, (await realpath(thread.cwd)) as WorktreePath);
+      this.assertCurrent(connection);
+      this.markActivity(thread.id, iso(thread.updatedAt));
+      this.subscribed.add(thread.id);
+      return {
+        threadId: thread.id as ProviderSessionId,
+        generation: generation as number,
+      };
+    });
   }
   async startTurn(req: Parameters<CodexAdapter["startTurn"]>[0]) {
-    const params: TurnStartParams = {
-      threadId: req.threadId,
-      input: textInput(req.text),
-    };
-    const result = await this.rpc().rpc(
-      "turn/start",
-      params,
-      schemas.turnResult,
-    );
-    return { turnId: result.turn.id };
+    return this.rpcWithReconnect(async () => {
+      const params: TurnStartParams = {
+        threadId: req.threadId,
+        input: textInput(req.text),
+      };
+      const result = await this.rpc().rpc(
+        "turn/start",
+        params,
+        schemas.turnResult,
+      );
+      return { turnId: result.turn.id };
+    });
   }
   async steerTurn(req: Parameters<CodexAdapter["steerTurn"]>[0]) {
-    const params: TurnSteerParams = {
-      threadId: req.threadId,
-      expectedTurnId: req.expectedTurnId,
-      input: textInput(req.text),
-    };
-    const result = await this.rpc().rpc(
-      "turn/steer",
-      params,
-      z.object({ turnId: schemas.identifier }),
-    );
-    if (result.turnId !== req.expectedTurnId)
-      throw new Error(
-        "Codex steer returned a different turn ID; delivery is unknown",
+    return this.rpcWithReconnect(async () => {
+      const params: TurnSteerParams = {
+        threadId: req.threadId,
+        expectedTurnId: req.expectedTurnId,
+        input: textInput(req.text),
+      };
+      const result = await this.rpc().rpc(
+        "turn/steer",
+        params,
+        z.object({ turnId: schemas.identifier }),
       );
-    return result;
+      if (result.turnId !== req.expectedTurnId)
+        throw new Error(
+          "Codex steer returned a different turn ID; delivery is unknown",
+        );
+      return result;
+    });
   }
   async interruptTurn(req: Parameters<CodexAdapter["interruptTurn"]>[0]) {
-    const params: TurnInterruptParams = req;
-    await this.rpc().rpc("turn/interrupt", params, z.object({}).strict());
+    return this.rpcWithReconnect(async () => {
+      const params: TurnInterruptParams = req;
+      await this.rpc().rpc("turn/interrupt", params, z.object({}).strict());
+    });
   }
   private assertCurrent(connection: RpcConnection) {
     if (connection !== this.connection || !connection.connected)
@@ -313,58 +373,62 @@ class AppServerAdapter implements CodexAdapter {
   async resumeThread(
     threadId: ProviderSessionId,
   ): Promise<CodexThreadObservation> {
-    const connection = this.rpc();
-    const params: ThreadResumeParams = { threadId, excludeTurns: false };
-    const { thread } = await connection.rpc(
-      "thread/resume",
-      params,
-      schemas.threadResult,
-    );
-    this.assertCurrent(connection);
-    const observation = await this.observe(connection, threadId, thread);
-    this.assertCurrent(connection);
-    this.subscribed.add(threadId);
-    return observation;
+    return this.rpcWithReconnect(async () => {
+      const connection = this.rpc();
+      const params: ThreadResumeParams = { threadId, excludeTurns: false };
+      const { thread } = await connection.rpc(
+        "thread/resume",
+        params,
+        schemas.threadResult,
+      );
+      this.assertCurrent(connection);
+      const observation = await this.observe(connection, threadId, thread);
+      this.assertCurrent(connection);
+      this.subscribed.add(threadId);
+      return observation;
+    });
   }
   async readThread(
     threadId: ProviderSessionId,
   ): Promise<CodexThreadObservation> {
-    const connection = this.rpc();
-    if (!this.subscribed.has(threadId))
-      throw new Error(
-        "Resume thread before reading so pending requests are hydrated",
-      );
-    const params: ThreadReadParams = { threadId, includeTurns: true };
-    let thread: schemas.Thread;
-    try {
-      ({ thread } = await connection.rpc(
-        "thread/read",
-        params,
-        schemas.threadResult,
-      ));
-    } catch (error) {
-      // A thread that `thread/start` created but that has had no turn is loaded yet not
-      // materialized, and Codex 0.154 refuses to read it: "thread <id> is not materialized yet;
-      // includeTurns is unavailable before first user message". It is idle with no turns. Reading
-      // it as anything else deadlocks a run: core maps an unreadable thread to `unknown`, and the
-      // send gate never sends the first turn into `unknown`. Found by the first real reviewer run.
-      if (isNotMaterialized(error)) {
-        this.assertCurrent(connection);
-        return {
-          provider: "codex",
-          threadId,
-          generation: this.currentGeneration as number,
-          status: "idle",
-          activeFlags: [],
-          turns: [],
-          lastError: null,
-          pendingRequests: [],
-          rateLimits: null,
-        };
+    return this.rpcWithReconnect(async () => {
+      const connection = this.rpc();
+      if (!this.subscribed.has(threadId))
+        throw new Error(
+          "Resume thread before reading so pending requests are hydrated",
+        );
+      const params: ThreadReadParams = { threadId, includeTurns: true };
+      let thread: schemas.Thread;
+      try {
+        ({ thread } = await connection.rpc(
+          "thread/read",
+          params,
+          schemas.threadResult,
+        ));
+      } catch (error) {
+        // A thread that `thread/start` created but that has had no turn is loaded yet not
+        // materialized, and Codex 0.154 refuses to read it: "thread <id> is not materialized yet;
+        // includeTurns is unavailable before first user message". It is idle with no turns. Reading
+        // it as anything else deadlocks a run: core maps an unreadable thread to `unknown`, and the
+        // send gate never sends the first turn into `unknown`. Found by the first real reviewer run.
+        if (isNotMaterialized(error)) {
+          this.assertCurrent(connection);
+          return {
+            provider: "codex",
+            threadId,
+            generation: this.currentGeneration as number,
+            status: "idle",
+            activeFlags: [],
+            turns: [],
+            lastError: null,
+            pendingRequests: [],
+            rateLimits: null,
+          };
+        }
+        throw error;
       }
-      throw error;
-    }
-    return this.observe(connection, threadId, thread);
+      return this.observe(connection, threadId, thread);
+    });
   }
   private async observe(
     connection: RpcConnection,
@@ -414,48 +478,54 @@ class AppServerAdapter implements CodexAdapter {
     };
   }
   async unsubscribe(threadId: ProviderSessionId) {
-    const params: ThreadUnsubscribeParams = { threadId };
-    const connection = this.rpc();
-    await connection.rpc(
-      "thread/unsubscribe",
-      params,
-      z.object({
-        status: z.enum(["notLoaded", "notSubscribed", "unsubscribed"]),
-      }),
-    );
-    this.assertCurrent(connection);
-    this.subscribed.delete(threadId);
-    this.pending.forget(threadId);
+    return this.rpcWithReconnect(async () => {
+      const params: ThreadUnsubscribeParams = { threadId };
+      const connection = this.rpc();
+      await connection.rpc(
+        "thread/unsubscribe",
+        params,
+        z.object({
+          status: z.enum(["notLoaded", "notSubscribed", "unsubscribed"]),
+        }),
+      );
+      this.assertCurrent(connection);
+      this.subscribed.delete(threadId);
+      this.pending.forget(threadId);
+    });
   }
   async answerRequest(req: Parameters<CodexAdapter["answerRequest"]>[0]) {
-    const connection = this.rpc();
-    if (req.generation !== this.currentGeneration)
-      throw new Error("Stale Codex request generation");
-    this.pending.answer(req, connection);
+    return this.rpcWithReconnect(async () => {
+      const connection = this.rpc();
+      if (req.generation !== this.currentGeneration)
+        throw new Error("Stale Codex request generation");
+      this.pending.answer(req, connection);
+    });
   }
   async readRateLimits(): Promise<RateLimitObservation> {
-    const limits = await this.rpc().rpc(
-      "account/rateLimits/read",
-      {},
-      schemas.rateLimitsResult,
-    );
-    if (limits.ordinaryUsageAllowed === null)
-      throw new Error("Codex usage allowance unavailable");
-    const buckets = [
-      limits.rateLimits,
-      ...Object.values(limits.rateLimitsByLimitId ?? {}),
-    ];
-    const resets = buckets
-      .flatMap((bucket) => [bucket.primary, bucket.secondary])
-      .flatMap((window) =>
-        window && window.usedPercent >= 100 && window.resetsAt !== null
-          ? [window.resetsAt]
-          : [],
+    return this.rpcWithReconnect(async () => {
+      const limits = await this.rpc().rpc(
+        "account/rateLimits/read",
+        {},
+        schemas.rateLimitsResult,
       );
-    return {
-      usageAllowed: limits.ordinaryUsageAllowed,
-      resetsAt: resets.length ? iso(Math.max(...resets)) : null,
-    };
+      if (limits.ordinaryUsageAllowed === null)
+        throw new Error("Codex usage allowance unavailable");
+      const buckets = [
+        limits.rateLimits,
+        ...Object.values(limits.rateLimitsByLimitId ?? {}),
+      ];
+      const resets = buckets
+        .flatMap((bucket) => [bucket.primary, bucket.secondary])
+        .flatMap((window) =>
+          window && window.usedPercent >= 100 && window.resetsAt !== null
+            ? [window.resetsAt]
+            : [],
+        );
+      return {
+        usageAllowed: limits.ordinaryUsageAllowed,
+        resetsAt: resets.length ? iso(Math.max(...resets)) : null,
+      };
+    });
   }
   async checkResumable(threadId: ProviderSessionId): Promise<boolean | null> {
     let probe: RpcConnection | undefined;

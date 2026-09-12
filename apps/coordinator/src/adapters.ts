@@ -23,6 +23,10 @@ export interface Adapters {
   claude: ClaudeAdapter;
   /** Per task: `startServer` is idempotent and the server outlives a pane host restart. */
   codex(taskId: TaskId): Promise<CodexAdapter>;
+  /** Stop a specific task's app-server without affecting others. Idempotent. */
+  stopCodexServer(taskId: TaskId): Promise<void>;
+  /** Count of running Codex app-servers. */
+  codexServerCount(): number;
   /** Stops the child processes this coordinator started. Never a shared daemon. */
   close(): Promise<void>;
 }
@@ -36,7 +40,7 @@ export type CodexFactory = (
 export function codexPerTask(
   dataDirectory: string,
   factory: CodexFactory,
-): Pick<Adapters, "codex" | "close"> {
+): Pick<Adapters, "codex" | "stopCodexServer" | "codexServerCount" | "close"> {
   const servers = new Map<string, CodexAdapter>();
   return {
     async codex(taskId) {
@@ -46,6 +50,14 @@ export function codexPerTask(
       servers.set(taskId, adapter);
       await adapter.startServer();
       return adapter;
+    },
+    async stopCodexServer(taskId) {
+      const adapter = servers.get(taskId);
+      if (!adapter) return;
+      await adapter.stopServer().catch(() => undefined);
+    },
+    codexServerCount() {
+      return servers.size;
     },
     async close() {
       const all = [...servers.values()];

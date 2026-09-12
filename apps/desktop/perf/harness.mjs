@@ -385,6 +385,29 @@ async function main() {
   await app.close();
   app = undefined;
 
+  step("Workbench live inventory, layout, terminals and scratch");
+  await new Promise((resolve, reject) => {
+    const child = spawn("pnpm", ["exec", "tsx", "scripts/workbench-smoke.ts"], {
+      cwd: root,
+      env,
+      stdio: "inherit",
+    });
+    child.on("error", reject);
+    child.on("exit", (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`Workbench harness exited ${code}`)),
+    );
+  });
+  const workbench = JSON.parse(
+    readFileSync(join(here, "workbench-report.json"), "utf8"),
+  );
+  Object.assign(measured, {
+    workbenchOpenMs: workbench.openCommandToSidebarMs,
+    workbenchEchoP95Ms: workbench.echoP95Ms,
+    workbenchIdleCpuPercent: workbench.idleCpuPercent,
+    workbenchTerminalRerenders: workbench.terminalRerendersOnPatch,
+  });
   const rows = Object.entries(budgets).map(([key, budget]) => {
     const value = measured[key];
     const ok =
@@ -409,6 +432,7 @@ async function main() {
       cpus: (await import("node:os")).cpus().length,
       node: process.version,
     },
+    workbench,
     listRows: LIST_ROWS,
     coldStartRunsMs: measured.coldStartRunsMs,
     extras: {

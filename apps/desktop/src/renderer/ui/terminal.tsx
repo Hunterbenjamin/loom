@@ -7,7 +7,7 @@ import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
 import { kittyEncode } from "./kitty.js";
 
@@ -34,7 +34,7 @@ export function TerminalTab({
     (a, b) => a.length === b.length && a.every((r, i) => r === b[i]),
   );
   return (
-    <div className="terminal-wrap">
+    <div className="terminal-tab">
       {live ? (
         <select
           aria-label="Terminal run"
@@ -64,31 +64,48 @@ export function TerminalTab({
 }
 
 /** The shared attach client for task runs and the instance Lead. Unmount only detaches. */
-export function TerminalSession({
+export const TerminalSession = memo(function TerminalSession({
+  panelId,
+  pane,
+  onKey,
   label,
   runId = null,
   lead = false,
   theme,
   live,
 }: {
+  panelId?: string;
+  pane?: import("@loom/protocol").PaneIdentity;
+  onKey?: (event: KeyboardEvent, literal: () => void) => boolean;
   label: string;
   runId?: RunId | null;
   lead?: boolean;
   theme: "dark" | "light";
   live: boolean;
 }) {
+  if (panelId && window.loom) {
+    window.loom.terminalRenders ??= {};
+    window.loom.terminalRenders[panelId] =
+      (window.loom.terminalRenders[panelId] ?? 0) + 1;
+  }
   const host = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState("starting...");
   const [command, setCommand] = useState("");
 
+  const settings = useRef({ label, theme, onKey });
+  settings.current = { label, theme, onKey };
+  const instance = useRef<Terminal | null>(null);
+  useEffect(() => {
+    if (instance.current) instance.current.options.theme = THEMES[theme];
+  }, [theme]);
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    if (live && !runId && !lead) {
+    if (live && !runId && !lead && !pane) {
       setStatus("Select a run to attach");
       return;
     }
-    const id = `${label}:${runId ?? "fixture"}:terminal:${crypto.randomUUID()}`;
+    const id = `${panelId ?? "terminal"}:${crypto.randomUUID()}`;
     const terminal = new Terminal({
       fontFamily: '"SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace',
       fontSize: 12,
@@ -97,7 +114,7 @@ export function TerminalSession({
       // Option+drag selects locally; a plain drag is a mouse event for the pane host (spike 03).
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
-      theme: THEMES[theme],
+      theme: THEMES[settings.current.theme],
       scrollback: 0,
     });
     const fit = new FitAddon();
@@ -111,9 +128,19 @@ export function TerminalSession({
       // Software rendering still works; only throughput suffers.
     }
     fit.fit();
+    instance.current = terminal;
     window.loom.term = terminal;
+    window.loom.terms ??= {};
+    window.loom.terms[panelId ?? id] = terminal;
 
     terminal.attachCustomKeyEventHandler((event) => {
+      if (
+        settings.current.onKey?.(event, () =>
+          window.loomTerminal.write(id, "\x01"),
+        )
+      )
+        return false;
+      if (event.defaultPrevented) return false;
       if (event.type !== "keydown") return true;
       const encoded = kittyEncode(event);
       if (!encoded) return true;
@@ -150,7 +177,8 @@ export function TerminalSession({
         id,
         cols: terminal.cols,
         rows: terminal.rows,
-        label,
+        label: settings.current.label,
+        pane,
         lead,
         runId,
       })
@@ -197,12 +225,14 @@ export function TerminalSession({
       disposed = true;
       window.clearTimeout(timer);
       observer.disconnect();
-      window.loom.term = null;
+      if (window.loom.term === terminal) window.loom.term = null;
+      delete window.loom.terms?.[panelId ?? id];
+      instance.current = null;
       window.loomTerminal.off(id);
       void window.loomTerminal.kill(id);
       terminal.dispose();
     };
-  }, [label, theme, live, runId, lead]);
+  }, [panelId, pane, live, runId, lead]);
 
   return (
     <div className="terminal-wrap">
@@ -217,4 +247,4 @@ export function TerminalSession({
       </div>
     </div>
   );
-}
+});

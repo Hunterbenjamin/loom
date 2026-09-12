@@ -9,8 +9,11 @@ import {
   type PtyExit,
   type PtySpawnResult,
   ptySpawnRequest,
+  type WindowMode,
+  windowMode,
 } from "../shared/ipc.js";
 import { resolveAttach } from "./attach.js";
+import { OwnedResources } from "./ownership.js";
 
 const connection = connectionFromEnvironment(
   process.env,
@@ -31,8 +34,10 @@ interface Session {
   proc: import("node-pty").IPty;
   chunks: string[];
   timer: NodeJS.Timeout | null;
+  lastFlush: number;
 }
 
+<<<<<<< HEAD
 const sessions = new Map<string, Session>();
 const notified = new Set<string>();
 ipcMain.on("app:notify", (_event, raw: unknown) => {
@@ -53,6 +58,48 @@ ipcMain.on("app:notify", (_event, raw: unknown) => {
       body: parsed.data.body,
     }).show();
 });
+=======
+const sessions = new OwnedResources<Session>((session) => {
+  if (session.timer) clearTimeout(session.timer);
+  session.proc.kill("SIGHUP");
+});
+const windows = new Map<
+  number,
+  { window: BrowserWindow; mode: WindowMode; spare: boolean }
+>();
+let spare: Promise<BrowserWindow> | null = null;
+let quitting = false;
+function prepareWorkbench() {
+  if (spare || quitting || connection.mode !== "live") return;
+  spare = createWindow("workbench", true).catch((error) => {
+    spare = null;
+    throw error;
+  });
+  void spare.catch(() => undefined);
+}
+async function openWindow(mode: WindowMode) {
+  if (mode === "workbench" && spare) {
+    const prepared = spare;
+    spare = null;
+    const window = await prepared;
+    const entry = window.isDestroyed()
+      ? undefined
+      : windows.get(window.webContents.id);
+    if (entry && !window.isDestroyed()) {
+      entry.spare = false;
+      window.show();
+      window.focus();
+    } else await createWindow(mode);
+  } else await createWindow(mode);
+  setTimeout(prepareWorkbench, 1000).unref();
+}
+function owned(sender: Electron.WebContents) {
+  const entry = windows.get(sender.id);
+  if (!entry || entry.window.isDestroyed() || sender.isDestroyed())
+    throw new Error("Unknown window");
+  return entry;
+}
+>>>>>>> origin/main
 
 /**
  * A plain login shell by default. `LOOM_ATTACH_PANE=<session>:<window-id>` attaches to a pane on
@@ -91,34 +138,46 @@ function command(): { file: string; args: string[] } {
 }
 
 function flush(window: BrowserWindow, id: string): void {
-  const session = sessions.get(id);
+  const session = sessions.get(window.webContents.id, id);
   if (!session || session.chunks.length === 0) return;
   const data = session.chunks.join("");
   session.chunks = [];
+  if (session.timer) clearTimeout(session.timer);
   session.timer = null;
+  session.lastFlush = Date.now();
   if (!window.isDestroyed()) window.webContents.send("pty:data", id, data);
 }
 
-function wire(window: BrowserWindow): void {
-  ipcMain.handle("app:connection", () => connection);
+function wire(): void {
+  ipcMain.handle("app:connection", (event) => {
+    owned(event.sender);
+    return connection;
+  });
+  ipcMain.handle("app:mode", (event) => owned(event.sender).mode);
+  ipcMain.handle("app:open-window", async (event, raw: unknown) => {
+    owned(event.sender);
+    await openWindow(windowMode.parse(raw));
+  });
   ipcMain.handle(
     "pty:spawn",
     async (event, raw: unknown): Promise<PtySpawnResult> => {
-      if (event.sender !== window.webContents)
-        throw new Error("Unknown window");
+      const { window } = owned(event.sender);
       const request = ptySpawnRequest.parse(raw);
+      const token = sessions.begin(event.sender.id, request.id);
       const target =
         connection.mode === "fixtures"
           ? null
-          : request.lead
-            ? await resolveAttach(connection, "lead")
-            : request.runId
-              ? await resolveAttach(connection, request.runId)
-              : null;
+          : request.pane
+            ? await resolveAttach(connection, request.pane)
+            : request.lead
+              ? await resolveAttach(connection, "lead")
+              : request.runId
+                ? await resolveAttach(connection, request.runId)
+                : null;
       if (connection.mode !== "fixtures" && !target?.attach)
         throw new Error("Select a run with a live terminal pane");
       if (window.isDestroyed()) throw new Error("Window closed");
-      sessions.get(request.id)?.proc.kill("SIGHUP");
+      owned(event.sender);
       const resolved = target?.attach;
       const { file, args } = resolved
         ? { file: resolved.argv[0] as string, args: resolved.argv.slice(1) }
@@ -140,17 +199,21 @@ function wire(window: BrowserWindow): void {
           COLORTERM: "truecolor",
         },
       });
-      const session: Session = { proc, chunks: [], timer: null };
-      sessions.set(request.id, session);
+      const session: Session = { proc, chunks: [], timer: null, lastFlush: 0 };
+      if (!sessions.finish(event.sender.id, request.id, token, session))
+        throw new Error("Panel closed");
       // Coalesce for a frame, so a flood is a handful of IPC messages instead of thousands.
       proc.onData((data) => {
+        if (sessions.get(event.sender.id, request.id) !== session) return;
         session.chunks.push(data);
-        if (!session.timer)
+        if (Date.now() - session.lastFlush > 8) flush(window, request.id);
+        else if (!session.timer)
           session.timer = setTimeout(() => flush(window, request.id), 4);
       });
       proc.onExit(({ exitCode, signal }) => {
+        if (sessions.get(event.sender.id, request.id) !== session) return;
         flush(window, request.id);
-        sessions.delete(request.id);
+        sessions.delete(event.sender.id, request.id, session);
         const info: PtyExit = { exitCode, signal: signal ?? 0 };
         if (!window.isDestroyed())
           window.webContents.send("pty:exit", request.id, info);
@@ -159,13 +222,23 @@ function wire(window: BrowserWindow): void {
     },
   );
 
-  ipcMain.on("pty:write", (_event, id: string, data: string) => {
-    sessions.get(id)?.proc.write(data);
+  ipcMain.on("pty:write", (event, id: string, data: string) => {
+    if (!windows.has(event.sender.id) || event.sender.isDestroyed()) return;
+    if (
+      typeof id !== "string" ||
+      typeof data !== "string" ||
+      data.length > 1048576
+    )
+      return;
+    sessions.get(event.sender.id, id)?.proc.write(data);
   });
 
-  ipcMain.on("pty:resize", (_event, id: string, cols: number, rows: number) => {
+  ipcMain.on("pty:resize", (event, id: string, cols: number, rows: number) => {
+    if (!windows.has(event.sender.id) || event.sender.isDestroyed()) return;
+    if (![cols, rows].every((n) => Number.isInteger(n) && n > 0 && n <= 1000))
+      return;
     try {
-      sessions.get(id)?.proc.resize(cols, rows);
+      sessions.get(event.sender.id, id)?.proc.resize(cols, rows);
     } catch {
       // The process can exit between the resize event and this call.
     }
@@ -173,17 +246,17 @@ function wire(window: BrowserWindow): void {
 
   // Closing a panel detaches, exactly like closing a terminal window: SIGHUP, and the agent
   // behind an attach keeps running (spike 03).
-  ipcMain.handle("pty:kill", (_event, id: string) => {
-    const session = sessions.get(id);
-    if (!session) return false;
-    session.proc.kill("SIGHUP");
-    return true;
+  ipcMain.handle("pty:kill", (event, id: string) => {
+    owned(event.sender);
+    return sessions.kill(event.sender.id, id);
   });
 
   // The cold-start measurement spawns this app directly and reads this line, so the number
   // is the app's own start-up and not Playwright's debugger attaching.
   let reported = false;
-  ipcMain.on("app:interactive", () => {
+  ipcMain.on("app:interactive", (event) => {
+    const entry = windows.get(event.sender.id);
+    if (!entry?.spare) setTimeout(prepareWorkbench, 1000).unref();
     if (reported) return;
     reported = true;
     process.stdout.write(`loom:interactive ${Date.now()}\n`);
@@ -198,8 +271,12 @@ function wire(window: BrowserWindow): void {
   );
 }
 
-app.whenReady().then(async () => {
+async function createWindow(
+  mode: WindowMode,
+  isSpare = false,
+): Promise<BrowserWindow> {
   const window = new BrowserWindow({
+    show: !isSpare,
     width: Number(process.env.LOOM_WIDTH ?? 1440),
     height: Number(process.env.LOOM_HEIGHT ?? 900),
     minWidth: 960,
@@ -213,7 +290,28 @@ app.whenReady().then(async () => {
       backgroundThrottling: false,
     },
   });
-  wire(window);
+  const owner = window.webContents.id;
+  windows.set(owner, { window, mode, spare: isSpare });
+  sessions.open(owner);
+  const cleanup = () => {
+    sessions.close(owner);
+    windows.delete(owner);
+    if (!quitting && ![...windows.values()].some((entry) => !entry.spare))
+      app.quit();
+  };
+  window.on("closed", cleanup);
+  window.webContents.on("render-process-gone", cleanup);
+  window.webContents.on("before-input-event", (event, input) => {
+    if (
+      input.type === "keyDown" &&
+      input.meta &&
+      input.shift &&
+      input.key.toLowerCase() === "w"
+    ) {
+      event.preventDefault();
+      void openWindow("workbench");
+    }
+  });
 
   // The performance harness asks for a longer list; nothing else sets this.
   const search = process.env.LOOM_TASKS
@@ -226,11 +324,20 @@ app.whenReady().then(async () => {
     await window.loadFile(join(import.meta.dirname, "../renderer/index.html"), {
       search,
     });
+  return window;
+}
+
+app.whenReady().then(async () => {
+  wire();
+  await createWindow(
+    process.env.LOOM_WINDOW_MODE === "workbench" ? "workbench" : "tracker",
+  );
 });
 
 // Quitting detaches every terminal. Nothing else of ours outlives the window.
 app.on("before-quit", () => {
-  for (const session of sessions.values()) session.proc.kill("SIGHUP");
+  quitting = true;
+  for (const owner of windows.keys()) sessions.close(owner);
 });
 
 app.on("window-all-closed", () => app.quit());

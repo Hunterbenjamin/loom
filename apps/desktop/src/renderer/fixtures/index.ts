@@ -331,6 +331,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
       providers: repo.defaultProviders,
       blockedBy: index === 22 ? [taskId("LOOM-118")] : [],
       budgetMinutes: index % 4 === 0 ? 180 : null,
+      size: index % 5 === 0 ? "small" : "normal",
       createdAt: minutesBefore(ageMinutes),
       updatedAt: minutesBefore(between(random, 1, stageMinutes)),
       worktreePath: hasWorktree ? path : null,

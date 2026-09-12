@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { parseAgentsOutput } from "./agents.js";
+import { isPidAlive, isStaleEntry, parseAgentsOutput } from "./agents.js";
 
 const fixture = readFileSync(
   new URL("./fixtures/agents.json", import.meta.url),
@@ -66,5 +66,87 @@ describe("claude agents --json", () => {
     expect(() => parseAgentsOutput('[{"sessionId":"s"}]')).toThrow();
     expect(() => parseAgentsOutput('{"agents":[]}')).toThrow();
     expect(() => parseAgentsOutput("not json")).toThrow();
+  });
+});
+
+describe("stale entry detection", () => {
+  test("isPidAlive returns false for null or undefined pids", () => {
+    expect(isPidAlive(null)).toBe(false);
+    expect(isPidAlive(undefined)).toBe(false);
+  });
+
+  test("isPidAlive returns true for the current process", () => {
+    const currentPid = process.pid;
+    expect(isPidAlive(currentPid)).toBe(true);
+  });
+
+  test("isPidAlive returns false for a definitely-dead pid", () => {
+    // Use a very high PID that's unlikely to exist
+    const deadPid = 999999;
+    expect(isPidAlive(deadPid)).toBe(false);
+  });
+
+  test("isStaleEntry returns false for null pid (conservative)", () => {
+    const entries = parseAgentsOutput(fixture);
+    const entry = entries[0];
+    if (!entry) throw new Error("Expected at least one entry in fixture");
+    expect(isStaleEntry({ ...entry, pid: null } as typeof entry)).toBe(false);
+  });
+
+  test("isStaleEntry returns false for alive pid", () => {
+    const entries = parseAgentsOutput(fixture);
+    const entry = entries[0];
+    if (!entry) throw new Error("Expected at least one entry in fixture");
+    // Replace pid with current process (definitely alive)
+    expect(isStaleEntry({ ...entry, pid: process.pid } as typeof entry)).toBe(
+      false,
+    );
+  });
+
+  test("isStaleEntry returns true for dead pid", () => {
+    const entries = parseAgentsOutput(fixture);
+    const entry = entries[0];
+    if (!entry) throw new Error("Expected at least one entry in fixture");
+    // Use a very high PID that's unlikely to exist
+    expect(isStaleEntry({ ...entry, pid: 999999 } as typeof entry)).toBe(true);
+  });
+
+  test("isStaleEntry uses hook activity for null-pid entries", () => {
+    const entries = parseAgentsOutput(fixture);
+    const entry = entries[0];
+    if (!entry) throw new Error("Expected at least one entry in fixture");
+    const nullPidEntry = { ...entry, pid: null } as typeof entry;
+
+    const now = "2026-09-12T13:00:00.000Z";
+    const stallAfterMs = 900000; // 15 minutes
+
+    // Recent hook activity: entry is live
+    const recentHookTime = "2026-09-12T12:59:00.000Z"; // 1 minute ago
+    expect(
+      isStaleEntry(nullPidEntry, {
+        hookLastEventAt: recentHookTime,
+        stallAfterMs,
+        now,
+      }),
+    ).toBe(false);
+
+    // Stale hook activity: entry is stale
+    const staleHookTime = "2026-09-12T12:00:00.000Z"; // 1 hour ago
+    expect(
+      isStaleEntry(nullPidEntry, {
+        hookLastEventAt: staleHookTime,
+        stallAfterMs,
+        now,
+      }),
+    ).toBe(true);
+
+    // No hook activity but have hook options: entry is live (conservative)
+    expect(
+      isStaleEntry(nullPidEntry, {
+        hookLastEventAt: null,
+        stallAfterMs,
+        now,
+      }),
+    ).toBe(false);
   });
 });

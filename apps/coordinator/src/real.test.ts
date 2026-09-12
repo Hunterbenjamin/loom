@@ -95,6 +95,10 @@ test.skipIf(!enabled)(
       codex: async () => {
         throw new Error("This test launches no Codex run");
       },
+      stopCodexServer: async () => {
+        // No-op: this test doesn't launch Codex
+      },
+      codexServerCount: () => 0,
       close: async () => {
         await claude.close();
       },

@@ -168,6 +168,35 @@ pnpm loom serve          # a root script over tsx, which is a workspace dev depe
 
 `main(argv)` is exported from `src/cli.ts`, so the command table is callable directly as well.
 
+### Small task fast path
+
+Small tasks (docs, typos, one-file fixes) skip the planning stage and reach `done` in ≤5 minutes when idle:
+
+```sh
+loom task create <repo> <title> [description] --small
+```
+
+Small tasks auto-generate a plan from the title (goal) and description (steps), then route directly from `todo` to `in_progress`, skipping the planning and plan_approval stages. The plan is marked as accepted, so no human approval is needed.
+
+**Qualifying scope:** ~200 lines or fewer, single file, no architectural decisions. Docs, typos, comments, config updates, simple refactors.
+
+**How it works:**
+1. Task created with `--small` flag or `size: 'small'` via Lead/Operator tools.
+2. On first reconcile, a plan is auto-generated from task title (goal) and description (steps split by newlines).
+3. Task transitions directly: `todo` → `in_progress` (no planning stage).
+4. Implementer fixes it; reviewer runs only tests for affected packages.
+5. Targets ≤5 minutes wall-clock from `todo` to `done` when idle.
+
+### Timing measurements
+
+Measure small task stage durations:
+
+```sh
+loom task timings <task>
+```
+
+Prints per-stage transition times from the audit log. Useful for verifying the ≤5-minute target and understanding latency bottlenecks.
+
 ## Troubleshooting
 
 ### Claude folder-trust dialog on first launch

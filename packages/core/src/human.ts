@@ -186,11 +186,18 @@ export function human(
       return null;
     }
     case "request_changes":
-      if (task.stage !== "awaiting_approval") return wrong();
+      if (task.stage !== "awaiting_approval" && task.stage !== "in_review")
+        return wrong();
       if (!cmd.findings.length) return guard("Provide at least one finding");
       c.voidApprovals("stage_left");
       for (const finding of cmd.findings)
         c.finding({ ...finding, source: "human", blocking: true });
+      // During review the reviewer round in flight is over: the human's findings replace its
+      // verdict, so its run is superseded like any other run a stage change leaves behind.
+      if (task.stage === "in_review") {
+        const reviewer = c.current("reviewer");
+        if (reviewer) c.end(reviewer, "superseded", true);
+      }
       c.stage("in_progress", "Human requested changes");
       c.fix(sequence);
       return null;

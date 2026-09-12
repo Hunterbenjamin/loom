@@ -20,7 +20,7 @@ import {
   reconcileConfig,
 } from "./config.js";
 import { Coordinator } from "./coordinator.js";
-import { formatInspection, inspectTask } from "./inspect.js";
+import { formatInspection, getTaskTimings, inspectTask } from "./inspect.js";
 import { createRealAdapters } from "./real-adapters.js";
 
 const USAGE = `loom — Loom's coordinator and its client
@@ -29,7 +29,7 @@ const USAGE = `loom — Loom's coordinator and its client
   loom operator status [--json]         Operator session, queue, actions and quota
   loom status                           what every task is doing
   loom repo add <root> <owner/name>     register a repository with this instance
-  loom task create <repo> <title> [description]
+  loom task create <repo> <title> [description] [--small]
   loom task list [--view needs_you]
   loom task show <task>
   loom task inspect <task> [--json]     read persisted diagnostics without a coordinator
@@ -42,6 +42,7 @@ const USAGE = `loom — Loom's coordinator and its client
   loom task answer-request <task> <runId> <requestId> accept|decline|cancel
   loom task retry <task>
   loom task cancel <task> <reason>
+  loom task timings <task>               show per-stage durations from transitions
   loom attach <task> [role] [--exec]    print, or run, the pane host's attach command
 
 Environment: LOOM_INSTANCE, LOOM_DATA_ROOT, LOOM_TOKEN, LOOM_BIND, LOOM_WORKTREE_ROOT.`;
@@ -52,12 +53,19 @@ const flag = (argv: string[], name: string): string | null => {
 };
 const has = (argv: string[], name: string): boolean =>
   argv.includes(`--${name}`);
-const rest = (argv: string[]): string[] =>
-  argv.filter(
-    (value, index) =>
-      !value.startsWith("--") &&
-      (!argv[index - 1]?.startsWith("--") || argv[index - 1] === "--json"),
-  );
+const rest = (argv: string[]): string[] => {
+  const booleanFlags = new Set([
+    "--json",
+    "--small",
+    "--require-plan-approval",
+  ]);
+  return argv.filter((value, index) => {
+    if (value.startsWith("--")) return false;
+    const prevFlag = argv[index - 1];
+    if (!prevFlag?.startsWith("--")) return true;
+    return booleanFlags.has(prevFlag);
+  });
+};
 
 const connect = async (
   config: CoordinatorConfig,
@@ -233,9 +241,17 @@ async function serve(config: CoordinatorConfig): Promise<void> {
   process.stderr.write(
     `loom ${config.instance} listening on ${coordinator.protocol.url}; mcp on ${coordinator.mcpUrl}\n` +
       `recovered: ${report.recorded.length} recorded, ${report.requeued.length} requeued, ` +
-      `${report.resumedCodex.length} Codex threads resumed, ${report.relaunched.length} panes relaunched\n`,
+      `${report.resumedCodex.length} Codex threads resumed, ${report.relaunched.length} panes relaunched\n` +
+      `codex app-servers: ${adapters.codexServerCount()}\n`,
   );
+  // Periodically log app-server count for observability
+  const serverCountInterval = setInterval(() => {
+    const count = adapters.codexServerCount();
+    if (count > 0) process.stderr.write(`codex app-servers: ${count}\n`);
+  }, 60000); // Every 60 seconds
+  serverCountInterval.unref?.();
   const stop = () => {
+    clearInterval(serverCountInterval);
     void coordinator.stop().then(() => process.exit(0));
   };
   process.on("SIGINT", stop);
@@ -340,6 +356,7 @@ export async function main(argv: string[]): Promise<void> {
         requirePlanApproval: has(argv, "require-plan-approval") ? true : null,
         blockedBy: [],
         budgetMinutes: null,
+        size: has(argv, "small") ? "small" : null,
       });
     }
     case "list":
@@ -363,6 +380,49 @@ export async function main(argv: string[]): Promise<void> {
             ? `${JSON.stringify(data, null, 2)}\n`
             : formatInspection(data),
         );
+      } finally {
+        store.close();
+      }
+      return;
+    }
+    case "timings": {
+      if (!taskId) throw new Error("loom task timings <task>");
+      const store = openReadOnlyStore({
+        dataRoot: config.dataRoot,
+        instance: config.instance,
+        config: reconcileConfig(config),
+      });
+      try {
+        if (!store.tasks().some((task) => task.id === taskId)) {
+          process.stderr.write(`unknown_task: ${taskId}\n`);
+          process.exitCode = 1;
+          return;
+        }
+        const timings = getTaskTimings(store, taskId);
+        if (timings.stageTimings.length === 0) {
+          process.stdout.write(`${timings.message}\n`);
+          return;
+        }
+
+        const lines: string[] = [];
+        lines.push(`Task: ${taskId}`);
+        if (timings.totalDuration !== null) {
+          lines.push(
+            `Total duration: ${(timings.totalDuration / 1000 / 60).toFixed(2)} minutes`,
+          );
+        }
+        lines.push("");
+        lines.push("Stage transitions:");
+
+        for (const timing of timings.stageTimings) {
+          const durationSec = (timing.duration / 1000).toFixed(2);
+          const durationMin = (timing.duration / 1000 / 60).toFixed(2);
+          lines.push(
+            `  ${timing.from} → ${timing.to}: ${durationSec}s (${durationMin}min) at ${timing.at}`,
+          );
+        }
+
+        process.stdout.write(`${lines.join("\n")}\n`);
       } finally {
         store.close();
       }

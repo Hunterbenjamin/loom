@@ -2,8 +2,9 @@
 import { stripVTControlCharacters } from "node:util";
 import type { FindingStatus, TaskId } from "@loom/core";
 import type { Store } from "@loom/store";
+import type { Adapters } from "./adapters.js";
 
-export function inspectTask(store: Store, taskId: TaskId) {
+export function inspectTask(store: Store, taskId: TaskId, adapters?: Adapters) {
   const state = store.loadTaskState(taskId);
   const task = state.task;
   const runs = store.runs(taskId);
@@ -16,6 +17,12 @@ export function inspectTask(store: Store, taskId: TaskId) {
     waived: 0,
   };
   for (const finding of state.findings) counts[finding.status]++;
+  // Check if the task has a running Codex app-server (only possible if adapters are provided)
+  // A server can only be running if the task is not in a terminal stage AND the adapter exists
+  const codexServerRunning = !!(
+    adapters && !["done", "canceled"].includes(task.stage)
+  );
+
   return {
     notes: store.operator.notes(taskId),
     reviewHistory: state.findings,
@@ -32,6 +39,7 @@ export function inspectTask(store: Store, taskId: TaskId) {
       branch: task.branch,
       prNumber: task.prNumber,
       worktreePath: task.worktreePath,
+      codexServerRunning,
     },
     runs: runs.map((run) => ({
       id: run.id,
@@ -133,7 +141,8 @@ export function formatInspection(data: Inspection): string {
       lines.push(`  ${`${key}:`.padEnd(23)} ${oneLine(value)}`);
   };
   lines.push("Task");
-  facts(data.task);
+  const taskDisplay = { ...data.task };
+  facts(taskDisplay);
   lines.push("", `Runs (${data.runs.length}, newest last)`);
   for (const run of data.runs) {
     facts(run);
@@ -178,4 +187,49 @@ export function formatInspection(data: Inspection): string {
     facts(finding);
   }
   return `${lines.join("\n").trimEnd()}\n`;
+}
+
+export function getTaskTimings(store: Store, taskId: TaskId) {
+  const transitions = store.transitions(taskId);
+  if (transitions.length === 0) {
+    return {
+      stageTimings: [],
+      totalDuration: null,
+      message: "No transitions found",
+    };
+  }
+
+  const stageTimings: Array<{
+    from: string;
+    to: string;
+    duration: number;
+    at: string;
+  }> = [];
+
+  for (const transition of transitions) {
+    const duration = new Date(transition.at).getTime();
+    const prevTime =
+      transitions.indexOf(transition) > 0
+        ? new Date(
+            transitions[transitions.indexOf(transition) - 1]?.at ?? "",
+          ).getTime()
+        : duration;
+
+    const durationMs = duration - prevTime;
+
+    stageTimings.push({
+      from: transition.from,
+      to: transition.to,
+      duration: durationMs,
+      at: transition.at,
+    });
+  }
+
+  const startTime = new Date(transitions[0]?.at ?? "").getTime();
+  const endTime = new Date(
+    transitions[transitions.length - 1]?.at ?? "",
+  ).getTime();
+  const totalDuration = endTime - startTime;
+
+  return { stageTimings, totalDuration };
 }

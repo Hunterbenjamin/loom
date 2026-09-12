@@ -207,6 +207,8 @@ async function open(
     paneHost,
     claude: providers.claude,
     codex: async () => providers.codex,
+    stopCodexServer: async () => {}, // No-op in tests
+    codexServerCount: () => 0, // Tests use fake provider, not real servers
     close: async () => {},
   };
   const logs: string[] = [];

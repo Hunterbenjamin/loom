@@ -1,21 +1,82 @@
 {
-  "at": "2026-09-12T10:00:22.661Z",
+  "at": "2026-09-12T15:22:20.303Z",
   "machine": {
     "platform": "darwin",
     "arch": "arm64",
     "cpus": 8,
     "node": "v22.13.0"
   },
+  "workbench": {
+    "at": "2026-09-12T15:22:19.867Z",
+    "machine": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpus": 8,
+      "node": "v22.13.0",
+      "tmux": "tmux 3.7c"
+    },
+    "inventory": 30,
+    "preparationMs": 1231,
+    "openCommandToSidebarMs": 16,
+    "echoSamplesMs": [
+      0.6999999284744263,
+      3.200000047683716,
+      0.6000000238418579,
+      0.5,
+      0.6000000238418579,
+      0.5,
+      0.6000000238418579,
+      0.7000000476837158,
+      0.7000000476837158,
+      0.7000000476837158,
+      3,
+      2.399999976158142,
+      2.600000023841858,
+      0.6000000238418579,
+      0.8999999761581421,
+      0.8000000715255737,
+      0.3999999761581421,
+      0.3999999761581421,
+      0.5999999046325684,
+      0.19999992847442627,
+      0.8999999761581421,
+      0.3999999761581421,
+      0.5,
+      0.6999999284744263,
+      0.7999999523162842,
+      0.5,
+      0.5,
+      0.6000000238418579,
+      0.3999999761581421,
+      0.7999999523162842,
+      1.7000000476837158,
+      0.5,
+      1.9000000953674316,
+      0.5,
+      0.2999999523162842,
+      1.5,
+      0.5,
+      0.6000000238418579,
+      0.8999999761581421,
+      1.5
+    ],
+    "echoP95Ms": 2.600000023841858,
+    "idleTerminals": 6,
+    "idleWallSeconds": 5,
+    "idleCpuPercent": 0.3835826620636665,
+    "terminalRerendersOnPatch": 0,
+    "pass": true
+  },
   "listRows": 500,
   "coldStartRunsMs": [
-    652,
-    879,
-    1327
+    407,
+    499,
+    1113
   ],
   "extras": {
-    "terminalKeystrokeP50Ms": 6.4,
+    "terminalKeystrokeP50Ms": 1.7,
     "terminalKeystrokeSamples": 30,
-    "reviewWith200FindingsMs": 9.9,
+    "reviewWith200FindingsMs": 7.6,
     "diffTaskId": "LOOM-125"
   },
   "rows": [
@@ -23,14 +84,14 @@
       "key": "terminalKeystrokeP95Ms",
       "label": "Keystroke to glyph in the terminal, p95",
       "budget": "<= 16",
-      "measured": 11.5,
+      "measured": 3.7,
       "ok": true
     },
     {
       "key": "listScrollFps",
       "label": "Scrolling a 500-row list",
       "budget": ">= 110",
-      "measured": 119.74,
+      "measured": 119.8,
       "ok": true
     },
     {
@@ -44,35 +105,63 @@
       "key": "viewSwitchP95Ms",
       "label": "Switching view, p95",
       "budget": "<= 50",
-      "measured": 18.5,
+      "measured": 17.1,
       "ok": true
     },
     {
       "key": "openIssueP95Ms",
       "label": "Opening an issue, p95",
       "budget": "<= 50",
-      "measured": 18.4,
+      "measured": 17.6,
       "ok": true
     },
     {
       "key": "diffFirstPaintMs",
       "label": "Rendering a 50-file diff, first paint",
       "budget": "<= 400",
-      "measured": 379.5,
+      "measured": 357.1,
       "ok": true
     },
     {
       "key": "coldStartMs",
       "label": "Cold start to interactive",
       "budget": "<= 1500",
-      "measured": 879,
+      "measured": 499,
       "ok": true
     },
     {
       "key": "idleCpuPercent",
       "label": "Idle CPU with the window open",
       "budget": "<= 3",
-      "measured": 2.34,
+      "measured": 0.25,
+      "ok": true
+    },
+    {
+      "key": "workbenchOpenMs",
+      "label": "Workbench command to usable sidebar (30 panes, prepared window)",
+      "budget": "<= 300",
+      "measured": 16,
+      "ok": true
+    },
+    {
+      "key": "workbenchEchoP95Ms",
+      "label": "Workbench four-panel echo p95",
+      "budget": "<= 16",
+      "measured": 2.6,
+      "ok": true
+    },
+    {
+      "key": "workbenchIdleCpuPercent",
+      "label": "Workbench six-terminal idle CPU",
+      "budget": "<= 3",
+      "measured": 0.38,
+      "ok": true
+    },
+    {
+      "key": "workbenchTerminalRerenders",
+      "label": "Terminal rerenders on a panes patch",
+      "budget": "<= 0",
+      "measured": 0,
       "ok": true
     }
   ],

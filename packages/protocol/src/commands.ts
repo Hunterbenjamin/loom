@@ -10,6 +10,9 @@ import { operatorState } from "./operator.js";
 import { subscription } from "./subscriptions.js";
 import {
   leadTarget,
+  paneAttachTarget,
+  paneIdentity,
+  paneView,
   reviewRangeMode,
   reviewState,
   reviewStateChange,
@@ -51,12 +54,23 @@ export const protocolError = z.strictObject({
 
 export const command = z.union([
   z.strictObject({
+<<<<<<< HEAD
     kind: z.literal("claim_notification"),
     noteId: z.string().min(1).max(300),
   }),
   z.strictObject({ kind: z.literal("open_operator_session") }),
   z.strictObject({ kind: z.literal("stop_operator_session") }),
   z.strictObject({ kind: z.literal("operator_status") }),
+=======
+    kind: z.literal("open_pane_session"),
+    target: paneIdentity,
+  }),
+  z.strictObject({
+    kind: z.literal("create_scratch"),
+    taskId,
+    key: z.string().uuid(),
+  }),
+>>>>>>> origin/main
   z.strictObject({ kind: z.literal("open_lead_session") }),
   z.strictObject({ kind: z.literal("stop_lead_session") }),
   /** A `HumanCommand` for one task. Validated here, then queued as an input. */
@@ -75,6 +89,7 @@ export const command = z.union([
     requirePlanApproval: z.boolean().nullable(),
     blockedBy: z.array(taskId),
     budgetMinutes: z.number().int().positive().nullable(),
+    size: z.enum(["small", "normal"]).nullable().default(null),
   }),
   /**
    * Where to attach a terminal to this run. Returns the argv and the pane state; it starts no
@@ -108,6 +123,7 @@ export const commandRequest = z.strictObject({
 
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
+<<<<<<< HEAD
   z.strictObject({
     kind: z.literal("notification"),
     notice: z
@@ -115,6 +131,9 @@ export const ackResult = z.union([
       .nullable(),
   }),
   z.strictObject({ kind: z.literal("operator_state"), state: operatorState }),
+=======
+  z.strictObject({ kind: z.literal("scratch_created"), pane: paneView }),
+>>>>>>> origin/main
   z.strictObject({ kind: z.literal("lead_stopped") }),
   /**
    * The command was validated and recorded as an input. It has not run yet: watch the patches and
@@ -125,7 +144,7 @@ export const ackResult = z.union([
   z.strictObject({ kind: z.literal("task_created"), taskId }),
   z.strictObject({
     kind: z.literal("attach_session"),
-    target: z.union([runTarget, leadTarget]),
+    target: z.union([runTarget, leadTarget, paneAttachTarget]),
   }),
   z.strictObject({ kind: z.literal("diff"), diff: taskDiff }),
   z.strictObject({ kind: z.literal("review_state"), state: reviewState }),

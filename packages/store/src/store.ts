@@ -653,7 +653,7 @@ export class Store {
       const active = { codex: 0, claude: 0 };
       for (const raw of this.db
         .prepare(
-          "SELECT provider, COUNT(*) AS count FROM runs WHERE ended_at IS NULL AND status IN ('starting', 'working', 'blocked') GROUP BY provider",
+          "SELECT provider, COUNT(*) AS count FROM runs WHERE ended_at IS NULL AND status IN ('starting', 'working', 'blocked') AND json_extract(data, '$.origin') = 'loom' GROUP BY provider",
         )
         .all()) {
         const row = z

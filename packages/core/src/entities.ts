@@ -145,6 +145,8 @@ export interface Task {
   blockedBy: TaskId[];
   /** Wall-clock budget; exceeding it adds `over_budget` attention, nothing else. */
   budgetMinutes: number | null;
+  /** Task size: 'small' tasks skip planning and reduce reviewer scope. Defaults to 'normal'. */
+  size: "small" | "normal";
   createdAt: IsoTime;
   updatedAt: IsoTime;
   /** Set once the worktree exists. (ref: local git; join key) */

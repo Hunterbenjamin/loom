@@ -5,6 +5,7 @@
 // `start_run` is at-least-once (design §5.4), so every path here adopts an existing session under
 // the same ID instead of starting a second one.
 
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mcpConfigPathFor } from "@loom/adapter-claude";
 import { codexMcpServer } from "@loom/adapter-codex";
@@ -40,6 +41,41 @@ export interface LaunchDeps {
   workflowReader?: WorkflowReader;
   /** Resolves a RepoId to its Repo, for reading WORKFLOW.md from the repo root. */
   repoById?: (repoId: string) => { root: string } | undefined;
+  /** The instance data directory; a task's Codex home is `codex/<task>/codex-home` under it. */
+  dataDirectory?: string;
+}
+
+/**
+ * The Codex TUI that Loom attaches with `codex resume --remote` reads `CODEX_HOME/config.toml`,
+ * not the overrides `thread/start` was given: with an empty per-task config it ran in the
+ * workspace-write sandbox (no `.git` writes), asked for approvals, and had no Loom MCP tools
+ * (2026-09-13, the Operator task). The file is rewritten on every launch so the run's token is
+ * the current one; it holds a secret, so mode 0600.
+ */
+export async function writeCodexHomeConfig(
+  dataDirectory: string,
+  action: StartRunAction,
+  entry: McpServerEntry,
+): Promise<void> {
+  if (!("url" in entry)) return;
+  const home = join(dataDirectory, "codex", action.taskId, "codex-home");
+  await mkdir(home, { recursive: true, mode: 0o700 });
+  const headers = Object.entries(entry.headers ?? {})
+    .map(([k, v]) => `${JSON.stringify(k)} = ${JSON.stringify(v)}`)
+    .join(", ");
+  const sandbox = READ_ONLY.includes(action.role)
+    ? "read-only"
+    : "danger-full-access";
+  const lines = [
+    'approval_policy = "never"',
+    `sandbox_mode = ${JSON.stringify(sandbox)}`,
+    "",
+    "[mcp_servers.loom]",
+    `url = ${JSON.stringify(entry.url)}`,
+    `http_headers = { ${headers} }`,
+    "",
+  ];
+  await writeFile(join(home, "config.toml"), lines.join("\n"), { mode: 0o600 });
 }
 
 const READ_ONLY: Role[] = ["planner", "reviewer"];
@@ -198,6 +234,12 @@ export async function startRun(
     return { sessionId, codexGeneration: null, pane };
   }
 
+  if (deps.dataDirectory)
+    await writeCodexHomeConfig(
+      deps.dataDirectory,
+      action,
+      deps.mcpEntry(token),
+    );
   const codex = await adapters.codex(action.taskId);
   // A repeated `start_run` must adopt the recorded thread, not open a second one.
   let threadId = action.sessionId;

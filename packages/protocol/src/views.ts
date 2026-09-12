@@ -291,3 +291,50 @@ export const leadState = z.strictObject({
   status: z.enum(["working", "idle", "waiting", "unknown", "stopped"]),
 });
 export type LeadState = z.output<typeof leadState>;
+
+/** Physical identity is generation + pane ID; names never identify a provider run. */
+export const paneIdentity = z.strictObject({
+  hostGeneration: z.string().min(1),
+  sessionName: z.string().min(1),
+  windowId: z.string().regex(/^@\d+$/),
+  paneId: z.string().regex(/^%\d+$/),
+});
+export type PaneIdentity = z.output<typeof paneIdentity>;
+export const paneView = paneIdentity
+  .extend({
+    id: z.string().min(1),
+    sessionId: z.string().nullable(),
+    windowName: z.string().nullable(),
+    title: z.string().nullable(),
+    command: z.string(),
+    startCwd: worktreePath,
+    dead: z.boolean(),
+    exitStatus: z.number().int().nullable(),
+    /** Session-group attachments, not viewers focused on this pane. */
+    attachedClients: count,
+    unavailable: z.boolean(),
+    taskId: taskId.nullable(),
+    runId: runId.nullable(),
+    taskLabel: z.string().nullable(),
+    role: z.string().nullable(),
+    provider: z.string().nullable(),
+    status: z.string().nullable(),
+    attention: z.boolean(),
+  })
+  .refine(
+    (v) => v.id === JSON.stringify([v.hostGeneration, v.paneId]),
+    "Invalid pane key",
+  );
+export type PaneView = z.output<typeof paneView>;
+export const paneAttachTarget = z.strictObject({
+  identity: z.literal("pane"),
+  target: paneIdentity,
+  attach: attachTarget,
+  pane: paneState,
+});
+export type PaneAttachTarget = z.output<typeof paneAttachTarget>;
+
+export const paneInventoryState = z.strictObject({
+  id: z.literal("panes"),
+  unavailable: z.boolean(),
+});

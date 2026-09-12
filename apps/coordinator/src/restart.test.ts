@@ -76,13 +76,16 @@ test("a push whose result was lost is recovered, not repeated", async () => {
 
   await second.coordinator.settle();
   // The recovered result carried the task on, and the remote head never moved twice.
-  expect(second.store.loadTaskState(taskId).task.prNumber).toBe(1);
+  // PR is not created immediately with the new flow; it will be created after the reviewer
+  // submits with no blocking findings. For now, just verify push was recovered correctly.
   expect(
     await second.git(
       "rev-parse",
       `origin/${second.store.loadTaskState(taskId).task.branch}`,
     ),
   ).toBe(remoteBefore);
+  // Task should be in in_review stage waiting for reviewer
+  expect(second.store.loadTaskState(taskId).task.stage).toBe("in_review");
 }, 30_000);
 
 test("an action whose owner cannot prove anything is requeued, never replayed silently", async () => {

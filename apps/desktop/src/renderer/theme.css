@@ -369,20 +369,51 @@ kbd {
   flex: none;
 }
 
-.dot.working {
-  background: var(--good);
+/* Animated progress indicator for working status */
+.dot.dot-animated {
+  background: conic-gradient(
+    var(--good) 0deg,
+    var(--good) 270deg,
+    transparent 270deg
+  );
+  animation: dot-rotate 1.5s linear infinite;
+  contain: paint;
 }
 
-.dot.blocked {
+/* Attention glyph for blocked/waiting status */
+.dot.dot-attention {
   background: var(--warn);
 }
 
-.dot.failed {
+/* Stage glyph for idle/ended status */
+.dot.dot-stage {
+  background: var(--text-dim);
+}
+
+/* Failed glyph */
+.dot.dot-failed {
   background: var(--danger);
 }
 
-.dot.unknown {
+/* Unknown glyph */
+.dot.dot-unknown {
   background: var(--violet);
+}
+
+@keyframes dot-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot.dot-animated {
+    animation: none;
+    background: var(--good);
+  }
 }
 
 /* ------------------------------------------------------------------ board */
@@ -583,6 +614,14 @@ ul.plain {
 
 /* ------------------------------------------------------------------ terminal */
 
+.terminal-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .terminal-wrap {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -592,6 +631,11 @@ ul.plain {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.terminal-tab > .terminal-wrap {
+  flex: 1;
+  height: auto;
 }
 
 .terminal-bar {

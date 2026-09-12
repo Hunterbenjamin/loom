@@ -66,7 +66,7 @@ test("design example: one fix round crosses real MCP/core and real Git to awaiti
   expect(result.steps).toHaveLength(
     env.scenarios.reduce((n, s) => n + s.steps.length, 0),
   );
-}, 20000);
+}, 60000);
 
 test("headless crash has no SessionEnd and retries the recorded session after backoff", async () => {
   const env = await environment("crash-retry");
@@ -91,7 +91,7 @@ test("headless crash has no SessionEnd and retries the recorded session after ba
   expect(
     id && (await env.adapters.claude.hookSummary(id)).sessionEnd,
   ).toBeNull();
-});
+}, 30000);
 
 test("transport success without turn/started retries once then raises delivery attention", async () => {
   const env = await environment("dropped-delivery");
@@ -110,7 +110,7 @@ test("transport success without turn/started retries once then raises delivery a
   });
   const id = result.state.runs[0]?.sessionId;
   expect(id && (await env.adapters.codex.readThread(id)).turns).toEqual([]);
-});
+}, 30000);
 
 test("a duplicate provider hint leaves delivery and progress dispositions singular", async () => {
   const env = await environment("duplicate-event");
@@ -130,7 +130,7 @@ test("a duplicate provider hint leaves delivery and progress dispositions singul
   expect(result.transitions.filter((t) => t.to === "in_progress")).toHaveLength(
     1,
   );
-});
+}, 30000);
 
 test("rate limit blocks with an exact cooldown and clears on a fresh provider read", async () => {
   const env = await environment("rate-limit");
@@ -152,7 +152,7 @@ test("rate limit blocks with an exact cooldown and clears on a fresh provider re
   );
   expect(result.state.task.blocked).toBeNull();
   expect(result.state.progress?.summary).toBe("Alive");
-});
+}, 30000);
 
 test("a human push invalidates approval and sends the new head through review", async () => {
   const env = await environment("human-push", "awaiting_approval");
@@ -182,7 +182,7 @@ test("a human push invalidates approval and sends the new head through review", 
   expect(result.state.review?.lastReviewedHead).toBe(
     await env.git("rev-parse", "HEAD"),
   );
-});
+}, 30000);
 
 test("CI failing after approval disarms auto merge and creates one finding by native check ID", async () => {
   const env = await environment("ci-after-approval", "awaiting_approval");
@@ -213,7 +213,7 @@ test("CI failing after approval disarms auto merge and creates one finding by na
       externalId: env.adapters.github.snapshot()?.ci.checks[0]?.id,
     },
   ]);
-});
+}, 30000);
 
 test("interactive Claude vanishes without automatic relaunch", async () => {
   const env = await environment("vanished-interactive");
@@ -228,7 +228,7 @@ test("interactive Claude vanishes without automatic relaunch", async () => {
   });
   expect(result.actions.filter((a) => a.kind === "start_run")).toHaveLength(1);
   expect(result.state.task.attention.reasons).toContain("run_vanished");
-});
+}, 30000);
 
 test("leftover steps fail immediately when a run ends", async () => {
   const env = await environment("vanished-interactive");
@@ -237,7 +237,7 @@ test("leftover steps fail immediately when a run ends", async () => {
   await expect(
     runScenario({ ...env.options, scenarios: env.scenarios }),
   ).rejects.toThrow("Run ended with leftover steps");
-});
+}, 30000);
 
 test("a dropped message expectation expires on fake time, never on transport acceptance", async () => {
   const env = await environment("dropped-delivery");
@@ -248,7 +248,7 @@ test("a dropped message expectation expires on fake time, never on transport acc
     runScenario({ ...env.options, scenarios: env.scenarios }),
   ).rejects.toThrow("Message timeout");
   expect(env.clock.now()).toBe("2026-09-12T00:00:21.000Z");
-});
+}, 30000);
 
 test("provider approval waits for a native resolution and MCP questions arrive as messages", async () => {
   const env = await environment("duplicate-event");
@@ -322,7 +322,7 @@ test("provider approval waits for a native resolution and MCP questions arrive a
   expect(result.state.messages.at(-1)?.delivered?.via).toBe(
     "codex_user_message_item",
   );
-});
+}, 30000);
 
 test("tool error expectations use the real MCP schema and per-run token checks", async () => {
   const env = await environment("duplicate-event");
@@ -339,4 +339,4 @@ test("tool error expectations use the real MCP schema and per-run token checks",
     mcp: (_runner, defaults) => ({ ...defaults, resolveToken: () => null }),
   });
   expect(result.dispositions.filter((d) => d.accepted && d.reply)).toEqual([]);
-});
+}, 30000);

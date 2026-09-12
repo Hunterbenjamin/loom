@@ -1,4 +1,4 @@
-import { runId } from "@loom/protocol";
+import { paneIdentity, runId } from "@loom/protocol";
 import { z } from "zod";
 import type { ConnectionConfig } from "./connection.js";
 export const ptySpawnRequest = z.strictObject({
@@ -8,6 +8,7 @@ export const ptySpawnRequest = z.strictObject({
   label: z.string().max(200),
   runId: runId.nullable().optional(),
   lead: z.boolean().optional(),
+  pane: paneIdentity.optional(),
 });
 /** The contract between the renderer and the Electron main process. Terminals only. */
 
@@ -18,6 +19,7 @@ export interface PtySpawnRequest {
   /** Shown in the panel header so the human knows what they are typing into. */
   label: string;
   lead?: boolean;
+  pane?: import("@loom/protocol").PaneIdentity;
   runId?: import("@loom/core").RunId | null;
 }
 
@@ -42,8 +44,16 @@ export interface TerminalBridge {
   off(id: string): void;
 }
 
+export const windowMode = z.enum(["tracker", "workbench"]);
+export type WindowMode = z.output<typeof windowMode>;
+
 export interface HostBridge {
+<<<<<<< HEAD
   notify?(request: { id: string; title: string; body: string }): void;
+=======
+  mode(): Promise<WindowMode>;
+  openWindow(mode: WindowMode): Promise<void>;
+>>>>>>> origin/main
   connection(): Promise<ConnectionConfig>;
   /** Called once, after the first list paint. The cold-start measurement reads it. */
   interactive(): void;

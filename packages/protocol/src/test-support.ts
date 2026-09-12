@@ -61,8 +61,13 @@ export function snapshot(): SnapshotBody {
   const task = id.task("LOOM-101");
   const other = id.task("LOOM-102");
   return {
+<<<<<<< HEAD
     operators: [],
     notes: [],
+=======
+    panes: [],
+    paneInventory: [],
+>>>>>>> origin/main
     leads: [],
     inbox: [],
     repos: [
@@ -100,6 +105,7 @@ export function snapshot(): SnapshotBody {
         },
         blockedBy: [],
         budgetMinutes: 180,
+        size: "normal",
         createdAt: at("2026-09-12T05:00:00.000Z"),
         updatedAt: NOW,
         worktreePath: WT,
@@ -133,6 +139,7 @@ export function snapshot(): SnapshotBody {
           implementer: "codex",
           reviewer: "claude",
         },
+        size: "normal",
         blockedBy: [],
         budgetMinutes: null,
         createdAt: at("2026-09-10T09:00:00.000Z"),
