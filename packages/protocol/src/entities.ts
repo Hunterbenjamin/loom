@@ -210,7 +210,7 @@ export const run = z.strictObject({
   worktreePath,
   round: count,
   attempts: count,
-  model: z.string().min(1),
+  model: z.string(),
   sessionId: providerSessionId.nullable(),
   sessionEpoch: count,
   codexGeneration: count.nullable(),

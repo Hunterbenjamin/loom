@@ -282,3 +282,95 @@ test("permission attribution and the selected run's attach target reach the wind
   if (result.ok && result.result.kind === "attach_session")
     expect(result.result.target.attach?.env).toEqual({});
 }, 30_000);
+
+test("external runs with empty model parse through the protocol schema", async () => {
+  // This test verifies that external runs with empty model field
+  // can be serialized and deserialized through the protocol without errors.
+  // The run schema in protocol/entities.ts must accept empty strings for the model field.
+  const externalRun = {
+    id: "task-123/implementer/0",
+    taskId: "task-123",
+    role: "implementer",
+    provider: "claude",
+    mode: "interactive",
+    origin: "external",
+    worktreePath: "/path/to/wt",
+    round: 0,
+    attempts: 0,
+    model: "", // External runs have empty model
+    sessionId: "session-123",
+    sessionEpoch: 0,
+    codexGeneration: null,
+    pane: null,
+    status: "idle",
+    blockedOn: null,
+    lastTurn: null,
+    pendingRequests: [],
+    lastActivityAt: "2026-09-12T09:00:00.000Z",
+    retryAt: null,
+    launchedAt: null,
+    endedAt: null,
+    endReason: null,
+  };
+
+  // Import the run schema from protocol
+  const { run } = await import("@loom/protocol");
+
+  // Verify it round-trips through JSON serialization
+  const serialized = JSON.stringify(externalRun);
+  const deserialized = JSON.parse(serialized);
+
+  // Parse with the protocol schema - should not throw
+  const parsed = run.parse(deserialized);
+  expect(parsed.model).toBe("");
+  expect(parsed.origin).toBe("external");
+}, 30_000);
+
+test("publish-failure deduplication logs the error once per (task, error cause)", async () => {
+  const h = await served();
+  const logs: string[] = [];
+  const originalLog = h.coordinator.log.bind(h.coordinator);
+  h.coordinator.log = (message: string) => {
+    logs.push(message);
+    originalLog(message);
+  };
+
+  const created = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Task for publish failure test",
+    description: "",
+  });
+  const taskId = created.task.id;
+
+  // Directly test the deduplication logic by calling onCommit multiple times
+  // with a result that would cause publishTask to fail
+  // biome-ignore lint/suspicious/noExplicitAny: accessing private methods for test
+  const coordinator = h.coordinator as any;
+  const originalPublishTask = coordinator.publishTask.bind(coordinator);
+  let callCount = 0;
+  coordinator.publishTask = async () => {
+    callCount++;
+    throw new Error("Simulated publish failure");
+  };
+
+  // Call onCommit multiple times which should log only once
+  coordinator.onCommit(taskId, { actions: [], changed: new Set() });
+  await new Promise((r) => setTimeout(r, 10));
+  coordinator.onCommit(taskId, { actions: [], changed: new Set() });
+  await new Promise((r) => setTimeout(r, 10));
+  coordinator.onCommit(taskId, { actions: [], changed: new Set() });
+  await new Promise((r) => setTimeout(r, 10));
+
+  // Restore original method
+  coordinator.publishTask = originalPublishTask;
+
+  // Should have 3 calls to publishTask but only 1 log message about the error
+  expect(callCount).toBe(3);
+  const errorLogs = logs.filter(
+    (log) =>
+      log.includes("Could not publish") &&
+      log.includes("Simulated publish failure"),
+  );
+  expect(errorLogs).toHaveLength(1);
+  expect(errorLogs[0]).toContain("suppressed");
+}, 30_000);
