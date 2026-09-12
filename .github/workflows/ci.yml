@@ -38,8 +38,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
-      - name: Install tmux
-        run: sudo apt-get update && sudo apt-get install -y tmux
+      - name: Install tmux 3.5+ (Ubuntu ships 3.4; Loom's pane host needs extended-keys-format and newer format output)
+        run: |
+          brew install tmux
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          "$(brew --prefix)/bin/tmux" -V
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
