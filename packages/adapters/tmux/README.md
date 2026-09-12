@@ -14,13 +14,19 @@ clients and Ghostty on one agent at the same time, recovery from a killed server
 loom-<instance>                    the server; one per Loom instance, never the user's own
 ├── loom-monitor                   holds the control-mode client; one `sleep` pane, no agents
 ├── loom-<taskId>                  one session per task = one worktree = one branch
-│   ├── shell                      a plain shell in the worktree, for the human
 │   ├── <runId>                    one window per run, tagged `@loom_run`
+│   ├── scratch-<key>              a shell the human asked for, only ever on request
 │   └── …
 └── loom-<taskId>-v<n>             a grouped session per attach target (see below)
 ```
 
-**One session per task, one window per run.** Clients attached to the same session share its
+**One session per task, one window per run, and nothing else.** A task's session appears with
+the first window Loom opens in it and is gone once the last one is killed; there is no idle
+placeholder window. tmux cannot create a session without a window and fixes a pane's
+environment when it spawns, so a throwaway `loom-hold` window (a `sleep`) holds the new session
+open only while the real window is scrubbed and created, and `listPanes` never reports it.
+
+Clients attached to the same session share its
 current window, so two Loom windows on one task would fight over it. `attachArgs` therefore
 creates a *grouped* session — `new-session -A -t <task session>` — which shares the window list
 but keeps its own selection, and then selects the run's window in it. Measured here: two views

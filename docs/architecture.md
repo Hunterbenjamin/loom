@@ -196,7 +196,8 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   rendered with xterm.js. Keystroke to glyph was 5–6 ms p95.
 - **Any number of clients may attach.** Two Loom windows and a native Ghostty window showed the
   same agent at once, with no eviction and no takeover flow. Detaching one never stops the agent.
-- **One session per task, one window per run**, and a *grouped* session per attach target: clients
+- **One session per task, one window per run, and no idle windows**: the session exists only
+  while a run or scratch pane does. There is also a *grouped* session per attach target: clients
   on the same session share its current window, so each view gets its own grouped session and picks
   its window independently. Workbench also uses tmux's `active-pane` client flag and initializes
   client-local selection before targeting sibling panes; the adapter integration test verifies
