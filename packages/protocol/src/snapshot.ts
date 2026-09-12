@@ -39,6 +39,8 @@ import {
 import {
   commentThread,
   leadState,
+  paneInventoryState,
+  paneView,
   reviewState,
   runTarget,
   taskChanges,
@@ -53,6 +55,16 @@ import {
  * task-list level and reaches every client; the rest follow subscriptions.
  */
 export const collections = {
+  pane_inventory: {
+    value: paneInventoryState,
+    key: z.literal("panes"),
+    keyOf: (v: z.output<typeof paneInventoryState>) => v.id,
+  },
+  pane: {
+    value: paneView,
+    key: z.string().min(1),
+    keyOf: (v: z.output<typeof paneView>) => v.id,
+  },
   lead: {
     value: leadState,
     key: z.literal("lead"),
@@ -135,6 +147,8 @@ export function keyOf<N extends CollectionName>(
 }
 
 export const snapshotBody = z.strictObject({
+  paneInventory: z.array(paneInventoryState).default([]),
+  panes: z.array(paneView).default([]),
   leads: z.array(leadState).default([]),
   inbox: z.array(taskInbox),
   repos: z.array(repo),
@@ -156,6 +170,8 @@ export const snapshotBody = z.strictObject({
 
 /** Which snapshot collection each patch collection lands in. */
 export const COLLECTION_FIELDS = {
+  pane_inventory: "paneInventory",
+  pane: "panes",
   lead: "leads",
   inbox: "inbox",
   repo: "repos",
@@ -178,6 +194,8 @@ export const COLLECTION_FIELDS = {
 export type SnapshotBody = z.output<typeof snapshotBody>;
 
 export const emptySnapshotBody = (): SnapshotBody => ({
+  paneInventory: [],
+  panes: [],
   leads: [],
   inbox: [],
   repos: [],

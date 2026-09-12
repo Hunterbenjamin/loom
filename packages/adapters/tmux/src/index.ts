@@ -185,11 +185,18 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
     }
   }
 
-  async function observe(row: PaneRow): Promise<PaneObservation> {
+  async function observe(
+    row: PaneRow,
+    hostGeneration?: string,
+  ): Promise<PaneObservation> {
     const startCwd = (await realpath(row.startPath).catch(
       () => row.startPath,
     )) as WorktreePath;
-    return toObservation(row, await ensureServer(), startCwd);
+    return toObservation(
+      row,
+      hostGeneration ?? (await ensureServer()),
+      startCwd,
+    );
   }
 
   async function sessionExists(session: string): Promise<boolean> {
@@ -341,13 +348,73 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
       });
     },
 
+    createScratch(req) {
+      return exclusive(async () => {
+        const session = name.parse(req.workspaceId);
+        const key = z.string().uuid().parse(req.key);
+        const cwd = (await realpath(req.cwd)) as WorktreePath;
+        await ensureServer();
+        if (!(await sessionExists(session)))
+          throw new TmuxError("workspace_not_found", session);
+        const windowName = `scratch-${key}`;
+        for (const row of (await rows()).filter(
+          (r) => r.sessionName === session,
+        )) {
+          const recordedKey = await tmux([
+            "show-option",
+            "-p",
+            "-v",
+            "-q",
+            "-t",
+            row.paneId,
+            "@loom_scratch_key",
+          ]);
+          if (recordedKey.trim() === key) return (await observe(row)).ref;
+        }
+        await scrub(session, req.env);
+        const output = await tmux(
+          [
+            "new-window",
+            "-d",
+            "-P",
+            "-F",
+            "#{pane_id}",
+            "-t",
+            `${session}:`,
+            "-n",
+            windowName,
+            "-c",
+            cwd,
+            ...Object.entries(req.env).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
+            "--",
+            req.executable,
+            ...req.args,
+          ],
+          { env: { ...env, ...(req.env.PATH ? { PATH: req.env.PATH } : {}) } },
+        );
+        await tmux([
+          "set-option",
+          "-p",
+          "-t",
+          output.trim(),
+          "@loom_scratch_key",
+          key,
+        ]);
+        const created = (await rows()).find((r) => r.paneId === output.trim());
+        if (!created) throw new TmuxError("pane_not_found", output.trim());
+        return (await observe(created)).ref;
+      });
+    },
+
     async getPane(ref) {
       const row = await rowFor(ref);
       return row ? observe(row) : null;
     },
 
     async listPanes() {
-      return Promise.all((await rows()).map(observe));
+      const snapshot = await rows();
+      const hostGeneration = generation as string;
+      return Promise.all(snapshot.map((row) => observe(row, hostGeneration)));
     },
 
     pasteText(ref, text) {
@@ -434,13 +501,19 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
         "-t",
         `${view}:${ref.windowId}`,
         ";",
+        "attach-session",
+        "-f",
+        "active-pane",
+        "-t",
+        view,
+        ";",
+        "select-pane",
+        "-t",
+        `${view}:${ref.windowId}.+`,
+        ";",
         "select-pane",
         "-t",
         ref.paneId,
-        ";",
-        "attach-session",
-        "-t",
-        view,
       ];
     },
 
@@ -472,7 +545,7 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
         if (!parsed.success) continue;
         const [id, cols, rows_, session, group] = parsed.data;
         if (session === MONITOR_SESSION) continue;
-        // Grouped sessions share windows, so a client on any of them is viewing this pane.
+        // Count session-group attachments; this does not identify the pane each client focuses.
         if (session !== row.sessionName && group !== row.sessionName) continue;
         clients.push({ id, cols, rows: rows_ });
       }

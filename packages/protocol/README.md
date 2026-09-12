@@ -126,3 +126,19 @@ not derive them. Several runs may contribute to a single reason, but the inbox s
 per task/reason. Version 2 explicitly rejects old clients rather than sending them an unknown
 collection. Pane attach targets already existed; their public environment is now empty, since an
 attach client does not need the run recipe's MCP credentials.
+
+### Native panes
+
+Subscribe with `{kind: "panes"}` for `panes` and `paneInventory` snapshot arrays and keyed `pane` /
+`pane_inventory` patches. The physical key is JSON encoding of `[hostGeneration, paneId]`. Labels,
+nullable task/run links, attention and status are coordinator-derived; command, title, native IDs,
+start cwd and dead/exit state come from the host. Counts are session-group client counts. Unavailable
+observations retain rows and publish health, including for an empty inventory; recovery and removals
+are semantic patches. No observation timestamp churn is emitted.
+
+`open_pane_session` accepts only `target: {hostGeneration, sessionName, windowId, paneId}` and returns
+an `attach_session` with `identity: "pane"`, the validated target, attach argv and current pane state.
+Run and Lead requests retain their existing forms. `create_scratch` accepts `taskId` and a UUID `key`;
+the coordinator resolves cwd/session and returns `scratch_created` with the published pane. Clients
+must not replay scratch commands on reconnect. A terminal detaches when closed; it does not close its
+underlying pane.

@@ -1,0 +1,22 @@
+import { expect, test } from "vitest";
+import { pane } from "../../../../../packages/protocol/src/pane-fixture.js";
+import { attentionPanes, spaces } from "./selectors.js";
+
+test("session groups retain native names, dead panes, deterministic order and distinct attention", () => {
+  const a = { ...pane, paneId: "%10", id: "ten", attention: true, dead: true };
+  const b = {
+    ...pane,
+    paneId: "%3",
+    id: "three",
+    taskLabel: "t-1 · Build",
+    role: "implementer",
+    provider: "claude",
+    attention: true,
+  };
+  expect(spaces([a, b])[0]?.panes).toEqual([b, a]);
+  expect(spaces([a, b])[0]?.label).toBe("t-1 · Build");
+  expect(spaces([a, b], "cld impl")[0]?.panes).toEqual([b]);
+  expect(spaces([a], "missing")).toEqual([]);
+  expect(attentionPanes([a, b])).toEqual([b, a]);
+  expect(spaces([a])[0]?.label).toBe("research");
+});

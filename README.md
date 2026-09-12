@@ -22,6 +22,24 @@ pnpm lint
 pnpm typecheck
 ```
 
+### Continuous Integration
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) automatically runs lint, typecheck, and tests on every pull request and push to the main branch. The workflow:
+
+- Installs Node.js 22.13.0 and pnpm 10.0.0 (from `.npmrc` and `package.json`)
+- Caches the pnpm store for faster builds
+- Installs tmux for tests that require it
+- Runs `pnpm lint`, `pnpm typecheck`, and `pnpm test`
+- Skips real provider tests and desktop performance tests in CI
+
+To require these checks before merging to main, enable branch protection rules in GitHub:
+
+1. Go to repository **Settings → Branches**
+2. Under "Branch protection rules", click "Add rule"
+3. Set "Branch name pattern" to `main`
+4. Enable "Require status checks to pass before merging"
+5. Select the `lint-typecheck-test` job as a required check
+
 ### The window
 
 ```sh

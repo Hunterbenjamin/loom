@@ -76,6 +76,35 @@ export class FakePaneHost implements PaneHost {
     });
     return structuredClone(ref);
   };
+  createScratch: PaneHost["createScratch"] = async (req) => {
+    if (this.workspaces.get(req.workspaceId) !== req.cwd)
+      throw new Error("Unknown workspace");
+    const title = `scratch-${req.key}`;
+    const existing = [...this.panes.values()].find(
+      (p) => p.ref.sessionName === req.workspaceId && p.windowName === title,
+    );
+    if (existing) return structuredClone(existing.ref);
+    const n = this.panes.size;
+    const ref: PaneRef = {
+      hostGeneration: `fake-${this.generation}`,
+      sessionName: req.workspaceId,
+      windowId: `@${n}`,
+      paneId: `%${n}`,
+    };
+    this.panes.set(this.key(ref), {
+      ref,
+      sessionId: `$${n}`,
+      windowName: title,
+      title,
+      cwd: req.cwd,
+      startCwd: req.cwd,
+      pid: 90000 + n,
+      command: req.executable,
+      dead: false,
+      exitCode: null,
+    });
+    return structuredClone(ref);
+  };
   getPane: PaneHost["getPane"] = async (ref) =>
     structuredClone(this.panes.get(this.key(ref)) ?? null);
   listPanes: PaneHost["listPanes"] = async () =>

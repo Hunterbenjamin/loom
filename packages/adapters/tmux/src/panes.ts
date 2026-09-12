@@ -20,6 +20,9 @@ const FIELDS = [
   `#{${RUN_OPTION}}`,
   `#{${TASK_OPTION}}`,
   `#{${VIEW_OPTION}}`,
+  "#{session_id}",
+  "#{window_name}",
+  "#{pane_title}",
 ] as const;
 
 export const PANE_FORMAT = FIELDS.join(SEP);
@@ -40,6 +43,9 @@ const row = z
     z.string(),
     z.string(),
     z.string(),
+    z.string().regex(/^\$\d+$/),
+    z.string(),
+    z.string(),
   ])
   .transform(
     ([
@@ -55,6 +61,9 @@ const row = z
       runId,
       taskId,
       view,
+      sessionId,
+      windowName,
+      title,
     ]) => ({
       paneId,
       sessionName,
@@ -62,6 +71,9 @@ const row = z
       pid,
       command,
       dead,
+      sessionId,
+      windowName,
+      title,
       // Empty when the pane died from a signal rather than an exit status.
       exitCode: deadStatus === "" ? null : Number(deadStatus),
       startPath,
@@ -105,6 +117,9 @@ export function toObservation(
   startCwd: WorktreePath,
 ): PaneObservation {
   return {
+    sessionId: row.sessionId,
+    windowName: row.windowName,
+    title: row.title,
     ref: {
       hostGeneration,
       sessionName: row.sessionName,

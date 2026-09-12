@@ -1,3 +1,6 @@
+import { paneIdentity } from "@loom/protocol";
+import { PaneInventory, paneKey } from "./pane-inventory.js";
+import { runEnvironment } from "./recipes.js";
 // The coordinator: one long-running process per instance. It owns the loop, the executor, the MCP
 // server agents call, and the protocol server windows connect to. Everything it talks to is
 // injected, so a test can run the whole thing against `@loom/fake-agent` and a temporary store.
@@ -77,6 +80,7 @@ export interface CreateTaskInput {
   requirePlanApproval?: boolean | null;
   blockedBy?: TaskId[];
   budgetMinutes?: number | null;
+  size?: "small" | "normal" | null;
 }
 
 export class Coordinator {
@@ -94,6 +98,8 @@ export class Coordinator {
   readonly epoch: string;
 
   private readonly published = new PublishedRows();
+  private inventory!: PaneInventory;
+  private panePoll: NodeJS.Timeout | null = null;
   private readonly pullRequests = new PullRequestCache();
   private readonly cooldowns = new Map<Provider, IsoTime | null>();
   private readonly timers = new Set<() => void>();
@@ -157,6 +163,37 @@ export class Coordinator {
       nextInputId: () => randomUUID() as InputId,
       onResult: (taskId) => this.loop.enqueue(taskId),
     });
+    this.inventory = new PaneInventory(
+      this.adapters.paneHost,
+      () => ({
+        states: this.store.tasks().map((t) => this.store.loadTaskState(t.id)),
+        now: this.now(),
+        leadPane: this.lead.paneRef ? paneKey(this.lead.paneRef) : null,
+        leadWaiting: this.published
+          .rows()
+          .some(
+            (r) =>
+              r.collection === "lead" &&
+              (r.value as { status: string }).status === "waiting",
+          ),
+      }),
+      (panes, unavailable) => {
+        this.protocol.publish(
+          this.published.replace("panes", null, [
+            ...panes.map((value) => ({
+              collection: "pane" as const,
+              key: value.id,
+              value,
+            })),
+            {
+              collection: "pane_inventory",
+              key: "panes",
+              value: { id: "panes", unavailable },
+            },
+          ]),
+        );
+      },
+    );
     this.protocol = new ProtocolServer({
       token: this.config.token,
       instance: this.config.instance,
@@ -167,7 +204,7 @@ export class Coordinator {
       bind: this.config.bind,
       now: () => this.now(),
       snapshot: async (scope) => {
-        await this.refreshAll(scope);
+        await this.ensure(scope);
         return this.published.rows();
       },
       command: (value) => this.command(value),
@@ -222,6 +259,10 @@ export class Coordinator {
       this.store.outbox.runningAtStartup(),
     );
     for (const taskId of report.reconciled) this.loop.enqueue(taskId);
+    await this.refreshAll([]);
+    await this.inventory.refresh();
+    this.panePoll = setInterval(() => void this.inventory.refresh(), 2000);
+    this.panePoll.unref?.();
     this.subscribeHints();
     if (this.options.serveProtocol !== false) await this.protocol.start();
     return report;
@@ -244,6 +285,8 @@ export class Coordinator {
   }
 
   async stop(): Promise<void> {
+    if (this.panePoll) clearInterval(this.panePoll);
+    await this.inventory.stop();
     if (this.leadPoll) clearInterval(this.leadPoll);
     if (this.pump) clearInterval(this.pump);
     if (this.resync) clearInterval(this.resync);
@@ -291,6 +334,7 @@ export class Coordinator {
       providers: input.providers ?? repo.defaultProviders,
       blockedBy: input.blockedBy ?? [],
       budgetMinutes: input.budgetMinutes ?? null,
+      size: input.size ?? "normal",
       createdAt: now,
       updatedAt: now,
       worktreePath: null,
@@ -391,7 +435,12 @@ export class Coordinator {
       for (const task of this.store.tasks())
         if (task.worktreePath === hint.worktreePath) this.loop.enqueue(task.id);
     };
-    this.timers.add(this.adapters.paneHost.subscribe(onHint));
+    this.timers.add(
+      this.adapters.paneHost.subscribe((hint) => {
+        void this.inventory.refresh();
+        onHint(hint);
+      }),
+    );
     this.timers.add(this.adapters.claude.subscribe(onHint));
   }
 
@@ -486,6 +535,7 @@ export class Coordinator {
     const changes = await this.refreshTask(taskId);
     this.protocol.publish(changes);
     this.publishFailures.delete(taskId);
+    await this.inventory.refresh();
   }
 
   private viewDeps(): ViewDeps {
@@ -521,11 +571,11 @@ export class Coordinator {
     this.pollingLead = true;
     try {
       const value = await this.lead.state();
-      this.protocol.publish(
-        this.published.replace("lead", null, [
-          { collection: "lead", key: "lead", value },
-        ]),
-      );
+      const changes = this.published.replace("lead", null, [
+        { collection: "lead", key: "lead", value },
+      ]);
+      this.protocol.publish(changes);
+      if (changes.length) void this.inventory.refresh();
     } catch {
       this.log("Could not refresh Lead status");
     } finally {
@@ -551,9 +601,24 @@ export class Coordinator {
   }
 
   private async ensure(scope: readonly Subscription[]): Promise<void> {
-    for (const subscription of scope)
-      if (subscription.kind === "diff")
-        this.diffScopes.add(`${subscription.taskId}#${subscription.mode}`);
+    for (const subscription of scope) {
+      if (subscription.kind !== "diff") continue;
+      const key = `${subscription.taskId}#${subscription.mode}`;
+      if (this.diffScopes.has(key)) continue;
+      this.diffScopes.add(key);
+      const diff = await changesRow(
+        this.viewDeps(),
+        subscription.taskId,
+        subscription.mode,
+      );
+      this.protocol.publish(
+        this.published.replace(
+          `diff:${key}`,
+          subscription.taskId,
+          diff ? [diff] : [],
+        ),
+      );
+    }
   }
 
   // ---------------------------------------------------------------- commands
@@ -582,6 +647,61 @@ export class Coordinator {
     } & Record<string, unknown>;
     try {
       switch (command.kind) {
+        case "open_pane_session": {
+          const ref = paneIdentity.parse(command.target);
+          if (!ref.hostGeneration.startsWith(`loom-${this.config.instance}#`))
+            throw new Error("Pane belongs to another instance");
+          const pane = await this.adapters.paneHost.getPane(ref);
+          if (
+            !pane ||
+            pane.dead ||
+            pane.ref.sessionName !== ref.sessionName ||
+            pane.ref.windowId !== ref.windowId
+          )
+            throw new Error("Pane is missing, dead or stale");
+          return {
+            ok: true,
+            result: {
+              kind: "attach_session",
+              target: {
+                identity: "pane",
+                target: ref,
+                attach: {
+                  kind: "pane_host",
+                  argv: this.adapters.paneHost.attachArgs(pane.ref),
+                  cwd: pane.startCwd,
+                  env: {},
+                },
+                pane: {
+                  ...ref,
+                  dead: false,
+                  exitStatus: null,
+                  attachedClients: 0,
+                  size: null,
+                  observedAt: this.now(),
+                },
+              },
+            },
+          };
+        }
+        case "create_scratch": {
+          const state = this.store.loadTaskState(command.taskId as TaskId);
+          if (!state.worktree?.paneWorkspaceId)
+            throw new Error("Task has no existing pane workspace");
+          const ref = await this.adapters.paneHost.createScratch({
+            workspaceId: state.worktree.paneWorkspaceId,
+            cwd: state.worktree.path,
+            key: command.key as string,
+            executable: process.env.SHELL || "/bin/sh",
+            args: ["-l"],
+            env: runEnvironment(process.env, {}),
+          });
+          await this.inventory.refresh();
+          const pane = this.inventory.rows.find((p) => p.id === paneKey(ref));
+          if (!pane)
+            throw new Error("Scratch created but inventory unavailable");
+          return { ok: true, result: { kind: "scratch_created", pane } };
+        }
         case "open_lead_session": {
           const target = await this.lead.open();
           await this.publishLead();
@@ -603,6 +723,7 @@ export class Coordinator {
               | null,
             blockedBy: (command.blockedBy ?? []) as TaskId[],
             budgetMinutes: (command.budgetMinutes ?? null) as number | null,
+            size: (command.size ?? null) as "small" | "normal" | null,
           });
           return {
             ok: true,
