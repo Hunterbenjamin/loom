@@ -232,9 +232,17 @@ async function serve(config: CoordinatorConfig): Promise<void> {
   process.stderr.write(
     `loom ${config.instance} listening on ${coordinator.protocol.url}; mcp on ${coordinator.mcpUrl}\n` +
       `recovered: ${report.recorded.length} recorded, ${report.requeued.length} requeued, ` +
-      `${report.resumedCodex.length} Codex threads resumed, ${report.relaunched.length} panes relaunched\n`,
+      `${report.resumedCodex.length} Codex threads resumed, ${report.relaunched.length} panes relaunched\n` +
+      `codex app-servers: ${adapters.codexServerCount()}\n`,
   );
+  // Periodically log app-server count for observability
+  const serverCountInterval = setInterval(() => {
+    const count = adapters.codexServerCount();
+    if (count > 0) process.stderr.write(`codex app-servers: ${count}\n`);
+  }, 60000); // Every 60 seconds
+  serverCountInterval.unref?.();
   const stop = () => {
+    clearInterval(serverCountInterval);
     void coordinator.stop().then(() => process.exit(0));
   };
   process.on("SIGINT", stop);
