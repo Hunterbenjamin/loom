@@ -61,13 +61,10 @@ export function snapshot(): SnapshotBody {
   const task = id.task("LOOM-101");
   const other = id.task("LOOM-102");
   return {
-<<<<<<< HEAD
     operators: [],
     notes: [],
-=======
     panes: [],
     paneInventory: [],
->>>>>>> origin/main
     leads: [],
     inbox: [],
     repos: [

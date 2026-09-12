@@ -118,11 +118,8 @@ export function ownerTask(change: Change): string | null {
   if (
     change.collection === "repo" ||
     change.collection === "lead" ||
-<<<<<<< HEAD
-    change.collection === "operator"
-=======
+    change.collection === "operator" ||
     change.collection === "pane_inventory"
->>>>>>> origin/main
   )
     return null;
   if (change.collection === "task") return change.value.id;

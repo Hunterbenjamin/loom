@@ -37,8 +37,6 @@ interface Session {
   lastFlush: number;
 }
 
-<<<<<<< HEAD
-const sessions = new Map<string, Session>();
 const notified = new Set<string>();
 ipcMain.on("app:notify", (_event, raw: unknown) => {
   const parsed = z
@@ -58,7 +56,6 @@ ipcMain.on("app:notify", (_event, raw: unknown) => {
       body: parsed.data.body,
     }).show();
 });
-=======
 const sessions = new OwnedResources<Session>((session) => {
   if (session.timer) clearTimeout(session.timer);
   session.proc.kill("SIGHUP");
@@ -99,7 +96,6 @@ function owned(sender: Electron.WebContents) {
     throw new Error("Unknown window");
   return entry;
 }
->>>>>>> origin/main
 
 /**
  * A plain login shell by default. `LOOM_ATTACH_PANE=<session>:<window-id>` attaches to a pane on

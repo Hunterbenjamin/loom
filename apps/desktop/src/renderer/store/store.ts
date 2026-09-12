@@ -16,11 +16,8 @@ import type {
   Command,
   Entities,
   LeadState,
-<<<<<<< HEAD
   OperatorState,
-=======
   PaneView,
->>>>>>> origin/main
   PatchFrame,
   RunTarget,
   TaskInbox,
@@ -166,13 +163,10 @@ export function createStore(
     live,
     connection: live ? "connecting" : "fixtures",
     inbox: [],
-<<<<<<< HEAD
     operator: null,
     notes: [],
-=======
     panes: [],
     panesUnavailable: false,
->>>>>>> origin/main
     runTargets: [],
     instance,
     lead: { id: "lead", sessionId: null, status: live ? "stopped" : "idle" },
@@ -265,20 +259,17 @@ export function createStore(
             ? [...client.collections.inbox.values()]
             : state.inbox,
         lead: client.collections.lead.get("lead") ?? state.lead,
-<<<<<<< HEAD
         operator: client.collections.operator.get("operator") ?? null,
         notes:
           !patch || patch.changes.some((c) => c.collection === "note")
             ? [...client.collections.note.values()]
             : state.notes,
-=======
         panes:
           !patch || patch.changes.some((c) => c.collection === "pane")
             ? [...client.collections.pane.values()]
             : state.panes,
         panesUnavailable:
           client.collections.pane_inventory.get("panes")?.unavailable ?? false,
->>>>>>> origin/main
         runTargets:
           !patch || patch.changes.some((c) => c.collection === "run_target")
             ? [...client.collections.run_target.values()]

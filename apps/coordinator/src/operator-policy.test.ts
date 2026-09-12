@@ -248,6 +248,9 @@ test("committed native Claude dialog changes the attention identity without an i
   provider.hooks = foldHookSummary([receipt(1, "unknown-command")]);
   const first = reconcile(f.state, f.observations).next;
   const decoded = runSchema.parse(JSON.parse(JSON.stringify(first.runs[0])));
+  expect(attentionOccurrence({ ...first, runs: [decoded] })).toBe(
+    attentionOccurrence(first),
+  );
   expect(decoded.pendingDialog?.requestId).toBe(
     `claude-hook:${nativeRun.sessionId}:1`,
   );

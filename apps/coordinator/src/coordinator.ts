@@ -303,16 +303,13 @@ export class Coordinator {
       this.store.outbox.runningAtStartup(),
     );
     for (const taskId of report.reconciled) this.loop.enqueue(taskId);
-<<<<<<< HEAD
     for (const task of this.store.tasks())
       this.operator.capture(this.store.loadTaskState(task.id));
     await this.operator.recover();
-=======
     await this.refreshAll([]);
     await this.inventory.refresh();
     this.panePoll = setInterval(() => void this.inventory.refresh(), 2000);
     this.panePoll.unref?.();
->>>>>>> origin/main
     this.subscribeHints();
     if (this.options.serveProtocol !== false) await this.protocol.start();
     return report;
@@ -568,9 +565,7 @@ export class Coordinator {
   }
 
   private onCommit(taskId: TaskId, result: ReconcileResult): void {
-<<<<<<< HEAD
     this.operator.capture(result.next);
-=======
     // Stop the app-server if the task just transitioned to a terminal stage.
     const state = this.store.loadTaskState(taskId);
     if (TERMINAL.includes(state.task.stage)) {
@@ -580,7 +575,6 @@ export class Coordinator {
         );
       });
     }
->>>>>>> origin/main
     void this.publishTask(taskId, result).catch((error) => {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -731,7 +725,6 @@ export class Coordinator {
     } & Record<string, unknown>;
     try {
       switch (command.kind) {
-<<<<<<< HEAD
         case "claim_notification": {
           const note = this.store.operator.noteById(String(command.noteId));
           const notice = this.store.operator.atomic(() => {
@@ -769,7 +762,6 @@ export class Coordinator {
             ok: true,
             result: { kind: "operator_state", state: this.operator.state() },
           };
-=======
         case "open_pane_session": {
           const ref = paneIdentity.parse(command.target);
           if (!ref.hostGeneration.startsWith(`loom-${this.config.instance}#`))
@@ -825,7 +817,6 @@ export class Coordinator {
             throw new Error("Scratch created but inventory unavailable");
           return { ok: true, result: { kind: "scratch_created", pane } };
         }
->>>>>>> origin/main
         case "open_lead_session": {
           const target = await this.lead.open();
           await this.publishLead();

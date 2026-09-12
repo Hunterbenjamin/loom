@@ -54,14 +54,13 @@ export const protocolError = z.strictObject({
 
 export const command = z.union([
   z.strictObject({
-<<<<<<< HEAD
     kind: z.literal("claim_notification"),
     noteId: z.string().min(1).max(300),
   }),
   z.strictObject({ kind: z.literal("open_operator_session") }),
   z.strictObject({ kind: z.literal("stop_operator_session") }),
   z.strictObject({ kind: z.literal("operator_status") }),
-=======
+  z.strictObject({
     kind: z.literal("open_pane_session"),
     target: paneIdentity,
   }),
@@ -70,7 +69,6 @@ export const command = z.union([
     taskId,
     key: z.string().uuid(),
   }),
->>>>>>> origin/main
   z.strictObject({ kind: z.literal("open_lead_session") }),
   z.strictObject({ kind: z.literal("stop_lead_session") }),
   /** A `HumanCommand` for one task. Validated here, then queued as an input. */
@@ -123,7 +121,6 @@ export const commandRequest = z.strictObject({
 
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
-<<<<<<< HEAD
   z.strictObject({
     kind: z.literal("notification"),
     notice: z
@@ -131,9 +128,7 @@ export const ackResult = z.union([
       .nullable(),
   }),
   z.strictObject({ kind: z.literal("operator_state"), state: operatorState }),
-=======
   z.strictObject({ kind: z.literal("scratch_created"), pane: paneView }),
->>>>>>> origin/main
   z.strictObject({ kind: z.literal("lead_stopped") }),
   /**
    * The command was validated and recorded as an input. It has not run yet: watch the patches and

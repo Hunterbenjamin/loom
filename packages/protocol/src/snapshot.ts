@@ -56,7 +56,6 @@ import {
  * task-list level and reaches every client; the rest follow subscriptions.
  */
 export const collections = {
-<<<<<<< HEAD
   operator: {
     value: operatorState,
     key: z.literal("operator"),
@@ -66,7 +65,7 @@ export const collections = {
     value: taskNote,
     key: z.string(),
     keyOf: (v: z.output<typeof taskNote>) => v.id,
-=======
+  },
   pane_inventory: {
     value: paneInventoryState,
     key: z.literal("panes"),
@@ -76,7 +75,6 @@ export const collections = {
     value: paneView,
     key: z.string().min(1),
     keyOf: (v: z.output<typeof paneView>) => v.id,
->>>>>>> origin/main
   },
   lead: {
     value: leadState,
@@ -160,13 +158,10 @@ export function keyOf<N extends CollectionName>(
 }
 
 export const snapshotBody = z.strictObject({
-<<<<<<< HEAD
   operators: z.array(operatorState).default([]),
   notes: z.array(taskNote).default([]),
-=======
   paneInventory: z.array(paneInventoryState).default([]),
   panes: z.array(paneView).default([]),
->>>>>>> origin/main
   leads: z.array(leadState).default([]),
   inbox: z.array(taskInbox),
   repos: z.array(repo),
@@ -188,13 +183,10 @@ export const snapshotBody = z.strictObject({
 
 /** Which snapshot collection each patch collection lands in. */
 export const COLLECTION_FIELDS = {
-<<<<<<< HEAD
   operator: "operators",
   note: "notes",
-=======
   pane_inventory: "paneInventory",
   pane: "panes",
->>>>>>> origin/main
   lead: "leads",
   inbox: "inbox",
   repo: "repos",
@@ -217,13 +209,10 @@ export const COLLECTION_FIELDS = {
 export type SnapshotBody = z.output<typeof snapshotBody>;
 
 export const emptySnapshotBody = (): SnapshotBody => ({
-<<<<<<< HEAD
   operators: [],
   notes: [],
-=======
   paneInventory: [],
   panes: [],
->>>>>>> origin/main
   leads: [],
   inbox: [],
   repos: [],

@@ -48,12 +48,9 @@ export const windowMode = z.enum(["tracker", "workbench"]);
 export type WindowMode = z.output<typeof windowMode>;
 
 export interface HostBridge {
-<<<<<<< HEAD
   notify?(request: { id: string; title: string; body: string }): void;
-=======
   mode(): Promise<WindowMode>;
   openWindow(mode: WindowMode): Promise<void>;
->>>>>>> origin/main
   connection(): Promise<ConnectionConfig>;
   /** Called once, after the first list paint. The cold-start measurement reads it. */
   interactive(): void;

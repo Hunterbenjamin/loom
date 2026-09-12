@@ -32,13 +32,10 @@ contextBridge.exposeInMainWorld("loomTerminal", {
 });
 
 contextBridge.exposeInMainWorld("loomHost", {
-<<<<<<< HEAD
   notify: (request: { id: string; title: string; body: string }) =>
     ipcRenderer.send("app:notify", request),
-=======
   mode: () => ipcRenderer.invoke("app:mode"),
   openWindow: (mode: string) => ipcRenderer.invoke("app:open-window", mode),
->>>>>>> origin/main
   connection: () => ipcRenderer.invoke("app:connection"),
   interactive: () => ipcRenderer.send("app:interactive"),
   metrics: () => ipcRenderer.invoke("app:metrics"),

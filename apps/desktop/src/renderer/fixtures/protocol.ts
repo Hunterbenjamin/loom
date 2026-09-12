@@ -216,13 +216,10 @@ export function toSnapshot(fixture: Snapshot): {
   return {
     meta: { seq: 1, now: fixture.now, epoch: "fixtures" },
     body: {
-<<<<<<< HEAD
       operators: [],
       notes: [],
-=======
       panes: [],
       paneInventory: [],
->>>>>>> origin/main
       leads: [],
       inbox: [],
       repos: fixture.repos.map((repo) => ({

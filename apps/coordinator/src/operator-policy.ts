@@ -84,7 +84,15 @@ export function attentionOccurrence(state: TaskState): string {
           r.id,
           r.sessionEpoch,
           r.pendingRequests,
-          r.pendingDialog ?? null,
+          r.pendingDialog
+            ? [
+                r.pendingDialog.requestId ?? null,
+                r.pendingDialog.command ?? null,
+                r.pendingDialog.kind,
+                r.pendingDialog.tool,
+                r.pendingDialog.at,
+              ]
+            : null,
         ]),
       questions: state.questions.map((q) => q.id),
     }),
