@@ -129,6 +129,8 @@ export async function createClaudeAdapter(
       sessionId,
       "--model",
       model,
+      "--permission-mode",
+      "acceptEdits",
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {

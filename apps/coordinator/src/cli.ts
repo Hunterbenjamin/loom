@@ -38,6 +38,7 @@ const USAGE = `loom — Loom's coordinator and its client
   loom task approve <task> <headSha>
   loom task request-changes <task> <title> <body>
   loom task answer <task> <questionId> <answer>
+  loom task answer-request <task> <runId> <requestId> accept|decline|cancel
   loom task retry <task>
   loom task cancel <task> <reason>
   loom attach <task> [role] [--exec]    print, or run, the pane host's attach command
@@ -390,6 +391,42 @@ export async function main(argv: string[]): Promise<void> {
         questionId: values[1] as never,
         answer: values.slice(2).join(" "),
       });
+    case "answer-request": {
+      const [runId, requestId, decision] = values.slice(1);
+      if (!runId || !requestId || !decision)
+        throw new Error(
+          "loom task answer-request <task> <runId> <requestId> accept|decline|cancel",
+        );
+      if (!["accept", "decline", "cancel"].includes(decision)) {
+        throw new Error("decision must be accept, decline, or cancel");
+      }
+      // Connect to coordinator to read the run's snapshot and get codexGeneration
+      const client = await connect(config, [
+        { kind: "task", taskId },
+        { kind: "run", runId: runId as never },
+      ]);
+      try {
+        const run = [...(client.state?.collections.run.values() ?? [])].find(
+          (r) => r.id === runId,
+        );
+        if (!run) {
+          process.stderr.write(`unknown_run: ${runId}\n`);
+          process.exitCode = 1;
+          return;
+        }
+        client.close();
+        return humanCommand(config, taskId, {
+          type: "answer_provider_request",
+          runId: runId as never,
+          requestId,
+          generation: run.codexGeneration,
+          decision: decision as "accept" | "decline" | "cancel",
+          answers: null,
+        });
+      } finally {
+        client.close();
+      }
+    }
     case "retry":
       return humanCommand(config, taskId, { type: "retry" });
     case "cancel":

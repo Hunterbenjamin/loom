@@ -112,6 +112,8 @@ describe("createClaudeAdapter", () => {
       SESSION,
       "--model",
       "haiku",
+      "--permission-mode",
+      "acceptEdits",
     ]);
     expect(
       adapter.interactiveArgs({
