@@ -1,0 +1,137 @@
+# @loom/coordinator
+
+The process that runs everything else. One per instance (`LOOM_INSTANCE`, `LOOM_DATA_ROOT`): it
+loads state, reads the owners, runs `reconcile`, commits, executes the actions, hosts the MCP
+server agents call, and serves windows over the protocol. It makes no workflow decisions of its
+own — `@loom/core` does — and it owns no facts any other tool owns.
+
+```sh
+export LOOM_INSTANCE=dev LOOM_DATA_ROOT=~/.loom LOOM_TOKEN=$(openssl rand -hex 24)
+loom repo add ~/src/example example/repo
+loom serve &
+loom task create example-repo "Rename the widget" "Rename Widget to Gadget everywhere."
+loom task move <task> todo
+loom status
+loom attach <task> implementer          # prints the pane host's argv; --exec runs it
+```
+
+## The loop
+
+One pass per task at a time; enqueues during a pass coalesce into one more pass. A pass is
+`store.loadTaskState` → fresh observations → `reconcile` → `store.commit(taskId, result, version)`.
+A compare-and-set conflict reloads and retries up to three times, then re-enqueues. Passes are
+asked for by adapter hints, new inputs, `schedule` actions, and a full resync about every 60 s. The
+store's default of one input per pass is not raised.
+
+Observations are read outside every transaction, and a failure stays a failed `Reading`: core
+treats that as unknown, never as proof. The GitHub read is conditional, keeping its ETag and the
+last body here rather than in core. Provider status for a run comes from its adapter, the pane
+comes from the pane host, and `resumable` is asked of the provider directly rather than inferred
+from a failed read.
+
+## The executor
+
+Claims outbox rows, rechecks `isClaimCurrent` immediately before any side effect, maps each
+`Action` kind to the adapter that owns it, and records the outcome with `store.outbox.finish` as an
+`action_result` input. Actions run at least once, so every executor checks the owner first: an
+existing worktree, an existing PR, a remote head already at the SHA, a session already live under
+that ID. A failure is classified `retryable`, `precondition` (the world moved; re-read and decide
+again) or `fatal`.
+
+## Launching a run
+
+The whole recipe is persisted before anything starts, in `<data>/runs/<run>/recipe.json` with mode
+`0600`, outside the repository: the derived Claude session ID (UUIDv5 of `<runId>#<epoch>`), an
+unguessable per-run MCP token, the per-run settings and MCP config paths, the environment
+allowlist, the cwd, the executable and its arguments. The token rides in `LOOM_MCP_TOKEN` and in
+the run's MCP config, never in `--settings` and never in argv. Then `ensurePane` for an interactive
+run, the Agent SDK for a headless one, and one Codex app-server per task, outside the pane host.
+
+A repeated `start_run` adopts the session the recipe already names instead of opening a second one,
+and a pane that died while the coordinator was down is recreated from the recipe — never from the
+pane's own argv, and never from a screen.
+
+## The send gate
+
+Before any send, the provider's current status is read again and must permit it: never while it is
+waiting on a permission or a question, and never while it is `unknown`. A refusal is a
+`precondition`, so the next pass decides afresh rather than retrying blindly. Delivery is confirmed
+only by the provider; the resend rule is core's.
+
+## The MCP host
+
+`serveHttp` from `@loom/mcp` on loopback. `submit` persists the input and runs passes for its task
+until that input is consumed, then answers with its disposition. `context` is read-only, is
+role-filtered, and includes the repo's `WORKFLOW.md` commands. `resolveToken` consults current run
+state on every call, so an ended or superseded run reads `stale_run` rather than `unknown_run`.
+`buildAnchor` reads the reviewed blobs through the git adapter, never the working file.
+
+### WORKFLOW.md (design note 13.3, settled here)
+
+`<repo root>/WORKFLOW.md`. A `## <name>` heading followed by a fenced block is one command;
+everything else in the file is prose. Names are lowercased with spaces folded to `_`.
+
+- **Missing file:** no commands. Nothing fails.
+- **Malformed file** (a duplicate name, a name or command the schema refuses): no commands at all,
+  and one warning. Half-parsed commands are worse than none, because an agent would run them.
+- **Cache:** per absolute path, invalidated on size or mtime, so editing the file takes effect
+  without restarting the coordinator.
+
+It is read only for `get_task_context`. No guard and no transition depends on it.
+
+## Prompts
+
+The planner, implementer and reviewer briefs are templates here, filled from the task. They are
+short on purpose and point the agent at `get_task_context`, which is the only view that stays
+current. They are what a run is *launched* with — Codex's developer instructions and Claude's first
+headless prompt. The messages a running agent receives, including the fix round's findings
+projection, are core's.
+
+## Recovery
+
+On startup: load the store, ask `store.outbox.startupRunning` what was uncertain and, for each row,
+check the owner and either record the recovered result or `requeue` it; `thread/resume` every live
+Codex run; poll `claude agents --json`; recreate an interactive run's pane from its recipe when the
+host reports it dead; and reconcile every non-terminal task. Nothing is replayed on the strength of
+a guess.
+
+## The protocol server
+
+A WebSocket on `LOOM_BIND` (loopback by default) with `LOOM_TOKEN`, implementing `@loom/protocol`:
+`hello`/`welcome`, a snapshot from the store plus the derived views, then patches after every
+commit with sequence numbers **per connection** and contiguous, so a gap always means loss.
+Subscriptions filter the stream; heartbeats drop a client that misses three; human commands are
+recorded as inputs and acknowledged with their input ID. Frames are validated on the way out as
+well as in.
+
+`fetch_diff` and `save_review_state` answer `unavailable`: they belong to the Workbench, in
+Phase 4, and the git adapter has no raw-patch reader yet.
+
+## The CLI
+
+`loom` is a protocol client and holds no state. `loom serve` and `loom repo add` are the two
+exceptions: they are instance-local admin commands that open the store directly, because the
+protocol carries no repo registry.
+
+## Tests
+
+`src/*.test.ts`, against `@loom/fake-agent`'s providers, pane host and GitHub, a throwaway Git
+repository with a real bare remote, and a fake clock. The real coordinator, executor, store, MCP
+server and protocol server are used throughout; no agent, terminal or daemon is started.
+
+- `e2e.test.ts` — the walking skeleton: Todo through plan, implementation, review, one fix round,
+  approval and merge to Done, plus CI failing after approval and a human push.
+- `faults.test.ts` — crash and retry, a dropped delivery, a duplicate event, a rate limit, a
+  vanished interactive run, a blocking question.
+- `restart.test.ts` — the coordinator killed between a push and its receipt.
+- `gate.test.ts` — a run at a permission dialog receives no paste.
+- `protocol.test.ts` — a fake client's snapshot, command ack, patches and a forced sequence gap.
+- `units.test.ts` — derived IDs, the environment allowlist, the config, `WORKFLOW.md`, the mapper.
+- `real.test.ts` — opt-in (`LOOM_REAL_PROVIDERS=1`), one real headless Claude planner on `haiku`.
+  GitHub stays faked: the merge half needs a throwaway GitHub repository this test cannot create.
+
+```sh
+pnpm test
+pnpm lint
+pnpm typecheck
+```
