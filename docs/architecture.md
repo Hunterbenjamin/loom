@@ -29,6 +29,9 @@ Tasks can also be Canceled. Three things are tracked separately and must not be 
 
 ## Components
 
+The window's two modes (Tracker and Workbench), the multi-window model, and what the protocol must
+carry for them are in [`docs/design/ui.md`](design/ui.md).
+
 ```
 ┌──────────── Dashboard (Electron renderer) ────────────┐
 │ Linear-style UI · embedded terminals · diff review    │  no durable state
