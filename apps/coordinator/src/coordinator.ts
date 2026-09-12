@@ -98,6 +98,7 @@ export class Coordinator {
   private readonly cooldowns = new Map<Provider, IsoTime | null>();
   private readonly timers = new Set<() => void>();
   private readonly diffScopes = new Set<string>();
+  private readonly publishFailures = new Map<TaskId, Set<string>>();
   private readonly workflow = createWorkflowReader((message) =>
     this.log(message),
   );
@@ -249,6 +250,7 @@ export class Coordinator {
     this.pump = this.resync = null;
     for (const cancel of this.timers) cancel();
     this.timers.clear();
+    this.publishFailures.clear();
     await this.protocol.stop();
     await this.mcp?.close();
     this.mcp = null;
@@ -448,9 +450,19 @@ export class Coordinator {
   }
 
   private onCommit(taskId: TaskId, result: ReconcileResult): void {
-    void this.publishTask(taskId, result).catch((error) =>
-      this.log(`Could not publish ${taskId}: ${(error as Error).message}`),
-    );
+    void this.publishTask(taskId, result).catch((error) => {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const failures = this.publishFailures.get(taskId) ?? new Set<string>();
+      // Log the error only once per (task, error message) pair
+      if (!failures.has(errorMessage)) {
+        failures.add(errorMessage);
+        this.publishFailures.set(taskId, failures);
+        this.log(
+          `Could not publish ${taskId}: ${errorMessage} (further failures for this task/cause suppressed)`,
+        );
+      }
+    });
   }
 
   private async publishTask(
@@ -460,6 +472,7 @@ export class Coordinator {
     if (!this.protocol.clients && !this.published.rows().length) return;
     const changes = await this.refreshTask(taskId);
     this.protocol.publish(changes);
+    this.publishFailures.delete(taskId);
   }
 
   private viewDeps(): ViewDeps {

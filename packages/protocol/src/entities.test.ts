@@ -94,6 +94,7 @@ describe("round trips", () => {
     ["task", task, snapshot().tasks[0]],
     ["worktree", worktree, snapshot().worktrees[0]],
     ["run", run, snapshot().runs[0]],
+    ["external run with empty model", run, snapshot().runs[1]],
     ["run target", runTarget, snapshot().runTargets[0]],
     ["question", question, snapshot().questions[0]],
     ["finding", finding, snapshot().findings[0]],
