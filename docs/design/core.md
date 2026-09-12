@@ -222,11 +222,12 @@ a committed launch/session result and an authoritative usable reading before the
 | 16 | awaiting_approval, merging | in_review | R new commit: PR head ≠ last reviewed head | — | Void approval (`new_commit`); `disable_auto_merge` if enabled; `map_findings` to the new head; `reviewRound += 1`; start reviewer |
 | 17 | awaiting_approval, merging | in_progress | R CI `failure` on the head | — | One blocking `ci` finding per failed check (deduped by check-run ID); void approval (`ci_failed`); `disable_auto_merge` if enabled; `send_message` fix round to the implementer (resuming its run if it ended) |
 | 18 | awaiting_approval | in_progress | H `request_changes(findings)` | At least one finding | Store them as blocking `human` findings; `send_message` fix round to the implementer (resuming its run if it ended). Doesn't count against the cap. |
-| 19 | merging | awaiting_approval | R `merge_pr` failed with `precondition` (head moved, not mergeable) | — | Void approval; `notify`. If the head moved, #16 applies instead. |
-| 20 | any but done | done | R PR `merged` | — | Void open approvals; end all runs (`task_done`): `stop_run` headless runs, leave interactive panes to the human; `notify` |
-| 21 | any but done, canceled | canceled | H `cancel` | — | `interrupt_run` working runs, `stop_run` headless runs, end runs (`canceled`); void approvals; `disable_auto_merge` if enabled. The PR and branch stay as they are. |
-| 22 | canceled | backlog | H `reopen` | PR not merged | Runs stay ended; the next start is a new attempt. |
-| 23 | planning … awaiting_approval | backlog | H `move backlog` | — | `interrupt_run` working runs; `stop_run` headless runs; void approvals (`stage_left`). Plan and findings are kept. |
+| 19 | in_review | in_progress | H `request_changes(findings)` | At least one finding | Store them as blocking `human` findings; void approval (`stage_left`); clear review state (end current reviewer round); `send_message` fix round to the implementer (resuming its run if it ended). Doesn't count against the cap. |
+| 20 | merging | awaiting_approval | R `merge_pr` failed with `precondition` (head moved, not mergeable) | — | Void approval; `notify`. If the head moved, #16 applies instead. |
+| 21 | any but done | done | R PR `merged` | — | Void open approvals; end all runs (`task_done`): `stop_run` headless runs, leave interactive panes to the human; `notify` |
+| 22 | any but done, canceled | canceled | H `cancel` | — | `interrupt_run` working runs, `stop_run` headless runs, end runs (`canceled`); void approvals; `disable_auto_merge` if enabled. The PR and branch stay as they are. |
+| 23 | canceled | backlog | H `reopen` | PR not merged | Runs stay ended; the next start is a new attempt. |
+| 24 | planning … awaiting_approval | backlog | H `move backlog` | — | `interrupt_run` working runs; `stop_run` headless runs; void approvals (`stage_left`). Plan and findings are kept. |
 
 Notes on the rules:
 
