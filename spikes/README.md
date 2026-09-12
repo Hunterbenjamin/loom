@@ -9,6 +9,7 @@ Throwaway experiments. Each one answers an open integration question in `docs/ar
 | 03 | Does `herdr agent attach` work in a terminal embedded in Electron (xterm.js vs ghostty-web)? | claude | — |
 | 04 | Does `@pierre/diffs` handle large diffs and review annotations? | codex | — |
 | 05 | What survives each kind of restart, and how do we recover? | claude | 01 and 02 merged |
+| 06 | Does tmux meet the pane-host budgets Herdr met, with fewer workarounds? | codex | 02, 03, 05 |
 
 ## Launching
 
