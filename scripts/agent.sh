@@ -2,10 +2,12 @@
 # Start an agent on a brief: a worktree on <branch>, opened as a Herdr workspace, with an agent
 # told to follow the brief. Run from a shell pane inside Herdr.
 #
-# Usage: scripts/agent.sh <name> <claude|codex> <branch> <brief> [extra `herdr worktree create` flags]
+# Usage: scripts/agent.sh <name> <claude|codex> <branch> <brief> [--model <model>] [worktree flags]
 #   e.g. scripts/agent.sh core-design claude feat/core-design docs/briefs/phase-1a-core-design.md
+#        scripts/agent.sh ui-shell claude feat/ui-shell docs/briefs/ui-shell.md --model opus
 # <brief> is relative to the repo root and must be committed: the worktree only has committed files.
-# Add --trust-repository if Herdr asks for it.
+# Without --model the agent uses its own default. Any other flags go to `herdr worktree create`
+# (for example --trust-repository).
 set -euo pipefail
 
 die() {
@@ -13,12 +15,28 @@ die() {
   exit 1
 }
 
-[ $# -ge 4 ] || die "usage: scripts/agent.sh <name> <claude|codex> <branch> <brief> [worktree flags]"
+[ $# -ge 4 ] || die "usage: scripts/agent.sh <name> <claude|codex> <branch> <brief> [--model <model>] [worktree flags]"
 name="$1"
 kind="$2"
 branch="$3"
 brief_path="$4"
 shift 4
+
+model=""
+worktree_flags=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --model)
+      [ $# -ge 2 ] || die "--model needs a value"
+      model="$2"
+      shift 2
+      ;;
+    *)
+      worktree_flags+=("$1")
+      shift
+      ;;
+  esac
+done
 
 [ "${HERDR_ENV:-}" = 1 ] || die "run this from a shell pane inside Herdr"
 command -v jq >/dev/null || die "jq is required"
@@ -32,17 +50,29 @@ repo="$(git rev-parse --show-toplevel)"
 git -C "$repo" cat-file -e "HEAD:$brief_path" 2>/dev/null ||
   die "$brief_path is not committed on HEAD, so the new worktree won't have it"
 
-created="$(herdr worktree create --cwd "$repo" --branch "$branch" --label "$name" --no-focus "$@")"
+created="$(herdr worktree create --cwd "$repo" --branch "$branch" --label "$name" --no-focus \
+  ${worktree_flags[@]+"${worktree_flags[@]}"})"
 pane="$(jq -r '.result.root_pane.pane_id // empty' <<<"$created")"
 worktree="$(jq -r '.result.worktree.path // empty' <<<"$created")"
 [ -n "$pane" ] || die "could not read the new pane id from: $created"
+
+# Native agent arguments go after `--`. Claude takes `--model <name>`; Codex takes a TOML override,
+# so the value keeps its quotes.
+agent_args=()
+if [ -n "$model" ]; then
+  case "$kind" in
+    claude) agent_args=(-- --model "$model") ;;
+    codex) agent_args=(-- -c "model=\"$model\"") ;;
+  esac
+fi
 
 # The new pane's shell may still be starting, so retry briefly. If the agent starts but stops
 # at a prompt (usually "trust this folder?"), `agent start` fails yet the name resolves:
 # wait for the human to answer it in Herdr instead of retrying.
 started=0
 for _ in 1 2 3 4 5; do
-  if herdr agent start "$name" --kind "$kind" --pane "$pane" >/dev/null; then
+  if herdr agent start "$name" --kind "$kind" --pane "$pane" \
+    ${agent_args[@]+"${agent_args[@]}"} >/dev/null; then
     started=1
     break
   fi
@@ -67,4 +97,5 @@ if ! herdr agent wait "$name" --until working --until blocked --timeout 30000 >/
   exit 1
 fi
 
-printf 'started %s (%s) on %s in %s, pane %s\n' "$name" "$kind" "$branch" "$worktree" "$pane"
+printf 'started %s (%s%s) on %s in %s, pane %s\n' \
+  "$name" "$kind" "${model:+, $model}" "$branch" "$worktree" "$pane"
