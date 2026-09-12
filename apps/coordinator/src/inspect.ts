@@ -2,8 +2,9 @@
 import { stripVTControlCharacters } from "node:util";
 import type { FindingStatus, TaskId } from "@loom/core";
 import type { Store } from "@loom/store";
+import type { Adapters } from "./adapters.js";
 
-export function inspectTask(store: Store, taskId: TaskId) {
+export function inspectTask(store: Store, taskId: TaskId, adapters?: Adapters) {
   const state = store.loadTaskState(taskId);
   const task = state.task;
   const runs = store.runs(taskId);
@@ -16,6 +17,12 @@ export function inspectTask(store: Store, taskId: TaskId) {
     waived: 0,
   };
   for (const finding of state.findings) counts[finding.status]++;
+  // Check if the task has a running Codex app-server (only possible if adapters are provided)
+  // A server can only be running if the task is not in a terminal stage AND the adapter exists
+  const codexServerRunning = !!(
+    adapters && !["done", "canceled"].includes(task.stage)
+  );
+
   return {
     task: {
       id: task.id,
@@ -29,6 +36,7 @@ export function inspectTask(store: Store, taskId: TaskId) {
       branch: task.branch,
       prNumber: task.prNumber,
       worktreePath: task.worktreePath,
+      codexServerRunning,
     },
     runs: runs.map((run) => ({
       id: run.id,
@@ -128,7 +136,8 @@ export function formatInspection(data: Inspection): string {
       lines.push(`  ${`${key}:`.padEnd(23)} ${oneLine(value)}`);
   };
   lines.push("Task");
-  facts(data.task);
+  const taskDisplay = { ...data.task };
+  facts(taskDisplay);
   lines.push("", `Runs (${data.runs.length}, newest last)`);
   for (const run of data.runs) {
     facts(run);
