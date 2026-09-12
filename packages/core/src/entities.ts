@@ -115,9 +115,14 @@ export type AttentionReason =
   | "over_budget";
 
 export interface Attention {
-  /** Empty means the task doesn't need the human. */
+  /** Empty means the task doesn't need the human. Sorted. */
   reasons: AttentionReason[];
-  /** When the current non-empty set of reasons first appeared. */
+  /**
+   * When each current reason first appeared, and has held since. Its keys are exactly `reasons`,
+   * so a queue can sort by how long each thing has waited rather than by the set as a whole.
+   */
+  reasonSince: Partial<Record<AttentionReason, IsoTime>>;
+  /** The earliest `reasonSince`: how long the task has needed the human. Null with no reasons. */
   since: IsoTime | null;
 }
 

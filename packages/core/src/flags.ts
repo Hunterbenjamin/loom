@@ -1,6 +1,16 @@
 import type { Context } from "./context.js";
-import type { AttentionReason } from "./entities.js";
+import type {
+  Attention,
+  AttentionReason,
+  BlockedFlag,
+  FailedFlag,
+  Message,
+  Question,
+  Run,
+  Stage,
+} from "./entities.js";
 import { later, millis, read } from "./helpers.js";
+import type { IsoTime } from "./ids.js";
 
 export const budgetStage = (stage: string): boolean =>
   [
@@ -99,21 +109,56 @@ export function reconcileFlags(c: Context): void {
     c.block(null);
 }
 
-export function attention(c: Context): void {
-  const { task, state } = c;
+/** Everything the attention rule reads. Pure input: no clock, no I/O, no store. */
+export interface AttentionInput {
+  now: IsoTime;
+  /** The attention the task carries now. Reasons that still hold keep their `since`. */
+  previous: Attention;
+  stage: Stage;
+  blocked: BlockedFlag | null;
+  failed: FailedFlag | null;
+  budgetMinutes: number | null;
+  /** Milliseconds spent in the stages that count against the budget. */
+  activeElapsedMs: number;
+  /** The task's runs, ended ones included. */
+  runs: readonly Run[];
+  questions: readonly Question[];
+  /** A message whose delivery is uncertain needs the human. */
+  messages: readonly Message[];
+  stallAfterMs: number;
+  unknownGraceMs: number;
+}
+
+/** A reason that will start to hold later: re-derive at `at`. */
+export interface AttentionSchedule {
+  at: IsoTime;
+  why: "stall_check" | "poll";
+}
+
+export interface AttentionDerivation {
+  attention: Attention;
+  schedules: AttentionSchedule[];
+}
+
+/**
+ * The one attention rule (docs/design/core.md §3), exported so the UI never re-implements it.
+ * Deterministic: the same input always gives the same result.
+ */
+export function deriveAttention(input: AttentionInput): AttentionDerivation {
   const reasons = new Set<AttentionReason>();
-  const terminal = task.stage === "done" || task.stage === "canceled";
+  const schedules: AttentionSchedule[] = [];
+  const terminal = input.stage === "done" || input.stage === "canceled";
   if (!terminal) {
-    if (task.stage === "plan_approval") reasons.add("plan_needs_approval");
-    if (task.stage === "awaiting_approval") reasons.add("needs_approval");
-    if (state.questions.some((q) => q.answer === null)) reasons.add("question");
+    if (input.stage === "plan_approval") reasons.add("plan_needs_approval");
+    if (input.stage === "awaiting_approval") reasons.add("needs_approval");
+    if (input.questions.some((q) => q.answer === null)) reasons.add("question");
     if (
-      task.blocked &&
-      !["dependencies", "provider_cooling_down"].includes(task.blocked.reason)
+      input.blocked &&
+      !["dependencies", "provider_cooling_down"].includes(input.blocked.reason)
     )
       reasons.add("blocked");
-    if (task.failed) reasons.add("failed");
-    for (const run of state.runs) {
+    if (input.failed) reasons.add("failed");
+    for (const run of input.runs) {
       if (run.origin === "external") continue;
       if (run.endReason === "vanished") reasons.add("run_vanished");
       if (run.endedAt) continue;
@@ -123,46 +168,60 @@ export function attention(c: Context): void {
       if (run.status === "working") {
         const last = run.lastActivityAt ?? run.launchedAt;
         if (last) {
-          const at = later(last, state.config.stallAfterMs);
-          if (at <= c.now) reasons.add("stalled");
-          else
-            c.emit(`schedule:${task.id}:stall_check:${at}`, {
-              kind: "schedule",
-              at,
-              why: "stall_check",
-            });
+          const at = later(last, input.stallAfterMs);
+          if (at <= input.now) reasons.add("stalled");
+          else schedules.push({ at, why: "stall_check" });
         }
       }
       if (run.status === "unknown" && run.unknownSince) {
-        const at = later(run.unknownSince, state.config.unknownGraceMs);
-        if (at <= c.now) reasons.add("status_unknown");
-        else
-          c.emit(`schedule:${task.id}:poll:${at}`, {
-            kind: "schedule",
-            at,
-            why: "poll",
-          });
+        const at = later(run.unknownSince, input.unknownGraceMs);
+        if (at <= input.now) reasons.add("status_unknown");
+        else schedules.push({ at, why: "poll" });
       }
     }
-    if (state.messages.some((m) => m.deliveryAttention))
+    if (input.messages.some((m) => m.deliveryAttention))
       reasons.add("provider_input");
     if (
-      task.budgetMinutes !== null &&
-      state.activeElapsedMs > task.budgetMinutes * 60_000
+      input.budgetMinutes !== null &&
+      input.activeElapsedMs > input.budgetMinutes * 60_000
     )
       reasons.add("over_budget");
   }
   const ordered = [...reasons].sort();
-  const same =
-    JSON.stringify(ordered) === JSON.stringify(task.attention.reasons);
-  task.attention = {
-    reasons: ordered,
-    since: ordered.length
-      ? same
-        ? (task.attention.since ?? c.now)
-        : c.now
-      : null,
-  };
+  const reasonSince: Partial<Record<AttentionReason, IsoTime>> = {};
+  let since: IsoTime | null = null;
+  for (const reason of ordered) {
+    // A reason that already held keeps its time; `previous.since` covers rows written before
+    // `reasonSince` existed, so an additive store migration needs no backfill.
+    const held =
+      input.previous.reasonSince[reason] ??
+      (input.previous.reasons.includes(reason) ? input.previous.since : null) ??
+      input.now;
+    reasonSince[reason] = held;
+    if (!since || held < since) since = held;
+  }
+  return { attention: { reasons: ordered, reasonSince, since }, schedules };
+}
+
+export function attention(c: Context): void {
+  const { task, state } = c;
+  const { attention: derived, schedules } = deriveAttention({
+    now: c.now,
+    previous: task.attention,
+    stage: task.stage,
+    blocked: task.blocked,
+    failed: task.failed,
+    budgetMinutes: task.budgetMinutes,
+    activeElapsedMs: state.activeElapsedMs,
+    runs: state.runs,
+    questions: state.questions,
+    messages: state.messages,
+    stallAfterMs: state.config.stallAfterMs,
+    unknownGraceMs: state.config.unknownGraceMs,
+  });
+  for (const { at, why } of schedules)
+    c.emit(`schedule:${task.id}:${why}:${at}`, { kind: "schedule", at, why });
+  task.attention = derived;
 }
 
 export function budget(c: Context): void {

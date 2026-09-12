@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { command, fixed, fixture, mcp, now } from "../test/fixtures.js";
 import type { AttentionReason, Run, RunObservation } from "./index.js";
-import { reconcile } from "./index.js";
+import { deriveAttention, reconcile } from "./index.js";
 
 describe("flags derive and clear from authoritative evidence", () => {
   it("dependencies clear when every blocker merges", () => {
@@ -304,6 +304,53 @@ describe("every attention reason", () => {
     const r = reconcile(f.state, f.observations);
     f.observations.now = "2026-09-12T00:00:01.000Z" as typeof now;
     expect(fixed(r.next, f.observations).next.task.attention.since).toBe(now);
+  });
+  it("keeps a since per reason, and the set's since is the earliest of them", () => {
+    const f = fixture("awaiting_approval");
+    const first = fixed(f.state, f.observations);
+    expect(first.next.task.attention.reasons).toEqual(["needs_approval"]);
+    expect(first.next.task.attention.reasonSince).toEqual({
+      needs_approval: now,
+    });
+
+    // A second reason appears an hour later; the first keeps its own timestamp.
+    const later = "2026-09-12T01:00:00.000Z" as typeof now;
+    f.observations.now = later;
+    first.next.task.failed = {
+      reason: "action_failed",
+      since: later,
+      detail: "push failed",
+      runId: null,
+    };
+    const both = fixed(first.next, f.observations);
+    expect(both.next.task.attention.reasons).toEqual([
+      "failed",
+      "needs_approval",
+    ]);
+    expect(both.next.task.attention.reasonSince).toEqual({
+      failed: later,
+      needs_approval: now,
+    });
+    expect(both.next.task.attention.since).toBe(now);
+  });
+  it("reads a since per reason from the same rule the UI calls", () => {
+    const f = fixture("plan_approval");
+    const r = fixed(f.state, f.observations);
+    const derived = deriveAttention({
+      now: f.observations.now,
+      previous: { reasons: [], reasonSince: {}, since: null },
+      stage: r.next.task.stage,
+      blocked: r.next.task.blocked,
+      failed: r.next.task.failed,
+      budgetMinutes: r.next.task.budgetMinutes,
+      activeElapsedMs: r.next.activeElapsedMs,
+      runs: r.next.runs,
+      questions: r.next.questions,
+      messages: r.next.messages,
+      stallAfterMs: r.next.config.stallAfterMs,
+      unknownGraceMs: r.next.config.unknownGraceMs,
+    });
+    expect(derived.attention).toEqual(r.next.task.attention);
   });
   it("budget excludes parked time and accumulates active stages", () => {
     const f = fixture("backlog");

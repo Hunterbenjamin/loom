@@ -312,7 +312,7 @@ export function createStore(snapshot: Snapshot = buildSnapshot(taskCount())) {
         worktreePath: null,
         branch: null,
         prNumber: null,
-        attention: { reasons: [], since: null },
+        attention: { reasons: [], reasonSince: {}, since: null },
       };
       setSnapshot({
         ...state.snapshot,
