@@ -78,7 +78,11 @@ export function richState(): TaskState {
   const state = coreFixture().state;
   state.config = config;
   state.task.version = 1;
-  state.task.attention = { reasons: ["question"], since: now };
+  state.task.attention = {
+    reasons: ["question"],
+    reasonSince: { question: now },
+    since: now,
+  };
   state.runs = [
     coreRun("planner"),
     {

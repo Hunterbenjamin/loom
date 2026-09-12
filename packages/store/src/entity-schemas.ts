@@ -48,6 +48,21 @@ export const repoSchema = contract<Repo>()(
     serialTests: z.boolean(),
   }),
 );
+const attentionReason = z.enum([
+  "plan_needs_approval",
+  "needs_approval",
+  "question",
+  "provider_permission",
+  "provider_input",
+  "provider_dialog",
+  "blocked",
+  "failed",
+  "run_vanished",
+  "stalled",
+  "status_unknown",
+  "over_budget",
+]);
+
 export const taskSchema = contract<Task>()(
   z.object({
     id,
@@ -86,22 +101,8 @@ export const taskSchema = contract<Task>()(
     branch: text.nullable(),
     prNumber: positive.nullable(),
     attention: z.object({
-      reasons: z.array(
-        z.enum([
-          "plan_needs_approval",
-          "needs_approval",
-          "question",
-          "provider_permission",
-          "provider_input",
-          "provider_dialog",
-          "blocked",
-          "failed",
-          "run_vanished",
-          "stalled",
-          "status_unknown",
-          "over_budget",
-        ]),
-      ),
+      reasons: z.array(attentionReason),
+      reasonSince: z.partialRecord(attentionReason, time),
       since: time.nullable(),
     }),
   }),

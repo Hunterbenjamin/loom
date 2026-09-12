@@ -307,7 +307,7 @@ describe("task transactions", () => {
     ]);
     const next = richState();
     next.task.stage = "done";
-    next.task.attention = { reasons: [], since: null };
+    next.task.attention = { reasons: [], reasonSince: {}, since: null };
     required(next.questions[0]).answer = "One";
     required(next.questions[0]).answeredAt = now;
     required(next.messages[0]).status = "failed";
