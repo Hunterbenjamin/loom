@@ -95,7 +95,10 @@ describe.skipIf(!available)("tmux pane host", () => {
     expect(await show("-g", "aggressive-resize")).toBe("on");
     expect(await show("-g", "remain-on-exit")).toBe("on");
     expect(await show("-s", "extended-keys")).toBe("always");
-    expect(await show("-s", "extended-keys-format")).toBe("csi-u");
+    // `extended-keys-format` exists from tmux 3.5; older servers (CI runners) skip it by design.
+    const version = (await tmux("display-message", "-p", "#{version}")).trim();
+    if (version >= "3.5")
+      expect(await show("-s", "extended-keys-format")).toBe("csi-u");
     expect(await show("-g", "update-environment")).toBe("");
     expect(await tmux("show-options", "-g", "-v", "terminal-features")).toMatch(
       /xterm\*:extkeys/,
