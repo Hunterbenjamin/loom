@@ -60,6 +60,7 @@ const attentionReason = z.enum([
   "stalled",
   "status_unknown",
   "over_budget",
+  "observability_failure",
 ]);
 
 export const taskSchema = contract<Task>()(
