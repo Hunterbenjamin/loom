@@ -621,9 +621,12 @@ export function Workbench() {
                   New Workbench
                 </Command.Item>
                 <Command.Item
-                  onSelect={() => void window.loomHost.openWindow("tracker")}
+                  onSelect={() => {
+                    setPalette(false);
+                    void window.loomHost.setMode("tracker");
+                  }}
                 >
-                  New Tracker
+                  Switch to issue tracker
                 </Command.Item>
               </Command.List>
             </Command>

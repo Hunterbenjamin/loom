@@ -1,6 +1,6 @@
 # UI design
 
-Tracker and Workbench are independently opened, fixed-mode windows on the same coordinator.
+Each window switches between Tracker and Workbench on the same coordinator.
 This note describes the first terminal Workbench slice.
 
 ## Modes
@@ -15,17 +15,14 @@ third mode. Agents write; the human reads and reviews. Editing is out of v1.
 
 ## Windows
 
-Every window has its own coordinator connection and immutable Tracker or Workbench mode.
-Command+Shift+W, the command palette, and the bottom-bar Workbench button open a new Workbench.
-The palette also offers New Tracker. Existing windows keep their mode.
+Every window has its own coordinator connection. Command+Shift+W and the bottom-bar mode button
+switch that same window between Tracker and Workbench; the button names the destination mode.
+The palette provides the same switch and explicit New Window commands remain separate.
 
-Tabs, splits, focused panel, filter and zoom exist only in that window's memory. Closing a window
-loses its layout and detaches its terminal clients; the underlying pane-host processes survive.
-New windows read the coordinator's cached, published inventory, without scanning the host on connect.
-After the first live window paints, the app prepares one hidden, empty Workbench with its own
-connection. Opening consumes that prepared window and prepares its replacement after a second.
-This keeps command-to-usable presentation within the opening budget; preparation time is recorded
-separately in the performance report. Fixture startup does not prepare a spare window.
+Both modes share the window's task store. Tracker selection and Workbench tabs/splits survive a
+round trip. Inactive mode effects are suspended: terminal viewers detach while hidden and attach
+again when shown, without stopping their native panes or agents. No hidden spare window is created.
+Closing a window closes only its viewers; the coordinator owns durable task state.
 
 ## Workbench
 

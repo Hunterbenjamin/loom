@@ -1,4 +1,5 @@
 import {
+  Activity,
   type ComponentType,
   lazy,
   type ReactNode,
@@ -18,9 +19,10 @@ const Workbench = lazy(() =>
 import { emptySnapshot } from "./live/snapshot.js";
 import { StoreProvider } from "./store/react.js";
 import { createStore } from "./store/store.js";
+import { WindowModeContext } from "./window-mode.js";
 import "./theme.css";
 
-const mode = await window.loomHost.mode();
+const initialMode = await window.loomHost.mode();
 const config = connectionConfig.parse(await window.loomHost.connection());
 const store =
   config.mode === "fixtures"
@@ -57,6 +59,16 @@ if (config.mode === "live") {
  * Shiki up front costs about half the cold-start budget for something no first screen shows.
  */
 function Boot() {
+  const [mode, setMode] = useState(initialMode);
+  const [visited, setVisited] = useState(new Set([initialMode]));
+  useEffect(
+    () =>
+      window.loomHost.onModeChanged((next) => {
+        setVisited((previous) => new Set([...previous, next]));
+        setMode(next);
+      }),
+    [],
+  );
   const [Pool, setPool] = useState<ComponentType<{
     children: ReactNode;
   }> | null>(null);
@@ -69,13 +81,24 @@ function Boot() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mode]);
 
   const app = (
     <StoreProvider store={store}>
-      <Suspense fallback={<div>Opening {mode}…</div>}>
-        {mode === "workbench" ? <Workbench /> : <App />}
-      </Suspense>
+      <WindowModeContext value={mode}>
+        <Suspense fallback={<div>Opening {mode}…</div>}>
+          {visited.has("tracker") && (
+            <Activity mode={mode === "tracker" ? "visible" : "hidden"}>
+              <App />
+            </Activity>
+          )}
+          {visited.has("workbench") && (
+            <Activity mode={mode === "workbench" ? "visible" : "hidden"}>
+              <Workbench />
+            </Activity>
+          )}
+        </Suspense>
+      </WindowModeContext>
     </StoreProvider>
   );
   return Pool ? <Pool>{app}</Pool> : app;

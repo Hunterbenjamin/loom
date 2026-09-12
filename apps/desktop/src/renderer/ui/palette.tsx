@@ -92,10 +92,10 @@ export function Palette() {
           <Command.Group heading="Window">
             <Command.Item
               onSelect={() =>
-                run(() => void window.loomHost.openWindow("workbench"))
+                run(() => void window.loomHost.setMode("workbench"))
               }
             >
-              New Workbench
+              Switch to Workbench
             </Command.Item>
             <Command.Item
               onSelect={() =>

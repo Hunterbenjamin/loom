@@ -50,6 +50,8 @@ export type WindowMode = z.output<typeof windowMode>;
 export interface HostBridge {
   notify?(request: { id: string; title: string; body: string }): void;
   mode(): Promise<WindowMode>;
+  setMode(mode: WindowMode): Promise<void>;
+  onModeChanged(listener: (mode: WindowMode) => void): () => void;
   openWindow(mode: WindowMode): Promise<void>;
   connection(): Promise<ConnectionConfig>;
   /** Called once, after the first list paint. The cold-start measurement reads it. */

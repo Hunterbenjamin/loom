@@ -123,8 +123,9 @@ perf/            the Playwright harness, its budgets and its last report
 
 ## Workbench
 
-Command+Shift+W, the palette, and the shared bottom bar open independent Workbench windows.
-New Tracker is also available in either palette. `LOOM_WINDOW_MODE=workbench` chooses the initial
+Command+Shift+W and the shared bottom-bar button toggle the current window between Tracker and
+Workbench. The palette also offers mode switching; explicit New Window commands remain separate.
+New Tracker is also available in the Tracker palette. `LOOM_WINDOW_MODE=workbench` chooses the initial
 window mode independently of live/fixture connection settings. Layouts are memory-only.
 
 The sidebar lists canonical native sessions and panes, including dead and unlinked panes. A click
@@ -143,7 +144,6 @@ It checks terminal mount counts during patches/layout changes, four-panel echo l
 idle CPU, independent window closure and scratch creation. It writes `perf/workbench-report.json`.
 Run it after the desktop build and separately from other performance harnesses to avoid contention.
 
-The live desktop prepares one empty hidden Workbench after a visible window is ready, and replenishes
-it after opening. The report records preparation time separately from native open-command latency.
-`pnpm --filter @loom/desktop perf` runs Tracker measurements followed by this Workbench fixture and
-checks both against `perf/budgets.json`; `perf/report.json` retains the combined measurements.
+Switching modes preserves Tracker selection and Workbench tabs/splits in the same window.
+Inactive terminal viewers detach and reattach when shown; the native panes and agents keep running.
+The app does not create a hidden spare Workbench window.

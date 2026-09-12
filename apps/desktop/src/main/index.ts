@@ -60,35 +60,17 @@ const sessions = new OwnedResources<Session>((session) => {
   if (session.timer) clearTimeout(session.timer);
   session.proc.kill("SIGHUP");
 });
-const windows = new Map<
-  number,
-  { window: BrowserWindow; mode: WindowMode; spare: boolean }
->();
-let spare: Promise<BrowserWindow> | null = null;
-let quitting = false;
-function prepareWorkbench() {
-  if (spare || quitting || connection.mode !== "live") return;
-  spare = createWindow("workbench", true).catch((error) => {
-    spare = null;
-    throw error;
-  });
-  void spare.catch(() => undefined);
-}
+const windows = new Map<number, { window: BrowserWindow; mode: WindowMode }>();
 async function openWindow(mode: WindowMode) {
-  if (mode === "workbench" && spare) {
-    const prepared = spare;
-    spare = null;
-    const window = await prepared;
-    const entry = window.isDestroyed()
-      ? undefined
-      : windows.get(window.webContents.id);
-    if (entry && !window.isDestroyed()) {
-      entry.spare = false;
-      window.show();
-      window.focus();
-    } else await createWindow(mode);
-  } else await createWindow(mode);
-  setTimeout(prepareWorkbench, 1000).unref();
+  await createWindow(mode);
+}
+function setWindowMode(
+  entry: { window: BrowserWindow; mode: WindowMode },
+  mode: WindowMode,
+) {
+  if (entry.mode === mode) return;
+  entry.mode = mode;
+  entry.window.webContents.send("app:mode-changed", mode);
 }
 function owned(sender: Electron.WebContents) {
   const entry = windows.get(sender.id);
@@ -150,6 +132,9 @@ function wire(): void {
     return connection;
   });
   ipcMain.handle("app:mode", (event) => owned(event.sender).mode);
+  ipcMain.handle("app:set-mode", (event, raw: unknown) => {
+    setWindowMode(owned(event.sender), windowMode.parse(raw));
+  });
   ipcMain.handle("app:open-window", async (event, raw: unknown) => {
     owned(event.sender);
     await openWindow(windowMode.parse(raw));
@@ -251,8 +236,7 @@ function wire(): void {
   // is the app's own start-up and not Playwright's debugger attaching.
   let reported = false;
   ipcMain.on("app:interactive", (event) => {
-    const entry = windows.get(event.sender.id);
-    if (!entry?.spare) setTimeout(prepareWorkbench, 1000).unref();
+    owned(event.sender);
     if (reported) return;
     reported = true;
     process.stdout.write(`loom:interactive ${Date.now()}\n`);
@@ -267,12 +251,9 @@ function wire(): void {
   );
 }
 
-async function createWindow(
-  mode: WindowMode,
-  isSpare = false,
-): Promise<BrowserWindow> {
+async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
   const window = new BrowserWindow({
-    show: !isSpare,
+    show: true,
     width: Number(process.env.LOOM_WIDTH ?? 1440),
     height: Number(process.env.LOOM_HEIGHT ?? 900),
     minWidth: 960,
@@ -287,13 +268,12 @@ async function createWindow(
     },
   });
   const owner = window.webContents.id;
-  windows.set(owner, { window, mode, spare: isSpare });
+  windows.set(owner, { window, mode });
   sessions.open(owner);
   const cleanup = () => {
     sessions.close(owner);
     windows.delete(owner);
-    if (!quitting && ![...windows.values()].some((entry) => !entry.spare))
-      app.quit();
+    if (!windows.size) app.quit();
   };
   window.on("closed", cleanup);
   window.webContents.on("render-process-gone", cleanup);
@@ -305,7 +285,12 @@ async function createWindow(
       input.key.toLowerCase() === "w"
     ) {
       event.preventDefault();
-      void openWindow("workbench");
+      const entry = windows.get(owner);
+      if (entry)
+        setWindowMode(
+          entry,
+          entry.mode === "tracker" ? "workbench" : "tracker",
+        );
     }
   });
 
@@ -332,7 +317,6 @@ app.whenReady().then(async () => {
 
 // Quitting detaches every terminal. Nothing else of ours outlives the window.
 app.on("before-quit", () => {
-  quitting = true;
   for (const owner of windows.keys()) sessions.close(owner);
 });
 

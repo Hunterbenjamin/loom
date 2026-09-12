@@ -86,6 +86,8 @@ for (const live of [false, true])
     };
     window.loomHost = {
       mode: vi.fn(),
+      setMode: vi.fn(),
+      onModeChanged: vi.fn(() => () => {}),
       openWindow: vi.fn(),
       interactive() {},
       connection: vi.fn(),
