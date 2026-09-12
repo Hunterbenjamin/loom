@@ -48,6 +48,7 @@ export function inspectTask(store: Store, taskId: TaskId) {
       lastTurn: run.lastTurn,
       pendingRequests: run.pendingRequests.length,
       requests: run.pendingRequests,
+      pendingDialog: run.pendingDialog ?? null,
       endedAt: run.endedAt,
       endReason: run.endReason,
     })),

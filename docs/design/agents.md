@@ -187,3 +187,15 @@ shows notes. Tags project only while their attention occurrence remains current.
 claims are persisted in SQLite to prevent duplicate notifications across windows and restarts.
 The Lead-to-Main rename, general note editing, memory and broader approval policies remain separate
 work; the Operator does not expand Lead's built-in capabilities.
+
+
+Claude permission occurrence IDs come from persisted hook receipts (session ID and sequence),
+not `tool_use_id`, which native `PermissionRequest` does not carry. The committed run caches the
+current dialog while Claude reports waiting. Attention keys, stale-action checks, human tags and
+notification claims therefore distinguish consecutive prompts even without an intermediate idle
+observation. The command evidence is retained for escalation as well as permission decisions.
+
+A failed native SDK result pauses Operator delivery immediately, even if its streaming child is
+still open. The visible session error is durable and queued events are retained across restart;
+`open_operator_session` explicitly clears the error to retry. Polling never starts an automatic
+redelivery loop for a failed turn.

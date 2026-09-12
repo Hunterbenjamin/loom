@@ -80,7 +80,12 @@ export function attentionOccurrence(state: TaskState): string {
       stage: state.task.stage,
       requests: state.runs
         .filter((r) => !r.endedAt)
-        .map((r) => [r.id, r.sessionEpoch, r.pendingRequests]),
+        .map((r) => [
+          r.id,
+          r.sessionEpoch,
+          r.pendingRequests,
+          r.pendingDialog ?? null,
+        ]),
       questions: state.questions.map((q) => q.id),
     }),
   );

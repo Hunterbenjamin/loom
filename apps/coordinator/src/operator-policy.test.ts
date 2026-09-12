@@ -1,13 +1,20 @@
+import { reconcile } from "@loom/core";
 import type { OperatorEvent } from "@loom/store";
 import { describe, expect, test } from "vitest";
+import { foldHookSummary } from "../../../packages/adapters/claude/src/hooks.js";
 import {
   fixture,
   head,
   now,
   run,
 } from "../../../packages/core/test/fixtures.js";
+import { runSchema } from "../../../packages/store/src/entity-schemas.js";
 import { normalizeFailure, sanitizeEvidence } from "./operator-evidence.js";
-import { allowedOperatorCommand, operatorPolicy } from "./operator-policy.js";
+import {
+  allowedOperatorCommand,
+  attentionOccurrence,
+  operatorPolicy,
+} from "./operator-policy.js";
 
 const event: OperatorEvent = {
   id: "event",
@@ -208,4 +215,67 @@ test("sanitization covers environment assignments and JSON credentials", () => {
   expect(
     sanitizeEvidence('GITHUB_TOKEN=hidden-value {"api_key":"hidden-json"}'),
   ).not.toMatch(/hidden-value|hidden-json/);
+});
+
+test("committed native Claude dialog changes the attention identity without an idle observation", () => {
+  const f = fixture("in_progress");
+  const nativeRun = run("implementer", "claude");
+  if (!nativeRun.sessionId) throw new Error("Missing session");
+  const reading = f.observations.runs.find(
+    (o) => o.provider.ok && o.provider.value?.provider === "claude",
+  );
+  if (!reading?.provider.ok || reading.provider.value?.provider !== "claude")
+    throw new Error("Missing Claude fixture");
+  const provider = reading.provider.value;
+  provider.sessionId = nativeRun.sessionId;
+  if (!provider.agentsEntry) throw new Error("Missing agents entry");
+  provider.agentsEntry.status = provider.agentsEntry.rawStatus = "waiting";
+  f.state.runs = [nativeRun];
+  f.observations.runs = [{ ...reading, runId: nativeRun.id }];
+  const receipt = (seq: number, command: string) => ({
+    seq,
+    sessionId: provider.sessionId,
+    event: "PermissionRequest",
+    promptId: null,
+    receivedAt: now,
+    payload: {
+      session_id: provider.sessionId,
+      hook_event_name: "PermissionRequest",
+      tool_name: "Bash",
+      tool_input: { command },
+    },
+  });
+  provider.hooks = foldHookSummary([receipt(1, "unknown-command")]);
+  const first = reconcile(f.state, f.observations).next;
+  const decoded = runSchema.parse(JSON.parse(JSON.stringify(first.runs[0])));
+  expect(decoded.pendingDialog?.requestId).toBe(
+    `claude-hook:${nativeRun.sessionId}:1`,
+  );
+  expect(operatorPolicy(event, first, f.observations, {}, false)).toMatchObject(
+    {
+      row: "permission.other",
+      summary: expect.stringContaining("unknown-command"),
+    },
+  );
+  provider.hooks = foldHookSummary([receipt(2, "pnpm install")]);
+  const second = reconcile(first, f.observations).next;
+  expect(first.task.attention).toEqual(second.task.attention);
+  expect(attentionOccurrence(first)).not.toBe(attentionOccurrence(second));
+  expect(
+    operatorPolicy(event, second, f.observations, {}, false),
+  ).toMatchObject({
+    row: "permission.allowed",
+    command: {
+      type: "answer_pane_prompt",
+      choice: 1,
+      expectedDialog: {
+        requestId: `claude-hook:${nativeRun.sessionId}:2`,
+        command: "pnpm install",
+        sessionEpoch: nativeRun.sessionEpoch,
+      },
+    },
+  });
+  provider.agentsEntry.status = provider.agentsEntry.rawStatus = "idle";
+  const resolved = reconcile(second, f.observations).next;
+  expect(resolved.runs[0]?.pendingDialog).toBeUndefined();
 });

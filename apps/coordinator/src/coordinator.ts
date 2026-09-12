@@ -39,6 +39,7 @@ import { Loop } from "./loop.js";
 import { createMcpHost } from "./mcp-host.js";
 import { observe as observeOwners, PullRequestCache } from "./observe.js";
 import { OperatorSession } from "./operator.js";
+import { attentionOccurrence } from "./operator-policy.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
 import { ProtocolServer } from "./server.js";
@@ -650,6 +651,11 @@ export class Coordinator {
           const notice = this.store.operator.atomic(() => {
             if (
               !note?.forHuman ||
+              (note.taskId !== null &&
+                note.occurrence !==
+                  attentionOccurrence(
+                    this.store.loadTaskState(note.taskId as TaskId),
+                  )) ||
               this.store.operator.get(`notified:${note.id}`, z.boolean())
             )
               return null;

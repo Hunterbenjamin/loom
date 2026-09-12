@@ -4,6 +4,7 @@ import { expect, test, vi } from "vitest";
 
 const fake = vi.hoisted(() => ({
   options: null as unknown,
+  result: { type: "result", subtype: "success", errors: [] as string[] },
   close: vi.fn(),
   interrupt: vi.fn(),
   release: () => {},
@@ -16,7 +17,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
       close: fake.close,
       interrupt: fake.interrupt,
       async *[Symbol.asyncIterator]() {
-        yield { type: "result", subtype: "success" };
+        yield fake.result;
         await new Promise<void>((resolve) => {
           fake.release = resolve;
         });
@@ -68,5 +69,33 @@ test("MCP-only disables built-ins and native result is a turn receipt, not child
   });
   run.close();
   expect(fake.close).toHaveBeenCalledOnce();
+  fake.release();
+});
+
+test("a failed native result is observable before the streaming child exits", async () => {
+  fake.result = {
+    type: "result",
+    subtype: "error_during_execution",
+    errors: ["context limit"],
+  };
+  const run = new HeadlessRun(
+    {
+      sessionId: "00000000-0000-4000-8000-000000000001" as ProviderSessionId,
+      cwd: "/tmp/loom-test-operator" as WorktreePath,
+      model: "fake",
+      settingsPath: "/tmp/loom-test-operator/settings.json",
+      readOnly: true,
+      mcpOnly: true,
+      resume: false,
+      prompt: "event",
+    },
+    {},
+  );
+  await vi.waitFor(() => expect(run.state.completedTurns).toBe(1));
+  expect(run.state).toMatchObject({
+    exited: false,
+    lastTurn: { outcome: "failed", error: "context limit" },
+  });
+  run.close();
   fake.release();
 });

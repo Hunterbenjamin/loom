@@ -179,6 +179,8 @@ export interface ClaudeSessionObservation {
   /** Headless runs the coordinator spawned: the process's own exit. */
   headless: {
     completedTurns?: number;
+    /** Latest native result, available even while streaming input remains open. */
+    lastTurn?: { outcome: "completed" | "failed"; error: string | null };
     exited: boolean;
     exitCode: number | null;
     error: string | null;

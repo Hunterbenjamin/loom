@@ -40,6 +40,7 @@ export function observeRuns(c: Context): void {
       if (provider.provider === "codex") {
         run.seenAt ??= c.now;
         run.codexGeneration = provider.generation;
+        delete run.pendingDialog;
         run.pendingRequests = provider.pendingRequests.map((r) => ({
           id: r.requestId,
           generation: provider.generation,
@@ -59,6 +60,12 @@ export function observeRuns(c: Context): void {
         if (provider.agentsEntry || provider.hooks.sessionStart)
           run.seenAt ??= c.now;
         run.pendingRequests = [];
+        if (
+          provider.agentsEntry?.status === "waiting" &&
+          provider.hooks.pendingDialog
+        )
+          run.pendingDialog = { ...provider.hooks.pendingDialog };
+        else delete run.pendingDialog;
         if (provider.hooks.lastStop)
           run.lastTurn = {
             id: provider.hooks.lastStop.promptId,
@@ -74,6 +81,7 @@ export function observeRuns(c: Context): void {
     }
     if (run.status === "unknown") {
       run.unknownSince ??= c.now;
+      delete run.pendingDialog;
       run.pendingRequests = [];
     } else run.unknownSince = null;
     if (derived.status === "ended")

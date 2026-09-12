@@ -134,13 +134,27 @@ export class HeadlessRun {
     try {
       let lastError: string | null = null;
       for await (const message of this.#query) {
-        if (message.type === "result") this.#completedTurns++;
-        if (message.type === "result" && message.subtype !== "success")
-          lastError = message.errors.join("; ") || message.subtype;
+        if (message.type === "result") {
+          this.#completedTurns++;
+          lastError =
+            message.subtype === "success"
+              ? null
+              : message.errors.join("; ") || message.subtype;
+          this.#state.lastTurn = {
+            outcome: message.subtype === "success" ? "completed" : "failed",
+            error: lastError,
+          };
+        }
       }
-      this.#state = { exited: true, exitCode: 0, error: lastError };
+      this.#state = {
+        ...this.#state,
+        exited: true,
+        exitCode: 0,
+        error: lastError,
+      };
     } catch (error) {
       this.#state = {
+        ...this.#state,
         exited: true,
         exitCode: null,
         error: error instanceof Error ? error.message : String(error),

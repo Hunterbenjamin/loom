@@ -237,6 +237,16 @@ export const run = z.strictObject({
     })
     .nullable(),
   pendingRequests: z.array(providerRequest),
+  pendingDialog: z
+    .object({
+      requestId: z.string().optional(),
+      command: z.string().optional(),
+      kind: z.enum(["permission", "input"]),
+      tool: z.string(),
+      at: isoTime,
+    })
+    .nullable()
+    .optional(),
   lastActivityAt: isoTime.nullable(),
   retryAt: isoTime.nullable(),
   launchedAt: isoTime.nullable(),

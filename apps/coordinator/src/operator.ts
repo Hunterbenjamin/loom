@@ -274,6 +274,13 @@ export class OperatorSession {
         this.completedTurns = state?.completedTurns ?? 0;
         this.active = false;
         this.delivered.clear();
+        if (state?.lastTurn?.outcome === "failed") {
+          this.error = sanitizeEvidence(
+            `Operator turn failed: ${state.lastTurn.error ?? "unknown provider error"}. Queued events retained. Open Operator to retry.`,
+          );
+          this.deps.store.operator.set("session_error", this.error);
+          return;
+        }
       }
       if (!events.length || this.error) return;
       if (!this.recipe) await this.initialize();

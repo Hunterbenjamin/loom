@@ -77,6 +77,24 @@ describe("task transactions", () => {
       openStore({ dataRoot: root, instance: "../dev", config }),
     ).rejects.toThrow();
   });
+  it("persists native Claude dialog occurrences across reopen", async () => {
+    const store = await seeded();
+    const state = richState();
+    const run = required(state.runs[0]);
+    run.pendingDialog = {
+      requestId: "claude-hook:session:42",
+      command: "pnpm install",
+      tool: "Bash",
+      kind: "permission",
+      at: now,
+    };
+    expect(store.commit(taskId, result(state), 0).ok).toBe(true);
+    store.close();
+    const restarted = await open();
+    expect(
+      restarted.runs(taskId).find((r) => r.id === run.id)?.pendingDialog,
+    ).toEqual(run.pendingDialog);
+  });
   it("round-trips every Phase 1b field through commit and reopen", async () => {
     const store = await seeded(),
       state = richState();

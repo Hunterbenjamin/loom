@@ -173,6 +173,16 @@ export const runSchema = contract<Run>()(
         receivedAt: time,
       }),
     ),
+    pendingDialog: z
+      .object({
+        requestId: z.string().optional(),
+        command: z.string().optional(),
+        kind: z.enum(["permission", "input"]),
+        tool: z.string(),
+        at: time,
+      })
+      .nullable()
+      .optional(),
     lastActivityAt: time.nullable(),
     retryAt: time.nullable(),
     launchedAt: time.nullable(),

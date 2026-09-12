@@ -221,9 +221,14 @@ export class FakeProviders {
       s.value.lastError = nativeError;
       s.value.status = outcome === "failed" ? "systemError" : "idle";
     } else {
-      if (s.value.headless)
+      if (s.value.headless) {
         s.value.headless.completedTurns =
           (s.value.headless.completedTurns ?? 0) + 1;
+        s.value.headless.lastTurn = {
+          outcome: outcome === "completed" ? "completed" : "failed",
+          error: outcome === "completed" ? null : (error?.kind ?? outcome),
+        };
+      }
       if (s.value.agentsEntry)
         s.value.agentsEntry.status = s.value.agentsEntry.rawStatus = "idle";
       if (outcome === "completed")

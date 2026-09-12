@@ -285,6 +285,14 @@ export interface Run {
   } | null;
   /** (cache: provider) */
   pendingRequests: ProviderRequest[];
+  /** Cached native Claude dialog, only while the provider reports waiting. Missing on legacy runs. */
+  pendingDialog?: {
+    requestId?: string;
+    command?: string;
+    kind: "permission" | "input";
+    tool: string;
+    at: IsoTime;
+  } | null;
   /** Last provider observation of any kind. Drives stall detection. */
   lastActivityAt: IsoTime | null;
   /** Earliest time the next attempt may launch, after a failure. Headless runs only. */
