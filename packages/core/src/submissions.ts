@@ -1,6 +1,7 @@
 import type { Context } from "./context.js";
 import { openBlocking } from "./helpers.js";
 import { error } from "./human.js";
+import type { ActionKey } from "./ids.js";
 import type { McpError, TestResultInput } from "./mcp.js";
 import type { Input } from "./observations.js";
 import type { McpReply } from "./reconcile.js";
@@ -207,28 +208,15 @@ export function submission(
         branch: task.branch,
         expectedHeadSha: call.input.headSha,
       });
-      if (!task.prNumber)
-        c.emit(`open_pr:${task.id}:${task.branch}`, {
-          kind: "open_pr",
-          repoId: task.repoId,
-          branch: task.branch,
-          baseBranch: state.worktree.baseBranch,
-          title: task.title,
-          body: call.input.summary,
-        });
       return { tool: call.tool, value: { round: task.reviewRound } };
     }
     case "submit_review": {
       const review = call.input,
         failures: string[] = [];
-      if (
-        !state.review ||
-        review.reviewedSha !== state.review.headSha ||
-        !pr ||
-        pr.state !== "open" ||
-        pr.headSha !== review.reviewedSha
-      )
-        failures.push("Review must match the round head and fresh PR head");
+      if (!state.review || review.reviewedSha !== state.review.headSha)
+        failures.push("Review must match the round head");
+      if (pr && (pr.state !== "open" || pr.headSha !== review.reviewedSha))
+        failures.push("If a PR exists, it must be open with the reviewed head");
       const required =
         state.review?.verdictIds ??
         state.findings
@@ -295,15 +283,22 @@ export function submission(
         review.findings.filter(
           (f) => f.severity === "major" || f.severity === "blocker",
         ).length;
-      if (
-        count === 0 &&
-        (pr?.mergeable !== "mergeable" ||
-          pr.ci.headSha !== review.reviewedSha ||
-          pr.ci.conclusion === "failure")
-      )
-        return guard(
-          "Confirm the PR is mergeable and CI for the reviewed head is not failing",
-        );
+      if (count === 0) {
+        // Even if PR doesn't exist yet, we need a fresh GitHub read to create it
+        if (!c.observations.github?.ok) {
+          return guard("Require fresh GitHub state to create or verify PR");
+        }
+        // If PR already exists, verify it's in a good state
+        if (
+          pr &&
+          (pr.mergeable !== "mergeable" ||
+            pr.ci.headSha !== review.reviewedSha ||
+            pr.ci.conclusion === "failure")
+        )
+          return guard(
+            "Confirm the PR is mergeable and CI for the reviewed head is not failing",
+          );
+      }
       state.findings = projected;
       review.findings.forEach((finding, i) => {
         const draft = call.drafts[i];
@@ -330,6 +325,29 @@ export function submission(
         next = "awaiting_approval";
         c.stage(next, "Review has no blocking findings");
         c.notify("Review needs approval", `review:${task.reviewRound}`);
+        if (!task.prNumber && state.worktree && task.branch) {
+          const pushKey =
+            `push_branch:${task.id}:${review.reviewedSha}` as ActionKey;
+          c.emit(`open_pr:${task.id}:${task.branch}`, {
+            kind: "open_pr",
+            repoId: task.repoId,
+            branch: task.branch,
+            baseBranch: state.worktree.baseBranch,
+            title: task.title,
+            body: call.input.summary,
+          });
+          // Add push_branch as dependency: PR should be opened after push completes
+          const openPrRow = c.state.outbox.find(
+            (row) => row.key === `open_pr:${task.id}:${task.branch}`,
+          );
+          if (
+            openPrRow &&
+            openPrRow.dependsOn &&
+            !openPrRow.dependsOn.includes(pushKey)
+          ) {
+            openPrRow.dependsOn.push(pushKey);
+          }
+        }
       } else if (
         task.reviewRound >= task.reviewRoundCap ||
         reopened ||

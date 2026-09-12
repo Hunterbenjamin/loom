@@ -97,7 +97,7 @@ describe("reconciliation ordering and recovery regressions", () => {
     expect(ready.actions.some((a) => a.kind === "send_message")).toBe(true);
     expect(ready.capacityVersion).toBe(4);
   });
-  it("push precedes PR creation and reviewer launch via durable dependencies", () => {
+  it("push precedes reviewer launch via durable dependencies", () => {
     const f = fixture();
     f.state.task.prNumber = null;
     f.state.task.reviewRound = 0;
@@ -106,10 +106,14 @@ describe("reconciliation ordering and recovery regressions", () => {
     f.observations.inputs = [mcp(submit())];
     const r = fixed(f.state, f.observations);
     const push = r.actions.find((a) => a.kind === "push_branch");
-    const open = r.next.outbox.find((a) => a.kind === "open_pr");
     const start = r.next.outbox.find((a) => a.kind === "start_run");
-    expect(open?.dependsOn).toContain(push?.key);
-    expect(start?.dependsOn).toContain(open?.key);
+    // After submit_for_review, push_branch is emitted and reviewer is started.
+    // Reviewer start depends on push_branch. PR is not opened yet; it will be opened
+    // after submit_review when no blocking findings exist.
+    expect(push?.key).toBeDefined();
+    expect(start?.dependsOn).toContain(push?.key);
+    const open = r.next.outbox.find((a) => a.kind === "open_pr");
+    expect(open).toBeUndefined(); // PR not opened on submit_for_review
   });
   it("later starts remain behind a pending disable-auto-merge action", () => {
     const f = fixture("merging");
