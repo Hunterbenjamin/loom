@@ -26,6 +26,7 @@ import {
   PROTOCOL_VERSION,
   type ProtocolError,
   scopeOf,
+  serverFrame,
   supportsVersion,
   taskInScope,
 } from "@loom/protocol";
@@ -259,7 +260,8 @@ export class ProtocolServer {
       const value: Connection = {
         socket,
         clientId: frame.client.id,
-        seq: 0,
+        // Sequence numbers are positive, so the first snapshot is 1 and the first patch is 2.
+        seq: 1,
         scope: frame.subscriptions,
         missedPongs: 0,
       };
@@ -411,7 +413,9 @@ export class ProtocolServer {
 
   private send(connection: Connection, frame: ServerFrame): void {
     try {
-      connection.socket.send(encodeFrame(frame));
+      // Validate on the way out too: a frame a client cannot parse is a coordinator bug, and it
+      // would otherwise present as a window that silently stops updating.
+      connection.socket.send(encodeFrame(serverFrame.parse(frame)));
     } catch (error) {
       this.deps.onError(
         error instanceof Error ? error : new Error(String(error)),

@@ -1,0 +1,223 @@
+// The pure pieces: the derived IDs, the environment allowlist, WORKFLOW.md's policy and the
+// finding mapper. None of these touch a provider, a terminal or the network.
+
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { FileChange, Finding, FindingId, Sha, TaskId } from "@loom/core";
+import { expect, test } from "vitest";
+import { configSchema } from "./config.js";
+import { deriveClaudeSessionId, newToken, uuidV5 } from "./derive.js";
+import { indexChanges, mapFindings, mapRange } from "./mapping.js";
+import { ENVIRONMENT_ALLOWLIST, runEnvironment } from "./recipes.js";
+import { createWorkflowReader, parseWorkflow } from "./workflow.js";
+
+test("a Claude session ID is the UUIDv5 of the run and its epoch", () => {
+  const id = deriveClaudeSessionId("t1/planner/0" as never, 0);
+  expect(id).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+  // Pure and deterministic: a retry of the same epoch targets the same session (decision 10).
+  expect(deriveClaudeSessionId("t1/planner/0" as never, 0)).toBe(id);
+  expect(deriveClaudeSessionId("t1/planner/0" as never, 1)).not.toBe(id);
+  expect(deriveClaudeSessionId("t1/planner/1" as never, 0)).not.toBe(id);
+  // The published RFC 4122 §4.3 vector, so the implementation itself is checked.
+  expect(
+    uuidV5("www.example.com", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"),
+  ).toBe("2ed6657d-e927-568b-95e1-2665a8aea6a2");
+});
+
+test("a run token is unguessable and never derived from an ID", () => {
+  const tokens = new Set(Array.from({ length: 64 }, () => newToken()));
+  expect(tokens.size).toBe(64);
+  for (const token of tokens) expect(token.length).toBeGreaterThanOrEqual(32);
+});
+
+test("the pane environment is an allowlist", () => {
+  const env = runEnvironment(
+    {
+      PATH: "/usr/bin",
+      HOME: "/home/loom",
+      CLAUDE_CODE_CHILD_SESSION: "1",
+      AWS_SECRET_ACCESS_KEY: "secret",
+    },
+    { LOOM_MCP_TOKEN: "t" },
+  );
+  expect(env).toEqual({
+    PATH: "/usr/bin",
+    HOME: "/home/loom",
+    LOOM_MCP_TOKEN: "t",
+  });
+  // Inheriting this one turns off transcript saving, which breaks resuming (principle 7).
+  expect(ENVIRONMENT_ALLOWLIST).not.toContain("CLAUDE_CODE_CHILD_SESSION");
+});
+
+test("the config refuses an instance or a bind address it cannot parse", () => {
+  const base = {
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+  };
+  expect(configSchema.parse(base).bind).toEqual({
+    host: "127.0.0.1",
+    port: 47800,
+  });
+  expect(configSchema.parse({ ...base, bind: "0.0.0.0:1234" }).bind).toEqual({
+    host: "0.0.0.0",
+    port: 1234,
+  });
+  expect(() => configSchema.parse({ ...base, bind: "nonsense" })).toThrow();
+  expect(() => configSchema.parse({ ...base, instance: "../prod" })).toThrow();
+  expect(() => configSchema.parse({ ...base, token: "short" })).toThrow();
+});
+
+test("WORKFLOW.md exposes only commands it can fully validate", async () => {
+  expect(
+    parseWorkflow("# Workflow\n\n## Test\n\n```sh\npnpm test\n```\n"),
+  ).toEqual({ test: "pnpm test" });
+  expect(
+    parseWorkflow(
+      "## dev server\n```sh\npnpm dev\n```\n## teardown\n```\nmake down\n```",
+    ),
+  ).toEqual({ dev_server: "pnpm dev", teardown: "make down" });
+  // Prose without a fenced block is for humans; a heading with no command is not a command.
+  expect(parseWorkflow("## Notes\n\nRun it yourself.\n")).toEqual({});
+  // A file that says two different things under one name is malformed, not last-one-wins.
+  expect(() =>
+    parseWorkflow("## test\n```\na\n```\n## Test\n```\nb\n```"),
+  ).toThrow();
+});
+
+test("a missing or malformed WORKFLOW.md exposes nothing, and says so once", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-workflow-"));
+  try {
+    const warnings: string[] = [];
+    const reader = createWorkflowReader((message) => warnings.push(message));
+    expect(await reader.read(root)).toEqual({});
+    expect(warnings).toHaveLength(0);
+
+    await writeFile(join(root, "WORKFLOW.md"), "## test\n```\na\n```\n");
+    expect(await reader.read(root)).toEqual({ test: "a" });
+
+    await writeFile(
+      join(root, "WORKFLOW.md"),
+      "## test\n```\na\n```\n## test\n```\nb\n```\n",
+    );
+    // Half-parsed commands would be run by an agent, so a malformed file exposes none at all.
+    expect(await reader.read(root)).toEqual({});
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("WORKFLOW.md");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+const change = (over: Partial<FileChange> = {}): FileChange => ({
+  status: "modified",
+  oldPath: "src/a.ts",
+  newPath: "src/a.ts",
+  oldBlobOid: "a".repeat(40) as never,
+  newBlobOid: "b".repeat(40) as never,
+  binary: false,
+  hunks: [],
+  ...over,
+});
+
+test("a finding moves with its file, and is never silently re-pointed", () => {
+  // Nothing changed: the anchor still points where it did.
+  expect(mapRange(undefined, 10, 12)).toMatchObject({
+    startLine: 10,
+    status: "exact",
+  });
+  // Lines added above shift it down.
+  expect(
+    mapRange(
+      change({
+        hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 4 }],
+      }),
+      10,
+      12,
+    ),
+  ).toMatchObject({ startLine: 13, endLine: 15, status: "moved" });
+  // A hunk that rewrote the anchored lines is ambiguous, and ambiguity keeps the finding open.
+  expect(
+    mapRange(
+      change({
+        hunks: [{ oldStart: 9, oldLines: 5, newStart: 9, newLines: 2 }],
+      }),
+      10,
+      12,
+    ),
+  ).toMatchObject({ startLine: null, status: "ambiguous" });
+  // A deleted file is outdated, never resolved.
+  expect(
+    mapRange(change({ status: "deleted", newPath: null }), 10, 12),
+  ).toMatchObject({ status: "outdated", path: null });
+  // A rename carries the finding to the new path.
+  expect(
+    mapRange(change({ status: "renamed", newPath: "src/b.ts" }), 3, 3),
+  ).toMatchObject({ path: "src/b.ts", status: "moved" });
+});
+
+test("mapFindings gives each anchored finding a new location version", () => {
+  const anchored: Finding = {
+    id: "t1/reviewer/1/0" as FindingId,
+    taskId: "t1" as TaskId,
+    round: 1,
+    source: "reviewer",
+    externalId: null,
+    createdByRunId: null,
+    severity: "major",
+    blocking: true,
+    title: "Fix",
+    body: "",
+    status: "open",
+    reopenCount: 0,
+    anchor: {
+      baseSha: "0".repeat(40) as Sha,
+      headSha: "1".repeat(40) as Sha,
+      oldPath: "src/a.ts",
+      newPath: "src/a.ts",
+      oldBlobOid: null,
+      newBlobOid: null,
+      side: "new",
+      startLine: 10,
+      endLine: 10,
+      startColumn: null,
+      endColumn: null,
+      selectedText: "x",
+      selectedTextHash: "h",
+      contextBeforeHash: "h",
+      contextAfterHash: "h",
+      normalization: "lf-v1",
+    },
+    location: null,
+    resolution: null,
+    createdAt: "2026-09-12T00:00:00.000Z" as never,
+    updatedAt: "2026-09-12T00:00:00.000Z" as never,
+  };
+  const taskLevel: Finding = {
+    ...anchored,
+    id: "t1/ci/1" as FindingId,
+    anchor: null,
+  };
+  const mapped = mapFindings({
+    findings: [anchored, taskLevel],
+    findingIds: [anchored.id, taskLevel.id],
+    toHeadSha: "2".repeat(40) as Sha,
+    changes: indexChanges([
+      change({
+        hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 3 }],
+      }),
+    ]),
+    mappedAt: "2026-09-12T00:01:00.000Z",
+  });
+  // A task-level finding has nothing to anchor, so it gets no location.
+  expect(mapped).toHaveLength(1);
+  expect(mapped[0]).toMatchObject({
+    findingId: anchored.id,
+    location: { startLine: 12, status: "moved", version: 1 },
+  });
+});

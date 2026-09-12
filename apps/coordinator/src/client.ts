@@ -34,6 +34,8 @@ type Waiter = (frame: ServerFrame) => boolean;
 export class LoomClient {
   state: ClientState | null = null;
   readonly gaps: { expected: number; received: number }[] = [];
+  /** The last `error` frame's message, so a refused handshake says why it was refused. */
+  lastError: string | null = null;
   private readonly waiters = new Set<Waiter>();
   private readonly acks = new Map<string, (outcome: AckOutcome) => void>();
   private sequence = 0;
@@ -52,6 +54,20 @@ export class LoomClient {
       socket.addEventListener("open", () => resolve());
     });
     socket.addEventListener("message", (event) => client.receive(event.data));
+    // The handshake can be refused: the coordinator sends one `error` frame and closes.
+    let handshaking = true;
+    const refused = new Promise<never>((_, reject) => {
+      socket.addEventListener("close", (event) => {
+        if (handshaking)
+          reject(
+            new Error(
+              client.lastError ??
+                `The coordinator closed the socket (${event.code})`,
+            ),
+          );
+      });
+    });
+    refused.catch(() => undefined);
     const welcome = client.await((frame) => frame.type === "welcome");
     const snapshot = client.await((frame) => frame.type === "snapshot");
     client.send({
@@ -66,8 +82,11 @@ export class LoomClient {
       },
       subscriptions: options.subscriptions ?? [],
     });
-    await welcome;
-    await snapshot;
+    try {
+      await Promise.race([Promise.all([welcome, snapshot]), refused]);
+    } finally {
+      handshaking = false;
+    }
     return client;
   }
 
