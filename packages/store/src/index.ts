@@ -18,6 +18,22 @@ export interface StoreOptions {
   config: ReconcileConfig;
   now?: IsoTime;
 }
+/** Diagnostics only: no creation, migrations, hook pruning or artifact repair. */
+export function openReadOnlyStore(options: StoreOptions): Store {
+  const instance = z
+    .string()
+    .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/)
+    .parse(options.instance ?? process.env.LOOM_INSTANCE);
+  const root = realpathSync(resolve(z.string().min(1).parse(options.dataRoot)));
+  const dataDirectory = join(root, instance);
+  if (realpathSync(dataDirectory) !== dataDirectory)
+    throw new Error("Instance directory must not be a symlink");
+  const db = new Database(join(dataDirectory, "loom.sqlite"), {
+    readonly: true,
+    fileMustExist: true,
+  });
+  return new Store(db, dataDirectory, options.config);
+}
 export async function openStore(options: StoreOptions): Promise<
   Store & {
     startupRunning: ReturnType<Store["outbox"]["runningAtStartup"]>;

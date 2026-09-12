@@ -282,6 +282,14 @@ export class Store {
     if (value.id !== taskId) throw new Error("Task identity disagreement");
     return value;
   }
+  /** Full history in insertion order (newest last), including superseded runs. */
+  runs(taskId: TaskId) {
+    return readEntities(this.db, "runs", taskId, runSchema);
+  }
+  /** Full message history, including confirmed delivery and failed sends. */
+  messages(taskId: TaskId) {
+    return readEntities(this.db, "messages", taskId, messageSchema);
+  }
   /** The explicit loaded version is required: a fixed-point result does not increment it. */
   commit(
     taskId: TaskId,

@@ -25,7 +25,7 @@ import {
   task,
   taskId,
 } from "../test/fixtures.js";
-import { openStore, type Store } from "./index.js";
+import { openReadOnlyStore, openStore, type Store } from "./index.js";
 
 let root: string;
 const stores: Store[] = [];
@@ -428,4 +428,73 @@ it("rejects missing intermediate artifact content without committing dangling fi
   store.enqueueInput(taskId, input("two"));
   expect(store.pendingInputs(taskId).map((i) => i.id)).toEqual(["one"]);
   expect(store.pendingInputs(taskId, 2)).toHaveLength(2);
+});
+
+describe("diagnostic readers", () => {
+  it("keeps all runs and messages while the reconcile snapshot stays filtered", async () => {
+    const store = await seeded();
+    const state = richState();
+    const old = {
+      ...required(state.runs[2]),
+      id: "old-reviewer" as never,
+      sessionId: "old-session" as never,
+      status: "ended" as const,
+      endedAt: now,
+      endReason: "submitted" as const,
+    };
+    const latest = {
+      ...old,
+      id: "latest-reviewer" as never,
+      sessionId: "latest-session" as never,
+    };
+    state.runs = [old, ...state.runs, latest];
+    const delivered = {
+      ...required(state.messages[0]),
+      id: "delivered" as never,
+      runId: old.id,
+      status: "delivered" as const,
+      delivered: {
+        via: "claude_user_prompt_submit" as const,
+        promptId: "p1",
+        at: now,
+      },
+    };
+    state.messages.push(delivered);
+    expect(store.commit(taskId, result(state), 0).ok).toBe(true);
+    expect(store.runs(taskId)).toEqual(state.runs);
+    expect(store.messages(taskId)).toEqual(state.messages);
+    expect(store.loadTaskState(taskId).runs).not.toContainEqual(old);
+    expect(store.loadTaskState(taskId).messages).not.toContainEqual(delivered);
+    const other = "other" as TaskId;
+    store.createTask(task(other));
+    expect(store.runs(other)).toEqual([]);
+    expect(store.messages(other)).toEqual([]);
+  });
+
+  it("opens diagnostics without startup writes and refuses database mutations", async () => {
+    const store = await seeded();
+    const state = richState();
+    expect(store.commit(taskId, result(state), 0).ok).toBe(true);
+    const file = join(store.dataDirectory, required(state.artifacts[0]).path);
+    rmSync(file);
+    const before = snapshotSql();
+    const reader = openReadOnlyStore({
+      dataRoot: root,
+      instance: "dev",
+      config,
+    });
+    stores.push(reader);
+    expect(reader.loadTaskState(taskId)).toEqual(state);
+    expect(() => reader.createTask(task("other" as TaskId))).toThrow(
+      /readonly/,
+    );
+    expect(() => readFileSync(file)).toThrow();
+    expect(snapshotSql()).toEqual(before);
+    expect(() =>
+      openReadOnlyStore({ dataRoot: root, instance: "absent", config }),
+    ).toThrow();
+    expect(() =>
+      openReadOnlyStore({ dataRoot: root, instance: "../dev", config }),
+    ).toThrow();
+  });
 });

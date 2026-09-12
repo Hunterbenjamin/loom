@@ -109,9 +109,26 @@ Phase 4, and the git adapter has no raw-patch reader yet.
 
 ## The CLI
 
-`loom` is a protocol client and holds no state. `loom serve` and `loom repo add` are the two
-exceptions: they are instance-local admin commands that open the store directly, because the
-protocol carries no repo registry.
+`loom` is a protocol client and holds no state. `loom serve` and `loom repo add` are
+instance-local admin commands that open the store directly. `loom task inspect` also reads the
+store directly, using a read-only connection without migrations or startup recovery.
+
+```sh
+loom task list [--view needs_you]
+loom task show <task>
+loom task inspect <task> [--json]
+```
+
+`inspect` prints persisted task flags, all runs (newest last), message delivery history with
+80-character text previews, open questions, pending plan/merge/provider approvals, the last ten
+outbox rows with executor timestamps and results, and finding counts and open locations. Text
+uses aligned columns without colour; `--json` returns the same data as one object. It works with
+the coordinator stopped and reads the instance selected by `LOOM_INSTANCE` and `LOOM_DATA_ROOT`
+(with the usual CLI environment). These are the last stored observations, not a live provider
+refresh. No agents are contacted and no state is changed.
+
+Each per-task Codex app-server appends stderr to `<taskDirectory>/app-server.log` (created with
+mode 0600). Startup logs the path; the file is preserved across restarts without rotation.
 
 **Running it today:** no package in this repository emits JavaScript yet — everything is consumed
 as TypeScript source by Vitest and by electron-vite — so `loom` needs a TypeScript-aware runtime
@@ -185,6 +202,7 @@ server and protocol server are used throughout; no agent, terminal or daemon is 
 - `restart.test.ts` — the coordinator killed between a push and its receipt.
 - `gate.test.ts` — a run at a permission dialog receives no paste.
 - `protocol.test.ts` — a fake client's snapshot, command ack, patches and a forced sequence gap.
+- `cli.test.ts` — inspect text snapshots and JSON from a temporary fixture database, including history and missing tasks.
 - `units.test.ts` — derived IDs, the environment allowlist, the config, `WORKFLOW.md`, the mapper.
 - `real.test.ts` — opt-in (`LOOM_REAL_PROVIDERS=1`), one real headless Claude planner on `haiku`.
   GitHub stays faked: the merge half needs a throwaway GitHub repository this test cannot create.

@@ -5,6 +5,7 @@ import {
   readFile,
   readlink,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -106,5 +107,42 @@ it("links the CLI's credentials into the private home once, and only when they e
     ).rejects.toThrow();
   } finally {
     await rm(other, { recursive: true, force: true });
+  }
+});
+
+it("appends child stderr to a private log across server restarts", async () => {
+  const log = join(directory, "app-server.log");
+  const script = join(directory, "stderr-cli");
+  await writeFile(
+    script,
+    `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "codex-cli 0.154.0"
+else
+  echo "fixture diagnostic" >&2
+fi
+`,
+    { mode: 0o700 },
+  );
+  const server = new TaskServer(
+    directory,
+    script,
+    join(directory, "missing-auth"),
+  );
+  try {
+    await server.start();
+    await vi.waitFor(async () =>
+      expect(await readFile(log, "utf8")).toBe("fixture diagnostic\n"),
+    );
+    await server.stop();
+    expect((await stat(log)).mode & 0o777).toBe(0o600);
+    await server.start();
+    await vi.waitFor(async () =>
+      expect(await readFile(log, "utf8")).toBe(
+        "fixture diagnostic\nfixture diagnostic\n",
+      ),
+    );
+  } finally {
+    await server.stop();
   }
 });

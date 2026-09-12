@@ -188,6 +188,52 @@ describe("headless retries and interactive control", () => {
 });
 
 describe("launch results and persisted outbox", () => {
+  it("relaunch refreshes the git observation exactly once in an undelivered initial message", () => {
+    const f = fixture("todo");
+    f.state.plan = null;
+    f.state.runs = [];
+    f.observations.runs = [];
+    const first = reconcile(f.state, f.observations);
+    const start = first.actions.find((a) => a.kind === "start_run");
+    if (!start) throw Error("Missing start");
+    const pending = first.next.messages[0];
+    if (!pending) throw Error("Missing initial message");
+    expect(pending.attempts).toBe(0);
+    const originalText = pending.text;
+    f.observations.inputs = [
+      actionInput(start, {
+        sessionId: "session1",
+        codexGeneration: 2,
+        pane: null,
+      }),
+    ];
+    const started = reconcile(first.next, f.observations);
+    const run = started.next.runs[0];
+    if (!run) throw Error("Missing run");
+    f.observations.inputs = [];
+    f.observations.runs = [
+      {
+        runId: run.id,
+        resumable: false,
+        activityAt: null,
+        provider: { ok: false, at: now, reason: "no rollout" },
+        pane: null,
+      },
+    ];
+    const failed = reconcile(started.next, f.observations);
+    f.observations.now = "2026-09-12T00:00:10.000Z" as typeof now;
+    if (f.observations.git?.ok) f.observations.git.value.dirty = true;
+    const retried = reconcile(failed.next, f.observations);
+    expect(retried.actions.find((a) => a.kind === "start_run")).toMatchObject({
+      attempt: 2,
+    });
+    const message = retried.next.messages.find((m) => m.id === pending.id);
+    expect(message?.attempts).toBe(0);
+    expect(message?.text.match(/^Current git observation:/gm)).toHaveLength(1);
+    expect(message?.text).toContain('"dirty":true');
+    expect(message?.text).toContain(originalText.split("\n")[0]);
+    expect(message?.textHash).toBe(f.state.config.sha256(message?.text ?? ""));
+  });
   it("creates the worktree before constructing runs and unlocks Codex prompts only after recording session identity", () => {
     const f = fixture("todo");
     f.state.plan = null;

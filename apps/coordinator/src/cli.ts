@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `loom`. Everything except `serve` and `repo add` is a protocol client: it connects, takes a
+// `loom`. Everything except `serve`, `repo add` and `task inspect` is a protocol client: it connects, takes a
 // snapshot, sends a command and prints the acknowledgement. It holds no state of its own.
 
 import { spawn } from "node:child_process";
@@ -12,7 +12,7 @@ import type {
   TaskId,
 } from "@loom/core";
 import type { Command, Subscription } from "@loom/protocol";
-import { openStore } from "@loom/store";
+import { openReadOnlyStore, openStore } from "@loom/store";
 import { LoomClient } from "./client.js";
 import {
   type CoordinatorConfig,
@@ -20,6 +20,7 @@ import {
   reconcileConfig,
 } from "./config.js";
 import { Coordinator } from "./coordinator.js";
+import { formatInspection, inspectTask } from "./inspect.js";
 import { createRealAdapters } from "./real-adapters.js";
 
 const USAGE = `loom — Loom's coordinator and its client
@@ -30,6 +31,7 @@ const USAGE = `loom — Loom's coordinator and its client
   loom task create <repo> <title> [description]
   loom task list [--view needs_you]
   loom task show <task>
+  loom task inspect <task> [--json]     read persisted diagnostics without a coordinator
   loom task move <task> backlog|todo
   loom task approve-plan <task> <planVersion>
   loom task reject-plan <task> <feedback>
@@ -51,7 +53,8 @@ const has = (argv: string[], name: string): boolean =>
 const rest = (argv: string[]): string[] =>
   argv.filter(
     (value, index) =>
-      !value.startsWith("--") && !argv[index - 1]?.startsWith("--"),
+      !value.startsWith("--") &&
+      (!argv[index - 1]?.startsWith("--") || argv[index - 1] === "--json"),
   );
 
 const connect = async (
@@ -322,6 +325,30 @@ export async function main(argv: string[]): Promise<void> {
     }
     case "list":
       return status(config, flag(argv, "view"));
+    case "inspect": {
+      if (!taskId) throw new Error("loom task inspect <task> [--json]");
+      const store = openReadOnlyStore({
+        dataRoot: config.dataRoot,
+        instance: config.instance,
+        config: reconcileConfig(config),
+      });
+      try {
+        if (!store.tasks().some((task) => task.id === taskId)) {
+          process.stderr.write(`unknown_task: ${taskId}\n`);
+          process.exitCode = 1;
+          return;
+        }
+        const data = inspectTask(store, taskId);
+        process.stdout.write(
+          has(argv, "json")
+            ? `${JSON.stringify(data, null, 2)}\n`
+            : formatInspection(data),
+        );
+      } finally {
+        store.close();
+      }
+      return;
+    }
     case "show":
       return show(config, taskId);
     case "move":
