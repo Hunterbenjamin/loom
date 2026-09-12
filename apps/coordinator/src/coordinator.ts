@@ -178,7 +178,17 @@ export class Coordinator {
 
   async start(): Promise<RecoveryReport> {
     await this.recipes.load();
-    this.mcp = await serveHttp(this.mcpOptions());
+    try {
+      this.mcp = await serveHttp(this.mcpOptions(), this.config.mcpPort);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("EADDRINUSE") || message.includes("in use")) {
+        throw new Error(
+          `Port ${this.config.mcpPort} is in use; set LOOM_MCP_PORT to a different value`,
+        );
+      }
+      throw error;
+    }
     const report = await recover(
       {
         store: this.store,

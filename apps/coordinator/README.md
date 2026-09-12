@@ -95,6 +95,27 @@ Codex run; poll `claude agents --json`; recreate an interactive run's pane from 
 host reports it dead; and reconcile every non-terminal task. Nothing is replayed on the strength of
 a guess.
 
+## Configuration
+
+Environment variables configure the coordinator:
+
+- `LOOM_INSTANCE` — unique name for this coordinator instance (required).
+- `LOOM_DATA_ROOT` — directory where task state is stored (required).
+- `LOOM_TOKEN` — bearer token for the protocol server (required, min 16 bytes).
+- `LOOM_BIND` — the protocol server's loopback address, `host:port` format. Defaults to
+  `127.0.0.1:47800`.
+- `LOOM_MCP_PORT` — stable port for the MCP HTTP server. Defaults to `LOOM_BIND`'s port + 1
+  (e.g., 47801 for the default bind port). If the port is in use, coordinator startup fails with a
+  clear error message. Set this to a different value if the default port is occupied.
+- `LOOM_HOOK_PORT` — stable port for the Claude hook receiver. Defaults to `LOOM_BIND`'s port + 2
+  (e.g., 47802 for the default bind port). If the port is in use, coordinator startup fails with a
+  clear error message. Set this to a different value if the default port is occupied.
+- Other variables: `LOOM_WORKTREE_ROOT`, `LOOM_BASE_BRANCH`, `LOOM_MODEL_CODEX`, `LOOM_MODEL_CLAUDE`,
+  `LOOM_TMUX`, `LOOM_CODEX`, `LOOM_CLAUDE`.
+
+When the coordinator restarts, it uses the same stable ports so that live runs' settings and MCP
+config files remain valid.
+
 ## The protocol server
 
 A WebSocket on `LOOM_BIND` (loopback by default) with `LOOM_TOKEN`, implementing `@loom/protocol`:
