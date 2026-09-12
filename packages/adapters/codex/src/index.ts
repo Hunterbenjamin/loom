@@ -216,9 +216,7 @@ class AppServerAdapter implements CodexAdapter {
     }
   }
   /** Wraps an RPC action to automatically reconnect if the connection is lost. */
-  private async rpcWithReconnect<T>(
-    action: () => Promise<T>,
-  ): Promise<T> {
+  private async rpcWithReconnect<T>(action: () => Promise<T>): Promise<T> {
     let originalError: Error | null = null;
     try {
       return await action();
@@ -227,7 +225,8 @@ class AppServerAdapter implements CodexAdapter {
       const message = error.message;
       // Detect disconnection: either pre-flight check or mid-flight socket termination
       const isDisconnected =
-        message === "Codex disconnected; reconnect and resume the recorded thread" ||
+        message ===
+          "Codex disconnected; reconnect and resume the recorded thread" ||
         message === "Codex connection closed" ||
         message === "Codex connection unavailable";
       if (!isDisconnected) {
@@ -242,11 +241,15 @@ class AppServerAdapter implements CodexAdapter {
         return await action();
       } catch (reconnectError) {
         // Reconnection failed; prefer to throw the original error if it's more informative
-        const reconnectMessage = reconnectError instanceof Error
-          ? reconnectError.message
-          : String(reconnectError);
+        const reconnectMessage =
+          reconnectError instanceof Error
+            ? reconnectError.message
+            : String(reconnectError);
         // If the reconnection error is about process verification, throw the original error
-        if (reconnectMessage.includes("Cannot verify") || reconnectMessage.includes("Multiple")) {
+        if (
+          reconnectMessage.includes("Cannot verify") ||
+          reconnectMessage.includes("Multiple")
+        ) {
           throw originalError;
         }
         // Otherwise throw the reconnection error
