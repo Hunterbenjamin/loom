@@ -275,7 +275,9 @@ that crosses providers goes only through artifacts.
 | Duplicate or out-of-order events | Idempotent handlers, compare-and-set transitions, one reconcile at a time per task. |
 | Review loops | At most 3 rounds. Escalate when a finding is reopened or the number of findings stops dropping. Each task has a time and cost budget. |
 
-Out of scope: message brokers, event-sourcing frameworks, multi-machine support, sync engines,
+Out of scope: message brokers, event-sourcing frameworks, sync engines, and multi-machine support in v1
+(one machine runs everything, but the coordinator binds to a configurable address with token
+authentication so a phone inbox and an always-on host can follow without a rewrite),
 plugins, a custom terminal emulator, a custom diff renderer. One exception: a small key encoder in the
 terminal renderer that sends Shift+Enter and other modified keys in the kitty keyboard format, until
 xterm.js supports that protocol itself.
