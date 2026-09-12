@@ -29,7 +29,7 @@ const USAGE = `loom — Loom's coordinator and its client
   loom operator status [--json]         Operator session, queue, actions and quota
   loom status                           what every task is doing
   loom repo add <root> <owner/name>     register a repository with this instance
-  loom task create <repo> <title> [description] [--small]
+  loom task create <repo> <title> [description] [--summary <text>] [--small]
   loom task list [--view needs_you]
   loom task show <task>
   loom task inspect <task> [--json]     read persisted diagnostics without a coordinator
@@ -66,6 +66,26 @@ const rest = (argv: string[]): string[] => {
     return booleanFlags.has(prevFlag);
   });
 };
+
+export function taskCreateCommand(
+  argv: string[],
+): Extract<Command, { kind: "create_task" }> {
+  const [group, action, repoId, title, description] = rest(argv);
+  if (group !== "task" || action !== "create" || !repoId || !title)
+    throw new Error("loom task create <repo> <title>");
+  return {
+    kind: "create_task",
+    repoId: repoId as RepoId,
+    title,
+    description: description ?? "",
+    summary: flag(argv, "summary"),
+    providers: null,
+    requirePlanApproval: has(argv, "require-plan-approval") ? true : null,
+    blockedBy: [],
+    budgetMinutes: null,
+    size: has(argv, "small") ? "small" : null,
+  };
+}
 
 const connect = async (
   config: CoordinatorConfig,
@@ -345,19 +365,7 @@ export async function main(argv: string[]): Promise<void> {
   const taskId = values[0] as TaskId;
   switch (action) {
     case "create": {
-      const [repoId, title, description] = values;
-      if (!repoId || !title) throw new Error("loom task create <repo> <title>");
-      return send(config, {
-        kind: "create_task",
-        repoId: repoId as RepoId,
-        title,
-        description: description ?? "",
-        providers: null,
-        requirePlanApproval: has(argv, "require-plan-approval") ? true : null,
-        blockedBy: [],
-        budgetMinutes: null,
-        size: has(argv, "small") ? "small" : null,
-      });
+      return send(config, taskCreateCommand(argv));
     }
     case "list":
       return status(config, flag(argv, "view"));

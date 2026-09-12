@@ -5,6 +5,32 @@ import { buildSnapshot } from "../fixtures/index.js";
 import { rowsFor } from "./selectors.js";
 
 describe("rowsFor", () => {
+  test("selects an explicit summary and falls back to the description's first sentence", () => {
+    const fixture = buildSnapshot();
+    const first = fixture.tasks[0];
+    const second = fixture.tasks[1];
+    if (!first || !second) throw new Error("Missing fixture tasks");
+    const snapshot = {
+      ...fixture,
+      tasks: [
+        { ...first, summary: "Explicit list summary" },
+        {
+          ...second,
+          summary: null,
+          description: "Fallback sentence. Full detail stays hidden.",
+        },
+      ],
+    } as Snapshot;
+
+    const rows = rowsFor(snapshot, "all", "all", "");
+    expect(rows.find((row) => row.task.id === first.id)?.summary).toBe(
+      "Explicit list summary",
+    );
+    expect(rows.find((row) => row.task.id === second.id)?.summary).toBe(
+      "Fallback sentence.",
+    );
+  });
+
   test("selects the most recent live run when multiple live runs exist", () => {
     const fixture = buildSnapshot();
     const task = fixture.tasks[0];

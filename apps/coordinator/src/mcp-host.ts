@@ -117,6 +117,7 @@ export function createMcpHost(deps: McpHostDeps): {
           id: state.task.id,
           title: state.task.title,
           description: state.task.description,
+          summary: state.task.summary,
           stage: state.task.stage,
           reviewRound: state.task.reviewRound,
           reviewRoundCap: state.task.reviewRoundCap,

@@ -80,6 +80,7 @@ export interface CreateTaskInput {
   repoId: RepoId;
   title: string;
   description: string;
+  summary?: string | null;
   providers?: ProviderRules | null;
   requirePlanApproval?: boolean | null;
   blockedBy?: TaskId[];
@@ -160,10 +161,11 @@ export class Coordinator {
         await this.publishOperator();
         if (taskId) this.protocol.publish(await this.refreshTask(taskId));
       },
-      createBug: (title, description, signature) =>
+      createBug: (title, summary, description, signature) =>
         this.createTask({
           repoId: this.config.operator.repoId as RepoId,
           title,
+          summary,
           description,
           signature,
         }),
@@ -375,6 +377,7 @@ export class Coordinator {
       repoId: repo.id,
       title: input.title,
       description: input.description,
+      summary: input.summary ?? null,
       stage: "backlog",
       stageEnteredAt: now,
       version: 0,
@@ -832,6 +835,7 @@ export class Coordinator {
             repoId: command.repoId as RepoId,
             title: command.title as string,
             description: command.description as string,
+            summary: (command.summary ?? null) as string | null,
             providers: (command.providers ?? null) as ProviderRules | null,
             requirePlanApproval: (command.requirePlanApproval ?? null) as
               | boolean

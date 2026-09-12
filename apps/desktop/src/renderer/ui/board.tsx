@@ -104,6 +104,9 @@ function Column({ rows }: { rows: Row[] }) {
                   <span className="nums">{age(row.ageMinutes)}</span>
                 </div>
                 <div className="card-title">{row.task.title}</div>
+                {row.summary ? (
+                  <div className="card-summary">{row.summary}</div>
+                ) : null}
                 <div className="card-meta">
                   <ProviderLabel run={row.run} blank />
                   <span className="spacer" />

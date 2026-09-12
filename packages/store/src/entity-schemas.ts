@@ -70,6 +70,12 @@ export const taskSchema = contract<Task>()(
     repoId: id,
     title: text,
     description: text,
+    summary: z
+      .string()
+      .max(140)
+      .regex(/^[^\r\n]*$/, "Summary must be one line")
+      .nullable()
+      .default(null),
     stage,
     stageEnteredAt: time,
     version: count,

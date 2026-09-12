@@ -124,8 +124,14 @@ function Row({
       <div className="cell-title">
         <RunDot run={item.row.run} />
         <span className="id">{task.id}</span>
-        <span className="text" title={task.title}>
+        <span
+          className="text task-copy"
+          title={`${task.title} — ${item.row.summary}`}
+        >
           {task.title}
+          {item.row.summary ? (
+            <span className="task-summary"> — {item.row.summary}</span>
+          ) : null}
         </span>
       </div>
       <div className="dim">{stageLabel(task.stage)}</div>
