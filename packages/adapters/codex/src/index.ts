@@ -329,11 +329,35 @@ class AppServerAdapter implements CodexAdapter {
         "Resume thread before reading so pending requests are hydrated",
       );
     const params: ThreadReadParams = { threadId, includeTurns: true };
-    const { thread } = await connection.rpc(
-      "thread/read",
-      params,
-      schemas.threadResult,
-    );
+    let thread: schemas.Thread;
+    try {
+      ({ thread } = await connection.rpc(
+        "thread/read",
+        params,
+        schemas.threadResult,
+      ));
+    } catch (error) {
+      // A thread that `thread/start` created but that has had no turn is loaded yet not
+      // materialized, and Codex 0.154 refuses to read it: "thread <id> is not materialized yet;
+      // includeTurns is unavailable before first user message". It is idle with no turns. Reading
+      // it as anything else deadlocks a run: core maps an unreadable thread to `unknown`, and the
+      // send gate never sends the first turn into `unknown`. Found by the first real reviewer run.
+      if (isNotMaterialized(error)) {
+        this.assertCurrent(connection);
+        return {
+          provider: "codex",
+          threadId,
+          generation: this.currentGeneration as number,
+          status: "idle",
+          activeFlags: [],
+          turns: [],
+          lastError: null,
+          pendingRequests: [],
+          rateLimits: null,
+        };
+      }
+      throw error;
+    }
     return this.observe(connection, threadId, thread);
   }
   private async observe(
@@ -487,3 +511,11 @@ class AppServerAdapter implements CodexAdapter {
     ];
   }
 }
+
+/** Codex's refusal to read a loaded thread that has not had its first user message yet. */
+export const isNotMaterialized = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "message" in error &&
+  typeof (error as { message: unknown }).message === "string" &&
+  /is not materialized yet/.test((error as { message: string }).message);

@@ -1,4 +1,13 @@
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -70,4 +79,32 @@ it("rejects incompatible CLI versions before launching an app-server", async () 
   const server = new TaskServer(directory, process.execPath);
   await expect(server.start()).rejects.toThrow("0.154.0 required");
   expect(server.running).toBe(false);
+});
+
+it("links the CLI's credentials into the private home once, and only when they exist", async () => {
+  const source = join(directory, "cli-auth.json");
+  await writeFile(source, '{"fake":"credentials"}');
+  const home = join(directory, "codex-home");
+  await mkdir(home, { recursive: true, mode: 0o700 });
+  const server = new TaskServer(directory, executable, source);
+  await server.linkCredentials();
+  // A symlink, never a copy: token refreshes must write through to the one file.
+  expect(await readlink(join(home, "auth.json"))).toBe(source);
+  await server.linkCredentials(); // idempotent
+  expect((await lstat(join(home, "auth.json"))).isSymbolicLink()).toBe(true);
+
+  const other = await mkdtemp("/tmp/loom-codex-nocreds-");
+  try {
+    await mkdir(join(other, "codex-home"), { recursive: true, mode: 0o700 });
+    await new TaskServer(
+      other,
+      executable,
+      join(other, "missing.json"),
+    ).linkCredentials();
+    await expect(
+      lstat(join(other, "codex-home", "auth.json")),
+    ).rejects.toThrow();
+  } finally {
+    await rm(other, { recursive: true, force: true });
+  }
 });

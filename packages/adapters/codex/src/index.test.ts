@@ -19,6 +19,8 @@ let fake: Awaited<ReturnType<typeof fakeServer>>;
 let adapter: CodexAdapter;
 let thread: typeof traffic.thread;
 let replayApproval: boolean;
+/** What the fake answers `thread/read` with: the thread, or an RPC error message. */
+let readError: string | null;
 const answer = (generation: number) => ({
   threadId,
   generation,
@@ -32,6 +34,7 @@ beforeEach(async () => {
   thread = structuredClone(traffic.thread);
   thread.cwd = fake.directory;
   replayApproval = false;
+  readError = null;
   fake.handle((method, params, socket) => {
     switch (method) {
       case "thread/start":
@@ -40,7 +43,9 @@ beforeEach(async () => {
         if (replayApproval) socket.send(JSON.stringify(traffic.approval));
         return { result: { thread } };
       case "thread/read":
-        return { result: { thread } };
+        return readError
+          ? { error: { code: -32600, message: readError } }
+          : { result: { thread } };
       case "turn/start":
         return { result: { turn: { id: turnId, status: "inProgress" } } };
       case "turn/steer":
@@ -511,4 +516,24 @@ it("times out a lost response without resending and starts above a persisted gen
   } finally {
     await second.stopServer();
   }
+});
+
+it("reads a loaded thread that has had no turn as idle, and rethrows other read errors", async () => {
+  await adapter.startThread({
+    cwd: fake.directory as WorktreePath,
+    model: "gpt-5.6-luna",
+    sandbox: "read-only",
+    developerInstructions: "",
+    config: {},
+  });
+  // Codex 0.154 refuses `thread/read` on a thread `thread/start` created until its first user
+  // message. Such a thread is idle with no turns; reading it as unknown would stop the send
+  // gate from ever sending that first message (the first real reviewer run).
+  readError = `thread ${threadId} is not materialized yet; includeTurns is unavailable before first user message`;
+  const fresh = await adapter.readThread(threadId);
+  expect(fresh.status).toBe("idle");
+  expect(fresh.turns).toEqual([]);
+  expect(fresh.pendingRequests).toEqual([]);
+  readError = "thread not loaded: something else";
+  await expect(adapter.readThread(threadId)).rejects.toThrow("not loaded");
 });

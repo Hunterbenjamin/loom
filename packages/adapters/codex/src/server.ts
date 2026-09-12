@@ -1,5 +1,5 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { lstat, mkdir, realpath, unlink } from "node:fs/promises";
+import { lstat, mkdir, realpath, symlink, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -27,6 +27,12 @@ export class TaskServer {
   constructor(
     readonly directory: string,
     readonly executable: string,
+    /**
+     * The CLI's credentials, linked into the private home so the per-task server can call the
+     * model. A symlink, as spikes 01 and 05 did, so token refreshes write through to the one
+     * file. Absent source: no link, and the first turn fails with Codex's own auth error.
+     */
+    readonly credentialsSource: string = join(homedir(), ".codex", "auth.json"),
   ) {
     if (!isAbsolute(directory))
       throw new Error("Codex task directory must be absolute");
@@ -34,6 +40,25 @@ export class TaskServer {
     this.socket = join(directory, "app-server.sock");
     if (this.socket.includes(":") || Buffer.byteLength(this.socket) > 100)
       throw new Error("Codex socket path must be short and contain no colon");
+  }
+  /** Links the CLI's `auth.json` into the private home once; never copies or reads it. */
+  async linkCredentials(): Promise<void> {
+    const target = join(this.home, "auth.json");
+    try {
+      await lstat(target);
+      return; // already linked, or a real file the human placed there
+    } catch (error) {
+      if (
+        !(error instanceof Error && "code" in error && error.code === "ENOENT")
+      )
+        throw error;
+    }
+    try {
+      await lstat(this.credentialsSource);
+    } catch {
+      return; // no CLI credentials on this machine; Codex will report its own auth error
+    }
+    await symlink(this.credentialsSource, target);
   }
   get running() {
     return (
@@ -64,6 +89,7 @@ export class TaskServer {
       )
         throw error;
     }
+    await this.linkCredentials();
     const env = serverEnvironment(this.home);
     const version = await promisify(execFile)(this.executable, ["--version"], {
       env,
