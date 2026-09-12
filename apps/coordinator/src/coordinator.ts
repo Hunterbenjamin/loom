@@ -15,6 +15,7 @@ import type {
   ReconcileResult,
   Repo,
   RepoId,
+  RunId,
   Task,
   TaskId,
   TaskState,
@@ -97,6 +98,8 @@ export class Coordinator {
   private readonly now: () => IsoTime;
   private readonly after: (ms: number, callback: () => void) => () => void;
   private readonly logger: (message: string) => void;
+  // Built on first use: the fields it closes over are assigned in the constructor body.
+  private mcpCache: ReturnType<Coordinator["mcpMiddleware"]> | null = null;
   private mcp: Awaited<ReturnType<typeof serveHttp>> | null = null;
   private pump: NodeJS.Timeout | null = null;
   private resync: NodeJS.Timeout | null = null;
@@ -163,6 +166,11 @@ export class Coordinator {
     this.logger(message);
   }
 
+  /** A run's MCP token, resolved against current run state. Null means an unknown token. */
+  resolveRunToken(token: string): { runId: RunId; active: boolean } | null {
+    return this.mcpOptions().resolveToken(token);
+  }
+
   /** The MCP endpoint agents reach, as their per-run config records it. */
   get mcpUrl(): URL | null {
     return this.mcp?.url ?? null;
@@ -170,7 +178,7 @@ export class Coordinator {
 
   async start(): Promise<RecoveryReport> {
     await this.recipes.load();
-    this.mcp = await serveHttp(this.mcpMiddleware());
+    this.mcp = await serveHttp(this.mcpOptions());
     const report = await recover(
       {
         store: this.store,
@@ -300,6 +308,11 @@ export class Coordinator {
     };
   }
 
+  private mcpOptions(): ReturnType<Coordinator["mcpMiddleware"]> {
+    this.mcpCache ??= this.mcpMiddleware();
+    return this.mcpCache;
+  }
+
   private mcpMiddleware() {
     const { host, resolveToken, buildAnchor } = createMcpHost({
       store: this.store,
@@ -346,6 +359,14 @@ export class Coordinator {
         capacity: { counts: () => this.store.capacityCounts() },
         dependencies: () => this.store.dependencyStages(state.task.id),
         inputs: () => inputs,
+        launchedSessions: () =>
+          new Set(
+            this.recipes
+              .all()
+              .flatMap((recipe) =>
+                recipe.sessionId ? [recipe.sessionId] : [],
+              ),
+          ),
         coolingDownUntil: () => ({
           codex: this.cooldowns.get("codex") ?? null,
           claude: this.cooldowns.get("claude") ?? null,

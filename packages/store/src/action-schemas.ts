@@ -191,7 +191,7 @@ const empty = z.object({});
 const outputs = {
   create_worktree: z.object({ path: text, headSha: sha, baseSha: sha }),
   write_task_files: empty,
-  open_workspace: z.object({ workspaceId: text, rootPaneId: text }),
+  open_workspace: z.object({ workspaceId: text }),
   start_run: z.object({
     sessionId: id,
     codexGeneration: count.nullable(),

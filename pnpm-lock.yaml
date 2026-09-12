@@ -60,6 +60,9 @@ importers:
       '@loom/fake-agent':
         specifier: workspace:*
         version: link:../../packages/fake-agent
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.30.0
+        version: 1.30.0(zod@4.6.2)
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1

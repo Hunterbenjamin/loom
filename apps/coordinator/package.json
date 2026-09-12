@@ -29,6 +29,7 @@
   "devDependencies": {
     "@loom/fake-agent": "workspace:*",
     "@types/ws": "^8.18.1",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "@modelcontextprotocol/sdk": "^1.30.0"
   }
 }

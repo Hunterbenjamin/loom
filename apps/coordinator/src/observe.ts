@@ -139,6 +139,9 @@ export async function observeRun(
 export async function observeExternal(
   adapters: Adapters,
   state: TaskState,
+  /** Every session Loom has ever launched, from the launch recipes. A run that has scrolled out
+   * of the loaded snapshot is still Loom's, and must never be adopted as an external session. */
+  launched: ReadonlySet<string> = new Set(),
 ): Promise<ExternalSessionObservation[]> {
   const worktree = state.task.worktreePath;
   if (!worktree) return [];
@@ -149,7 +152,10 @@ export async function observeExternal(
     return [];
   }
   const sessions = await adapters.claude.listSessions().catch(() => []);
-  const known = new Set(state.runs.map((r) => `${r.provider} ${r.sessionId}`));
+  const known = new Set([
+    ...state.runs.map((r) => `${r.provider} ${r.sessionId}`),
+    ...[...launched].map((id) => `claude ${id}`),
+  ]);
   const external: ExternalSessionObservation[] = [];
   for (const entry of sessions) {
     if (known.has(`claude ${entry.sessionId}`)) continue;
@@ -183,6 +189,8 @@ export interface ObserveDeps {
   dependencies(): Observations["dependencies"];
   inputs(): Input[];
   coolingDownUntil(): Record<Provider, string | null>;
+  /** Session IDs Loom launched, so its own runs are never mistaken for hand-started ones. */
+  launchedSessions(): ReadonlySet<string>;
   repoOf(state: TaskState): { github: string; baseBranch: string } | null;
   now(): string;
 }
@@ -244,7 +252,11 @@ export async function observe(
     git,
     github,
     runs,
-    externalSessions: await observeExternal(deps.adapters, state),
+    externalSessions: await observeExternal(
+      deps.adapters,
+      state,
+      deps.launchedSessions(),
+    ),
     capacity,
     dependencies: deps.dependencies(),
     inputs,
