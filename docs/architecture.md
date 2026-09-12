@@ -111,8 +111,11 @@ Rules:
   `interrupted` for a still-running unfinished turn. Do not resume it concurrently through a different
   server or derive live status from that disk view. Require an explicit handoff before control.
   Claude's headless-to-terminal handoff remains exclusive, pending its own spike.
-- Provider choice is a rule the human can override, for example "implement with one provider, review with
-  the other". The planner may suggest a provider.
+- Provider choice is a rule the human can override; the planner may suggest one. The default routing
+  follows both cost and quality: planners and reviewers on Claude (Opus, or Fable for planning),
+  quality-critical implementation on Claude, and bulk or tightly specified implementation on Codex,
+  whose budget is larger. Review is cross-provider wherever it can be, so a second model reads the
+  first one's work. Name the model explicitly when launching a run; never rely on a tool's default.
 - Herdr's Claude and Codex integrations report session identity only, on SessionStart. Herdr works out
   working and blocked states from the screen, so it's only a fallback.
 
