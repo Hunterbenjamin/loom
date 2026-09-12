@@ -154,7 +154,10 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
       if (run.endedAt) continue;
       if (run.blockedOn === "permission")
         fromRun("provider_permission", run.id);
-      if (run.blockedOn === "input") fromRun("provider_input", run.id);
+      // Only emit provider_input if we can actually observe the run.
+      // If status is "unknown", emit observability_failure instead.
+      if (run.blockedOn === "input" && run.status !== "unknown")
+        fromRun("provider_input", run.id);
       if (run.status === "working") {
         const last = run.lastActivityAt ?? run.launchedAt;
         if (last) {
@@ -165,7 +168,7 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
       }
       if (run.status === "unknown" && run.unknownSince) {
         const at = later(run.unknownSince, input.unknownGraceMs);
-        if (at <= input.now) fromRun("status_unknown", run.id);
+        if (at <= input.now) fromRun("observability_failure", run.id);
         else schedules.push({ at, why: "poll" });
       }
     }

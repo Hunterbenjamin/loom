@@ -13,6 +13,7 @@ export const REASON_LABELS: Record<AttentionReason, string> = {
   run_vanished: "Agent session vanished",
   stalled: "No activity",
   status_unknown: "Status unknown",
+  observability_failure: "Cannot observe run",
   over_budget: "Over budget",
 };
 export interface InboxRow {
@@ -31,6 +32,7 @@ export function reasonTab(reason: AttentionReason, run: Run | null): TabId {
     run?.mode === "interactive"
   )
     return "terminal";
+  if (reason === "observability_failure") return "activity";
   return "activity";
 }
 let cache:

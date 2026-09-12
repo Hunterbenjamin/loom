@@ -234,11 +234,13 @@ export async function recover(
       if (pane !== null && !pane.dead) continue;
       if (!recipe || !state.worktree?.paneWorkspaceId) continue;
       try {
-        await relaunchFromRecipe(
+        const newPane = await relaunchFromRecipe(
           deps.launch,
           recipe,
           state.worktree.paneWorkspaceId,
         );
+        // Persist the new pane info before any pane operation targets it.
+        deps.store.updateRunPane(task.id, run.id, newPane);
         report.relaunched.push(run.id);
       } catch (error) {
         deps.log(
