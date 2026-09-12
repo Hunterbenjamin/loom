@@ -82,7 +82,11 @@ export const command = z.union([
     repoId,
     title: z.string().min(1).max(200),
     description: z.string().max(20000),
-    summary: z.string().max(140).nullable(),
+    summary: z
+      .string()
+      .max(140)
+      .regex(/^[^\r\n]*$/, "Summary must be one line")
+      .nullable(),
     /** Absent means the repo's own defaults. */
     providers: providerRules.nullable(),
     requirePlanApproval: z.boolean().nullable(),

@@ -314,6 +314,14 @@ kbd {
   white-space: nowrap;
 }
 
+.task-copy {
+  display: block;
+}
+
+.task-copy .task-summary {
+  color: var(--text-dim);
+}
+
 .dim {
   color: var(--text-dim);
 }
@@ -481,6 +489,13 @@ kbd {
   overflow: hidden;
 }
 
+.card .card-summary {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .card .card-meta {
   display: flex;
   align-items: center;
@@ -552,6 +567,12 @@ kbd {
 
 .pad {
   padding: 12px 16px;
+}
+
+.task-description {
+  grid-column: 1 / -1;
+  padding-bottom: 12px;
+  white-space: pre-wrap;
 }
 
 .kv {

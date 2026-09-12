@@ -35,6 +35,7 @@ test.each(["run", "lead", "operator", "stopped", "unknown"])(
         arguments: {
           eventId: "event",
           title: "Bug",
+          summary: "Recover from the runtime failure",
           description: "Runtime failure",
           acceptanceTest: "Reproduce through a fake adapter.",
         },

@@ -65,6 +65,33 @@ function snapshotSql() {
 }
 
 describe("task transactions", () => {
+  it("round-trips tasks with and without summaries", async () => {
+    const store = await open();
+    store.putRepo(repo);
+    const summarized = {
+      ...task("with-summary" as TaskId),
+      summary: "A concise persisted goal",
+    };
+    const unsummarized = task("without-summary" as TaskId);
+    store.createTask(summarized);
+    store.createTask(unsummarized);
+    expect(store.tasks()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: summarized.id,
+          summary: "A concise persisted goal",
+        }),
+        expect.objectContaining({ id: unsummarized.id, summary: null }),
+      ]),
+    );
+    store.close();
+    const restarted = await open();
+    expect(restarted.loadTaskState(summarized.id).task.summary).toBe(
+      "A concise persisted goal",
+    );
+    expect(restarted.loadTaskState(unsummarized.id).task.summary).toBeNull();
+  });
+
   it("uses a real WAL database and isolates instances", async () => {
     const store = await seeded();
     const second = await open("test");

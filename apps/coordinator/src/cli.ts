@@ -67,6 +67,26 @@ const rest = (argv: string[]): string[] => {
   });
 };
 
+export function taskCreateCommand(
+  argv: string[],
+): Extract<Command, { kind: "create_task" }> {
+  const [group, action, repoId, title, description] = rest(argv);
+  if (group !== "task" || action !== "create" || !repoId || !title)
+    throw new Error("loom task create <repo> <title>");
+  return {
+    kind: "create_task",
+    repoId: repoId as RepoId,
+    title,
+    description: description ?? "",
+    summary: flag(argv, "summary"),
+    providers: null,
+    requirePlanApproval: has(argv, "require-plan-approval") ? true : null,
+    blockedBy: [],
+    budgetMinutes: null,
+    size: has(argv, "small") ? "small" : null,
+  };
+}
+
 const connect = async (
   config: CoordinatorConfig,
   subscriptions: Subscription[] = [],
@@ -345,20 +365,7 @@ export async function main(argv: string[]): Promise<void> {
   const taskId = values[0] as TaskId;
   switch (action) {
     case "create": {
-      const [repoId, title, description] = values;
-      if (!repoId || !title) throw new Error("loom task create <repo> <title>");
-      return send(config, {
-        kind: "create_task",
-        repoId: repoId as RepoId,
-        title,
-        description: description ?? "",
-        summary: flag(argv, "summary"),
-        providers: null,
-        requirePlanApproval: has(argv, "require-plan-approval") ? true : null,
-        blockedBy: [],
-        budgetMinutes: null,
-        size: has(argv, "small") ? "small" : null,
-      });
+      return send(config, taskCreateCommand(argv));
     }
     case "list":
       return status(config, flag(argv, "view"));

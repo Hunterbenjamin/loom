@@ -161,10 +161,11 @@ export class Coordinator {
         await this.publishOperator();
         if (taskId) this.protocol.publish(await this.refreshTask(taskId));
       },
-      createBug: (title, description, signature) =>
+      createBug: (title, summary, description, signature) =>
         this.createTask({
           repoId: this.config.operator.repoId as RepoId,
           title,
+          summary,
           description,
           signature,
         }),

@@ -66,7 +66,14 @@ test("lists all tools with input and output schemas; context never enters the in
   }
   expect(await call("get_task_context", {})).toMatchObject({
     ok: true,
-    value: { run: { id: run.id }, role: "implementer" },
+    value: {
+      task: {
+        summary: host.state.task.summary,
+        description: host.state.task.description,
+      },
+      run: { id: run.id },
+      role: "implementer",
+    },
   });
   expect(host.inputs).toEqual([]);
   expect(host.passes).toBe(0);

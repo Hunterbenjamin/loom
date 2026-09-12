@@ -18,6 +18,15 @@ describe("summarizeTask", () => {
     expect(summarizeTask(task)).toBe("First sentence.");
   });
 
+  it("falls back when summary is whitespace", () => {
+    expect(
+      summarizeTask({
+        summary: "   ",
+        description: "Fallback sentence. More detail.",
+      }),
+    ).toBe("Fallback sentence.");
+  });
+
   it("handles description with question mark", () => {
     const task = {
       summary: null,

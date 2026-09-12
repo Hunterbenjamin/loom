@@ -619,31 +619,20 @@ export interface TaskNote {
 export function summarizeTask(
   task: Pick<Task, "summary" | "description">,
 ): string {
-  if (task.summary) return task.summary;
+  const summary = task.summary?.trim();
+  if (summary) return summary;
 
-  const desc = task.description.trim();
-  if (!desc) return "";
+  const firstLine = task.description.trim().split(/\r?\n/, 1)[0]?.trim() ?? "";
+  if (!firstLine) return "";
 
-  // Extract first sentence: up to the first period, question mark, or exclamation
-  const match = desc.match(/^([^.!?]*[.!?]?)/);
-  if (!match?.[1]) return "";
-
-  let firstSentence = match[1].trim();
-
-  // If there's no punctuation, take up to 140 chars or the first newline
-  if (!firstSentence.match(/[.!?]$/)) {
-    const endOfLine = desc.indexOf("\n");
-    if (endOfLine >= 0) {
-      firstSentence = desc.substring(0, endOfLine).trim();
-    } else {
-      firstSentence = desc;
-    }
-  }
+  const sentenceEnd = firstLine.search(/[.!?](?=\s|$)/);
+  let firstSentence =
+    sentenceEnd >= 0 ? firstLine.slice(0, sentenceEnd + 1) : firstLine;
 
   // Truncate to 140 chars if necessary (remove punctuation if truncating)
   if (firstSentence.length > 140) {
     firstSentence = `${firstSentence
-      .substring(0, 137)
+      .slice(0, 137)
       .trim()
       .replace(/[.!?]+$/, "")}...`;
   }

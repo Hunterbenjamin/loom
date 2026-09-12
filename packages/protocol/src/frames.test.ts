@@ -134,6 +134,29 @@ describe("framing", () => {
 });
 
 describe("commands", () => {
+  it("accepts only single-line task summaries up to 140 characters", () => {
+    const value = {
+      kind: "create_task",
+      repoId: id.repo("loom"),
+      title: "Title",
+      description: "Long description",
+      providers: null,
+      requirePlanApproval: null,
+      blockedBy: [],
+      budgetMinutes: null,
+      size: null,
+    } as const;
+    expect(
+      command.safeParse({ ...value, summary: "A concise goal" }).success,
+    ).toBe(true);
+    expect(
+      command.safeParse({ ...value, summary: "line one\nline two" }).success,
+    ).toBe(false);
+    expect(
+      command.safeParse({ ...value, summary: "x".repeat(141) }).success,
+    ).toBe(false);
+  });
+
   const cases = [
     {
       kind: "human" as const,
