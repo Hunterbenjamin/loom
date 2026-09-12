@@ -489,6 +489,15 @@ export class FakeProviders {
     interruptHeadless: async (id) => {
       this.finish(id, "interrupted");
     },
+    closeHeadless: async (id) => {
+      const session = this.sessions.get(id);
+      if (session?.value.provider !== "claude" || !session.value.headless)
+        return;
+      session.queue = [];
+      session.value.agentsEntry = null;
+      session.value.headless = null;
+      this.event(id);
+    },
     headlessState: async (id) => {
       const v = this.get(id).value;
       if (v.provider !== "claude") throw new Error("Wrong provider");

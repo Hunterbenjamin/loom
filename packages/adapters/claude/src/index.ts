@@ -163,7 +163,7 @@ export async function createClaudeAdapter(
     },
 
     closeHeadless: async (sessionId: ProviderSessionId): Promise<void> => {
-      run(sessionId).close();
+      headlessRuns.get(sessionId)?.close();
       headlessRuns.delete(sessionId);
     },
 

@@ -5,9 +5,35 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Hint, ProviderSessionId } from "@loom/core";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { HookPayload } from "./hooks.js";
 import { type ClaudeAdapterHandle, createClaudeAdapter } from "./index.js";
+
+// Stub only the SDK launch boundary: ordinary tests must never start a real provider.
+const sdk = vi.hoisted(() => ({ close: vi.fn() }));
+vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>()),
+  query: () => {
+    let finish: () => void = () => {};
+    const done = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    return {
+      close: () => {
+        sdk.close();
+        finish();
+      },
+      [Symbol.asyncIterator]() {
+        return {
+          next: async () => {
+            await done;
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+  },
+}));
 
 const samples = JSON.parse(
   readFileSync(
@@ -158,8 +184,11 @@ describe("createClaudeAdapter", () => {
     // Before close, the session should be known
     expect(await adapter.headlessState(SESSION)).not.toBeNull();
 
-    // Close the headless run
+    sdk.close.mockClear();
     await adapter.closeHeadless(SESSION);
+    await adapter.closeHeadless(SESSION);
+    expect(sdk.close).toHaveBeenCalledTimes(1);
+    expect(await adapter.headlessState(SESSION)).toBeNull();
 
     // After close, subsequent operations should fail since the run is removed
     await expect(

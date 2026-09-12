@@ -88,7 +88,7 @@ describe.skipIf(!enabled)("a real headless run", () => {
     expect(Array.isArray(await adapter.listSessions())).toBe(true);
   });
 
-  test("closeHeadless() exits the subprocess after a run completes", {
+  test("closeHeadless() releases a completed SDK run", {
     timeout: 180_000,
   }, async () => {
     const settingsPath = join(dir, "settings.json");
