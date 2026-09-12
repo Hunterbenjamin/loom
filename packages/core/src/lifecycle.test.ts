@@ -192,7 +192,7 @@ describe("launch results and persisted outbox", () => {
     f.observations.inputs = [
       actionInput(
         start,
-        { sessionId: "session1", codexGeneration: 2, herdr: null },
+        { sessionId: "session1", codexGeneration: 2, pane: null },
         "started",
       ),
     ];
@@ -216,7 +216,7 @@ describe("launch results and persisted outbox", () => {
             rateLimits: null,
           },
         },
-        herdr: null,
+        pane: null,
       },
     ];
     const started = fixed(created.next, f.observations);

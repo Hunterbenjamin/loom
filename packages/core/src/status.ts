@@ -8,6 +8,9 @@ export interface StatusReading {
   endReason?: RunEndReason;
   nonRetryable?: boolean;
 }
+/** The pane host's only status fact: the pane's process exited. Never screen-derived. */
+const paneDead = (observation: RunObservation): boolean =>
+  read(observation.pane)?.dead === true;
 export const isRateLimit = (text: string): boolean =>
   /rate.?limit|usage.?limit|usageLimitExceeded|rateLimitExceeded/i.test(text);
 export function deriveStatus(
@@ -22,7 +25,9 @@ export function deriveStatus(
   const provider = observation.provider.value;
   if (!provider) {
     if (!run.seenAt && observation.resumable !== false)
-      return status("starting");
+      return paneDead(observation)
+        ? { ...status("ended"), endReason: "vanished" }
+        : status("starting");
     if (observation.resumable !== false && run.provider === "codex")
       return status("unknown");
     return run.mode === "interactive"
@@ -84,12 +89,11 @@ export function deriveStatus(
   if (provider.agentsEntry?.status === "idle") return status("idle");
   if (provider.agentsEntry) return status("unknown");
   if (hooks.sessionEnd) return { ...status("ended"), endReason: "submitted" };
-  if (!run.seenAt && !hooks.sessionStart) {
-    const herdr = read(observation.herdr);
-    return herdr?.state === "blocked"
-      ? status("blocked", "dialog")
+  // No provider evidence yet. A dead pane proves the launch failed; nothing else does.
+  if (!run.seenAt && !hooks.sessionStart)
+    return paneDead(observation)
+      ? { ...status("ended"), endReason: "vanished" }
       : status("starting");
-  }
   return run.mode === "interactive"
     ? { ...status("ended"), endReason: "vanished" }
     : { ...status("failed"), endReason: "crashed" };

@@ -1,0 +1,12 @@
+HOME=/Users/example
+LANG=en_US.UTF-8
+LC_CTYPE=UTF-8
+PATH=/usr/local/bin:/usr/bin:/bin
+PWD=/Users/example
+SHELL=/bin/zsh
+TERM=xterm-256color
+TMPDIR=/var/folders/q4/000000000000000000000000/T/
+USER=example
+-CLAUDECODE
+-CLAUDE_CODE_ENTRYPOINT
+-HERDR_ENV

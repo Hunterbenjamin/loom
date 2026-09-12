@@ -14,16 +14,16 @@ approval doesn't count.
   List every such change in the PR under "Contract changes", one line each, with why.
 - Validate every external input with zod at the boundary: CLI JSON, hook payloads, protocol messages,
   socket responses. Core never sees a raw string.
-- No decision from terminal text, and never from Herdr's status. `docs/architecture.md`, "Agent
+- No decision from terminal text, and never from the pane host. `docs/architecture.md`, "Agent
   integration", has the rules and the spike evidence behind them.
 
 ## Tests
 
 - Unit tests run against fakes and recorded fixtures. They never start a real agent, touch the user's
-  main Herdr server, the shared Codex daemon, or global config.
+  own tmux servers, the shared Codex daemon, or global config.
 - Real-provider tests are opt-in with `LOOM_REAL_PROVIDERS=1`, use the cheapest model, and are skipped
-  otherwise. For Herdr they use a private named session; for Codex a private `codex app-server`
-  socket, as the spikes did.
+  otherwise. For the pane host they use a throwaway `-L loom-test-<pid>` server; for Codex a private
+  `codex app-server` socket, as the spikes did.
 - Record the fixtures you use (trimmed real output with tokens and emails removed) beside the tests,
   so the next person can see what the real tool actually returned.
 

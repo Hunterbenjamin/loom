@@ -19,7 +19,7 @@ Shared test support is outside `src`; colocated `*.test.ts` files import it only
   base branch and provider models. These functions are runtime configuration,
   not serialized SQLite data.
 - Read owners freshly. `ok: false` never falls back to a cached fact for a guard.
-  Herdr can explain a pre-session trust dialog; it never supplies a live provider
+  The pane host reports native pane facts only; it never supplies a provider
   status that advances a task.
 - Commit state, input dispositions, transition rows and outbox changes atomically
   using the old task version. When `capacityVersion` is returned, CAS that global

@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Start an agent on a brief: a worktree on <branch>, opened as a Herdr workspace, with an agent
-# told to follow the brief. Run from a shell pane inside Herdr.
+# Start an agent on a brief: a git worktree on <branch>, a window on Loom's private tmux server,
+# and an agent told to follow the brief. Run it from anywhere; it needs no terminal of its own.
 #
-# Usage: scripts/agent.sh <name> <claude|codex> <branch> <brief> [--model <model>] [worktree flags]
+# Usage: scripts/agent.sh <name> <claude|codex> <branch> <brief> [--model <model>] [--base <branch>]
 #   e.g. scripts/agent.sh core-design claude feat/core-design docs/briefs/phase-1a-core-design.md
 #        scripts/agent.sh ui-shell claude feat/ui-shell docs/briefs/ui-shell.md --model opus
 # <brief> is relative to the repo root and must be committed: the worktree only has committed files.
-# Without --model the agent uses its own default. Any other flags go to `herdr worktree create`
-# (for example --trust-repository).
+# Without --model the agent uses its own default.
+#
+# It uses the same server as the coordinator's pane host, `-L loom-<instance>`, so there is one
+# multiplexer. It never touches the default tmux socket or the user's own servers.
 set -euo pipefail
 
 die() {
@@ -15,7 +17,7 @@ die() {
   exit 1
 }
 
-[ $# -ge 4 ] || die "usage: scripts/agent.sh <name> <claude|codex> <branch> <brief> [--model <model>] [worktree flags]"
+[ $# -ge 4 ] || die "usage: scripts/agent.sh <name> <claude|codex> <branch> <brief> [--model <model>] [--base <branch>]"
 name="$1"
 kind="$2"
 branch="$3"
@@ -23,79 +25,140 @@ brief_path="$4"
 shift 4
 
 model=""
-worktree_flags=()
+base="main"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --model)
-      [ $# -ge 2 ] || die "--model needs a value"
-      model="$2"
-      shift 2
-      ;;
-    *)
-      worktree_flags+=("$1")
-      shift
-      ;;
+    --model) [ $# -ge 2 ] || die "--model needs a value"; model="$2"; shift 2 ;;
+    --base) [ $# -ge 2 ] || die "--base needs a value"; base="$2"; shift 2 ;;
+    *) die "unknown flag: $1" ;;
   esac
 done
 
-[ "${HERDR_ENV:-}" = 1 ] || die "run this from a shell pane inside Herdr"
-command -v jq >/dev/null || die "jq is required"
 case "$kind" in
   claude | codex) ;;
   *) die "agent kind must be claude or codex" ;;
 esac
 [[ "$name" =~ ^[a-z][a-z0-9_-]{0,31}$ ]] || die "name must match [a-z][a-z0-9_-]{0,31}"
+command -v jq >/dev/null || die "jq is required"
+
+tmux_bin="${LOOM_TMUX_BIN:-$(command -v tmux || true)}"
+[ -x "$tmux_bin" ] || die "tmux is required (set LOOM_TMUX_BIN for a non-standard location)"
+instance="${LOOM_INSTANCE:-dev}"
+socket="loom-$instance"
+session="loom-$name"
+tm() { "$tmux_bin" -L "$socket" "$@"; }
 
 repo="$(git rev-parse --show-toplevel)"
 git -C "$repo" cat-file -e "HEAD:$brief_path" 2>/dev/null ||
   die "$brief_path is not committed on HEAD, so the new worktree won't have it"
 
-created="$(herdr worktree create --cwd "$repo" --branch "$branch" --label "$name" --no-focus \
-  ${worktree_flags[@]+"${worktree_flags[@]}"})"
-pane="$(jq -r '.result.root_pane.pane_id // empty' <<<"$created")"
-worktree="$(jq -r '.result.worktree.path // empty' <<<"$created")"
-[ -n "$pane" ] || die "could not read the new pane id from: $created"
-
-# Native agent arguments go after `--`. Claude takes `--model <name>`; Codex takes a TOML override,
-# so the value keeps its quotes.
-agent_args=()
-if [ -n "$model" ]; then
-  case "$kind" in
-    claude) agent_args=(-- --model "$model") ;;
-    codex) agent_args=(-- -c "model=\"$model\"") ;;
-  esac
-fi
-
-# The new pane's shell may still be starting, so retry briefly. If the agent starts but stops
-# at a prompt (usually "trust this folder?"), `agent start` fails yet the name resolves:
-# wait for the human to answer it in Herdr instead of retrying.
-started=0
-for _ in 1 2 3 4 5; do
-  if herdr agent start "$name" --kind "$kind" --pane "$pane" \
-    ${agent_args[@]+"${agent_args[@]}"} >/dev/null; then
-    started=1
-    break
+# Git owns worktrees and branches (principle 1); the pane host only opens a session on the path.
+root="${LOOM_WORKTREE_ROOT:-$HOME/.loom/worktrees/$(basename "$repo")}"
+worktree="$root/${branch//\//-}"
+if [ ! -d "$worktree" ]; then
+  mkdir -p "$root"
+  if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
+    git -C "$repo" worktree add "$worktree" "$branch" >/dev/null
+  else
+    git -C "$repo" worktree add -b "$branch" "$worktree" "$base" >/dev/null
   fi
-  herdr agent get "$name" >/dev/null 2>&1 && break
-  sleep 1
-done
-if [ "$started" = 0 ]; then
-  herdr agent get "$name" >/dev/null 2>&1 || die "could not start $kind in pane $pane"
-  printf '%s is waiting for input (probably a folder-trust prompt). Answer it in Herdr; continuing once it is idle.\n' "$name"
-  herdr agent wait "$name" --until idle --until done --timeout 600000 >/dev/null
 fi
+worktree="$(cd "$worktree" && pwd -P)"
+
+# The private config, byte for byte what packages/adapters/tmux/src/config.ts writes. The server
+# reads it only when it starts, so it is sourced again for a server that already exists.
+conf="${LOOM_TMUX_CONF:-$HOME/.loom/$instance/tmux.conf}"
+mkdir -p "$(dirname "$conf")"
+cat > "$conf" <<'CONF'
+set -g mouse on
+set -g status off
+set -g window-size latest
+set -g aggressive-resize on
+set -s extended-keys always
+set -s extended-keys-format csi-u
+set -as terminal-features ",xterm*:extkeys"
+set -g remain-on-exit on
+set -g update-environment ""
+set -g destroy-unattached off
+set -g history-limit 20000
+set -g base-index 1
+set -g @loom_event "init"
+CONF
+
+# tmux exits as soon as it has no sessions, so the first session is what creates the server — and
+# what fixes its environment. Create it with an allowlist so nothing of this shell's leaks in.
+if ! tm has-session -t "=loom-monitor" 2>/dev/null; then
+  env -i \
+    PATH="$PATH" HOME="$HOME" USER="${USER:-}" LOGNAME="${LOGNAME:-}" \
+    SHELL="${SHELL:-/bin/sh}" TERM="${TERM:-xterm-256color}" TMPDIR="${TMPDIR:-/tmp}" \
+    LANG="${LANG:-en_US.UTF-8}" \
+    "$tmux_bin" -L "$socket" -f "$conf" \
+    new-session -d -s loom-monitor -n monitor -- sleep 2147483647
+fi
+tm source-file "$conf"
+
+tm has-session -t "=$session" 2>/dev/null ||
+  tm new-session -d -s "$session" -n shell -c "$worktree"
+
+if tm list-panes -t "=$session" -F '#{window_name}' | grep -qx agent; then
+  die "$session already has an agent window; attach with: $tmux_bin -L $socket attach -t $session"
+fi
+
+cmd=("$kind")
+case "$kind" in
+  claude) [ -n "$model" ] && cmd+=(--model "$model") ;;
+  codex) [ -n "$model" ] && cmd+=(-c "model=\"$model\"") ;;
+esac
+# An escape hatch for testing this script's plumbing without starting a provider.
+[ -n "${LOOM_AGENT_EXEC:-}" ] && cmd=("$LOOM_AGENT_EXEC")
+
+before="$(date +%s)"
+pane="$(tm new-window -d -P -F '#{pane_id}' -t "$session:" -n agent -c "$worktree" -- "${cmd[@]}")"
 
 prompt="Read AGENTS.md and $brief_path, then carry out the work it describes within its rules. Stop and report once the pull request the brief asks for is open."
-herdr agent prompt "$name" "$prompt" >/dev/null
 
-# A successful `agent prompt` only means the text and Enter were written. A TUI that is still
-# starting up can drop them (this happened to cold-started Codex and Claude agents), so confirm
-# a turn began.
-if ! herdr agent wait "$name" --until working --until blocked --timeout 30000 >/dev/null 2>&1; then
+# Wait for the TUI to be ready for input before pasting: a cold-started Codex or Claude drops a
+# prompt typed too early. The pane being alive is the only thing the host can tell us; the
+# provider's own channel confirms the prompt below.
+sleep 5
+buffer="loom-agent-$$"
+tm set-buffer -b "$buffer" -- "$prompt"
+tm paste-buffer -p -d -b "$buffer" -t "$pane"
+sleep 0.2
+tm send-keys -t "$pane" Enter
+
+# A paste is only "bytes written". Confirm from the provider that a turn actually began; both
+# checks read the provider's own store, never the terminal.
+confirmed=0
+for _ in $(seq 1 60); do
+  case "$kind" in
+    claude)
+      if claude agents --json 2>/dev/null |
+        jq -e --arg cwd "$worktree" 'any(.[]; .cwd == $cwd and .status == "busy")' >/dev/null; then
+        confirmed=1
+      fi
+      ;;
+    codex)
+      # Codex has no status command. Its rollout transcript is the cheapest provider-owned signal:
+      # a session file for this worktree, written after the prompt went in.
+      if find "${CODEX_HOME:-$HOME/.codex}/sessions" -name 'rollout-*.jsonl' -type f \
+        -newermt "@$before" 2>/dev/null |
+        while read -r f; do head -n 1 "$f" | jq -e --arg cwd "$worktree" \
+          '.payload.cwd == $cwd' >/dev/null && echo hit; done | grep -q hit; then
+        confirmed=1
+      fi
+      ;;
+  esac
+  [ "$confirmed" = 1 ] && break
+  sleep 1
+done
+
+attach="$tmux_bin -L $socket attach -t $session"
+if [ "$confirmed" = 0 ]; then
   printf '%s did not start working; its prompt was probably dropped.\n' "$name" >&2
-  printf 'If its input box in pane %s is empty, resend with:\n  herdr agent prompt %s '\''%s'\''\n' "$pane" "$name" "$prompt" >&2
+  printf 'Check pane %s, and resend by hand if its input box is empty:\n  %s\n' "$pane" "$attach" >&2
   exit 1
 fi
 
-printf 'started %s (%s%s) on %s in %s, pane %s\n' \
-  "$name" "$kind" "${model:+, $model}" "$branch" "$worktree" "$pane"
+printf 'started %s (%s%s) on %s in %s\n' "$name" "$kind" "${model:+, $model}" "$branch" "$worktree"
+printf 'attach:  %s\n' "$attach"

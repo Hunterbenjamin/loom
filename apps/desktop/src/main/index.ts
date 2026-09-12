@@ -28,16 +28,36 @@ interface Session {
 const sessions = new Map<string, Session>();
 
 /**
- * A plain login shell by default. `LOOM_ATTACH_AGENT=<name>` runs `herdr agent attach <name>`
- * instead, which is how the performance harness measures a real agent. Loom never starts or
- * controls the agent itself; attach is a viewer.
+ * A plain login shell by default. `LOOM_ATTACH_PANE=<session>:<window-id>` attaches to a pane on
+ * the pane host instead, which is how the performance harness measures a real agent. Loom never
+ * starts or controls the agent itself; attach is a viewer, and other clients keep their own view.
  */
 function command(): { file: string; args: string[] } {
-  const agent = process.env.LOOM_ATTACH_AGENT;
-  if (agent) {
+  const target = process.env.LOOM_ATTACH_PANE;
+  if (target) {
+    const [session = "", windowId = ""] = target.split(":");
+    const view = `${session}-v${windowId.replace("@", "")}`;
     return {
-      file: process.env.LOOM_HERDR_BIN ?? "herdr",
-      args: ["agent", "attach", agent],
+      file: process.env.LOOM_TMUX_BIN ?? "tmux",
+      args: [
+        "-L",
+        `loom-${process.env.LOOM_INSTANCE ?? "dev"}`,
+        "new-session",
+        "-A",
+        "-d",
+        "-s",
+        view,
+        "-t",
+        session,
+        ";",
+        "select-window",
+        "-t",
+        `${view}:${windowId}`,
+        ";",
+        "attach-session",
+        "-t",
+        view,
+      ],
     };
   }
   return { file: process.env.SHELL ?? "/bin/zsh", args: ["-l"] };

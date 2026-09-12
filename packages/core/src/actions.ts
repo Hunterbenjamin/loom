@@ -5,7 +5,7 @@
 import type {
   ArtifactKind,
   FindingLocation,
-  HerdrRef,
+  PaneRef,
   Provider,
   Role,
   RunMode,
@@ -32,7 +32,8 @@ interface ActionBase {
 export type SendVia =
   | "codex_turn_start"
   | "codex_turn_steer"
-  | "herdr_prompt"
+  /** Paste into the run's pane, then Enter. Never proof of delivery. */
+  | "pane_paste"
   | "claude_sdk";
 
 export type Action = ActionBase &
@@ -153,11 +154,12 @@ type Empty = Record<string, never>;
 export interface ActionOutputs {
   create_worktree: { path: WorktreePath; headSha: Sha; baseSha: Sha };
   write_task_files: Empty;
-  open_workspace: { workspaceId: string; rootPaneId: string };
+  /** The pane host's session for the task. Panes are created per run, not up front. */
+  open_workspace: { workspaceId: string };
   start_run: {
     sessionId: ProviderSessionId;
     codexGeneration: number | null;
-    herdr: HerdrRef | null;
+    pane: PaneRef | null;
   };
   /** Transport acceptance only. Delivery is confirmed later, by observation. */
   send_message: { transportRef: string | null };

@@ -35,7 +35,7 @@ export function TerminalTab({
       fontSize: 12,
       lineHeight: 1.2,
       allowProposedApi: true,
-      // Option+drag selects locally; a plain drag is a mouse event for Herdr (spike 03).
+      // Option+drag selects locally; a plain drag is a mouse event for the pane host (spike 03).
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
       theme: THEMES[theme],

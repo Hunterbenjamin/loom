@@ -36,4 +36,4 @@ prompt.
 
 ## Out of scope
 
-Herdr, prompting interactive sessions (that's the Herdr adapter), and the trust dialog.
+The pane host, prompting interactive sessions (that's the pane host's `pasteText`), and the trust dialog.

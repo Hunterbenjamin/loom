@@ -1,5 +1,5 @@
 {
-  "name": "@loom/adapter-herdr",
+  "name": "@loom/adapter-tmux",
   "version": "0.0.0",
   "private": true,
   "type": "module",

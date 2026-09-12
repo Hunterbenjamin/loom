@@ -25,16 +25,17 @@ package is allow-listed), run `node node_modules/electron/install.js` inside `ap
 The Terminal tab runs a login shell by default. To point it at a real agent instead:
 
 ```sh
-LOOM_ATTACH_AGENT=<herdr-agent-name> pnpm --filter @loom/desktop dev
+LOOM_ATTACH_PANE=<session>:<window-id> pnpm --filter @loom/desktop dev
 ```
 
-That runs `herdr agent attach <name>`, which is a viewer. Loom never starts, prompts or stops an
+That attaches a client to a pane on the pane host, which is a viewer. Loom never starts, prompts or stops an
 agent from here.
 
 | Variable | Effect |
 |---|---|
-| `LOOM_ATTACH_AGENT` | Run `herdr agent attach <name>` in the Terminal tab instead of a shell. |
-| `LOOM_HERDR_BIN` | Absolute path to `herdr`, if it is not on `PATH`. |
+| `LOOM_ATTACH_PANE` | Attach to `<session>:<window-id>` on the pane host in the Terminal tab instead of running a shell. |
+| `LOOM_TMUX_BIN` | Absolute path to `tmux`, if it is not on `PATH`. |
+| `LOOM_INSTANCE` | Pane-host instance; the socket is `loom-<instance>`. Defaults to `dev`. |
 | `LOOM_TASKS` | Number of fixture tasks. Only the performance harness sets this (500). |
 | `LOOM_WIDTH`, `LOOM_HEIGHT` | Window size at launch. |
 

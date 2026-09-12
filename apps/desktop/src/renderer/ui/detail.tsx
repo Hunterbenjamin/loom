@@ -289,11 +289,11 @@ function Agents({ task }: { task: Task }) {
                 <dd className="nums">{run.codexGeneration}</dd>
               </>
             ) : null}
-            {run.herdr ? (
+            {run.pane ? (
               <>
-                <dt>Herdr agent</dt>
+                <dt>Pane</dt>
                 <dd className="mono">
-                  {run.herdr.agentName} · {run.herdr.paneId}
+                  {run.pane.sessionName} · {run.pane.paneId}
                 </dd>
               </>
             ) : null}

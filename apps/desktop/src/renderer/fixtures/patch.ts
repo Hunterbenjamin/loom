@@ -29,7 +29,7 @@ const AREAS = [
   "packages/protocol/src",
   "packages/adapters/codex/src",
   "packages/adapters/claude/src",
-  "packages/adapters/herdr/src",
+  "packages/adapters/tmux/src",
   "apps/coordinator/src",
 ];
 

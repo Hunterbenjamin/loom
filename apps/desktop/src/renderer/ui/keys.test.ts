@@ -4,7 +4,7 @@ import { kittyEncode } from "./kitty.js";
 const ESC = "\u001b";
 
 describe("the kitty key encoder", () => {
-  it("encodes Shift+Enter the way Herdr passes it through to the agent", () => {
+  it("encodes Shift+Enter the way the pane host passes it through to the agent", () => {
     expect(
       kittyEncode({
         key: "Enter",

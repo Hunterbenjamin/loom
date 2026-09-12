@@ -5,6 +5,7 @@ import type { ActionResult } from "./actions.js";
 import type {
   CiState,
   FindingAnchor,
+  PaneRef,
   Provider,
   ProviderRequestKind,
   Severity,
@@ -180,15 +181,24 @@ export interface ClaudeSessionObservation {
   } | null;
 }
 
-// ---------------------------------------------------------------- Herdr (fallback only)
+// ---------------------------------------------------------------- pane host (tmux)
 
-export interface HerdrAgentObservation {
-  name: string;
-  paneId: string;
-  cwd: WorktreePath;
-  /** Screen-derived. Used only when the provider channel is unavailable. */
-  state: "working" | "blocked" | "idle" | "done" | "unknown";
-  agentSessionId: string | null;
+/**
+ * Native pane facts only. The host never reports agent state: nothing here is screen-derived,
+ * and provider identity is never inferred from a pane (spike 06 §4).
+ */
+export interface PaneObservation {
+  ref: PaneRef;
+  /** The pane's current working directory; null once the pane is dead. */
+  cwd: WorktreePath | null;
+  /** The directory the pane was created in. Survives the process exiting; the task join key. */
+  startCwd: WorktreePath;
+  pid: number;
+  /** The foreground command's name. A hint for humans, never an identity. */
+  command: string;
+  dead: boolean;
+  /** The exit status of a dead pane; null while it lives. */
+  exitCode: number | null;
 }
 
 // ---------------------------------------------------------------- per run, per task
@@ -196,8 +206,8 @@ export interface HerdrAgentObservation {
 export interface RunObservation {
   runId: RunId;
   provider: Reading<CodexThreadObservation | ClaudeSessionObservation | null>;
-  /** Null for headless runs. `value: null` means Herdr has no such agent. */
-  herdr: Reading<HerdrAgentObservation | null> | null;
+  /** Null for headless runs. `value: null` means the pane host has no such pane. */
+  pane: Reading<PaneObservation | null> | null;
   /** Provider adapter: true = resume verified, false = cannot resume, null = not yet known. */
   resumable: boolean | null;
   /** Provider adapter: latest known activity time; null = no activity evidence, not fetch time. */

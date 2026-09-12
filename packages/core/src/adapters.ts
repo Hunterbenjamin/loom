@@ -3,12 +3,14 @@
 // Subscriptions deliver hints: a reason to re-read, never a fact to act on.
 
 import type { ActionOutputs } from "./actions.js";
-import type { HerdrRef, Provider } from "./entities.js";
+import type { PaneRef } from "./entities.js";
 import type {
   BlobOid,
   IsoTime,
   ProviderSessionId,
+  RunId,
   Sha,
+  TaskId,
   WorktreePath,
 } from "./ids.js";
 import type {
@@ -17,7 +19,7 @@ import type {
   ClaudeSessionObservation,
   CodexThreadObservation,
   GitWorktreeObservation,
-  HerdrAgentObservation,
+  PaneObservation,
   PullRequestObservation,
   RateLimitObservation,
 } from "./observations.js";
@@ -26,7 +28,7 @@ export type Unsubscribe = () => void;
 
 /** Something may have changed. The coordinator maps it to tasks and enqueues reconcile. */
 export interface Hint {
-  source: "codex" | "claude_hook" | "herdr" | "github" | "git";
+  source: "codex" | "claude_hook" | "pane_host" | "github" | "git";
   worktreePath: WorktreePath | null;
   sessionId: ProviderSessionId | null;
 }
@@ -125,48 +127,54 @@ export interface GitHubAdapter {
   disableAutoMerge(req: { repo: string; number: number }): Promise<void>;
 }
 
-// ---------------------------------------------------------------- Herdr
+// ---------------------------------------------------------------- pane host
 
-export type HerdrPromptResult =
-  /** Text and Enter were written. Not delivery. */
-  | "ok"
-  /** `agent_blocked`: a dialog is waiting for the human. */
-  | "blocked"
-  | "stalled"
-  | "not_found"
-  /** The adapter refused text starting with `/` or `!`. Nothing was sent. */
-  | "refused";
-
-export interface HerdrAdapter {
-  openWorkspace(req: {
+/**
+ * tmux, on a private server. The host owns terminal processes and nothing else: it never
+ * reports agent state, never names a provider session, and never decides delivery.
+ * Every method is idempotent on its key (`taskId`, `runId`, `PaneRef`).
+ */
+export interface PaneHost {
+  /** Idempotent: the task's session, created if absent. Returns the session name. */
+  ensureWorkspace(req: {
+    taskId: TaskId;
     cwd: WorktreePath;
     label: string;
   }): Promise<ActionOutputs["open_workspace"]>;
-  /** Starts with a scrubbed environment: no `CLAUDE_CODE_*` or `HERDR_*` variables. */
-  startAgent(req: {
-    name: string;
-    kind: Provider;
-    paneId: string;
+  /**
+   * Idempotent on `runId`: an existing live pane for the run is returned, never relaunched.
+   * Runs `executable` directly — no shell, no typed prelude. `env` is the complete permitted
+   * environment: the host removes every inherited name the allowlist omits (spike 06 §3).
+   */
+  ensurePane(req: {
+    workspaceId: string;
+    runId: RunId;
+    cwd: WorktreePath;
+    executable: string;
     args: string[];
-  }): Promise<
-    HerdrRef & {
-      /** Startup UI only, never authoritative provider/run status. */
-      startup: "ready" | "blocked" | "readiness_timeout";
-    }
-  >;
-  getAgent(name: string): Promise<HerdrAgentObservation | null>;
-  listAgents(): Promise<HerdrAgentObservation[]>;
-  prompt(name: string, text: string): Promise<HerdrPromptResult>;
-  /** `send-keys esc`. Confirmation comes from the provider's status, not from Herdr. */
-  interrupt(name: string): Promise<void>;
-  /** Restore provider identity after resume; uses source `herdr:<provider>`. */
-  reportSession(
-    paneId: string,
-    provider: Provider,
-    sessionId: ProviderSessionId,
-  ): Promise<void>;
-  /** Full argv for a human terminal. Never requests takeover automatically. */
-  attachArgs(name: string): string[];
+    env: Record<string, string>;
+  }): Promise<PaneRef>;
+  /** Null: no such pane in this host generation. A dead pane is still a pane. */
+  getPane(ref: PaneRef): Promise<PaneObservation | null>;
+  /** Every pane on the host, dead ones included. Join on `startCwd` (principle 6). */
+  listPanes(): Promise<PaneObservation[]>;
+  /**
+   * Writes `text` and Enter into the pane. `"written"` is all it ever means: the paste is not
+   * delivery, and the host does not know what the keystrokes did. In spike 06 a paste into a
+   * pending permission dialog approved the command, so the coordinator must gate every call on
+   * the provider's status and confirm delivery from the provider's own channel.
+   */
+  pasteText(ref: PaneRef, text: string): Promise<"written">;
+  /** Escape only. Confirmation comes from the provider's status, never from the host. */
+  sendKey(ref: PaneRef, key: "Escape"): Promise<void>;
+  /** Full argv for a human terminal: explicit socket, session and pane. No takeover; clients share. */
+  attachArgs(ref: PaneRef): string[];
+  /** The clients currently attached to the pane's session, for the UI's attach indicator. */
+  listClients(
+    ref: PaneRef,
+  ): Promise<{ id: string; cols: number; rows: number }[]>;
+  /** Kills a pane Loom started, named by a ref from the current generation. Idempotent. */
+  closePane(ref: PaneRef): Promise<void>;
   subscribe(onHint: OnHint): Unsubscribe;
 }
 

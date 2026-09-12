@@ -3,10 +3,27 @@ import { fixture, now } from "../test/fixtures.js";
 import type {
   ClaudeSessionObservation,
   CodexThreadObservation,
+  PaneObservation,
   Run,
   RunObservation,
+  WorktreePath,
 } from "./index.js";
 import { deriveStatus } from "./index.js";
+
+const pane = (cwd: WorktreePath): PaneObservation => ({
+  ref: {
+    hostGeneration: "loom-dev#1",
+    sessionName: "loom-t1",
+    windowId: "@1",
+    paneId: "%1",
+  },
+  cwd,
+  startCwd: cwd,
+  pid: 4242,
+  command: "node",
+  dead: false,
+  exitCode: null,
+});
 
 function codex() {
   const f = fixture();
@@ -190,20 +207,10 @@ describe("Codex status table", () => {
         blockedOn,
       });
     });
-  it("unavailable beats Herdr idle", () => {
+  it("unavailable provider beats a live pane", () => {
     const f = codex();
     f.observation.provider = { ok: false, reason: "Disconnected", at: now };
-    f.observation.herdr = {
-      ok: true,
-      at: now,
-      value: {
-        name: "pane",
-        paneId: "p1",
-        cwd: f.run.worktreePath,
-        state: "idle",
-        agentSessionId: null,
-      },
-    };
+    f.observation.pane = { ok: true, at: now, value: pane(f.run.worktreePath) };
     expect(deriveStatus(f.run, f.observation)).toEqual({
       status: "unknown",
       blockedOn: null,
@@ -211,8 +218,27 @@ describe("Codex status table", () => {
   });
   it("closing pane leaves the live thread idle", () => {
     const f = codex();
-    f.observation.herdr = { ok: true, at: now, value: null };
+    f.observation.pane = { ok: true, at: now, value: null };
     expect(deriveStatus(f.run, f.observation).status).toBe("idle");
+  });
+  it("a dead pane before any provider evidence is a failed launch", () => {
+    const f = codex();
+    f.run.seenAt = null;
+    f.observation.provider = { ok: true, at: now, value: null };
+    f.observation.pane = {
+      ok: true,
+      at: now,
+      value: {
+        ...pane(f.run.worktreePath),
+        dead: true,
+        exitCode: 1,
+        cwd: null,
+      },
+    };
+    expect(deriveStatus(f.run, f.observation)).toMatchObject({
+      status: "ended",
+      endReason: "vanished",
+    });
   });
   it("gone and not resumable is vanished", () => {
     const f = codex();
@@ -304,26 +330,18 @@ describe("Claude status table", () => {
       null,
     ],
     [
-      "trust dialog",
+      // The pane host has no agent awareness: a folder-trust dialog looks exactly like a
+      // slow start. It stays `starting` until the provider says otherwise (spike 06).
+      "a live pane with no provider evidence stays starting",
       (r, p, o) => {
         r.mode = "interactive";
         r.seenAt = null;
         p.agentsEntry = null;
         p.hooks.sessionStart = null;
-        o.herdr = {
-          ok: true,
-          at: now,
-          value: {
-            name: "pane",
-            paneId: "p1",
-            cwd: r.worktreePath,
-            state: "blocked",
-            agentSessionId: null,
-          },
-        };
+        o.pane = { ok: true, at: now, value: pane(r.worktreePath) };
       },
-      "blocked",
-      "dialog",
+      "starting",
+      null,
     ],
     [
       "StopFailure",

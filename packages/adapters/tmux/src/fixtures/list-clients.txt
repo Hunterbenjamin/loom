@@ -1,0 +1,4 @@
+/dev/ttys00420452loom-t-42-v2loom-t-42
+/dev/ttys00718649loom-t-42-v2loom-t-42
+/dev/ttys00912040loom-t-42-v3loom-t-42
+(control)8024loom-monitor
