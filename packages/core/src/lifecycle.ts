@@ -126,17 +126,25 @@ export function observeRuns(c: Context): void {
       }
     }
   }
-  // End external runs whose sessions have disappeared
-  for (const run of c.state.runs) {
-    if (run.origin !== "external" || run.endedAt) continue;
-    const stillActive = c.observations.externalSessions.some(
-      (s) => s.provider === run.provider && s.sessionId === run.sessionId,
-    );
-    if (!stillActive) {
-      c.end(run, "vanished");
+  // End external runs whose sessions have disappeared, but only if read was successful.
+  // On read failure (transient errors), preserve unknown state and don't end runs.
+  if (c.observations.externalSessions.ok) {
+    const sessions = c.observations.externalSessions.value;
+    for (const run of c.state.runs) {
+      if (run.origin !== "external" || run.endedAt) continue;
+      const stillActive = sessions.some(
+        (s) => s.provider === run.provider && s.sessionId === run.sessionId,
+      );
+      if (!stillActive) {
+        c.end(run, "vanished");
+      }
     }
   }
-  for (const session of c.observations.externalSessions) {
+  // Only adopt new external sessions if read was successful
+  const sessionsToAdopt = c.observations.externalSessions.ok
+    ? c.observations.externalSessions.value
+    : [];
+  for (const session of sessionsToAdopt) {
     if (
       session.cwd !== c.task.worktreePath ||
       c.state.runs.some(

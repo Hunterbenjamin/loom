@@ -188,7 +188,7 @@ export function fixture(stage: Stage = "in_progress"): {
       },
     },
     runs: [],
-    externalSessions: [],
+    externalSessions: { ok: true, value: [], at: now },
     capacity: {
       version: 4,
       active: { codex: 0, claude: 0 },

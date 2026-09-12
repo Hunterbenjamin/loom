@@ -300,7 +300,9 @@ export interface Observations {
   github: Reading<PullRequestObservation | null> | null;
   /** One per run of this task that hasn't ended. */
   runs: RunObservation[];
-  externalSessions: ExternalSessionObservation[];
+  /** External sessions successfully read. On read failure (transient errors), this is marked
+   * `ok: false` to preserve unknown state; existing external runs should not be ended. */
+  externalSessions: Reading<ExternalSessionObservation[]>;
   capacity: CapacityObservation;
   dependencies: DependencyObservation[];
   /** Unconsumed inputs, in the order they were received. */

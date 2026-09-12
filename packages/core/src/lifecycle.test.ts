@@ -169,15 +169,19 @@ describe("headless retries and interactive control", () => {
   });
   it("external sessions remain observe-only", () => {
     const f = fixture();
-    f.observations.externalSessions = [
-      {
-        provider: "claude",
-        sessionId: "external" as never,
-        cwd: makeRun().worktreePath,
-        kind: "background",
-        active: true,
-      },
-    ];
+    f.observations.externalSessions = {
+      ok: true,
+      value: [
+        {
+          provider: "claude",
+          sessionId: "external" as never,
+          cwd: makeRun().worktreePath,
+          kind: "background",
+          active: true,
+        },
+      ],
+      at: now,
+    };
     const r = fixed(f.state, f.observations);
     const external = r.next.runs.find((r) => r.origin === "external");
     expect(external).toMatchObject({ sessionId: "external" });
@@ -188,15 +192,19 @@ describe("headless retries and interactive control", () => {
 
   it("external runs are ended when task reaches done stage", () => {
     const f = fixture("in_review");
-    f.observations.externalSessions = [
-      {
-        provider: "claude",
-        sessionId: "external_session" as never,
-        cwd: f.state.task.worktreePath as never,
-        kind: "background",
-        active: true,
-      },
-    ];
+    f.observations.externalSessions = {
+      ok: true,
+      value: [
+        {
+          provider: "claude",
+          sessionId: "external_session" as never,
+          cwd: f.state.task.worktreePath as never,
+          kind: "background",
+          active: true,
+        },
+      ],
+      at: now,
+    };
     // Create the external run
     let r = fixed(f.state, f.observations);
     const externalRun = r.next.runs.find((r) => r.origin === "external");
@@ -219,15 +227,19 @@ describe("headless retries and interactive control", () => {
 
   it("external runs are ended when task is canceled", () => {
     const f = fixture("in_review");
-    f.observations.externalSessions = [
-      {
-        provider: "claude",
-        sessionId: "external_session" as never,
-        cwd: f.state.task.worktreePath as never,
-        kind: "background",
-        active: true,
-      },
-    ];
+    f.observations.externalSessions = {
+      ok: true,
+      value: [
+        {
+          provider: "claude",
+          sessionId: "external_session" as never,
+          cwd: f.state.task.worktreePath as never,
+          kind: "background",
+          active: true,
+        },
+      ],
+      at: now,
+    };
     // Create the external run
     let r = fixed(f.state, f.observations);
     const externalRun = r.next.runs.find((r) => r.origin === "external");
@@ -250,15 +262,19 @@ describe("headless retries and interactive control", () => {
   it("external runs do not count toward provider capacity", () => {
     const f = fixture("planning");
     // Add an external session
-    f.observations.externalSessions = [
-      {
-        provider: "claude",
-        sessionId: "external_session" as never,
-        cwd: f.state.task.worktreePath as never,
-        kind: "background",
-        active: true,
-      },
-    ];
+    f.observations.externalSessions = {
+      ok: true,
+      value: [
+        {
+          provider: "claude",
+          sessionId: "external_session" as never,
+          cwd: f.state.task.worktreePath as never,
+          kind: "background",
+          active: true,
+        },
+      ],
+      at: now,
+    };
     // Add a Loom-launched run that would be in planning
     const loomRunId = f.state.runs[0]?.id;
     expect(f.state.runs[0]?.origin).toBe("loom");
