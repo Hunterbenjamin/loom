@@ -592,6 +592,7 @@ export class Coordinator {
               | null,
             blockedBy: (command.blockedBy ?? []) as TaskId[],
             budgetMinutes: (command.budgetMinutes ?? null) as number | null,
+            size: (command.size ?? null) as "small" | "normal" | null,
           });
           return {
             ok: true,

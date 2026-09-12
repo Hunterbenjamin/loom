@@ -94,7 +94,7 @@ export const taskSchema = contract<Task>()(
     providers: providerRules,
     blockedBy: z.array(id),
     budgetMinutes: z.number().nonnegative().nullable(),
-    size: z.enum(["small", "normal"]),
+    size: z.enum(["small", "normal"]).default("normal"),
     createdAt: time,
     updatedAt: time,
     worktreePath: text.nullable(),

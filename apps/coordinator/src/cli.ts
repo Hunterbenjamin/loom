@@ -52,12 +52,19 @@ const flag = (argv: string[], name: string): string | null => {
 };
 const has = (argv: string[], name: string): boolean =>
   argv.includes(`--${name}`);
-const rest = (argv: string[]): string[] =>
-  argv.filter(
-    (value, index) =>
-      !value.startsWith("--") &&
-      (!argv[index - 1]?.startsWith("--") || argv[index - 1] === "--json"),
-  );
+const rest = (argv: string[]): string[] => {
+  const booleanFlags = new Set([
+    "--json",
+    "--small",
+    "--require-plan-approval",
+  ]);
+  return argv.filter((value, index) => {
+    if (value.startsWith("--")) return false;
+    const prevFlag = argv[index - 1];
+    if (!prevFlag?.startsWith("--")) return true;
+    return booleanFlags.has(prevFlag);
+  });
+};
 
 const connect = async (
   config: CoordinatorConfig,
@@ -373,9 +380,11 @@ export async function main(argv: string[]): Promise<void> {
 
         const lines: string[] = [];
         lines.push(`Task: ${taskId}`);
-        lines.push(
-          `Total duration: ${(timings.totalDuration! / 1000 / 60).toFixed(2)} minutes`,
-        );
+        if (timings.totalDuration !== null) {
+          lines.push(
+            `Total duration: ${(timings.totalDuration / 1000 / 60).toFixed(2)} minutes`,
+          );
+        }
         lines.push("");
         lines.push("Stage transitions:");
 
