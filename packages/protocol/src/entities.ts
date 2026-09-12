@@ -130,6 +130,11 @@ export const task = z.strictObject({
   repoId,
   title: text,
   description: text,
+  summary: z
+    .string()
+    .max(140)
+    .regex(/^[^\r\n]*$/, "Summary must be one line")
+    .nullable(),
   stage,
   stageEnteredAt: isoTime,
   version: count,

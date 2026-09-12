@@ -247,6 +247,36 @@ describe.skipIf(!available)("tmux pane host", () => {
     ).toEqual(pane);
   });
 
+  it("holds no idle window: the session lives exactly as long as Loom's panes", async () => {
+    const workspace = await host.ensureWorkspace({
+      taskId: "t-lazy" as TaskId,
+      cwd,
+      label: "lazy",
+    });
+    const windows = () =>
+      tmux("list-windows", "-t", `=${workspace.workspaceId}`, "-F", "#W")
+        .then((out) => out.split("\n").filter(Boolean))
+        .catch(() => null);
+    expect(await windows()).toBeNull();
+    const ref = await host.ensurePane({
+      workspaceId: workspace.workspaceId,
+      runId: "run-lazy" as RunId,
+      cwd,
+      executable: "/bin/sh",
+      args: ["-c", "sleep 30"],
+      env: paneEnv(),
+    });
+    expect(await windows()).toEqual(["run-lazy"]);
+    expect(
+      (await host.listPanes()).filter(
+        (p) => p.ref.sessionName === workspace.workspaceId,
+      ),
+    ).toHaveLength(1);
+    await host.closePane(ref);
+    expect(await windows()).toBeNull();
+    expect(await host.getPane(ref)).toBeNull();
+  });
+
   it("loads the private config before any pane exists", async () => {
     const workspace = await host.ensureWorkspace({
       taskId: "t-config" as TaskId,

@@ -28,6 +28,7 @@ async function file(h: Harness, message: string) {
   const input = {
     eventId: e.id,
     title: "Runtime failure",
+    summary: "Make coordinator passes recover from runtime failures",
     description: "The coordinator cannot finish a pass.",
     acceptanceTest: "Inject the failure and assert reconciliation can recover.",
   };
@@ -42,6 +43,9 @@ test("equivalent failures dedupe and redelivery adds no evidence", async () => {
   const task = h.store.tasks()[0];
   if (!task) throw new Error("task");
   expect(task.stage).toBe("backlog");
+  expect(task.summary).toBe(
+    "Make coordinator passes recover from runtime failures",
+  );
   expect(task.description).toContain("Acceptance test:");
   expect(task.signature).toContain("v1:pass_failed");
   expect(h.store.operator.notes(task.id)).toHaveLength(2);
@@ -165,6 +169,7 @@ test("restart retains stop intent, queue, identity, dedupe and hourly accounting
   await h.coordinator.operator.invoke("file_task", {
     eventId: pending.id,
     title: "Publish failure",
+    summary: "Recover when publishing fails without a desktop client",
     description: "Publication failed",
     acceptanceTest: "Inject a publish failure with no desktop connected.",
   });

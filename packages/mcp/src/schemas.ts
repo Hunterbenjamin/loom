@@ -136,6 +136,7 @@ export const outputSchemas = {
       id: id.transform((v) => v as TaskId),
       title: text,
       description: text,
+      summary: text.nullable(),
       stage,
       reviewRound: count,
       reviewRoundCap: line,

@@ -19,19 +19,31 @@ const KNOWN_STATUSES = new Set(["busy", "waiting", "idle"]);
 const KNOWN_KINDS = new Set(["interactive", "background"]);
 
 /** Loose: 2.1.269 adds `name` and `startedAt`, and background entries carry `id` and `state`. */
-export const agentsEntrySchema = z
-  .looseObject({
-    sessionId: z.string().min(1),
-    cwd: z.string().min(1),
-    status: z.string().min(1).optional(),
-    state: z.string().min(1).optional(),
-    kind: z.string().min(1),
-    pid: z.number().int().nullish(),
-  })
-  .refine(
-    (entry) => entry.status !== undefined || entry.state !== undefined,
-    "Agent status or state is required",
-  );
+const statusEntrySchema = z.looseObject({
+  sessionId: z.string().min(1),
+  cwd: z.string().min(1),
+  status: z.string().min(1),
+  kind: z.string().min(1),
+  pid: z.number().int().nullish(),
+});
+
+// Native background records (the Operator is one) carry `state` instead of `status`. Accept
+// that shape explicitly; an interactive record without `status` must still fail rather than
+// pass as idle. Found by the Lead session on 2026-09-13 when the Operator's own record broke
+// every observation of the agents list.
+export const agentsEntrySchema = z.union([
+  statusEntrySchema,
+  z
+    .looseObject({
+      sessionId: z.string().min(1),
+      cwd: z.string().min(1),
+      kind: z.literal("background"),
+      status: z.undefined().optional(),
+      state: z.string().min(1),
+      pid: z.number().int().nullish(),
+    })
+    .transform((entry) => ({ ...entry, status: entry.state })),
+]);
 
 export const agentsOutputSchema = z.array(agentsEntrySchema);
 
@@ -41,24 +53,21 @@ export type RawAgentsEntry = z.infer<typeof agentsEntrySchema>;
  * `cwd` is already the realpath: Claude reports `/private/var/...` where `$TMPDIR` says
  * `/var/...` (spike 02, §1), which is what makes it usable as the join key (principle 6).
  */
-export const toAgentsEntry = (raw: RawAgentsEntry): ClaudeAgentsEntry => {
-  const rawStatus = raw.status ?? raw.state ?? "unknown";
-  return {
-    sessionId: raw.sessionId as ProviderSessionId,
-    status: (KNOWN_STATUSES.has(rawStatus) ? rawStatus : "other") as
-      | "busy"
-      | "waiting"
-      | "idle"
-      | "other",
-    rawStatus,
-    kind: (KNOWN_KINDS.has(raw.kind) ? raw.kind : "other") as
-      | "interactive"
-      | "background"
-      | "other",
-    pid: raw.pid ?? null,
-    cwd: raw.cwd as WorktreePath,
-  };
-};
+export const toAgentsEntry = (raw: RawAgentsEntry): ClaudeAgentsEntry => ({
+  sessionId: raw.sessionId as ProviderSessionId,
+  status: (KNOWN_STATUSES.has(raw.status) ? raw.status : "other") as
+    | "busy"
+    | "waiting"
+    | "idle"
+    | "other",
+  rawStatus: raw.status,
+  kind: (KNOWN_KINDS.has(raw.kind) ? raw.kind : "other") as
+    | "interactive"
+    | "background"
+    | "other",
+  pid: raw.pid ?? null,
+  cwd: raw.cwd as WorktreePath,
+});
 
 export const parseAgentsOutput = (stdout: string): ClaudeAgentsEntry[] =>
   agentsOutputSchema.parse(JSON.parse(stdout)).map(toAgentsEntry);

@@ -1,4 +1,10 @@
-import type { Finding, Run, Stage, Task } from "@loom/core";
+import {
+  type Finding,
+  type Run,
+  type Stage,
+  summarizeTask,
+  type Task,
+} from "@loom/core";
 import { type Snapshot, STAGES } from "../fixtures/index.js";
 import {
   matchesView,
@@ -11,6 +17,8 @@ import {
 /** One row of the list: the task plus the few facts the columns need, computed once. */
 export interface Row {
   task: Task;
+  /** Explicit task summary, or the bounded first sentence of its description. */
+  summary: string;
   /** The run the human would look at first: the live one, else the last one. */
   run: Run | null;
   runs: Run[];
@@ -90,6 +98,7 @@ const computeRows = memo1(
       }
       rows.push({
         task,
+        summary: summarizeTask(task),
         runs,
         run: live ?? runs.at(-1) ?? null,
         openBlocking: blocking.get(task.id) ?? 0,

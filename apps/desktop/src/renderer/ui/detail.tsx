@@ -171,6 +171,10 @@ function Activity({ task }: { task: Task }) {
 
   return (
     <div className="pad timeline">
+      <section className="task-description">
+        <div className="section-title">Description</div>
+        <div>{task.description.trim() || "No description."}</div>
+      </section>
       {events.map((event) => (
         <div className="event" key={event.id}>
           <span className="faint mono">{clock(event.at)}</span>

@@ -12,10 +12,10 @@ import { baseEnv, createCli, TmuxError, withUtf8Locale } from "./cli.js";
 import {
   configFile,
   EVENT_OPTION,
+  HOLD_WINDOW,
   hookCommand,
   MONITOR_SESSION,
   RUN_OPTION,
-  TASK_OPTION,
   VIEW_OPTION,
 } from "./config.js";
 import { startMonitor } from "./monitor.js";
@@ -179,7 +179,7 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
         (row) =>
           !row.isView &&
           row.sessionName !== MONITOR_SESSION &&
-          row.runId !== "loom-bootstrap",
+          row.windowName !== HOLD_WINDOW,
       );
     } catch (error) {
       if (error instanceof TmuxError && error.code === "no_server") {
@@ -218,54 +218,43 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
     }
   }
 
-  /** A reservation creates no process. The first actual pane creates its session. */
+  /**
+   * A task's session holds only the windows Loom opened in it: it appears with the first and
+   * goes away with the last. tmux cannot create a session without a window, and a pane's
+   * environment is fixed when it is spawned, so a throwaway `sleep` window holds the session
+   * open just long enough for `create` to scrub the environment and open the real window.
+   * `rows()` hides it, and if `create` fails it takes the session down with it.
+   */
   async function withSession<T>(
     session: string,
     cwd: WorktreePath,
     create: () => Promise<T>,
   ): Promise<T> {
-    await ensureServer();
-    let bootstrap: string | null = null;
-    if (!(await sessionExists(session))) {
-      bootstrap = (
-        await tmux([
-          "new-session",
-          "-d",
-          "-P",
-          "-F",
-          "#{pane_id}",
-          "-s",
-          session,
-          "-n",
-          "loom-starting",
-          "-c",
-          cwd,
-          "--",
-          "sleep",
-          "2147483647",
-        ])
-      ).trim();
+    if (await sessionExists(session)) return create();
+    const hold = (
       await tmux([
-        "set-option",
-        "-p",
-        "-t",
-        bootstrap,
-        RUN_OPTION,
-        "loom-bootstrap",
-      ]);
-      await tmux([
-        "set-option",
-        "-t",
+        "new-session",
+        "-d",
+        "-P",
+        "-F",
+        "#{window_id}",
+        "-s",
         session,
-        TASK_OPTION,
-        session.slice("loom-".length),
-      ]);
-    }
+        "-n",
+        HOLD_WINDOW,
+        "-c",
+        cwd,
+        "--",
+        "sleep",
+        "2147483647",
+      ])
+    ).trim();
     try {
       return await create();
     } finally {
-      // Only the temporary process created by this call; never an existing human shell.
-      if (bootstrap) await tmux(["kill-pane", "-t", bootstrap]);
+      await tmux(["kill-window", "-t", `${session}:${hold}`]).catch(
+        () => undefined,
+      );
     }
   }
 
@@ -407,8 +396,6 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
                 .regex(/^[^\p{Cc}]+$/u)
                 .parse(req.label);
         await ensureServer();
-        if (!req.createWorkspace && !(await sessionExists(session)))
-          throw new TmuxError("workspace_not_found", session);
         return withSession(session, cwd, async () => {
           const stale: string[] = [];
 
@@ -669,4 +656,4 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
   };
 }
 
-export { EVENT_OPTION, RUN_OPTION, TASK_OPTION, VIEW_OPTION };
+export { EVENT_OPTION, HOLD_WINDOW, RUN_OPTION, VIEW_OPTION };

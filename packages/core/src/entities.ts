@@ -130,6 +130,11 @@ export interface Task {
   repoId: RepoId;
   title: string;
   description: string;
+  /**
+   * Optional one-line summary of the task goal. Max 140 characters, no newlines.
+   * Owned by Loom. Provided at creation time; not editable after.
+   */
+  summary: string | null;
   stage: Stage;
   stageEnteredAt: IsoTime;
   /** Compare-and-set counter. Every committed change adds 1. */
@@ -604,4 +609,35 @@ export interface TaskNote {
   body: string;
   forHuman: boolean;
   occurrence: string;
+}
+
+// ---------------------------------------------------------------- Utilities
+
+/**
+ * Get a one-line summary for display in lists. Returns the summary if present,
+ * otherwise extracts and truncates the first sentence of the description to max 140 characters.
+ * Handles edge cases: empty description, no punctuation, very long first sentence.
+ */
+export function summarizeTask(
+  task: Pick<Task, "summary" | "description">,
+): string {
+  const summary = task.summary?.trim();
+  if (summary) return summary;
+
+  const firstLine = task.description.trim().split(/\r?\n/, 1)[0]?.trim() ?? "";
+  if (!firstLine) return "";
+
+  const sentenceEnd = firstLine.search(/[.!?](?=\s|$)/);
+  let firstSentence =
+    sentenceEnd >= 0 ? firstLine.slice(0, sentenceEnd + 1) : firstLine;
+
+  // Truncate to 140 chars if necessary (remove punctuation if truncating)
+  if (firstSentence.length > 140) {
+    firstSentence = `${firstSentence
+      .slice(0, 137)
+      .trim()
+      .replace(/[.!?]+$/, "")}...`;
+  }
+
+  return firstSentence;
 }

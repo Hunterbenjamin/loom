@@ -53,6 +53,11 @@ const receiptSchema = z.object({ inputId: z.string(), command: z.string() });
 export const filingInput = z.strictObject({
   eventId: z.string(),
   title: z.string().min(1).max(200),
+  summary: z
+    .string()
+    .min(1)
+    .max(140)
+    .regex(/^[^\r\n]*$/, "Summary must be one line"),
   description: z.string().min(1).max(6000),
   acceptanceTest: z.string().min(10).max(3000),
 });
@@ -67,7 +72,12 @@ interface Deps {
   reconcile(taskId: TaskId): Promise<unknown>;
   enqueue(taskId: TaskId): void;
   changed(taskId: TaskId | null): Promise<void>;
-  createBug(title: string, description: string, signature: string): TaskState;
+  createBug(
+    title: string,
+    summary: string,
+    description: string,
+    signature: string,
+  ): TaskState;
 }
 export class OperatorSession {
   private recipe: z.output<typeof recipeSchema> | null = null;
@@ -748,6 +758,7 @@ export class OperatorSession {
         const description = `${sanitizeEvidence(input.description).slice(0, 3000)}\n\nSignature: ${signature}\n\nEvidence:\n${sanitizeEvidence(JSON.stringify({ event, inspection: evidence })).slice(0, 6000)}\n\nAcceptance test:\n${sanitizeEvidence(input.acceptanceTest)}`;
         const state = this.deps.createBug(
           sanitizeEvidence(input.title),
+          sanitizeEvidence(input.summary),
           description,
           signature,
         );
