@@ -132,8 +132,11 @@ export async function createClaudeAdapter(
       sessionId,
       "--model",
       model,
+      // Full access inside the run's own worktree (user decision, 2026-09-12): every prompt
+      // stalled a run until a human answered in tmux. Safety is the worktree, the send gate,
+      // code-owned transitions and branch protection on the base branch, not per-command prompts.
       "--permission-mode",
-      "acceptEdits",
+      "bypassPermissions",
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {

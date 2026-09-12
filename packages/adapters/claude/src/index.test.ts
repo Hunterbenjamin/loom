@@ -139,7 +139,7 @@ describe("createClaudeAdapter", () => {
       "--model",
       "haiku",
       "--permission-mode",
-      "acceptEdits",
+      "bypassPermissions",
     ]);
     expect(
       adapter.interactiveArgs({
