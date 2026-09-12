@@ -189,7 +189,14 @@ export function human(
         );
       c.emit(
         `answer_provider_request:${run.id}:${cmd.generation}:${cmd.requestId}`,
-        { ...cmd, kind: "answer_provider_request" },
+        {
+          kind: "answer_provider_request",
+          runId: cmd.runId,
+          requestId: cmd.requestId,
+          generation: cmd.generation,
+          decision: cmd.decision,
+          answers: cmd.answers,
+        },
       );
       return null;
     }
