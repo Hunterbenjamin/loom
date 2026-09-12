@@ -10,6 +10,7 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "perf": "node perf/harness.mjs",
+    "test:terminal": "node perf/terminal-resize.mjs",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "postinstall": "node scripts/fix-spawn-helper.mjs"
   },

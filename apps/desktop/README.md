@@ -54,19 +54,30 @@ Every action is reachable from the keyboard.
 | `c` | Create a task |
 | `/` | Search |
 | `e` | Change stage |
-| `alt+↑` / `alt+↓` | Previous / next file, in Changes and Review |
+| `cmd+k`, then "Review changes and findings" | Open Review for the current task |
+| `alt+↑` / `alt+↓` | Previous / next file, with focus inside Review |
+
+Review contains the file list, diff and findings together. Its range control shows **Whole branch**;
+**Since last review** is unavailable until a previous review range is supplied (the shell fixtures
+only contain the whole-branch patch).
 
 ## The performance harness
 
 ```sh
 pnpm --filter @loom/desktop build
 pnpm --filter @loom/desktop perf
+pnpm --filter @loom/desktop test:terminal
 ```
 
 It launches the built app with Playwright's Electron driver, drives the real renderer, writes
 `perf/report.json`, and exits non-zero when a budget in `perf/budgets.json` is missed. `pnpm test`
 then re-checks the committed report against those budgets, so a regression fails the suite even
 when nobody reruns the harness.
+
+The terminal regression launches its own `tmux -L loom-test-<pid>` server with no user config and a
+shell that redraws continuously. It attaches the built app through a real PTY, shrinks and enlarges
+the window, then checks per-frame overflow, stable columns/rows and PTY resize counts. It cleans up
+its app and server even on failure, and never attaches to an existing pane or launches an agent.
 
 Two details from spike 03 matter: Electron is launched with
 `disable-backgrounding-occluded-windows` (a covered window stalls `requestAnimationFrame` and the

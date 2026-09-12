@@ -3,8 +3,10 @@
 // background throttling disabled, drive the real renderer, and take CPU from `ps`, because
 // Electron's own percentCPUUsage under-reports by roughly 8x.
 
+import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronBinary from "electron";
@@ -13,6 +15,17 @@ import { _electron as electron } from "playwright";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
 const budgets = JSON.parse(readFileSync(join(here, "budgets.json"), "utf8"));
+const temporary = mkdtempSync(join(tmpdir(), "loom-desktop-perf-"));
+// Never inherit a live attach target. Latency is measured on a shell this harness creates.
+const env = {
+  ...process.env,
+  LOOM_INSTANCE: "dev",
+  LOOM_ATTACH_PANE: "",
+  LOOM_EXIT_WHEN_INTERACTIVE: "",
+  ELECTRON_RENDERER_URL: "",
+};
+const args = [root, `--user-data-dir=${temporary}`];
+let app;
 
 const LIST_ROWS = 500;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,10 +37,10 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function coldStart() {
   return new Promise((resolve, reject) => {
     const startedAt = Date.now();
-    const child = spawn(electronBinary, [root], {
+    const child = spawn(electronBinary, args, {
       cwd: root,
       env: {
-        ...process.env,
+        ...env,
         LOOM_TASKS: String(LIST_ROWS),
         LOOM_WIDTH: "1440",
         LOOM_HEIGHT: "900",
@@ -105,11 +118,11 @@ async function main() {
   measured.coldStartMs = coldStarts[1];
   measured.coldStartRunsMs = coldStarts;
 
-  const app = await electron.launch({
-    args: [root],
+  app = await electron.launch({
+    args,
     cwd: root,
     env: {
-      ...process.env,
+      ...env,
       LOOM_TASKS: String(LIST_ROWS),
       LOOM_WIDTH: "1440",
       LOOM_HEIGHT: "900",
@@ -226,7 +239,7 @@ async function main() {
     await new Promise((resolve) => requestAnimationFrame(resolve));
     window.loom.diffPaintedAt = null;
     const start = performance.now();
-    window.loom.store.setTab("changes");
+    window.loom.store.setTab("review");
     const deadline = start + 10_000;
     while (window.loom.diffPaintedAt === null && performance.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 4));
@@ -270,6 +283,54 @@ async function main() {
       };
     })
   ).ms;
+
+  step("merged Review tab");
+  assert.equal(
+    await page.getByRole("tab", { name: "Changes", exact: true }).count(),
+    0,
+  );
+  assert.equal(
+    await page.getByRole("tab", { name: "Review", exact: true }).count(),
+    1,
+  );
+  assert.equal(
+    await page.locator(".file-row").count(),
+    await page.evaluate(
+      () => window.loom.store.getState().snapshot.patch.files.length,
+    ),
+  );
+  await page.locator(".finding-card").first().waitFor();
+  assert.equal(
+    await page.getByLabel("Review range").inputValue(),
+    "whole_branch",
+  );
+  assert.equal(
+    await page
+      .getByLabel("Review range")
+      .locator('[value="since_last_review"]')
+      .isDisabled(),
+    true,
+  );
+  const firstFile = page.locator(".file-row").first();
+  await firstFile.getByRole("button").click();
+  await page.keyboard.press("Alt+ArrowDown");
+  assert.equal(
+    await page.locator(".file-row").nth(1).getAttribute("data-active"),
+    "true",
+  );
+  await page.keyboard.press("Alt+ArrowUp");
+  assert.equal(await firstFile.getAttribute("data-active"), "true");
+  await page.getByRole("tab", { name: "Activity", exact: true }).click();
+  await page.keyboard.press("ControlOrMeta+k");
+  await page
+    .getByRole("option", { name: "Review changes and findings", exact: true })
+    .click();
+  assert.equal(
+    await page
+      .getByRole("tab", { name: "Review", exact: true })
+      .getAttribute("aria-selected"),
+    "true",
+  );
 
   step("terminal latency");
   // ---- keystroke to glyph
@@ -322,6 +383,7 @@ async function main() {
 
   step("closing");
   await app.close();
+  app = undefined;
 
   const rows = Object.entries(budgets).map(([key, budget]) => {
     const value = measured[key];
@@ -375,7 +437,15 @@ async function main() {
   if (!report.pass) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    try {
+      await app?.close();
+    } finally {
+      rmSync(temporary, { recursive: true, force: true });
+    }
+  });

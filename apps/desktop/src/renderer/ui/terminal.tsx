@@ -63,9 +63,17 @@ export function TerminalTab({
     });
 
     terminal.onData((data) => window.loomTerminal.write(id, data));
-    terminal.onResize(({ cols, rows }) =>
-      window.loomTerminal.resize(id, cols, rows),
-    );
+    let spawned = false;
+    let sentCols = terminal.cols;
+    let sentRows = terminal.rows;
+    const syncSize = () => {
+      const { cols, rows } = terminal;
+      if (!spawned || (cols === sentCols && rows === sentRows)) return;
+      sentCols = cols;
+      sentRows = rows;
+      window.loomTerminal.resize(id, cols, rows);
+    };
+    terminal.onResize(syncSize);
     window.loomTerminal.onData(id, (data) => terminal.write(data));
     window.loomTerminal.onExit(id, ({ exitCode }) => {
       // Exit 1 from an attach means "already attached" or "taken over"; both are states the
@@ -82,17 +90,30 @@ export function TerminalTab({
       .spawn({ id, cols: terminal.cols, rows: terminal.rows, label: task.id })
       .then((result) => {
         if (disposed) return;
+        spawned = true;
+        // A layout resize can land while the spawn request is in flight.
+        syncSize();
         setCommand(result.command);
         setStatus(`pid ${result.pid}`);
         terminal.focus();
       })
-      .catch((error: unknown) => setStatus(String(error)));
+      .catch((error: unknown) => {
+        if (!disposed) setStatus(String(error));
+      });
 
     // Resize on panel resize only, debounced: the attached client owns the pane size for
     // every other viewer, and that size sticks after detach (spike 03).
     let timer: number | undefined;
-    const observer = new ResizeObserver(() => {
+    let width = element.clientWidth;
+    let height = element.clientHeight;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const next = entry.contentRect;
+      if (next.width === width && next.height === height) return;
+      width = next.width;
+      height = next.height;
       window.clearTimeout(timer);
+      if (width <= 0 || height <= 0) return;
       timer = window.setTimeout(() => {
         try {
           fit.fit();
@@ -117,11 +138,14 @@ export function TerminalTab({
   return (
     <div className="terminal-wrap">
       <div className="terminal-bar">
-        <span className="mono">{command || "..."}</span>
-        <span className="spacer" />
+        <span className="mono terminal-command" title={command}>
+          {command || "..."}
+        </span>
         <span>{status}</span>
       </div>
-      <div className="terminal-host" ref={host} data-testid="terminal" />
+      <div className="terminal-host" data-testid="terminal">
+        <div className="terminal-viewport" ref={host} />
+      </div>
     </div>
   );
 }

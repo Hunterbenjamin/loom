@@ -16,13 +16,7 @@ export type ViewId =
   | "awaiting-approval"
   | "done";
 export type Pane = "list" | "board";
-export type TabId =
-  | "activity"
-  | "plan"
-  | "agents"
-  | "terminal"
-  | "changes"
-  | "review";
+export type TabId = "activity" | "plan" | "agents" | "terminal" | "review";
 export type SortKey =
   | "stage"
   | "title"

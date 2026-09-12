@@ -64,6 +64,16 @@ export function Palette() {
                   Open {current}
                 </Command.Item>
                 <Command.Item
+                  onSelect={() =>
+                    run(() => {
+                      store.open(current);
+                      store.setTab("review");
+                    })
+                  }
+                >
+                  Review changes and findings
+                </Command.Item>
+                <Command.Item
                   onSelect={() => run(() => store.setStagePicker(true))}
                 >
                   Change stage…
