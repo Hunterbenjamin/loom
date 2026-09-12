@@ -1,3 +1,13 @@
+import { runId } from "@loom/protocol";
+import { z } from "zod";
+import type { ConnectionConfig } from "./connection.js";
+export const ptySpawnRequest = z.strictObject({
+  id: z.string().min(1).max(200),
+  cols: z.number().int().min(1).max(1000),
+  rows: z.number().int().min(1).max(1000),
+  label: z.string().max(200),
+  runId: runId.nullable().optional(),
+});
 /** The contract between the renderer and the Electron main process. Terminals only. */
 
 export interface PtySpawnRequest {
@@ -6,6 +16,7 @@ export interface PtySpawnRequest {
   rows: number;
   /** Shown in the panel header so the human knows what they are typing into. */
   label: string;
+  runId?: import("@loom/core").RunId | null;
 }
 
 export interface PtySpawnResult {
@@ -30,6 +41,7 @@ export interface TerminalBridge {
 }
 
 export interface HostBridge {
+  connection(): Promise<ConnectionConfig>;
   /** Called once, after the first list paint. The cold-start measurement reads it. */
   interactive(): void;
   /** Electron's process metrics, used by the performance harness for idle CPU. */

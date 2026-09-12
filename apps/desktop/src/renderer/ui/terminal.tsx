@@ -8,6 +8,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
+import { useStore, useStoreApi } from "../store/react.js";
 import { kittyEncode } from "./kitty.js";
 
 const THEMES = {
@@ -22,6 +23,16 @@ export function TerminalTab({
   task: Task;
   theme: "dark" | "light";
 }) {
+  const store = useStoreApi();
+  const live = useStore((s) => s.live);
+  const runId = useStore((s) => s.ui.openRun);
+  const runs = useStore(
+    (s) =>
+      s.snapshot.runs.filter(
+        (r) => r.taskId === task.id && r.mode === "interactive",
+      ),
+    (a, b) => a.length === b.length && a.every((r, i) => r === b[i]),
+  );
   const host = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState("starting...");
   const [command, setCommand] = useState("");
@@ -29,7 +40,11 @@ export function TerminalTab({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    const id = `${task.id}:terminal`;
+    if (live && !runId) {
+      setStatus("Select a run to attach");
+      return;
+    }
+    const id = `${task.id}:${runId ?? "fixture"}:terminal:${crypto.randomUUID()}`;
     const terminal = new Terminal({
       fontFamily: '"SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace',
       fontSize: 12,
@@ -87,9 +102,18 @@ export function TerminalTab({
 
     let disposed = false;
     void window.loomTerminal
-      .spawn({ id, cols: terminal.cols, rows: terminal.rows, label: task.id })
+      .spawn({
+        id,
+        cols: terminal.cols,
+        rows: terminal.rows,
+        label: task.id,
+        runId,
+      })
       .then((result) => {
-        if (disposed) return;
+        if (disposed) {
+          void window.loomTerminal.kill(id);
+          return;
+        }
         spawned = true;
         // A layout resize can land while the spawn request is in flight.
         syncSize();
@@ -133,11 +157,29 @@ export function TerminalTab({
       void window.loomTerminal.kill(id);
       terminal.dispose();
     };
-  }, [task.id, theme]);
+  }, [task.id, theme, live, runId]);
 
   return (
     <div className="terminal-wrap">
       <div className="terminal-bar">
+        {live ? (
+          <select
+            aria-label="Terminal run"
+            value={runId ?? ""}
+            onChange={(event) =>
+              store.setRun(
+                runs.find((r) => r.id === event.target.value)?.id ?? null,
+              )
+            }
+          >
+            <option value="">Select a run</option>
+            {runs.map((run) => (
+              <option key={run.id} value={run.id}>
+                {run.role} · {run.provider} · {run.id}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <span className="mono terminal-command" title={command}>
           {command || "..."}
         </span>

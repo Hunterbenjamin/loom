@@ -315,3 +315,41 @@ describe("every attention reason", () => {
     ).toContain("over_budget");
   });
 });
+
+it("attributes reasons to their source runs without including ended or external permission runs", () => {
+  const f = fixture("in_progress");
+  const run = f.state.runs[0];
+  if (!run) throw new Error("missing run");
+  const input = {
+    now,
+    previous: f.state.task.attention,
+    stage: f.state.task.stage,
+    blocked: null,
+    failed: {
+      reason: "non_retryable_error" as const,
+      since: now,
+      detail: "Failed",
+      runId: run.id,
+    },
+    budgetMinutes: null,
+    activeElapsedMs: 0,
+    questions: [],
+    messages: [],
+    stallAfterMs: 10_000,
+    unknownGraceMs: 10_000,
+    runs: [
+      { ...run, endedAt: null, blockedOn: "permission" as const },
+      { ...run, id: "ended" as never, endedAt: now },
+      {
+        ...run,
+        id: "external" as never,
+        origin: "external" as const,
+        blockedOn: "permission" as const,
+      },
+    ],
+  };
+  const derived = deriveAttention(input);
+  expect(derived.reasonRunIds.provider_permission).toEqual([run.id]);
+  expect(derived.reasonRunIds.failed).toEqual([run.id]);
+  expect(deriveAttention({ ...input, stage: "done" }).reasonRunIds).toEqual({});
+});

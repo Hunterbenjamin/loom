@@ -26,8 +26,8 @@ const row = <N extends CollectionName>(collection: N, value: unknown): Row => {
  * Attention is re-derived at snapshot time rather than read from the stored field, because a
  * stall or an unknown-status grace period can elapse between two passes (brief §8).
  */
-export function freshAttention(state: TaskState, now: string): Task {
-  const { attention } = deriveAttention({
+function attentionFor(state: TaskState, now: string) {
+  return deriveAttention({
     now: now as never,
     previous: state.task.attention,
     stage: state.task.stage,
@@ -41,7 +41,10 @@ export function freshAttention(state: TaskState, now: string): Task {
     stallAfterMs: state.config.stallAfterMs,
     unknownGraceMs: state.config.unknownGraceMs,
   });
-  return { ...state.task, attention };
+}
+
+export function freshAttention(state: TaskState, now: string): Task {
+  return { ...state.task, attention: attentionFor(state, now).attention };
 }
 
 export interface ViewDeps {
@@ -60,7 +63,6 @@ export async function runTargetRow(
 ): Promise<Row | null> {
   const run = state.runs.find((r) => r.id === runId);
   if (!run) return null;
-  const recipe = deps.recipes.get(run.id);
   let pane: unknown = null;
   let attach: unknown = null;
   if (run.pane) {
@@ -89,7 +91,7 @@ export async function runTargetRow(
         kind: "pane_host",
         argv: deps.adapters.paneHost.attachArgs(run.pane),
         cwd: run.worktreePath,
-        env: recipe?.env ?? {},
+        env: {},
       };
     } catch {
       attach = null;
@@ -111,7 +113,21 @@ export async function taskRows(
 ): Promise<{ state: TaskState; rows: Row[] }> {
   const state = deps.store.loadTaskState(taskId);
   const now = deps.now();
-  const rows: Row[] = [row("task", freshAttention(state, now))];
+  const derived = attentionFor(state, now);
+  const rows: Row[] = [
+    row("task", { ...state.task, attention: derived.attention }),
+    row("inbox", {
+      taskId,
+      reasonRuns: Object.fromEntries(
+        Object.entries(derived.reasonRunIds).map(([reason, ids]) => [
+          reason,
+          ids.flatMap((id) => state.runs.filter((run) => run.id === id)),
+        ]),
+      ),
+      reviewedHead: state.review?.lastReviewedHead ?? null,
+      planVersion: state.plan?.version ?? null,
+    }),
+  ];
   if (state.worktree) rows.push(row("worktree", state.worktree));
   for (const run of state.runs) {
     rows.push(row("run", run));

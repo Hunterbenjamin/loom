@@ -1,11 +1,37 @@
 import { type ComponentType, type ReactNode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { TrackerClient } from "../shared/client.js";
+import { connectionConfig } from "../shared/connection.js";
 import { App } from "./app.js";
+import { emptySnapshot } from "./live/snapshot.js";
 import { StoreProvider } from "./store/react.js";
 import { createStore } from "./store/store.js";
 import "./theme.css";
 
-const store = createStore();
+const config = connectionConfig.parse(await window.loomHost.connection());
+const store =
+  config.mode === "fixtures"
+    ? createStore()
+    : createStore(emptySnapshot(), true);
+if (config.mode === "live") {
+  const client = new TrackerClient({
+    ...config,
+    clientId: `window-${crypto.randomUUID()}`,
+    onState: (state, patch) => store.applyProtocol(state, patch),
+    onStatus: (status, message) =>
+      store.setConnection(message ? `${status}: ${message}` : status),
+  });
+  store.setSender((command) => client.command(command));
+  store.subscribe(() => {
+    const { openTask, openRun } = store.getState().ui;
+    client.setDetail([
+      ...(openTask ? [{ kind: "task" as const, taskId: openTask }] : []),
+      ...(openRun ? [{ kind: "run" as const, runId: openRun }] : []),
+    ]);
+  });
+  client.start();
+  window.addEventListener("beforeunload", () => client.stop(), { once: true });
+} else if (config.mode === "unconfigured") store.setConnection(config.message);
 
 /**
  * The window paints the list first and pulls the diff renderer in behind it. Loading Pierre and

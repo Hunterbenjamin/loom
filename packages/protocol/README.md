@@ -114,3 +114,15 @@ the core type it mirrors; a fake client applies a snapshot and a patch stream an
 snapshot would; a sequence gap is detected and applies nothing; subscriptions filter. The shell's
 fixture store is converted to a protocol snapshot and parsed with the real schemas in
 `apps/desktop/src/renderer/fixtures/protocol.test.ts`, so the fixtures and the contract can't drift.
+
+## Tracker inbox (protocol version 2)
+
+The `inbox` collection is small task-list metadata keyed by task ID: `reasonRuns` contains the runs
+attributed by core's attention derivation, `planVersion` identifies the plan an approval names, and
+`reviewedHead` is the last reviewed SHA (never an inferred current head). It reaches every window,
+so an inbox and title badge need no subscription per task. Full plans, questions and Activity still
+follow the selected task subscription. Reasons and `reasonSince` remain on the task; renderers do
+not derive them. Several runs may contribute to a single reason, but the inbox still has one row
+per task/reason. Version 2 explicitly rejects old clients rather than sending them an unknown
+collection. Pane attach targets already existed; their public environment is now empty, since an
+attach client does not need the run recipe's MCP credentials.

@@ -813,3 +813,45 @@ ul.plain {
   color: var(--text-dim);
   z-index: 30;
 }
+
+.inbox {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.inbox-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  overflow: hidden;
+}
+.inbox-row > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inbox-row.selected {
+  background: var(--bg-active);
+}
+.inbox-actions {
+  margin: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inbox-actions textarea {
+  min-height: 55px;
+  max-height: 140px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  font: inherit;
+  width: 100%;
+  resize: vertical;
+}

@@ -16,7 +16,7 @@ const frame = () =>
   );
 
 const app = await electron.launch({
-  args: [root],
+  args: [root, "--fixtures"],
   cwd: root,
   env: { ...process.env, LOOM_WIDTH: "1360", LOOM_HEIGHT: "860" },
 });

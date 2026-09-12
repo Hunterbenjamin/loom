@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
+import { attentionCount, inboxRows } from "./store/inbox.js";
 import { useStore, useStoreApi } from "./store/react.js";
 import { selectedRows } from "./store/selectors.js";
 import { VIEWS } from "./store/store.js";
 import { BoardView } from "./ui/board.js";
 import { Detail } from "./ui/detail.js";
+import { InboxView } from "./ui/inbox.js";
 import { useShortcuts } from "./ui/keys.js";
 import { ListView } from "./ui/list.js";
 import { Palette, StagePicker } from "./ui/palette.js";
@@ -14,12 +16,22 @@ export function App() {
   useShortcuts(store);
 
   const theme = useStore((s) => s.ui.theme);
+  const waiting = useStore(
+    (s) =>
+      s.live && s.connection !== "connected" && s.snapshot.tasks.length === 0,
+  );
   const pane = useStore((s) => s.ui.pane);
   const view = useStore((s) => s.ui.view);
   const searching = useStore((s) => s.ui.searching);
   const query = useStore((s) => s.ui.query);
   const toast = useStore((s) => s.ui.toast);
-  const rows = useStore(selectedRows);
+  const count = useStore((s) =>
+    s.ui.view === "needs-you" ? inboxRows(s).length : selectedRows(s).length,
+  );
+  const needsYou = useStore(attentionCount);
+  useEffect(() => {
+    document.title = `Loom · ${needsYou} need you`;
+  }, [needsYou]);
   const task = useStore((s) =>
     s.ui.openTask
       ? (s.snapshot.tasks.find((t) => t.id === s.ui.openTask) ?? null)
@@ -54,7 +66,7 @@ export function App() {
       <div className="main">
         <header className="topbar">
           <h1>{VIEWS.find((item) => item.id === view)?.label}</h1>
-          <span className="faint nums">{rows.length}</span>
+          <span className="faint nums">{count}</span>
           <span className="spacer" />
           {searching ? (
             <input
@@ -99,7 +111,15 @@ export function App() {
             flexDirection: "column",
           }}
         >
-          {pane === "list" ? <ListView /> : <BoardView />}
+          {waiting ? (
+            <div className="pad faint">Waiting for the coordinator…</div>
+          ) : view === "needs-you" ? (
+            <InboxView />
+          ) : pane === "list" ? (
+            <ListView />
+          ) : (
+            <BoardView />
+          )}
           {task ? <Detail task={task} /> : null}
         </div>
       </div>

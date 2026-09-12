@@ -1,13 +1,13 @@
 import type { Stage } from "@loom/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { STAGES } from "../fixtures/index.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { type Row, selectedRows } from "../store/selectors.js";
 import { AttentionChips, ProviderLabel, RunDot } from "./bits.js";
 import { age, stageLabel } from "./format.js";
 
-export function BoardView() {
+function BoardViewComponent() {
   const rows = useStore(selectedRows);
   const [over, setOver] = useState<Stage | null>(null);
   const store = useStoreApi();
@@ -117,3 +117,5 @@ function Column({ rows }: { rows: Row[] }) {
     </div>
   );
 }
+
+export const BoardView = memo(BoardViewComponent);

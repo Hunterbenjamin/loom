@@ -5,6 +5,7 @@ import { taskFindings, taskRuns } from "../store/selectors.js";
 import type { TabId } from "../store/store.js";
 import { AttentionChips } from "./bits.js";
 import { clock, RUN_STATUS_LABELS, since, stageLabel } from "./format.js";
+import { InboxActions } from "./inbox-actions.js";
 
 // Both pull in a large dependency (Pierre, xterm) that the first screen never needs.
 const DiffTab = lazy(() =>
@@ -24,6 +25,8 @@ const TABS: { id: TabId; label: string }[] = [
 
 export function Detail({ task }: { task: Task }) {
   const store = useStoreApi();
+  const reason = useStore((s) => s.ui.openReason);
+  const live = useStore((s) => s.live);
   const tab = useStore((s) => s.ui.tab);
   const theme = useStore((s) => s.ui.theme);
   const now = useStore((s) => s.snapshot.now);
@@ -51,8 +54,8 @@ export function Detail({ task }: { task: Task }) {
           <span>in this stage {since(now, task.stageEnteredAt)}</span>
           <span>v{task.version}</span>
         </div>
+        <InboxActions key={`${task.id}:${reason}`} task={task} />
       </header>
-
       <div className="tabs" role="tablist">
         {TABS.map((item) => (
           <button
@@ -76,7 +79,13 @@ export function Detail({ task }: { task: Task }) {
           {tab === "terminal" ? (
             <TerminalTab task={task} theme={theme} />
           ) : null}
-          {tab === "review" ? <DiffTab task={task} /> : null}
+          {tab === "review" ? (
+            live ? (
+              <LiveReview task={task} />
+            ) : (
+              <DiffTab task={task} />
+            )
+          ) : null}
         </Suspense>
       </div>
     </div>
@@ -90,7 +99,10 @@ function Activity({ task }: { task: Task }) {
   );
   const runs = useStore((s) => taskRuns(s.snapshot, task), shallowArray);
   const messages = useStore(
-    (s) => s.snapshot.messages.filter((m) => m.runId.startsWith(task.id)),
+    (s) =>
+      s.snapshot.messages.filter((m) =>
+        s.snapshot.runs.some((r) => r.id === m.runId && r.taskId === task.id),
+      ),
     shallowArray,
   );
   const now = useStore((s) => s.snapshot.now);
@@ -240,7 +252,10 @@ function PlanTab({ task }: { task: Task }) {
 function Agents({ task }: { task: Task }) {
   const runs = useStore((s) => taskRuns(s.snapshot, task), shallowArray);
   const tests = useStore(
-    (s) => s.snapshot.testResults.filter((t) => t.runId.startsWith(task.id)),
+    (s) =>
+      s.snapshot.testResults.filter((t) =>
+        s.snapshot.runs.some((r) => r.id === t.runId && r.taskId === task.id),
+      ),
     shallowArray,
   );
   const findings = useStore(
@@ -343,6 +358,31 @@ function Agents({ task }: { task: Task }) {
         }{" "}
         open and blocking
       </div>
+    </div>
+  );
+}
+
+function LiveReview({ task }: { task: Task }) {
+  const findings = useStore(
+    (s) => taskFindings(s.snapshot, task),
+    shallowArray,
+  );
+  return (
+    <div className="pad">
+      <div className="section-title">Review findings</div>
+      {findings.length ? (
+        findings.map((f) => (
+          <div className="panel" key={f.id}>
+            <strong>{f.title}</strong>
+            <div>
+              {f.severity} · {f.status}
+            </div>
+            <p>{f.body}</p>
+          </div>
+        ))
+      ) : (
+        <div className="faint">No findings in the current snapshot.</div>
+      )}
     </div>
   );
 }

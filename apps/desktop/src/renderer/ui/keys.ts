@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { inboxRows, reasonTab } from "../store/inbox.js";
 import { selectedRows } from "../store/selectors.js";
 import type { Store } from "../store/store.js";
 
@@ -51,7 +52,9 @@ export function useShortcuts(store: Store): void {
         return;
       }
 
-      const rows = selectedRows(store.getState());
+      const inbox =
+        ui.view === "needs-you" ? inboxRows(store.getState()) : null;
+      const rows = inbox ?? selectedRows(store.getState());
       switch (event.key) {
         case "g":
           pendingG.current = true;
@@ -66,6 +69,17 @@ export function useShortcuts(store: Store): void {
           event.preventDefault();
           return store.moveCursor(-1, rows.length);
         case "Enter": {
+          const attention = inbox?.[ui.cursor];
+          if (attention) {
+            const run = attention.runs[0] ?? null;
+            store.openAttention(
+              attention.task.id,
+              attention.reason,
+              reasonTab(attention.reason, run),
+              run?.id ?? null,
+            );
+            return;
+          }
           const row = rows[ui.cursor];
           if (row) store.open(row.task.id);
           return;

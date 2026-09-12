@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
 import { groupRows, type ListItem, selectedRows } from "../store/selectors.js";
 import type { SortKey } from "../store/store.js";
@@ -17,7 +17,7 @@ const HEADINGS: { key: SortKey; label: string }[] = [
   { key: "age", label: "Age" },
 ];
 
-export function ListView() {
+function ListViewComponent() {
   const store = useStoreApi();
   const rows = useStore(selectedRows);
   const items = groupRows(rows);
@@ -145,3 +145,5 @@ function Row({
     </div>
   );
 }
+
+export const ListView = memo(ListViewComponent);

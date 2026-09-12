@@ -4,8 +4,10 @@
 
 import { z } from "zod";
 import {
+  attentionReason,
   message as messageSchema,
   plan as planSchema,
+  run,
   testResult,
 } from "./entities.js";
 import {
@@ -264,3 +266,12 @@ export type ViewedFile = z.output<typeof viewedFile>;
 export type Draft = z.output<typeof draft>;
 export type ReviewState = z.output<typeof reviewState>;
 export type ReviewStateChange = z.output<typeof reviewStateChange>;
+
+/** Small task-list metadata for the inbox; no detail subscriptions or Git reads required. */
+export const taskInbox = z.strictObject({
+  taskId,
+  reasonRuns: z.partialRecord(attentionReason, z.array(run)),
+  reviewedHead: sha.nullable(),
+  planVersion: count.nullable(),
+});
+export type TaskInbox = z.output<typeof taskInbox>;

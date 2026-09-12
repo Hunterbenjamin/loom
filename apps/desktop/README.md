@@ -2,42 +2,67 @@
 
 The Loom window: a Linear-style view of tasks, runs, plans, findings and diffs.
 
-**This is a shell.** There is no coordinator, no adapters, no network and no persistence. Every
-panel renders from one in-memory snapshot built in `src/renderer/fixtures`, typed with
-`@loom/core`'s real entity types. Closing the window loses everything, which is fine here and
-will stay fine later: the UI holds no durable state (principle 5).
-
-The one thing that is real is the Terminal tab, which runs a PTY through the Electron main
-process, because latency and key handling can only be judged against a real one.
+The Tracker connects to the coordinator over `@loom/protocol`: authenticated hello, snapshot,
+then ordered patches. It retains the last snapshot while disconnected and reconnects with capped
+exponential backoff. Selection and open tabs are in memory; the coordinator owns task state.
 
 ## Running it
 
 ```sh
 pnpm install
-pnpm --filter @loom/desktop dev      # vite dev server + Electron, with hot reload
-pnpm --filter @loom/desktop build    # production build into apps/desktop/out
-pnpm --filter @loom/desktop start    # run the production build
+# Use the same explicitly configured environment as the coordinator CLI:
+pnpm --filter @loom/desktop dev
+pnpm --filter @loom/desktop build
+pnpm --filter @loom/desktop start
+# No coordinator, for fixture development:
+pnpm --filter @loom/desktop exec electron-vite dev -- --fixtures
 ```
 
-If Electron's binary has not been downloaded yet (pnpm skips the install script until the
-package is allow-listed), run `node node_modules/electron/install.js` inside `apps/desktop`.
+`LOOM_INSTANCE`, `LOOM_DATA_ROOT`, `LOOM_TOKEN` and `LOOM_BIND` are read in Electron main and
+passed through the preload's narrow connection IPC. Instance, data root and token are required;
+only bind defaults (`127.0.0.1:47800`, like the CLI). There is no fallback to a stable instance or
+local database. `--fixtures` bypasses this connection entirely. For a built fixture window use
+`pnpm --filter @loom/desktop exec electron . --fixtures`.
 
-The Terminal tab runs a login shell by default. To point it at a real agent instead:
+Needs you lists one row per coordinator-derived attention reason, oldest first. Its sidebar badge
+and each window's title count reasons, across all tasks (the sidebar respects its repo filter).
+`g` then `n` opens the inbox; Enter opens the selected reason's resolving tab. Run-scoped reasons
+show role/provider/mode; if several runs share a reason, the detail offers a run selector.
+
+Approve/reject plan, approve merge at the displayed reviewed SHA, request changes, answer question
+and retry each send one protocol command. A human acknowledgement means **queued**, not completed;
+the detail retains the acknowledgement or rejection, and Activity reflects subsequent transitions.
+Commands are never replayed after a disconnect. Existing fixture-only comment/viewed-file controls
+and stage simulation cannot mutate the live snapshot. The live Review tab shows the reviewed SHA
+and findings; raw diffs/review-state writes remain unavailable in the coordinator's current API.
+
+Live terminals resolve the chosen run ID through `open_attach_session` in main, validate the returned
+pane/instance, and run its attach argv. A missing/dead pane shows an error. Closing the panel detaches
+only its client. In fixture mode Terminal can use a login shell or `LOOM_ATTACH_PANE` on an explicitly
+chosen private `loom-<instance>` socket; the performance scripts pass `--fixtures` themselves.
+
+## Isolated live smoke check
 
 ```sh
-LOOM_ATTACH_PANE=<session>:<window-id> pnpm --filter @loom/desktop dev
+pnpm --filter @loom/desktop build
+pnpm exec tsx apps/desktop/scripts/tracker-smoke.ts
 ```
 
-That attaches a client to a pane on the pane host, which is a viewer. Loom never starts, prompts or stops an
-agent from here.
+This creates a temporary Git repo and data root, runs the coordinator with `LOOM_INSTANCE=dev`,
+an ephemeral loopback port and `packages/fake-agent` providers/pane host/GitHub, and launches its
+own Electron window and user-data directory. It verifies the live snapshot, inbox shortcut,
+window count, Plan routing, approval acknowledgement, reconciled update and retention on disconnect.
+It closes and removes its resources in `finally`; no real agent, existing pane or stable instance is
+used. A screenshot is written to the system temp directory as `loom-tracker-live.png`. Fake panes
+are not attachable terminals; the existing isolated terminal harness covers PTY behavior.
 
 | Variable | Effect |
 |---|---|
-| `LOOM_ATTACH_PANE` | Attach to `<session>:<window-id>` on the pane host in the Terminal tab instead of running a shell. |
-| `LOOM_TMUX_BIN` | Absolute path to `tmux`, if it is not on `PATH`. |
-| `LOOM_INSTANCE` | Pane-host instance; the socket is `loom-<instance>`. Defaults to `dev`. |
-| `LOOM_TASKS` | Number of fixture tasks. Only the performance harness sets this (500). |
+| `LOOM_INSTANCE`, `LOOM_DATA_ROOT` | Explicit coordinator identity and data root, matching the CLI. |
+| `LOOM_BIND`, `LOOM_TOKEN` | Coordinator host:port and authentication token; token is never in a URL. |
+| `LOOM_TASKS` | Fixture task count; the performance harness uses 500. |
 | `LOOM_WIDTH`, `LOOM_HEIGHT` | Window size at launch. |
+| `LOOM_ATTACH_PANE`, `LOOM_TMUX_BIN` | Fixture-only terminal target and executable. |
 
 ## Keyboard
 

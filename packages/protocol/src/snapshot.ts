@@ -41,6 +41,7 @@ import {
   reviewState,
   runTarget,
   taskChanges,
+  taskInbox,
   taskMessage,
   taskPlan,
   taskTestResults,
@@ -51,6 +52,11 @@ import {
  * task-list level and reaches every client; the rest follow subscriptions.
  */
 export const collections = {
+  inbox: {
+    value: taskInbox,
+    key: taskId,
+    keyOf: (v: z.output<typeof taskInbox>) => v.taskId,
+  },
   repo: { value: repo, key: repoId, keyOf: (v: Repo) => v.id },
   task: { value: task, key: taskId, keyOf: (v: Task) => v.id },
   worktree: {
@@ -123,6 +129,7 @@ export function keyOf<N extends CollectionName>(
 }
 
 export const snapshotBody = z.strictObject({
+  inbox: z.array(taskInbox),
   repos: z.array(repo),
   tasks: z.array(task),
   worktrees: z.array(worktree),
@@ -142,6 +149,7 @@ export const snapshotBody = z.strictObject({
 
 /** Which snapshot collection each patch collection lands in. */
 export const COLLECTION_FIELDS = {
+  inbox: "inbox",
   repo: "repos",
   task: "tasks",
   worktree: "worktrees",
@@ -162,6 +170,7 @@ export const COLLECTION_FIELDS = {
 export type SnapshotBody = z.output<typeof snapshotBody>;
 
 export const emptySnapshotBody = (): SnapshotBody => ({
+  inbox: [],
   repos: [],
   tasks: [],
   worktrees: [],

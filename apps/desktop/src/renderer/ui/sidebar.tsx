@@ -4,6 +4,12 @@ import { VIEWS } from "../store/store.js";
 
 export function Sidebar() {
   const store = useStoreApi();
+  const connection = useStore((s) => s.connection);
+  const needsYou = useStore((s) =>
+    s.snapshot.tasks
+      .filter((t) => s.ui.repo === "all" || t.repoId === s.ui.repo)
+      .reduce((n, t) => n + t.attention.reasons.length, 0),
+  );
   const repos = useStore((s) => s.snapshot.repos);
   const repo = useStore((s) => s.ui.repo);
   const view = useStore((s) => s.ui.view);
@@ -40,10 +46,23 @@ export function Sidebar() {
           onClick={() => store.setView(item.id)}
         >
           <span>{item.label}</span>
-          <span className="count">{counts[item.id]}</span>
+          <span className="count">
+            {item.id === "needs-you" ? needsYou : counts[item.id]}
+          </span>
         </button>
       ))}
 
+      <div className="pad faint" role="status">
+        {connection === "connected"
+          ? ""
+          : connection === "fixtures"
+            ? "Fixture mode"
+            : connection === "disconnected"
+              ? "Disconnected"
+              : connection === "connecting"
+                ? "Connecting…"
+                : `Disconnected · ${connection}`}
+      </div>
       <div className="sidebar-foot">
         <button type="button" onClick={() => store.toggleTheme()}>
           {theme === "dark" ? "Light theme" : "Dark theme"}

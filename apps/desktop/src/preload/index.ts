@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("loomTerminal", {
 });
 
 contextBridge.exposeInMainWorld("loomHost", {
+  connection: () => ipcRenderer.invoke("app:connection"),
   interactive: () => ipcRenderer.send("app:interactive"),
   metrics: () => ipcRenderer.invoke("app:metrics"),
   platform: process.platform,

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The Loom window. Phase 1: a shell rendered from in-memory fixtures.",
+  "description": "The Loom Tracker window, connected to the coordinator.",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -25,10 +25,11 @@
     "cmdk": "^1.1.1",
     "node-pty": "^1.1.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "@loom/protocol": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@loom/protocol": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.2.0",
