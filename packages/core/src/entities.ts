@@ -626,7 +626,7 @@ export function summarizeTask(
 
   // Extract first sentence: up to the first period, question mark, or exclamation
   const match = desc.match(/^([^.!?]*[.!?]?)/);
-  if (!match || !match[1]) return "";
+  if (!match?.[1]) return "";
 
   let firstSentence = match[1].trim();
 
@@ -642,7 +642,10 @@ export function summarizeTask(
 
   // Truncate to 140 chars if necessary (remove punctuation if truncating)
   if (firstSentence.length > 140) {
-    firstSentence = `${firstSentence.substring(0, 137).trim().replace(/[.!?]+$/, "")}...`;
+    firstSentence = `${firstSentence
+      .substring(0, 137)
+      .trim()
+      .replace(/[.!?]+$/, "")}...`;
   }
 
   return firstSentence;
