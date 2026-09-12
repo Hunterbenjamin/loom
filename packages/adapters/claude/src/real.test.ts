@@ -87,4 +87,40 @@ describe.skipIf(!enabled)("a real headless run", () => {
     // `claude agents --json` must stay parseable against whatever else is running.
     expect(Array.isArray(await adapter.listSessions())).toBe(true);
   });
+
+  test("closeHeadless() releases a completed SDK run", {
+    timeout: 180_000,
+  }, async () => {
+    const settingsPath = join(dir, "settings.json");
+    await adapter.writeSettings(settingsPath);
+
+    const anotherSessionId = randomUUID() as ProviderSessionId;
+    await adapter.startHeadless({
+      sessionId: anotherSessionId,
+      resume: false,
+      cwd: dir as WorktreePath,
+      model: "haiku",
+      settingsPath,
+      readOnly: true,
+      prompt: PROMPT,
+    });
+
+    // Wait for the run to complete
+    await waitFor(
+      async () => (await adapter.hookSummary(anotherSessionId)).lastStop,
+      150_000,
+    );
+
+    // Get the state before closing
+    const stateBefore = await adapter.headlessState(anotherSessionId);
+    expect(stateBefore).not.toBeNull();
+
+    // Close the headless run
+    await adapter.closeHeadless(anotherSessionId);
+
+    // After close, the run should be removed from the adapter's tracking
+    await expect(
+      adapter.sendHeadless({ sessionId: anotherSessionId, text: "hello" }),
+    ).rejects.toThrow(/no headless run/);
+  });
 });

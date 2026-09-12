@@ -192,10 +192,11 @@ export class Executor {
           await (await adapters.codex(action.taskId)).unsubscribe(
             run.sessionId,
           );
-        else if (run.mode === "headless")
-          await adapters.claude
-            .interruptHeadless(run.sessionId)
-            .catch(() => undefined);
+        else if (run.mode === "headless") {
+          // Closing terminates the subprocess directly; an interrupt RPC can hang after exit.
+          // Let failures reach the outbox so cleanup can be retried.
+          await adapters.claude.closeHeadless(run.sessionId);
+        }
         return {};
       }
       case "push_branch": {

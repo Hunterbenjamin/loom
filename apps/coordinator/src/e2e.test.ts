@@ -70,6 +70,17 @@ test("a task runs Todo to Done through plan, review, a fix round and a merge", a
 
   const done = h.store.loadTaskState(taskId);
   expect(done.runs.every((run) => run.endedAt !== null)).toBe(true);
+  for (const run of done.runs) {
+    if (run.provider !== "claude" || run.mode !== "headless" || !run.sessionId)
+      continue;
+    expect(await h.adapters.claude.headlessState(run.sessionId)).toBeNull();
+    expect(
+      (await h.adapters.claude.listSessions()).some(
+        (s) => s.sessionId === run.sessionId,
+      ),
+    ).toBe(false);
+    await h.adapters.claude.closeHeadless(run.sessionId);
+  }
   expect(done.task.attention.reasons).toEqual([]);
   const transitions = h.store.transitions(taskId).map((t) => t.to);
   expect(transitions).toEqual(
