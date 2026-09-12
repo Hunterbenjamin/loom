@@ -210,7 +210,10 @@ export const run = z.strictObject({
   worktreePath,
   round: count,
   attempts: count,
-  model: z.string().min(1),
+  // Empty for a session Loom did not launch (core records `model: ""` for external runs). With
+  // `min(1)` here, one adopted session made every publish of its task fail and hid the task
+  // from every client, CLI included, at the moment it needed attention (2026-09-12).
+  model: z.string(),
   sessionId: providerSessionId.nullable(),
   sessionEpoch: count,
   codexGeneration: count.nullable(),
