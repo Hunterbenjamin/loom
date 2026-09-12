@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { inboxRows } from "../store/inbox.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { useWindowMode } from "../window-mode.js";
 import { attentionPanes } from "../workbench/selectors.js";
 
 const Terminal = lazy(() =>
@@ -11,6 +12,7 @@ const Terminal = lazy(() =>
 
 /** Window-local panel state: a toggle/resize never updates the task store or its list. */
 export function LeadBar({ onAttention }: { onAttention?: () => void } = {}) {
+  const mode = useWindowMode();
   const store = useStoreApi();
   const connection = useStore((s) => s.connection);
   const instance = useStore((s) => s.instance);
@@ -141,14 +143,18 @@ export function LeadBar({ onAttention }: { onAttention?: () => void } = {}) {
         </span>
         <button
           type="button"
-          onClick={() => void window.loomHost.openWindow("workbench")}
+          onClick={() =>
+            void window.loomHost.setMode(
+              mode === "tracker" ? "workbench" : "tracker",
+            )
+          }
         >
-          Workbench <kbd>⌘⇧W</kbd>
+          {mode === "tracker" ? "Workbench" : "Issue tracker"} <kbd>⌘⇧W</kbd>
         </button>
         <button
           type="button"
           onClick={
-            onAttention ?? (() => void window.loomHost.openWindow("workbench"))
+            onAttention ?? (() => void window.loomHost.setMode("workbench"))
           }
         >
           Agents needing attention · {agentCount}

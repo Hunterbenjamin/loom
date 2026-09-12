@@ -177,32 +177,36 @@ describe("ProviderLabel", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  test("renders role·provider·model for single run", () => {
+  test("renders the role and short model name", () => {
     const fixture = buildSnapshot();
-    const run = fixture.runs[0];
-    if (!run) throw new Error("No run in fixture");
-
+    const run = {
+      ...fixture.runs[0],
+      role: "planner",
+      provider: "claude",
+      model: "claude-haiku-4-5-20251001",
+    } as Run;
     const elem = renderLabel(run, [run]);
-    const text = elem.textContent || "";
-    expect(text).toContain("·");
-    expect(text).toContain(run.role);
-    expect(text).toContain(run.provider);
-    expect(text).toContain(run.model);
-    const parts = text.split("·").map((s) => s.trim());
-    expect(parts.length).toBe(3);
+    expect(elem.textContent).toBe("planner haiku");
+    expect(elem.title).toContain(run.model);
   });
 
-  test("renders role·provider·model +N for multiple runs", () => {
+  test("keeps provider details and extra runs in the tooltip, not the label", () => {
     const fixture = buildSnapshot();
-    const run = fixture.runs[0];
-    if (!run) throw new Error("No run in fixture");
-
-    const runs = [run, { ...run, id: runId("run-2") }];
+    const run = {
+      ...fixture.runs[0],
+      role: "implementer",
+      provider: "codex",
+      model: "gpt-6-astra",
+    } as Run;
+    const runs = [
+      run,
+      { ...run, id: runId("run-2") },
+      { ...run, id: runId("run-3") },
+    ];
     const elem = renderLabel(run, runs);
-    const text = elem.textContent || "";
-    expect(text).toContain("·");
-    expect(text).toContain("+1");
-    expect(text).toContain(run.model);
+    expect(elem.textContent).toBe("implementer astra");
+    expect(elem.title).toContain("gpt-6-astra");
+    expect(elem.title).toContain("3 runs");
   });
 
   test("handles empty model gracefully", () => {
@@ -233,7 +237,8 @@ describe("ProviderLabel", () => {
     const elem = renderLabel(run2, [run1, run2, run3]);
     const text = elem.textContent || "";
     expect(text).toContain("new-model");
-    expect(text).toContain("+2");
+    expect(text).not.toContain("+2");
+    expect(elem.title).toContain("3 runs");
   });
 
   test("handles external runs with empty model", () => {
@@ -254,6 +259,6 @@ describe("ProviderLabel", () => {
 
     const runs = [run, { ...run, id: runId("run-2") }];
     const elem = renderLabel(run, runs);
-    expect(elem.title).toContain("2 run(s)");
+    expect(elem.title).toContain("2 runs");
   });
 });

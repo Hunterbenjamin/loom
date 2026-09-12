@@ -7,16 +7,20 @@ import type {
   IsoTime,
   McpServerEntry,
   Observations,
+  PaneRef,
   ProviderSessionId,
+  RunId,
   TaskId,
   TaskState,
   WorktreePath,
 } from "@loom/core";
+import { normalizeText } from "@loom/core";
+import { paneIdentity } from "@loom/protocol";
 import type { OperatorEvent, Store, TaskNote } from "@loom/store";
 import { z } from "zod";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
-import { newToken } from "./derive.js";
+import { newToken, sha256 } from "./derive.js";
 import { inspectTask } from "./inspect.js";
 import {
   eventKey,
@@ -25,6 +29,7 @@ import {
 } from "./operator-evidence.js";
 import { attentionOccurrence, operatorPolicy } from "./operator-policy.js";
 import { operatorBrief } from "./prompts.js";
+import { runEnvironment } from "./recipes.js";
 
 const recipeSchema = z.strictObject({
   sessionId: z.string().uuid(),
@@ -34,6 +39,15 @@ const recipeSchema = z.strictObject({
   mcpPort: z.number().int(),
   cwd: z.string(),
   model: z.string().optional(),
+  pane: paneIdentity.nullable().optional(),
+  delivery: z
+    .object({
+      hash: z.string(),
+      at: z.string(),
+      promptId: z.string().nullable(),
+    })
+    .nullable()
+    .optional(),
 });
 const receiptSchema = z.object({ inputId: z.string(), command: z.string() });
 export const filingInput = z.strictObject({
@@ -49,7 +63,7 @@ export const filingInput = z.strictObject({
 });
 interface Deps {
   store: Store;
-  adapters: Adapters;
+  adapters: Pick<Adapters, "claude" | "paneHost">;
   config: CoordinatorConfig;
   mcpEntry(token: string): McpServerEntry;
   now(): IsoTime;
@@ -70,7 +84,7 @@ export class OperatorSession {
   private lifecycle: Promise<unknown> = Promise.resolve();
   private calls: Promise<unknown> = Promise.resolve();
   private active = false;
-  private completedTurns = 0;
+  private nativeStatus: "idle" | "working" | "waiting" | "unknown" = "unknown";
   private delivered = new Set<string>();
   private error: string | null = null;
   private ready = false;
@@ -125,8 +139,9 @@ export class OperatorSession {
     this.ready = false;
     await this.calls.catch(() => {});
     await this.exclusive(async () => {
+      // The interactive process belongs to tmux and survives coordinator restarts.
       if (this.recipe)
-        await this.deps.adapters.claude.stopHeadless(
+        await this.deps.adapters.claude.closeHeadless(
           this.recipe.sessionId as ProviderSessionId,
         );
       this.active = false;
@@ -145,6 +160,8 @@ export class OperatorSession {
       this.error = null;
       this.deps.store.operator.set("session_error", null);
       this.ready = true;
+      if (!this.recipe) await this.initialize();
+      await this.ensureTerminal();
     }).then(() => this.pump());
   }
   stop() {
@@ -155,9 +172,87 @@ export class OperatorSession {
       await this.deps.adapters.claude.stopHeadless(
         this.recipe.sessionId as ProviderSessionId,
       );
+      if (this.recipe.pane)
+        await this.deps.adapters.paneHost.closePane(this.recipe.pane);
+      await this.save({ ...this.recipe, delivery: null });
       this.active = false;
       this.delivered.clear();
     });
+  }
+  get paneRef(): PaneRef | null {
+    return this.recipe?.pane ?? null;
+  }
+  private async ensureTerminal(): Promise<PaneRef> {
+    const recipe = this.recipe;
+    if (!recipe) throw new Error("Missing Operator identity");
+    const { claude, paneHost } = this.deps.adapters;
+    if (recipe.pane) {
+      const pane = await paneHost.getPane(recipe.pane);
+      if (pane && !pane.dead && pane.startCwd === recipe.cwd) return pane.ref;
+    }
+    // Never share a Claude identity between the old headless process and the TUI.
+    const owned = await claude.headlessState(
+      recipe.sessionId as ProviderSessionId,
+    );
+    if (owned && !owned.exited)
+      await claude.closeHeadless(recipe.sessionId as ProviderSessionId);
+    const sessions = await claude.listSessions();
+    if (
+      sessions.some(
+        (s) => s.sessionId === recipe.sessionId && s.cwd === recipe.cwd,
+      )
+    )
+      throw new Error(
+        "Operator session is still live without its recorded terminal; refusing a duplicate launch",
+      );
+    const settingsPath = join(this.directory, "settings.json");
+    await claude.writeSettings(settingsPath, this.deps.mcpEntry(recipe.token));
+    const resume =
+      recipe.launched &&
+      (await claude.resumable(
+        recipe.sessionId as ProviderSessionId,
+        recipe.cwd as WorktreePath,
+      ));
+    const args = [
+      ...claude.interactiveArgs({
+        sessionId: recipe.sessionId as ProviderSessionId,
+        resume,
+        model:
+          recipe.model ??
+          this.deps.config.operatorModel ??
+          this.deps.config.models.claude,
+        settingsPath,
+      }),
+      "--tools",
+      "",
+      "--strict-mcp-config",
+      "--setting-sources",
+      "",
+      "--append-system-prompt",
+      operatorBrief(),
+    ];
+    await this.save({ ...recipe, launched: true });
+    const { workspaceId } = await paneHost.ensureWorkspace({
+      taskId: "operator" as TaskId,
+      cwd: recipe.cwd as WorktreePath,
+      label: "Operator",
+    });
+    const pane = await paneHost.ensurePane({
+      workspaceId,
+      runId: "operator" as RunId,
+      cwd: recipe.cwd as WorktreePath,
+      executable: this.deps.config.claudeExecutable,
+      args,
+      env: runEnvironment(process.env, {
+        LOOM_INSTANCE: this.deps.config.instance,
+        LOOM_MCP_TOKEN: recipe.token,
+      }),
+    });
+    await this.save({
+      ...(this.recipe as NonNullable<typeof this.recipe>),
+      pane,
+    });
+    return pane;
   }
   private async initialize() {
     const token = newToken();
@@ -183,9 +278,11 @@ export class OperatorSession {
         ? ("stopped" as const)
         : this.error
           ? ("error" as const)
-          : this.active
-            ? ("working" as const)
-            : ("idle" as const),
+          : this.nativeStatus === "waiting"
+            ? ("waiting" as const)
+            : this.active
+              ? ("working" as const)
+              : this.nativeStatus,
       queueLength: this.deps.store.operator.queueLength(),
       lastAction: notes[0]?.outcome ?? null,
       lastActionAt: notes[0]?.at ?? null,
@@ -269,40 +366,73 @@ export class OperatorSession {
     return this.exclusive(async () => {
       if (!this.ready || this.recipe?.stopped) return;
       const events = this.deps.store.operator.pending();
-      if (this.recipe && this.active) {
-        const state = await this.deps.adapters.claude.headlessState(
-          this.recipe.sessionId as ProviderSessionId,
-        );
-        if (state?.exited) {
-          this.active = false;
-          this.error =
-            "Operator child exited; queued events retained. Open Operator to retry.";
-          this.deps.store.operator.set("session_error", this.error);
-          return;
-        }
-        if ((state?.completedTurns ?? 0) <= this.completedTurns) return;
-        this.completedTurns = state?.completedTurns ?? 0;
-        this.active = false;
-        this.delivered.clear();
-        if (state?.lastTurn?.outcome === "failed") {
-          this.error = sanitizeEvidence(
-            `Operator turn failed: ${state.lastTurn.error ?? "unknown provider error"}. Queued events retained. Open Operator to retry.`,
-          );
-          this.deps.store.operator.set("session_error", this.error);
-          return;
-        }
-      }
-      if (!events.length || this.error) return;
+      if (this.error) return;
+      if (!this.recipe && !events.length) return;
       if (!this.recipe) await this.initialize();
       const recipe = this.recipe;
       if (!recipe) return;
-      await this.deps.adapters.claude.writeSettings(
-        join(this.directory, "settings.json"),
-        this.deps.mcpEntry(recipe.token),
+      const pane = await this.ensureTerminal();
+      const sessionId = recipe.sessionId as ProviderSessionId;
+      const [sessions, hooks] = await Promise.all([
+        this.deps.adapters.claude.listSessions(),
+        this.deps.adapters.claude.hookSummary(sessionId),
+      ]);
+      const session = sessions.find(
+        (s) => s.sessionId === sessionId && s.cwd === recipe.cwd,
       );
-      const owned = await this.deps.adapters.claude
-        .headlessState(recipe.sessionId as ProviderSessionId)
-        .catch(() => null);
+      this.nativeStatus =
+        hooks.pendingDialog || session?.status === "waiting"
+          ? "waiting"
+          : session?.status === "busy"
+            ? "working"
+            : session?.status === "idle"
+              ? "idle"
+              : "unknown";
+      const delivery = recipe.delivery;
+      if (delivery) {
+        this.active = true;
+        if (hooks.stopFailure && hooks.stopFailure.at >= delivery.at) {
+          this.error = sanitizeEvidence(
+            `Operator turn failed: ${hooks.stopFailure.error}. Open Operator to retry.`,
+          );
+          this.deps.store.operator.set("session_error", this.error);
+          this.active = false;
+          await this.save({
+            ...(this.recipe as NonNullable<typeof this.recipe>),
+            delivery: null,
+          });
+          return;
+        }
+        const submitted = hooks.promptSubmits.find(
+          (p) => p.textHash === delivery.hash && p.at >= delivery.at,
+        );
+        const promptId = delivery.promptId ?? submitted?.promptId;
+        if (promptId && !delivery.promptId)
+          await this.save({
+            ...(this.recipe as NonNullable<typeof this.recipe>),
+            delivery: { ...delivery, promptId },
+          });
+        if (!promptId || hooks.lastStop?.promptId !== promptId) {
+          if (
+            !promptId &&
+            Date.parse(this.deps.now()) - Date.parse(delivery.at) > 30000
+          ) {
+            this.error =
+              "Operator input delivery is unconfirmed; inspect its terminal before retrying.";
+            this.deps.store.operator.set("session_error", this.error);
+          }
+          return;
+        }
+        this.active = false;
+        this.delivered.clear();
+        await this.save({
+          ...(this.recipe as NonNullable<typeof this.recipe>),
+          delivery: null,
+        });
+      }
+      // Native provider status is the send gate. Never paste into an approval or busy turn.
+      if (!events.length || session?.status !== "idle" || hooks.pendingDialog)
+        return;
       const prompt = `${operatorBrief()}\nEvents (coalesced by task):\n${JSON.stringify(
         events.reduce<Record<string, OperatorEvent[]>>((groups, e) => {
           const key = e.taskId ?? "instance";
@@ -320,43 +450,16 @@ export class OperatorSession {
       this.active = true;
       this.delivered = new Set(events.map((e) => e.id));
       try {
-        if (owned && !owned.exited)
-          await this.deps.adapters.claude.sendHeadless({
-            sessionId: recipe.sessionId as ProviderSessionId,
-            text: prompt,
-          });
-        else {
-          const sessions = await this.deps.adapters.claude.listSessions();
-          if (
-            sessions.some(
-              (s) => s.sessionId === recipe.sessionId && s.cwd === recipe.cwd,
-            )
-          )
-            throw new Error(
-              "Operator identity is still live without an owned child handle; refusing a duplicate launch",
-            );
-          const resume =
-            recipe.launched &&
-            (await this.deps.adapters.claude.resumable(
-              recipe.sessionId as ProviderSessionId,
-              recipe.cwd as WorktreePath,
-            ));
-          await this.save({ ...recipe, launched: true });
-          this.completedTurns = 0;
-          await this.deps.adapters.claude.startHeadless({
-            sessionId: recipe.sessionId as ProviderSessionId,
-            resume,
-            cwd: recipe.cwd as WorktreePath,
-            model:
-              recipe.model ??
-              this.deps.config.operatorModel ??
-              this.deps.config.models.claude,
-            settingsPath: join(this.directory, "settings.json"),
-            readOnly: true,
-            mcpOnly: true,
-            prompt,
-          });
-        }
+        // Persist before paste. Only UserPromptSubmit confirms delivery; an uncertain paste is not replayed.
+        await this.save({
+          ...(this.recipe as NonNullable<typeof this.recipe>),
+          delivery: {
+            hash: sha256(normalizeText(prompt)),
+            at: this.deps.now(),
+            promptId: null,
+          },
+        });
+        await this.deps.adapters.paneHost.pasteText(pane, prompt);
       } catch (e) {
         this.active = false;
         this.error = sanitizeEvidence(String(e));

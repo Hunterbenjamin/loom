@@ -14,7 +14,7 @@ export const taskNote = z.strictObject({
 export const operatorState = z.strictObject({
   id: z.literal("operator"),
   sessionId: z.string().nullable(),
-  status: z.enum(["stopped", "idle", "working", "error"]),
+  status: z.enum(["stopped", "idle", "working", "waiting", "unknown", "error"]),
   queueLength: z.number().int().nonnegative(),
   lastAction: z.string().nullable(),
   lastActionAt: z.string().datetime().nullable(),

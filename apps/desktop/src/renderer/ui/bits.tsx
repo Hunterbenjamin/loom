@@ -1,6 +1,10 @@
 import type { Run, Task } from "@loom/core";
 import { memo } from "react";
-import { ATTENTION_LABELS, RUN_STATUS_LABELS } from "./format.js";
+import {
+  ATTENTION_LABELS,
+  RUN_STATUS_LABELS,
+  shortModelName,
+} from "./format.js";
 
 export function AttentionChips({ task }: { task: Task }) {
   if (task.attention.reasons.length === 0) return null;
@@ -52,17 +56,11 @@ export const ProviderLabel = memo(function ProviderLabel({
 }) {
   if (!run) return blank ? null : <span className="faint">—</span>;
 
-  // Show role · provider · model for a single run (e.g., implementer · codex · claude-opus-5)
-  const label = `${run.role} · ${run.provider} · ${run.model || "—"}`;
-
-  // If multiple runs, show the most recent one's details plus a count
-  if (runs && runs.length > 1) {
-    return (
-      <span className="dim" title={`${runs.length} run(s) for this task`}>
-        {label} <span className="faint">+{runs.length - 1}</span>
-      </span>
-    );
-  }
-
-  return <span className="dim">{label}</span>;
+  const label = `${run.role} ${shortModelName(run.model)}`;
+  const details = `${run.role} · ${run.provider} · ${run.model || "—"}${runs && runs.length > 1 ? ` · ${runs.length} runs` : ""}`;
+  return (
+    <span className="dim" title={details}>
+      {label}
+    </span>
+  );
 });

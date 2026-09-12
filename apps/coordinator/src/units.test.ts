@@ -404,3 +404,30 @@ test("deriveBashPrefixes returns fixed prefixes when repoById is not provided", 
 
   expect(prefixes).toEqual(FIXED_BASH_PREFIXES);
 });
+
+test("task provider overrides and explicit Codex reasoning are validated", () => {
+  const env = {
+    LOOM_INSTANCE: "dev",
+    LOOM_DATA_ROOT: "/tmp/loom",
+    LOOM_TOKEN: "0123456789abcdef0123",
+    LOOM_PROVIDER_PLANNER: "codex",
+    LOOM_PROVIDER_IMPLEMENTER: "codex",
+    LOOM_PROVIDER_REVIEWER: "codex",
+    LOOM_MODEL_CODEX: "gpt-5.6-sol",
+    LOOM_CODEX_REASONING_EFFORT: "medium",
+  };
+  const config = configFromEnvironment(env);
+  expect(config.providerOverrides).toEqual({
+    planner: "codex",
+    implementer: "codex",
+    reviewer: "codex",
+  });
+  expect(config.models.codex).toBe("gpt-5.6-sol");
+  expect(config.codexReasoningEffort).toBe("medium");
+  expect(() =>
+    configFromEnvironment({ ...env, LOOM_PROVIDER_PLANNER: "sol" }),
+  ).toThrow();
+  expect(() =>
+    configFromEnvironment({ ...env, LOOM_CODEX_REASONING_EFFORT: "medum" }),
+  ).toThrow();
+});

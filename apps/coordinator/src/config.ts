@@ -64,6 +64,25 @@ export const configSchema = z
       .prefault({}),
     leadModel: z.string().min(1).optional(),
     models: z.object({ codex: z.string().min(1), claude: z.string().min(1) }),
+    providerOverrides: z
+      .object({
+        planner: z.enum(["codex", "claude"]).optional(),
+        implementer: z.enum(["codex", "claude"]).optional(),
+        reviewer: z.enum(["codex", "claude"]).optional(),
+      })
+      .default({}),
+    codexReasoningEffort: z
+      .enum([
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra",
+      ])
+      .optional(),
     /** GitHub logins Loom and its agents push as; their comments are not findings. */
     excludedAuthors: z.array(z.string().min(1)).default([]),
     caps: z
@@ -113,6 +132,8 @@ export const reconcileConfig = (
   worktreeRoot: config.worktreeRoot,
   baseBranch: config.baseBranch,
   models: config.models as Record<Provider, string>,
+  providerOverrides: config.providerOverrides,
+  codexReasoningEffort: config.codexReasoningEffort,
 });
 
 const required = (
@@ -145,6 +166,12 @@ export function configFromEnvironment(
       codex: env.LOOM_MODEL_CODEX ?? "gpt-5.1-codex",
       claude: env.LOOM_MODEL_CLAUDE ?? "claude-opus-5",
     },
+    providerOverrides: {
+      planner: optional("LOOM_PROVIDER_PLANNER"),
+      implementer: optional("LOOM_PROVIDER_IMPLEMENTER"),
+      reviewer: optional("LOOM_PROVIDER_REVIEWER"),
+    },
+    codexReasoningEffort: optional("LOOM_CODEX_REASONING_EFFORT"),
     operatorModel: optional("LOOM_MODEL_OPERATOR"),
     operator: {
       repoId: optional("LOOM_OPERATOR_REPO"),

@@ -268,6 +268,8 @@ export interface Run {
   /** Launches of this run so far, 1-based. A retry bumps it and keeps the row. */
   attempts: number;
   model: string;
+  /** Captured at creation; retries and recovery retain the same reasoning setting. */
+  reasoningEffort?: string;
   /**
    * (ref: provider) Claude: UUIDv5 of `<runId>#<sessionEpoch>`, chosen before launch, so never null,
    * and reused by every attempt of that epoch.

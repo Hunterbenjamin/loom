@@ -135,10 +135,7 @@ export interface GitHubAdapter {
  * Every method is idempotent on its key (`taskId`, `runId`, `PaneRef`).
  */
 export interface PaneHost {
-  /**
-   * Idempotent: returns the task's session name. The session itself exists exactly while it
-   * holds a pane Loom opened; `ensurePane` and `createScratch` create it on demand.
-   */
+  /** Idempotent: reserves a task session name; creates no shell. The first pane creates the session. */
   ensureWorkspace(req: {
     taskId: TaskId;
     cwd: WorktreePath;
@@ -157,8 +154,11 @@ export interface PaneHost {
     args: string[];
     env: Record<string, string>;
   }): Promise<PaneRef>;
-  /** Human shell in the task's workspace, idempotent on key within a host generation. */
+  /** Human shell, idempotent on key within a host generation. */
   createScratch(req: {
+    /** Allow a standalone human terminal workspace to be created without a task. */
+    createWorkspace?: boolean;
+    label?: string;
     workspaceId: string;
     key: string;
     cwd: WorktreePath;
@@ -202,6 +202,8 @@ export interface PaneHost {
   ): Promise<{ id: string; cols: number; rows: number }[]>;
   /** Kills a pane Loom started, named by a ref from the current generation. Idempotent. */
   closePane(ref: PaneRef): Promise<void>;
+  /** Explicit human close of a terminal from this host's inventory, including untagged shells. */
+  closeTerminal(ref: PaneRef): Promise<void>;
   subscribe(onHint: OnHint): Unsubscribe;
 }
 
@@ -230,6 +232,8 @@ export interface CodexAdapter {
   startTurn(req: {
     threadId: ProviderSessionId;
     text: string;
+    model?: string;
+    effort?: string;
   }): Promise<{ turnId: string }>;
   steerTurn(req: {
     threadId: ProviderSessionId;

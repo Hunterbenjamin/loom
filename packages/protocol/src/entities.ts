@@ -222,6 +222,7 @@ export const run = z.strictObject({
   // `min(1)` here, one adopted session made every publish of its task fail and hid the task
   // from every client, CLI included, at the moment it needed attention (2026-09-12).
   model: z.string(),
+  reasoningEffort: z.string().min(1).optional(),
   sessionId: providerSessionId.nullable(),
   sessionEpoch: count,
   codexGeneration: count.nullable(),

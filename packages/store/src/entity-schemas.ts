@@ -149,6 +149,7 @@ export const runSchema = contract<Run>()(
     round: count,
     attempts: count,
     model: text,
+    reasoningEffort: text.min(1).optional(),
     sessionId: id.nullable(),
     sessionEpoch: count,
     codexGeneration: count.nullable(),

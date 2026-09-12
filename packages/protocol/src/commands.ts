@@ -58,14 +58,37 @@ export const command = z.union([
     noteId: z.string().min(1).max(300),
   }),
   z.strictObject({ kind: z.literal("open_operator_session") }),
+  z.strictObject({ kind: z.literal("open_operator_terminal") }),
   z.strictObject({ kind: z.literal("stop_operator_session") }),
   z.strictObject({ kind: z.literal("operator_status") }),
+  z.strictObject({
+    kind: z.literal("open_workbench_terminal"),
+    key: z.string().uuid(),
+    label: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80)
+      .regex(/^[^\p{Cc}]+$/u)
+      .optional(),
+  }),
   z.strictObject({
     kind: z.literal("open_pane_session"),
     target: paneIdentity,
   }),
   z.strictObject({
+    kind: z.literal("close_terminal"),
+    target: paneIdentity,
+  }),
+  z.strictObject({
     kind: z.literal("create_scratch"),
+    label: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80)
+      .regex(/^[^\p{Cc}]+$/u)
+      .optional(),
     taskId,
     key: z.string().uuid(),
   }),
@@ -134,6 +157,7 @@ export const ackResult = z.union([
   }),
   z.strictObject({ kind: z.literal("operator_state"), state: operatorState }),
   z.strictObject({ kind: z.literal("scratch_created"), pane: paneView }),
+  z.strictObject({ kind: z.literal("terminal_closed"), target: paneIdentity }),
   z.strictObject({ kind: z.literal("lead_stopped") }),
   /**
    * The command was validated and recorded as an input. It has not run yet: watch the patches and

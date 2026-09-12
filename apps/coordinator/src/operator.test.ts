@@ -91,9 +91,9 @@ test("autoFix starts a planner through normal reconciliation", async () => {
     h.store.transitions(task.id).map((transition) => transition.to),
   ).toEqual(expect.arrayContaining(["todo", "planning"]));
 });
-test("one headless identity is saved before launch and stopped events remain durable", async () => {
+test("one interactive identity is saved before launch and stopped events remain durable", async () => {
   const h = await setup();
-  const original = h.adapters.claude.startHeadless;
+  const original = h.paneHost.ensurePane;
   const launch = vi.fn(async (req: Parameters<typeof original>[0]) => {
     const recipe = JSON.parse(
       await readFile(
@@ -101,18 +101,19 @@ test("one headless identity is saved before launch and stopped events remain dur
         "utf8",
       ),
     );
-    expect(recipe.sessionId).toBe(req.sessionId);
-    expect(req.mcpOnly).toBe(true);
-    await original(req);
+    expect(req.args).toContain(recipe.sessionId);
+    expect(req.args).toContain("--strict-mcp-config");
+    expect(req.args[req.args.indexOf("--tools") + 1]).toBe("");
+    return original(req);
   });
-  h.adapters.claude.startHeadless = launch;
+  h.paneHost.ensurePane = launch;
   h.coordinator.operator.failure("pass_failed", null, "launch evidence");
   await Promise.all([
     h.coordinator.operator.pump(),
     h.coordinator.operator.pump(),
   ]);
   expect(launch).toHaveBeenCalledTimes(1);
-  expect(h.paneHost.launches).toHaveLength(0);
+  expect(h.paneHost.launches).toHaveLength(1);
   await h.coordinator.operator.stop();
   h.coordinator.operator.failure(
     "publish_failed",
@@ -178,7 +179,7 @@ test("restart retains stop intent, queue, identity, dedupe and hourly accounting
 
 test("in-turn arrivals attach to the next tool result and do not start a second child", async () => {
   const h = await setup();
-  const launch = vi.spyOn(h.adapters.claude, "startHeadless");
+  const launch = vi.spyOn(h.paneHost, "ensurePane");
   h.coordinator.operator.failure("pass_failed", null, "first arrival");
   await h.coordinator.operator.pump();
   h.coordinator.operator.failure("publish_failed", null, "second arrival");
@@ -229,4 +230,45 @@ test("quota uses one escalation note and repeated failures retain occurrence cou
   if (!event) throw new Error("quota event");
   h.coordinator.operator.failure("pass_failed", null, event.message);
   expect(h.store.operator.event(event.id)?.count).toBe(2);
+});
+
+test("interactive Operator gates input on native idle and does not replay uncertain delivery", async () => {
+  const h = await setup();
+  await h.coordinator.operator.open();
+  const id = h.coordinator.operator.sessionId;
+  if (!id) throw new Error("Missing session");
+  const session = h.providers.get(
+    id as import("@loom/core").ProviderSessionId,
+  ).value;
+  if (session.provider !== "claude" || !session.agentsEntry)
+    throw new Error("Missing native session");
+  session.agentsEntry.status = "waiting";
+  const paste = vi.spyOn(h.paneHost, "pasteText").mockResolvedValue("written");
+  h.coordinator.operator.failure("pass_failed", null, "Delivery test");
+  await h.coordinator.operator.pump();
+  expect(paste).not.toHaveBeenCalled();
+  session.agentsEntry.status = "busy";
+  await h.coordinator.operator.pump();
+  expect(paste).not.toHaveBeenCalled();
+  session.agentsEntry.status = "idle";
+  session.hooks.pendingDialog = {
+    kind: "permission",
+    tool: "test",
+    at: h.clock.now(),
+  };
+  await h.coordinator.operator.pump();
+  expect(paste).not.toHaveBeenCalled();
+  session.hooks.pendingDialog = null;
+  await h.coordinator.operator.pump();
+  expect(paste).toHaveBeenCalledOnce();
+  session.agentsEntry.status = "waiting";
+  await h.coordinator.operator.pump();
+  expect(h.coordinator.operator.state().status).toBe("waiting");
+  expect(paste).toHaveBeenCalledOnce();
+  await h.coordinator.operator.close();
+  await h.coordinator.operator.load();
+  await h.coordinator.operator.recover();
+  await h.coordinator.operator.pump();
+  expect(paste).toHaveBeenCalledOnce();
+  expect(h.store.operator.pending()).toHaveLength(1);
 });

@@ -67,6 +67,10 @@ export async function writeCodexHomeConfig(
     ? "read-only"
     : "danger-full-access";
   const lines = [
+    `model = ${JSON.stringify(action.model)}`,
+    ...(action.reasoningEffort
+      ? [`model_reasoning_effort = ${JSON.stringify(action.reasoningEffort)}`]
+      : []),
     'approval_policy = "never"',
     `sandbox_mode = ${JSON.stringify(sandbox)}`,
     "",
@@ -173,6 +177,9 @@ export async function startRun(
     provider: action.provider,
     mode: action.mode,
     model: action.model,
+    ...(action.reasoningEffort
+      ? { reasoningEffort: action.reasoningEffort }
+      : {}),
     attempt: action.attempt,
     sessionEpoch: action.sessionEpoch,
     sessionId: action.sessionId,
@@ -260,7 +267,12 @@ export async function startRun(
         ? "read-only"
         : "danger-full-access",
       developerInstructions: prompt,
-      config: { mcp_servers: { loom: codexMcpServer(deps.mcpEntry(token)) } },
+      config: {
+        mcp_servers: { loom: codexMcpServer(deps.mcpEntry(token)) },
+        ...(action.reasoningEffort
+          ? { model_reasoning_effort: action.reasoningEffort }
+          : {}),
+      },
     });
     threadId = started.threadId;
     generation = started.generation;

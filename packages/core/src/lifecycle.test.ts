@@ -464,3 +464,53 @@ describe("launch results and persisted outbox", () => {
     );
   });
 });
+
+it("uses instance routing and pins model and reasoning on a new planner", () => {
+  const f = fixture("planning");
+  f.state.runs = [];
+  f.observations.runs = [];
+  f.state.plan = null;
+  f.state.review = null;
+  f.state.task.prNumber = null;
+  f.observations.github = { ok: true, at: now, value: null };
+  f.state.task.providers.planner = "claude";
+  f.state.desiredRun = { role: "planner", round: 0, resume: false };
+  f.state.config = {
+    ...f.state.config,
+    models: { codex: "gpt-5.6-sol", claude: "old-claude" },
+    providerOverrides: { planner: "codex" },
+    codexReasoningEffort: "medium",
+  };
+  f.observations.capacity.caps.claude = 0;
+  const result = reconcile(f.state, f.observations);
+  expect(result.next.task.providers.planner).toBe("codex");
+  expect(result.next.runs[0]).toMatchObject({
+    provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningEffort: "medium",
+  });
+  expect(result.actions.find((a) => a.kind === "start_run")).toMatchObject({
+    provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningEffort: "medium",
+  });
+});
+
+it("a config change does not migrate a retry to another provider or model", () => {
+  const f = failure();
+  f.run.reasoningEffort = "high";
+  f.state.config = {
+    ...f.state.config,
+    providerOverrides: { planner: "claude" },
+    models: { codex: "new-model", claude: "other-model" },
+    codexReasoningEffort: "medium",
+  };
+  const failed = reconcile(f.state, f.observations);
+  f.observations.now = "2026-09-12T00:00:10.000Z" as typeof now;
+  const result = fixed(failed.next, f.observations);
+  expect(result.actions.find((a) => a.kind === "start_run")).toMatchObject({
+    provider: "codex",
+    model: "fake",
+    reasoningEffort: "high",
+  });
+});

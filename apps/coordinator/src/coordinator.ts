@@ -6,6 +6,7 @@ import { runEnvironment } from "./recipes.js";
 // injected, so a test can run the whole thing against `@loom/fake-agent` and a temporary store.
 
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import type {
   Attention,
   HumanCommand,
@@ -22,6 +23,7 @@ import type {
   Task,
   TaskId,
   TaskState,
+  WorktreePath,
 } from "@loom/core";
 import { leadCommand, serveHttp } from "@loom/mcp";
 import type { Change, Subscription } from "@loom/protocol";
@@ -386,7 +388,14 @@ export class Coordinator {
       requirePlanApproval: input.requirePlanApproval ?? false,
       reviewRound: 0,
       reviewRoundCap: 3,
-      providers: input.providers ?? repo.defaultProviders,
+      providers: {
+        ...(input.providers ?? repo.defaultProviders),
+        ...Object.fromEntries(
+          Object.entries(this.config.providerOverrides).filter(
+            ([, value]) => value !== undefined,
+          ),
+        ),
+      },
       blockedBy: input.blockedBy ?? [],
       budgetMinutes: input.budgetMinutes ?? null,
       size: input.size ?? "normal",
@@ -489,6 +498,10 @@ export class Coordinator {
     const onHint = (hint: { worktreePath: string | null }) => {
       if (hint.worktreePath === this.store.dataDirectory) {
         void this.publishLead();
+        void this.operator
+          .pump()
+          .then(() => this.publishOperator())
+          .catch(() => {});
         return;
       }
       if (!hint.worktreePath) {
@@ -765,8 +778,30 @@ export class Coordinator {
             ok: true,
             result: { kind: "operator_state", state: this.operator.state() },
           };
+        case "open_operator_terminal":
+        case "open_workbench_terminal":
         case "open_pane_session": {
-          const ref = paneIdentity.parse(command.target);
+          if (command.kind === "open_operator_terminal") {
+            await this.operator.open();
+            await this.publishOperator();
+          }
+          const ref =
+            command.kind === "open_operator_terminal"
+              ? paneIdentity.parse(this.operator.paneRef)
+              : command.kind === "open_workbench_terminal"
+                ? await this.adapters.paneHost.createScratch({
+                    workspaceId: "loom-workbench",
+                    createWorkspace: true,
+                    key: command.key as string,
+                    label: (command.label as string | undefined) ?? "Terminal",
+                    cwd: homedir() as WorktreePath,
+                    executable: process.env.SHELL || "/bin/sh",
+                    args: ["-l"],
+                    env: runEnvironment(process.env, {}),
+                  })
+                : paneIdentity.parse(command.target);
+          if (command.kind !== "open_pane_session")
+            await this.inventory.refresh();
           if (!ref.hostGeneration.startsWith(`loom-${this.config.instance}#`))
             throw new Error("Pane belongs to another instance");
           const pane = await this.adapters.paneHost.getPane(ref);
@@ -802,14 +837,47 @@ export class Coordinator {
             },
           };
         }
+        case "close_terminal": {
+          const ref = paneIdentity.parse(command.target);
+          if (!ref.hostGeneration.startsWith(`loom-${this.config.instance}#`))
+            throw new Error("Pane belongs to another instance");
+          if (
+            ["loom-lead", "loom-main", "loom-operator"].includes(
+              ref.sessionName,
+            )
+          )
+            throw new Error(
+              "Pinned agents are stopped through their agent controls",
+            );
+          // A task's supervisor would recover an unannounced terminal death. Require
+          // its normal stop control instead of reporting a close that immediately reopens.
+          const active = this.store
+            .tasks()
+            .flatMap((task) => this.store.runs(task.id))
+            .find(
+              (run) =>
+                !run.endedAt && run.pane && paneKey(run.pane) === paneKey(ref),
+            );
+          if (active)
+            throw new Error(
+              "Stop the running task before closing its agent terminal",
+            );
+          await this.adapters.paneHost.closeTerminal(ref);
+          if (await this.adapters.paneHost.getPane(ref))
+            throw new Error("Terminal closure was not confirmed");
+          await this.inventory.refresh();
+          return { ok: true, result: { kind: "terminal_closed", target: ref } };
+        }
         case "create_scratch": {
           const state = this.store.loadTaskState(command.taskId as TaskId);
           if (!state.worktree?.paneWorkspaceId)
             throw new Error("Task has no existing pane workspace");
           const ref = await this.adapters.paneHost.createScratch({
             workspaceId: state.worktree.paneWorkspaceId,
+            createWorkspace: true,
             cwd: state.worktree.path,
             key: command.key as string,
+            label: command.label as string | undefined,
             executable: process.env.SHELL || "/bin/sh",
             args: ["-l"],
             env: runEnvironment(process.env, {}),

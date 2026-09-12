@@ -35,6 +35,15 @@ contextBridge.exposeInMainWorld("loomHost", {
   notify: (request: { id: string; title: string; body: string }) =>
     ipcRenderer.send("app:notify", request),
   mode: () => ipcRenderer.invoke("app:mode"),
+  setMode: (mode: string) => ipcRenderer.invoke("app:set-mode", mode),
+  onModeChanged: (listener: (mode: "tracker" | "workbench") => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      mode: "tracker" | "workbench",
+    ) => listener(mode);
+    ipcRenderer.on("app:mode-changed", handler);
+    return () => ipcRenderer.removeListener("app:mode-changed", handler);
+  },
   openWindow: (mode: string) => ipcRenderer.invoke("app:open-window", mode),
   connection: () => ipcRenderer.invoke("app:connection"),
   interactive: () => ipcRenderer.send("app:interactive"),

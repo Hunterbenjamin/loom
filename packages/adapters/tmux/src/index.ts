@@ -225,7 +225,7 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
    * open just long enough for `create` to scrub the environment and open the real window.
    * `rows()` hides it, and if `create` fails it takes the session down with it.
    */
-  async function inSession<T>(
+  async function withSession<T>(
     session: string,
     cwd: WorktreePath,
     create: () => Promise<T>,
@@ -287,7 +287,14 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
 
   async function rowFor(ref: PaneRef): Promise<PaneRow | null> {
     if (!(await current(ref))) return null;
-    return (await rows()).find((row) => row.paneId === ref.paneId) ?? null;
+    return (
+      (await rows()).find(
+        (row) =>
+          row.paneId === ref.paneId &&
+          row.sessionName === ref.sessionName &&
+          row.windowId === ref.windowId,
+      ) ?? null
+    );
   }
 
   /** Resolves a ref to a live pane Loom owns, or throws. Mutations never guess. */
@@ -305,7 +312,6 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
         await realpath(req.cwd);
         z.string().min(1).parse(req.label);
         await ensureServer();
-        // The session itself is created by the first window opened in it (`inSession`).
         return { workspaceId: sessionFor(req.taskId) };
       });
     },
@@ -325,15 +331,14 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
           };
         // A dead pane is the previous attempt's evidence. The coordinator only re-emits
         // `start_run` once it has decided to retry, so replace it rather than resurrect it.
-        // Killing the session's last window removes the session; `inSession` brings it back.
         if (existing) await tmux(["kill-pane", "-t", existing.paneId]);
-        const envArgs = Object.entries(req.env).flatMap(([key, value]) => [
-          "-e",
-          `${key}=${value}`,
-        ]);
-        const created = await inSession(session, cwd, async () => {
+        return withSession(session, cwd, async () => {
           await scrub(session, req.env);
-          return (
+          const envArgs = Object.entries(req.env).flatMap(([key, value]) => [
+            "-e",
+            `${key}=${value}`,
+          ]);
+          const created = (
             await tmux(
               [
                 "new-window",
@@ -361,17 +366,17 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
               },
             )
           ).trim();
+          const [paneId, windowId] = z
+            .tuple([z.string().regex(/^%\d+$/), z.string().regex(/^@\d+$/)])
+            .parse(created.split(SEP));
+          await tmux(["set-option", "-p", "-t", paneId, RUN_OPTION, runId]);
+          return {
+            hostGeneration: await ensureServer(),
+            sessionName: session,
+            windowId,
+            paneId,
+          };
         });
-        const [paneId, windowId] = z
-          .tuple([z.string().regex(/^%\d+$/), z.string().regex(/^@\d+$/)])
-          .parse(created.split(SEP));
-        await tmux(["set-option", "-p", "-t", paneId, RUN_OPTION, runId]);
-        return {
-          hostGeneration: await ensureServer(),
-          sessionName: session,
-          windowId,
-          paneId,
-        };
       });
     },
 
@@ -380,25 +385,39 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
         const session = name.parse(req.workspaceId);
         const key = z.string().uuid().parse(req.key);
         const cwd = (await realpath(req.cwd)) as WorktreePath;
+        const windowName =
+          req.label === undefined
+            ? `scratch-${key}`
+            : z
+                .string()
+                .trim()
+                .min(1)
+                .max(80)
+                .regex(/^[^\p{Cc}]+$/u)
+                .parse(req.label);
         await ensureServer();
-        const windowName = `scratch-${key}`;
-        for (const row of (await rows()).filter(
-          (r) => r.sessionName === session,
-        )) {
-          const recordedKey = await tmux([
-            "show-option",
-            "-p",
-            "-v",
-            "-q",
-            "-t",
-            row.paneId,
-            "@loom_scratch_key",
-          ]);
-          if (recordedKey.trim() === key) return (await observe(row)).ref;
-        }
-        const output = await inSession(session, cwd, async () => {
+        return withSession(session, cwd, async () => {
+          const stale: string[] = [];
+
+          for (const row of (await rows()).filter(
+            (r) => r.sessionName === session,
+          )) {
+            const recordedKey = await tmux([
+              "show-option",
+              "-p",
+              "-v",
+              "-q",
+              "-t",
+              row.paneId,
+              "@loom_scratch_key",
+            ]);
+            if (recordedKey.trim() === key) {
+              if (!row.dead) return (await observe(row)).ref;
+              stale.push(row.paneId);
+            }
+          }
           await scrub(session, req.env);
-          return tmux(
+          const output = await tmux(
             [
               "new-window",
               "-d",
@@ -423,18 +442,30 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
               env: { ...env, ...(req.env.PATH ? { PATH: req.env.PATH } : {}) },
             },
           );
+          if (req.label !== undefined)
+            await tmux([
+              "set-option",
+              "-w",
+              "-t",
+              output.trim(),
+              "automatic-rename",
+              "off",
+            ]);
+          await tmux([
+            "set-option",
+            "-p",
+            "-t",
+            output.trim(),
+            "@loom_scratch_key",
+            key,
+          ]);
+          for (const paneId of stale) await tmux(["kill-pane", "-t", paneId]);
+          const created = (await rows()).find(
+            (r) => r.paneId === output.trim(),
+          );
+          if (!created) throw new TmuxError("pane_not_found", output.trim());
+          return (await observe(created)).ref;
         });
-        await tmux([
-          "set-option",
-          "-p",
-          "-t",
-          output.trim(),
-          "@loom_scratch_key",
-          key,
-        ]);
-        const created = (await rows()).find((r) => r.paneId === output.trim());
-        if (!created) throw new TmuxError("pane_not_found", output.trim());
-        return (await observe(created)).ref;
       });
     },
 
@@ -589,6 +620,19 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
         const row = await rowFor(ref);
         if (!row) return;
         if (!row.runId) throw new TmuxError("pane_not_owned", ref.paneId);
+        await tmux(["kill-pane", "-t", row.paneId]).catch((error) => {
+          if (!(error instanceof TmuxError) || error.code !== "not_found")
+            throw error;
+        });
+      });
+    },
+
+    closeTerminal(ref) {
+      return exclusive(async () => {
+        // rowFor checks all identity fields and the host generation. rows excludes the
+        // monitor and viewer sessions. This path is only exposed to explicit human commands.
+        const row = await rowFor(ref);
+        if (!row) return;
         await tmux(["kill-pane", "-t", row.paneId]).catch((error) => {
           if (!(error instanceof TmuxError) || error.code !== "not_found")
             throw error;

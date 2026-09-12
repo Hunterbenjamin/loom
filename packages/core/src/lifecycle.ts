@@ -209,6 +209,7 @@ function launch(c: Context, run: Run, resume: boolean): void {
     mode: run.mode,
     worktreePath: run.worktreePath,
     model: run.model,
+    ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
     attempt: run.attempts,
     sessionEpoch: run.sessionEpoch,
     sessionId: run.sessionId,
@@ -297,6 +298,19 @@ export function startDesired(c: Context): void {
     let run = c.state.runs.find(
       (r) => r.id === runId(c.task.id, desired.role, desired.round),
     );
+    const providerOverride = c.state.config.providerOverrides?.[desired.role];
+    if (
+      !run &&
+      providerOverride &&
+      c.task.providers[desired.role] !== providerOverride
+    ) {
+      c.change(
+        `Applied ${desired.role} provider setting: ${providerOverride}`,
+        () => {
+          c.task.providers[desired.role] = providerOverride;
+        },
+      );
+    }
     if (run && !run.endedAt) {
       c.state.desiredRun = null;
     } else if (c.capacity(desired.role)) {
@@ -314,6 +328,9 @@ export function startDesired(c: Context): void {
           round: desired.round,
           attempts: 1,
           model: c.state.config.models[provider],
+          ...(provider === "codex" && c.state.config.codexReasoningEffort
+            ? { reasoningEffort: c.state.config.codexReasoningEffort }
+            : {}),
           sessionId:
             provider === "claude"
               ? c.state.config.deriveClaudeSessionId(id, 0)

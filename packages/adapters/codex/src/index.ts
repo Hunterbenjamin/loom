@@ -332,6 +332,8 @@ class AppServerAdapter implements CodexAdapter {
       const params: TurnStartParams = {
         threadId: req.threadId,
         input: textInput(req.text),
+        ...(req.model ? { model: req.model } : {}),
+        ...(req.effort ? { effort: req.effort } : {}),
       };
       const result = await this.rpc().rpc(
         "turn/start",
