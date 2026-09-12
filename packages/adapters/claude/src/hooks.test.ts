@@ -1,3 +1,4 @@
+import type { PermissionRequestHookInput } from "@anthropic-ai/claude-agent-sdk";
 // Recorded hook payloads (spike 02) posted to the real receiver, then folded.
 
 import { createHash } from "node:crypto";
@@ -5,7 +6,7 @@ import { readFileSync } from "node:fs";
 import type { IsoTime, ProviderSessionId } from "@loom/core";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type { HookPayload, HookReceipt } from "./hooks.js";
-import { foldHookSummary, MemoryHookLog } from "./hooks.js";
+import { foldHookSummary, hookPayloadSchema, MemoryHookLog } from "./hooks.js";
 import type { HookReceiver } from "./receiver.js";
 import { startHookReceiver } from "./receiver.js";
 
@@ -90,6 +91,8 @@ describe("hook receiver and fold", () => {
     expect(waiting.pendingDialog).toEqual({
       kind: "permission",
       tool: "Bash",
+      requestId: `claude-hook:${SESSION}:4`,
+      command: sample("PermissionRequest:Bash").tool_input?.command,
       at: "2026-09-11T10:45:04.000Z",
     });
     expect(waiting.promptSubmits).toEqual([
@@ -120,6 +123,7 @@ describe("hook receiver and fold", () => {
     expect((await summary()).pendingDialog).toEqual({
       kind: "input",
       tool: "AskUserQuestion",
+      requestId: `claude-hook:${SESSION}:1`,
       at: "2026-09-11T10:45:01.000Z",
     });
   });
@@ -235,5 +239,37 @@ describe("hook receiver and fold", () => {
       sessionStart: null,
       sessionEnd: null,
     });
+  });
+});
+
+test("native PermissionRequest without tool_use_id retains command and durable occurrence", async () => {
+  const payload: PermissionRequestHookInput = {
+    session_id: SESSION,
+    transcript_path: "/tmp/loom-test/transcript.jsonl",
+    cwd: "/tmp/loom-test",
+    hook_event_name: "PermissionRequest",
+    tool_name: "Bash",
+    tool_input: { command: "pnpm install" },
+  };
+  const log = new MemoryHookLog();
+  const receipt = {
+    sessionId: SESSION,
+    event: payload.hook_event_name,
+    promptId: null,
+    receivedAt: "2026-09-12T00:00:00.000Z" as IsoTime,
+    payload: hookPayloadSchema.parse(payload),
+  };
+  await log.append(receipt);
+  const first = foldHookSummary(await log.bySession(SESSION)).pendingDialog;
+  expect(first).toMatchObject({
+    command: "pnpm install",
+    requestId: `claude-hook:${SESSION}:1`,
+  });
+  // Even the same command arriving at the same clock instant is a new native receipt.
+  await log.append(receipt);
+  const persisted = JSON.parse(JSON.stringify(await log.bySession(SESSION)));
+  expect(foldHookSummary(persisted).pendingDialog).toMatchObject({
+    command: "pnpm install",
+    requestId: `claude-hook:${SESSION}:2`,
   });
 });

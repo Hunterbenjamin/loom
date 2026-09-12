@@ -9,6 +9,7 @@ import { changesKey, collections, keyOf } from "@loom/protocol";
 import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
+import { attentionOccurrence } from "./operator-policy.js";
 import type { RecipeStore } from "./recipes.js";
 
 export interface Row {
@@ -114,10 +115,21 @@ export async function taskRows(
   const state = deps.store.loadTaskState(taskId);
   const now = deps.now();
   const derived = attentionFor(state, now);
+  const notes = deps.store.operator.notes(taskId);
+  const human = notes
+    .filter((n) => n.forHuman && n.occurrence === attentionOccurrence(state))
+    .at(-1);
   const rows: Row[] = [
     row("task", { ...state.task, attention: derived.attention }),
     row("inbox", {
       taskId,
+      forHuman: human
+        ? {
+            occurrence: human.occurrence,
+            summary: human.body,
+            noteId: human.id,
+          }
+        : null,
       reasonRuns: Object.fromEntries(
         Object.entries(derived.reasonRunIds).map(([reason, ids]) => [
           reason,
@@ -128,6 +140,7 @@ export async function taskRows(
       planVersion: state.plan?.version ?? null,
     }),
   ];
+  for (const note of notes) rows.push(row("note", note));
   if (state.worktree) rows.push(row("worktree", state.worktree));
   for (const run of state.runs) {
     rows.push(row("run", run));

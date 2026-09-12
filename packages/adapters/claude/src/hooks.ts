@@ -40,6 +40,7 @@ export const hookPayloadSchema = z.looseObject({
   cwd: z.string().optional(),
   prompt_id: z.string().optional(),
   tool_name: z.string().optional(),
+  tool_input: z.object({ command: z.string().optional() }).optional(),
   tool_use_id: z.string().optional(),
   agent_id: z.string().optional(),
   agent_type: z.string().optional(),
@@ -157,6 +158,16 @@ export function foldHookSummary(receipts: HookReceipt[]): ClaudeHookSummary {
         summary.pendingDialog = {
           kind: tool === ASK_QUESTION_TOOL ? "input" : "permission",
           tool,
+          // PermissionRequest has no tool_use_id. The persisted receipt sequence
+          // identifies this occurrence, including consecutive identical commands.
+          requestId: `claude-hook:${receipt.sessionId}:${receipt.seq}`,
+          ...(receipt.event === "PermissionRequest" &&
+          tool === "Bash" &&
+          payload.tool_input?.command
+            ? {
+                command: payload.tool_input.command,
+              }
+            : {}),
           at: receivedAt,
         };
         break;

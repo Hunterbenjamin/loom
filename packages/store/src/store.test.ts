@@ -25,7 +25,7 @@ import {
   task,
   taskId,
 } from "../test/fixtures.js";
-import { actionKind } from "./action-schemas.js";
+import { actionKind, actionSchema } from "./action-schemas.js";
 import { openReadOnlyStore, openStore, type Store } from "./index.js";
 
 let root: string;
@@ -76,6 +76,24 @@ describe("task transactions", () => {
     await expect(
       openStore({ dataRoot: root, instance: "../dev", config }),
     ).rejects.toThrow();
+  });
+  it("persists native Claude dialog occurrences across reopen", async () => {
+    const store = await seeded();
+    const state = richState();
+    const run = required(state.runs[0]);
+    run.pendingDialog = {
+      requestId: "claude-hook:session:42",
+      command: "pnpm install",
+      tool: "Bash",
+      kind: "permission",
+      at: now,
+    };
+    expect(store.commit(taskId, result(state), 0).ok).toBe(true);
+    store.close();
+    const restarted = await open();
+    expect(
+      restarted.runs(taskId).find((r) => r.id === run.id)?.pendingDialog,
+    ).toEqual(run.pendingDialog);
   });
   it("round-trips every Phase 1b field through commit and reopen", async () => {
     const store = await seeded(),
@@ -501,6 +519,31 @@ describe("diagnostic readers", () => {
 });
 
 describe("schema drift detection", () => {
+  it("retains the Operator permission occurrence when decoding an outbox action", () => {
+    const expectedDialog = {
+      requestId: "request-1",
+      at: "2026-09-12T00:00:00.000Z",
+      command: "pnpm install",
+      sessionEpoch: 3,
+    };
+    const action = {
+      key: "operator-permission",
+      taskId: "task-1",
+      kind: "answer_pane_prompt",
+      runId: "run-1",
+      choice: 1,
+      expectedDialog,
+    };
+    expect(actionSchema.parse(JSON.parse(JSON.stringify(action)))).toEqual(
+      action,
+    );
+    expect(
+      actionSchema.safeParse({
+        ...action,
+        expectedDialog: { ...expectedDialog, sessionEpoch: -1 },
+      }).success,
+    ).toBe(false);
+  });
   it("stores the answer_pane_prompt action kind in schema", () => {
     // Verify that answer_pane_prompt is in the store's actionKind enum
     // This test ensures the fix for the regression is in place

@@ -134,6 +134,8 @@ test("task inspect --json includes histories, receipts and pending approvals", a
   await main(["task", "inspect", taskId, "--json"]);
   const data = JSON.parse(output);
   expect(Object.keys(data)).toEqual([
+    "notes",
+    "reviewHistory",
     "task",
     "runs",
     "messages",

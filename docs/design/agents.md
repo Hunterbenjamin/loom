@@ -142,3 +142,60 @@ human can audit it and widen or narrow the row.
   what to build.
 - More than one Main per instance, or a Main shared across instances.
 - Agent-to-agent chat of any kind outside a task's recorded channels.
+
+## Operator implementation contract
+
+Operator v1 now also consumes structured `pass_failed`, `publish_failed` and `stale_process`
+diagnostics, plus attention and ended-run hints, independently of desktop publication. Owned
+adapter diagnostics are emitted at their source; no terminal or log parsing is involved. Duplicate
+hints cannot duplicate actions. Identical runtime failures within an hour retain occurrence counts.
+Events that arrive during a turn are returned at the next MCP call, or included in the next turn
+following the SDK's native result. Delivery attempts are distinct from processing receipts: only
+durable decisions acknowledge processing.
+
+The identity is an MCP-only headless Claude session. Its recipe/token is saved before launch;
+settings and MCP registration are rewritten at launch, and resume requires provider confirmation.
+If that identity is still live without a local owned-child handle, recovery refuses a duplicate
+launch and exposes an error. Stop intent, event queue, retry ledger, filing quota and notes survive
+restart. Operator failures do not produce recursive Operator events.
+
+Policy row identifiers are `permission.allowed`, `permission.other`, `headless.retry`,
+`headless.exhausted`, `vanished.rescue`, `vanished.uncertain`, `review.escalate`, `plan.approval`,
+`merge.approval`, `bug.file`, and `fallback`. The coordinator chooses command arguments from fresh
+owner observations. Operator cannot choose a different branch, approval request, epoch or response.
+Approval and generic task-creation/move tools remain visible but are refused. `append_note` records
+an enforced escalation decision; it is not a general-purpose task-editing escape hatch.
+
+Rescue uses the `push_branch` and `open_pr` human-command/outbox path, with clean recorded HEAD,
+vanished implementation, no live run, no accepted submission and confirmed push guards. It never
+fabricates a submission or advances a stage. The retry row means one Operator-issued retry budget
+reset per role and review round, after core's automatic attempts are exhausted. Core retry rules
+are unchanged. Claude permission automation requires native PermissionRequest command and request
+identity; generic PreToolUse, trust and question signals are not sufficient evidence.
+
+`file_task` accepts a persisted event ID, title, observed-failure description and acceptance test.
+The coordinator adds bounded sanitized event/inspection evidence and a versioned normalized
+signature, deduplicates across affected tasks, and atomically creates backlog work plus any autoFix
+`todo` input. The description must state a failure and acceptance test, not a proposed fix. New-task
+quota accounting happens after dedupe. Suppressed filings update one stable escalation note.
+Runtime repository routing is explicit (`operator.repoId`); unresolved/taskless incidents remain
+visible rather than being silently assigned to an affected repository.
+
+Notes include authenticated author, policy row, event/action correlation, outcome and occurrence.
+Tracker shows Operator status and decisions, prioritizes/filter human-tagged rows, and Activity
+shows notes. Tags project only while their attention occurrence remains current. Notification
+claims are persisted in SQLite to prevent duplicate notifications across windows and restarts.
+The Lead-to-Main rename, general note editing, memory and broader approval policies remain separate
+work; the Operator does not expand Lead's built-in capabilities.
+
+
+Claude permission occurrence IDs come from persisted hook receipts (session ID and sequence),
+not `tool_use_id`, which native `PermissionRequest` does not carry. The committed run caches the
+current dialog while Claude reports waiting. Attention keys, stale-action checks, human tags and
+notification claims therefore distinguish consecutive prompts even without an intermediate idle
+observation. The command evidence is retained for escalation as well as permission decisions.
+
+A failed native SDK result pauses Operator delivery immediately, even if its streaming child is
+still open. The visible session error is durable and queued events are retained across restart;
+`open_operator_session` explicitly clears the error to retry. Polling never starts an automatic
+redelivery loop for a failed turn.

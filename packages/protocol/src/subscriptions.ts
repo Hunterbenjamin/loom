@@ -67,7 +67,7 @@ export function taskInView(task: Task, view: ViewName): boolean {
 }
 
 /** Collections that reach every client, whatever it subscribed to. */
-const ALWAYS: CollectionName[] = ["repo", "inbox", "lead"];
+const ALWAYS: CollectionName[] = ["repo", "inbox", "lead", "operator"];
 
 export interface Scope {
   panes: boolean;
@@ -118,6 +118,7 @@ export function ownerTask(change: Change): string | null {
   if (
     change.collection === "repo" ||
     change.collection === "lead" ||
+    change.collection === "operator" ||
     change.collection === "pane_inventory"
   )
     return null;

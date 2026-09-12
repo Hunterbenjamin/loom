@@ -373,3 +373,48 @@ The configured stable MCP port takes precedence over the recipe; ephemeral insta
 saved Lead port across coordinator restarts. Recovery rewrites Lead settings to the current
 endpoint and relaunches only confirmed dead Lead panes; absence requires an explicit open.
 See [the UI design](../../docs/design/ui.md#lead) for controls and tool scope.
+
+### Operator
+
+The coordinator owns one event-driven Claude Operator, separate from task capacity and Lead.
+It starts lazily when attention, terminal run failures, pass/publish failures, or owned adapter
+stale-process diagnostics arrive. It has only Loom MCP tools: no built-in tools or terminal.
+`loom operator status [--json]` shows its session, queue, last ten decisions and rolling-hour count.
+Protocol clients can send `open_operator_session` and `stop_operator_session`; stopping retains
+queued events and persists stop intent. Opening enables event delivery, without a human chat turn.
+
+Configuration accepts `operatorModel` (environment `LOOM_MODEL_OPERATOR`), defaulting to
+`models.claude`. `operator.policy` accepts `"v1"`; its stable row IDs are in
+`src/operator-policy.ts`. `operator.autoFix` defaults to `[]` and accepts `pass_failed`,
+`publish_failed`, and `stale_process` (`LOOM_OPERATOR_AUTO_FIX`, comma separated).
+`operator.maxFiledPerHour` defaults to 5 (`LOOM_OPERATOR_MAX_FILED_PER_HOUR`).
+
+Set `operator.repoId` / `LOOM_OPERATOR_REPO` to the registered repository where runtime bugs belong.
+No destination is inferred from the affected task. Without an explicit registered destination,
+incidents remain queued and visible in Operator status until routing is configured. Bugs default
+to backlog. Matching autoFix kinds receive a durable `todo` input in the same transaction as
+creation; ordinary reconciliation starts their planners.
+
+SQLite stores event hints, delivery attempts, processing receipts, command/retry ledgers, notes,
+normalized signatures and quota records. Private session identity/settings live under
+`<data>/<instance>/operator`. Repeated identical failures within an hour share an occurrence count;
+separate events with equivalent normalized messages append evidence to one open bug. Terminal bugs
+allow later recurrence. The sixth distinct new filing is suppressed and updates one instance
+escalation note; duplicate signatures remain usable at quota.
+
+Policy v1 never approves plans or merges. It only accepts freshly observed implementer permissions
+for exact validated repository WORKFLOW commands or conservative simple `git add`, `git commit -m`
+and `pnpm install` forms. Claude requires native permission command/request evidence; trust,
+questions and unknown prompts escalate. A headless failure waits for core's retries, then permits
+one `retry` command per task/role/round. That command resets the existing attempt budget; it does
+not mean exactly one additional provider attempt.
+
+Vanished clean committed implementation work can be rescued through guarded `push_branch` then
+`open_pr` inputs. Both command evaluation and execution verify owner state. Rescue neither submits
+an implementation nor changes its stage. Human escalation tags expire with their exact attention
+occurrence. Tracker prioritizes tagged rows, offers a human-only filter, and displays authored notes
+in Activity. Electron notification claims are deduplicated durably by the coordinator.
+
+For constrained test hosts, `LOOM_TEST_SLOW_GIT=1 pnpm test --maxWorkers=1 --testTimeout=30000`
+allows up to two minutes for coordinator Git scenarios. Normal deadlines, fake-clock assertions,
+scenario step limits and UI performance budgets are unchanged.

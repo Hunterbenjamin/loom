@@ -5,6 +5,8 @@ import { command, humanCommand, taskId } from "@loom/protocol";
 import { z } from "zod";
 
 const humanTypes = {
+  push_branch: "push_branch",
+  open_pr: "open_pr",
   move_task: "move",
   approve_plan: "approve_plan",
   reject_plan: "reject_plan",

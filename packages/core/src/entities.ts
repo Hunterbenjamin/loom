@@ -125,6 +125,7 @@ export interface Attention {
 }
 
 export interface Task {
+  signature?: string | null;
   id: TaskId;
   repoId: RepoId;
   title: string;
@@ -286,6 +287,14 @@ export interface Run {
   } | null;
   /** (cache: provider) */
   pendingRequests: ProviderRequest[];
+  /** Cached native Claude dialog, only while the provider reports waiting. Missing on legacy runs. */
+  pendingDialog?: {
+    requestId?: string;
+    command?: string;
+    kind: "permission" | "input";
+    tool: string;
+    at: IsoTime;
+  } | null;
   /** Last provider observation of any kind. Drives stall detection. */
   lastActivityAt: IsoTime | null;
   /** Earliest time the next attempt may launch, after a failure. Headless runs only. */
@@ -579,4 +588,18 @@ export interface Transition {
   reason: string;
   /** Task version after this change. */
   taskVersion: number;
+}
+
+/** Authored decisions have their own persistence and never imply a stage transition. */
+export interface TaskNote {
+  id: string;
+  taskId: string | null;
+  author: "operator" | "lead" | "human";
+  at: string;
+  eventId: string;
+  row: string;
+  outcome: string;
+  body: string;
+  forHuman: boolean;
+  occurrence: string;
 }

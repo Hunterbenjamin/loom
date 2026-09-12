@@ -125,6 +125,7 @@ export const attention = z
 // ---------------------------------------------------------------- task and worktree
 
 export const task = z.strictObject({
+  signature: z.string().nullable().optional(),
   id: taskId,
   repoId,
   title: text,
@@ -237,6 +238,16 @@ export const run = z.strictObject({
     })
     .nullable(),
   pendingRequests: z.array(providerRequest),
+  pendingDialog: z
+    .object({
+      requestId: z.string().optional(),
+      command: z.string().optional(),
+      kind: z.enum(["permission", "input"]),
+      tool: z.string(),
+      at: isoTime,
+    })
+    .nullable()
+    .optional(),
   lastActivityAt: isoTime.nullable(),
   retryAt: isoTime.nullable(),
   launchedAt: isoTime.nullable(),
@@ -507,6 +518,8 @@ export const transition = z.strictObject({
 
 /** `HumanCommand` from `packages/core/src/observations.ts`, validated at the window's edge. */
 export const humanCommand = z.union([
+  z.object({ type: z.literal("push_branch"), headSha: sha }),
+  z.object({ type: z.literal("open_pr"), headSha: sha }),
   z.strictObject({
     type: z.literal("move"),
     to: z.enum(["backlog", "todo"]),
@@ -541,6 +554,14 @@ export const humanCommand = z.union([
   }),
   z.strictObject({
     type: z.literal("answer_pane_prompt"),
+    expectedDialog: z
+      .object({
+        requestId: z.string(),
+        at: isoTime,
+        command: z.string(),
+        sessionEpoch: z.number().int().nonnegative(),
+      })
+      .optional(),
     runId,
     choice: z.union([
       z.number().int().min(0).max(9),
