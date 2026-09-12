@@ -124,6 +124,9 @@ esac
 
 before="$(date +%s)"
 pane="$(tm new-window -d -P -F '#{pane_id}' -t "$session:" -n agent -c "$worktree" -- "${cmd[@]}")"
+# Leave the session on the agent window, so a plain `attach` (a Herdr pane, a Ghostty tab) shows the
+# agent rather than the idle shell window created first. Grouped views keep their own selection.
+tm select-window -t "$session:agent"
 
 prompt="Read AGENTS.md and $brief_path, then carry out the work it describes within its rules. Stop and report once the pull request the brief asks for is open."
 
