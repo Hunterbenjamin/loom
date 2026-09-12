@@ -227,6 +227,8 @@ export interface CodexAdapter {
   startTurn(req: {
     threadId: ProviderSessionId;
     text: string;
+    model?: string;
+    effort?: string;
   }): Promise<{ turnId: string }>;
   steerTurn(req: {
     threadId: ProviderSessionId;

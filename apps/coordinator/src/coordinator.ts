@@ -383,7 +383,14 @@ export class Coordinator {
       requirePlanApproval: input.requirePlanApproval ?? false,
       reviewRound: 0,
       reviewRoundCap: 3,
-      providers: input.providers ?? repo.defaultProviders,
+      providers: {
+        ...(input.providers ?? repo.defaultProviders),
+        ...Object.fromEntries(
+          Object.entries(this.config.providerOverrides).filter(
+            ([, value]) => value !== undefined,
+          ),
+        ),
+      },
       blockedBy: input.blockedBy ?? [],
       budgetMinutes: input.budgetMinutes ?? null,
       size: input.size ?? "normal",

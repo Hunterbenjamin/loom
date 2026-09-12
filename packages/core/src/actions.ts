@@ -60,6 +60,7 @@ export type Action = ActionBase &
         mode: RunMode;
         worktreePath: WorktreePath;
         model: string;
+        reasoningEffort?: string;
         /** Which launch of the run this is; part of the action key. */
         attempt: number;
         /** The run's current session epoch; the Claude session ID derives from it. */

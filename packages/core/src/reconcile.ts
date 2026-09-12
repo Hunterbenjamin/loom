@@ -50,6 +50,9 @@ export interface ReconcileConfig {
   worktreeRoot: string;
   baseBranch: string;
   models: Record<Provider, string>;
+  /** Instance overrides apply when a role creates a new run; existing sessions retain their identity. */
+  providerOverrides?: Partial<Record<Role, Provider>>;
+  codexReasoningEffort?: string;
 }
 
 export interface OutboxEntry {

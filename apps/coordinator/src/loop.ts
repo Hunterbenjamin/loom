@@ -119,8 +119,17 @@ export class Loop {
         conflicts++;
         continue;
       }
-      // More inputs than this pass consumed, or actions to run: come back round.
+      // A launch result binds the provider identity after observations were read. Refresh it
+      // immediately so headless Codex runs can receive their first turn without a later hint.
+      const launched = result.next.runs.some(
+        (run) =>
+          run.launchedAt &&
+          state.runs.find((old) => old.id === run.id)?.launchedAt !==
+            run.launchedAt,
+      );
+      // More inputs than this pass consumed, actions to run, or a new launch: come back round.
       if (
+        launched ||
         store.pendingInputs(taskId, 1).length ||
         result.actions.length ||
         observations.inputs.length > result.inputs.length

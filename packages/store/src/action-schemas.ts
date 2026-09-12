@@ -31,6 +31,7 @@ const fields = {
     mode: z.enum(["headless", "interactive"]),
     worktreePath: text,
     model: text,
+    reasoningEffort: text.min(1).optional(),
     attempt: positive,
     sessionEpoch: count,
     sessionId: id.nullable(),

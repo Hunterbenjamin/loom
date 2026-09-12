@@ -355,7 +355,12 @@ export class Executor {
         const codex = await adapters.codex(action.taskId);
         return {
           transportRef: (
-            await codex.startTurn({ threadId: sessionId, text: action.text })
+            await codex.startTurn({
+              threadId: sessionId,
+              text: action.text,
+              model: run.model,
+              ...(run.reasoningEffort ? { effort: run.reasoningEffort } : {}),
+            })
           ).turnId,
         };
       }

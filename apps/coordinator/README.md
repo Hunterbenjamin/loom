@@ -113,6 +113,30 @@ Environment variables configure the coordinator:
 - Other variables: `LOOM_WORKTREE_ROOT`, `LOOM_BASE_BRANCH`, `LOOM_MODEL_CODEX`, `LOOM_MODEL_CLAUDE`,
   `LOOM_TMUX`, `LOOM_CODEX`, `LOOM_CLAUDE`.
 
+### Task agent settings
+
+Set `LOOM_PROVIDER_PLANNER`, `LOOM_PROVIDER_IMPLEMENTER`, and `LOOM_PROVIDER_REVIEWER` to
+`codex` or `claude` to override repository/task routing for new runs in this instance.
+Unset roles retain their existing routing. `LOOM_MODEL_CODEX` and `LOOM_MODEL_CLAUDE` select
+each provider's task model; `LOOM_CODEX_REASONING_EFFORT` explicitly selects Codex reasoning.
+For example, to run all three roles on Sol with medium reasoning:
+
+```sh
+LOOM_PROVIDER_PLANNER=codex
+LOOM_PROVIDER_IMPLEMENTER=codex
+LOOM_PROVIDER_REVIEWER=codex
+LOOM_MODEL_CODEX=gpt-5.6-sol
+LOOM_CODEX_REASONING_EFFORT=medium
+```
+
+Restart the coordinator after changing its environment. These settings apply to newly created
+runs, including future roles on existing tasks. Existing runs and retries keep their recorded
+provider, model, and reasoning level. Lead and Operator retain their separate model settings.
+Reasoning is persisted with the run, outbox action, and launch recipe and passed to both the
+Codex thread and subsequent turns; the task's private TUI configuration receives it too.
+Older runs without a reasoning field retain provider defaults. These are instance environment
+settings; there is no desktop settings editor yet.
+
 When the coordinator restarts, it uses the same stable ports so that live runs' settings and MCP
 config files remain valid.
 

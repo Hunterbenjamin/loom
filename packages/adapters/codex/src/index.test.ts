@@ -222,6 +222,23 @@ describe("Codex app-server adapter", () => {
       }),
     );
   });
+  it("passes pinned model and reasoning to turn/start", async () => {
+    await adapter.startTurn({
+      threadId,
+      text: "continue",
+      model: "gpt-5.6-sol",
+      effort: "medium",
+    });
+    expect(fake.messages.map((entry) => entry.message)).toContainEqual(
+      expect.objectContaining({
+        method: "turn/start",
+        params: expect.objectContaining({
+          model: "gpt-5.6-sol",
+          effort: "medium",
+        }),
+      }),
+    );
+  });
   it("interrupts only the specified turn and unsubscribes without stopping a server", async () => {
     await adapter.resumeThread(threadId);
     await adapter.interruptTurn({ threadId, turnId });

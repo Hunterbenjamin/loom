@@ -258,6 +258,13 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
 
 ## Context handoffs
 
+Task agent routing can be overridden per role with the instance's `LOOM_PROVIDER_PLANNER`,
+`LOOM_PROVIDER_IMPLEMENTER`, and `LOOM_PROVIDER_REVIEWER` settings. Overrides apply to new
+runs, including later roles on existing tasks; they never migrate an existing provider session.
+Models remain configurable per provider, with explicit `LOOM_CODEX_REASONING_EFFORT` for Codex.
+The coordinator captures model and reasoning in durable run/action/recipe records before launch;
+retries preserve them, and Codex turns and the private TUI config receive the captured settings.
+
 Agents hand off through artifacts, not transcripts. Each task's artifacts live in the coordinator's data directory.
 Agents reach them through `get_task_context`, and as files in `<worktree>/.task/`, which is kept out of git via `.git/info/exclude`.
 
