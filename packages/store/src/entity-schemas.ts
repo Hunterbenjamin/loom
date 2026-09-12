@@ -70,6 +70,7 @@ export const taskSchema = contract<Task>()(
     repoId: id,
     title: text,
     description: text,
+    summary: text.nullable(),
     stage,
     stageEnteredAt: time,
     version: count,

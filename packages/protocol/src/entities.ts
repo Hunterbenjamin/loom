@@ -130,6 +130,7 @@ export const task = z.strictObject({
   repoId,
   title: text,
   description: text,
+  summary: z.string().max(140).nullable(),
   stage,
   stageEnteredAt: isoTime,
   version: count,

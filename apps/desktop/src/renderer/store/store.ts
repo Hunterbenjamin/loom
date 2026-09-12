@@ -467,6 +467,7 @@ export function createStore(
         repoId: repoId as Task["repoId"],
         title,
         description: "",
+        summary: null,
         stage: "backlog",
         stageEnteredAt: at,
         version: 1,

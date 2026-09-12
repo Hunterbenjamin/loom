@@ -85,6 +85,7 @@ export interface GetTaskContextOutput {
     id: TaskId;
     title: string;
     description: string;
+    summary: string | null;
     stage: Stage;
     reviewRound: number;
     reviewRoundCap: number;

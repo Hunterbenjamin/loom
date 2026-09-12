@@ -92,6 +92,7 @@ export function fixture(stage: Stage = "in_progress"): {
       repoId: "repo" as RepoId,
       title: "Implement core",
       description: "",
+      summary: null,
       stage,
       stageEnteredAt: now,
       version: 1,

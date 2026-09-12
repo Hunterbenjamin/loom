@@ -80,6 +80,7 @@ export interface CreateTaskInput {
   repoId: RepoId;
   title: string;
   description: string;
+  summary?: string | null;
   providers?: ProviderRules | null;
   requirePlanApproval?: boolean | null;
   blockedBy?: TaskId[];
@@ -375,6 +376,7 @@ export class Coordinator {
       repoId: repo.id,
       title: input.title,
       description: input.description,
+      summary: input.summary ?? null,
       stage: "backlog",
       stageEnteredAt: now,
       version: 0,
@@ -832,6 +834,7 @@ export class Coordinator {
             repoId: command.repoId as RepoId,
             title: command.title as string,
             description: command.description as string,
+            summary: (command.summary ?? null) as string | null,
             providers: (command.providers ?? null) as ProviderRules | null,
             requirePlanApproval: (command.requirePlanApproval ?? null) as
               | boolean

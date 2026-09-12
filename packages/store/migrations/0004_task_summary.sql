@@ -1,0 +1,4 @@
+-- Add optional summary field to tasks.
+-- The summary is stored in the task JSON data and is used for list-view display.
+-- Max 140 characters, single line. Backward compatible: existing tasks have NULL summary.
+-- No index needed: summary is not used for filtering or sorting.

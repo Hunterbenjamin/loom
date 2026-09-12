@@ -508,6 +508,7 @@ export class ScenarioRunner {
         id: this.state.task.id,
         title: this.state.task.title,
         description: this.state.task.description,
+        summary: this.state.task.summary,
         stage: this.state.task.stage,
         reviewRound: this.state.task.reviewRound,
         reviewRoundCap: this.state.task.reviewRoundCap,
