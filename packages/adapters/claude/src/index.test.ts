@@ -1,0 +1,141 @@
+// The adapter as the coordinator sees it. No real Claude process is started.
+
+import { readFileSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Hint, ProviderSessionId } from "@loom/core";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import type { HookPayload } from "./hooks.js";
+import { type ClaudeAdapterHandle, createClaudeAdapter } from "./index.js";
+
+const samples = JSON.parse(
+  readFileSync(
+    new URL("./fixtures/payload-samples.json", import.meta.url),
+    "utf8",
+  ),
+) as Record<string, HookPayload>;
+
+const SESSION = "6d3b4239-0b4f-4c87-97c5-ee6146088430" as ProviderSessionId;
+
+describe("createClaudeAdapter", () => {
+  let adapter: ClaudeAdapterHandle;
+  let dir: string;
+  let hints: Hint[];
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "loom-claude-adapter-"));
+    hints = [];
+    adapter = await createClaudeAdapter({
+      mcpServer: { command: "loom", args: ["mcp"] },
+    });
+    adapter.subscribe((hint) => hints.push(hint));
+  });
+
+  afterEach(async () => {
+    await adapter.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const post = (name: string) =>
+    fetch(`${adapter.hookBaseUrl}/hook/x`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(samples[name]),
+    });
+
+  test("a hook receipt becomes a hint, keyed by session and worktree", async () => {
+    await post("UserPromptSubmit");
+    expect(hints).toEqual([
+      {
+        source: "claude_hook",
+        worktreePath:
+          "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/repo",
+        sessionId: "9b87a656-3e3b-4c6c-b89c-26514a09917f",
+      },
+    ]);
+  });
+
+  test("an internal subagent event raises no hint", async () => {
+    await post("SubagentStop:sub");
+    expect(hints).toEqual([]);
+  });
+
+  test("unsubscribing stops the hints", async () => {
+    const unsubscribe = adapter.subscribe(() => {
+      throw new Error("should not fire");
+    });
+    unsubscribe();
+    await post("UserPromptSubmit");
+    expect(hints).toHaveLength(1);
+  });
+
+  test("activityAt is the last hook, and null without evidence", async () => {
+    expect(await adapter.activityAt(SESSION)).toBeNull();
+    await post("PreToolUse");
+    const at = await adapter.activityAt(SESSION);
+    expect(at).not.toBeNull();
+    expect((await adapter.hookSummary(SESSION)).lastEventAt).toBe(at);
+  });
+
+  test("writeSettings points the hooks at this adapter's own receiver", async () => {
+    const settingsPath = join(dir, "settings.json");
+    await adapter.writeSettings(settingsPath);
+
+    const settings = JSON.parse(await readFile(settingsPath, "utf8"));
+    expect(settings.hooks.Stop[0].hooks[0].url).toBe(
+      `${adapter.hookBaseUrl}/hook/Stop`,
+    );
+    const mcp = JSON.parse(
+      await readFile(join(dir, "settings.mcp.json"), "utf8"),
+    );
+    expect(mcp).toEqual({
+      mcpServers: { loom: { command: "loom", args: ["mcp"] } },
+    });
+  });
+
+  test("interactiveArgs names the session, or resumes it", () => {
+    const settingsPath = "/runs/r1/settings.json";
+    expect(
+      adapter.interactiveArgs({
+        sessionId: SESSION,
+        resume: false,
+        model: "haiku",
+        settingsPath,
+      }),
+    ).toEqual([
+      "--settings",
+      "/runs/r1/settings.json",
+      "--mcp-config",
+      "/runs/r1/settings.mcp.json",
+      "--session-id",
+      SESSION,
+      "--model",
+      "haiku",
+    ]);
+    expect(
+      adapter.interactiveArgs({
+        sessionId: SESSION,
+        resume: true,
+        model: "haiku",
+        settingsPath,
+      }),
+    ).toContain("--resume");
+  });
+
+  test("headlessState is null for a session this coordinator didn't launch", async () => {
+    expect(await adapter.headlessState(SESSION)).toBeNull();
+    await expect(
+      adapter.sendHeadless({ sessionId: SESSION, text: "hi" }),
+    ).rejects.toThrow(/no headless run/);
+  });
+
+  test("a session with no transcript is not resumable", async () => {
+    expect(
+      await adapter.resumable(
+        "00000000-0000-4000-8000-000000000000" as ProviderSessionId,
+        null,
+      ),
+    ).toBe(false);
+  });
+});

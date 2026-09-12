@@ -67,6 +67,8 @@ export interface GitAdapter {
   readWorktree(
     path: WorktreePath,
     baseBranch: string,
+    /** Every fixing commit pending validation; omitted means no candidates requested. */
+    reachableCandidates?: readonly Sha[],
   ): Promise<GitWorktreeObservation>;
   /** Idempotent: an existing worktree for the same branch is returned, not recreated. */
   createWorktree(req: {
@@ -216,6 +218,12 @@ export interface ClaudeAdapter {
   /** Hooks received for the session, folded. */
   hookSummary(sessionId: ProviderSessionId): Promise<ClaudeHookSummary>;
   /**
+   * Writes the per-run settings file `interactiveArgs` and `startHeadless` are then given:
+   * HTTP hooks pointing at this coordinator, the SessionStart command hook, and Loom's MCP
+   * server. Never touches `~/.claude/settings.json`.
+   */
+  writeSettings(settingsPath: string): Promise<void>;
+  /**
    * Pane command for an interactive run: `--session-id` (or `--resume`), the per-run
    * `--settings` file with HTTP hooks, the SessionStart command hook and Loom's MCP server.
    */
@@ -243,5 +251,15 @@ export interface ClaudeAdapter {
   headlessState(
     sessionId: ProviderSessionId,
   ): Promise<ClaudeSessionObservation["headless"]>;
+  /**
+   * `RunObservation.resumable`: does this session's transcript exist and parse? A
+   * provider-confirmed answer, never inferred from a failed read or a vanished pane.
+   */
+  resumable(
+    sessionId: ProviderSessionId,
+    cwd: WorktreePath | null,
+  ): Promise<boolean>;
+  /** `RunObservation.activityAt`: latest hook receipt for the session; null means no evidence. */
+  activityAt(sessionId: ProviderSessionId): Promise<IsoTime | null>;
   subscribe(onHint: OnHint): Unsubscribe;
 }
