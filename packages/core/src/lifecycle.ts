@@ -190,7 +190,11 @@ function launch(c: Context, run: Run, resume: boolean): void {
     (m) => m.runId === run.id && m.status === "pending" && m.attempts === 0,
   );
   if (pending) {
-    pending.text = `Current git observation: ${JSON.stringify(c.git ?? null)}\n${pending.text}`;
+    const text = pending.text
+      .split("\n")
+      .filter((line) => !line.startsWith("Current git observation:"))
+      .join("\n");
+    pending.text = `Current git observation: ${JSON.stringify(c.git ?? null)}\n${text}`;
     pending.textHash = c.state.config.sha256(pending.text);
   } else
     c.message(

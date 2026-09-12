@@ -205,3 +205,55 @@ it("does not increment core-assigned retry attempts when claiming", () => {
     claimVersion: 1,
   });
 });
+
+it("reads the last ten task outbox rows with executor receipts before and after consumption", () => {
+  const next = store.loadTaskState(taskId);
+  next.task.version++;
+  for (let i = 0; i < 12; i++) notify(next, `row-${i}`);
+  store.commit(taskId, result(next), 0);
+  for (let i = 0; i < 3; i++) {
+    const claimed = required(store.outbox.claim(now));
+    store.outbox.finish(
+      claimed.key,
+      claimed.claimVersion,
+      receipt(claimed.key, `receipt-${i}`),
+    );
+  }
+  const rows = store.outbox.recent(taskId);
+  expect(rows.map((r) => r.key)).toEqual(
+    Array.from({ length: 10 }, (_, i) => `row-${i + 2}`),
+  );
+  expect(rows[0]).toEqual({
+    key: "row-2",
+    status: "running",
+    started_at: now,
+    executor_finished_at: now,
+    result: { kind: "notify", ok: true, output: {} },
+  });
+  expect(rows[1]).toEqual({
+    key: "row-3",
+    status: "pending",
+    started_at: null,
+    executor_finished_at: null,
+    result: null,
+  });
+  const state = store.loadTaskState(taskId);
+  state.task.version++;
+  state.consumedInputIds.push("receipt-2" as never);
+  required(state.outbox.find((r) => r.key === "row-2")).status = "succeeded";
+  store.commit(
+    taskId,
+    {
+      ...result(state),
+      inputs: [{ inputId: "receipt-2" as never, accepted: true, reply: null }],
+    },
+    state.task.version - 1,
+  );
+  expect(store.outbox.recent(taskId)[0]).toMatchObject({
+    status: "succeeded",
+    result: rows[0]?.result,
+  });
+  const other = "other" as typeof taskId;
+  store.createTask(task(other));
+  expect(store.outbox.recent(other)).toEqual([]);
+});

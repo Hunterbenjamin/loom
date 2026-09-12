@@ -31,6 +31,45 @@ const rowSchema = ownedRow.extend({
 });
 export class Outbox {
   constructor(private readonly db: Database.Database) {}
+  /** Last ten intents plus executor receipts, even before core consumes their inbox input. */
+  recent(taskId: TaskId) {
+    return this.db
+      .prepare(`
+      SELECT o.key, o.status, o.started_at, o.executor_finished_at, i.payload
+      FROM outbox o LEFT JOIN inbox i ON i.id = o.result_input_id AND i.task_id = o.task_id
+      WHERE o.task_id = ? ORDER BY o.rowid DESC LIMIT 10
+    `)
+      .all(taskId)
+      .reverse()
+      .map((raw) => {
+        const row = z
+          .object({
+            key: text,
+            status: z.enum([
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "canceled",
+            ]),
+            started_at: time.nullable(),
+            executor_finished_at: time.nullable(),
+            payload: text.nullable(),
+          })
+          .parse(raw);
+        const input =
+          row.payload === null ? null : decode(inputSchema, row.payload);
+        if (input && (input.type !== "action_result" || input.key !== row.key))
+          throw new Error("Outbox result identity disagreement");
+        return {
+          key: row.key,
+          status: row.status,
+          started_at: row.started_at,
+          executor_finished_at: row.executor_finished_at,
+          result: input?.type === "action_result" ? input.result : null,
+        };
+      });
+  }
   list(taskId: TaskId): OutboxEntry[] {
     return this.db
       .prepare("SELECT key, data FROM outbox WHERE task_id = ? ORDER BY rowid")

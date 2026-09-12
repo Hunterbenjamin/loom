@@ -1,0 +1,222 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`empty task diagnostics omit questions and approvals in text 1`] = `
+"Task
+  id:                     t1
+  title:                  Implement core
+  stage:                  backlog
+  stageEnteredAt:         2026-09-12T00:00:00.000Z
+  attention:              {"reasons":[],"reasonSince":{},"since":null}
+  blocked:                -
+  failed:                 -
+  reviewRound:            0
+  branch:                 -
+  prNumber:               -
+  worktreePath:           -
+
+Runs (0, newest last)
+Messages
+
+Outbox (0, newest last)
+Findings
+  open:                   0
+  addressed:              0
+  disputed:               0
+  resolved:               0
+  waived:                 0
+"
+`;
+
+exports[`task inspect prints a complete fixture without a coordinator 1`] = `
+"Task
+  id:                     t1
+  title:                  Implement core
+  stage:                  in_progress
+  stageEnteredAt:         2026-09-12T00:00:00.000Z
+  attention:              {"reasons":["question"],"reasonSince":{"question":"2026-09-12T00:00:00.000Z"},"since":"2026-09-12T00:00:00.000Z"}
+  blocked:                -
+  failed:                 -
+  reviewRound:            1
+  branch:                 feat/core
+  prNumber:               1
+  worktreePath:           /tmp/loom/t1
+
+Runs (4, newest last)
+  id:                     t1/reviewer/0
+  role:                   reviewer
+  provider:               claude
+  mode:                   headless
+  status:                 ended
+  blockedOn:              -
+  sessionEpoch:           0
+  attempts:               1
+  sessionId:              session:t1/reviewer/0
+  retryAt:                -
+  unknownSince:           -
+  lastTurn:               -
+  pendingRequests:        0
+  endedAt:                2026-09-12T00:00:00.000Z
+  endReason:              submitted
+
+  id:                     t1/planner/0
+  role:                   planner
+  provider:               codex
+  mode:                   headless
+  status:                 idle
+  blockedOn:              -
+  sessionEpoch:           0
+  attempts:               1
+  sessionId:              session:t1/planner/0
+  retryAt:                -
+  unknownSince:           -
+  lastTurn:               -
+  pendingRequests:        0
+  endedAt:                -
+  endReason:              -
+
+  id:                     t1/implementer/0
+  role:                   implementer
+  provider:               codex
+  mode:                   interactive
+  status:                 working
+  blockedOn:              -
+  sessionEpoch:           0
+  attempts:               1
+  sessionId:              session:t1/implementer/0
+  retryAt:                -
+  unknownSince:           -
+  lastTurn:               -
+  pendingRequests:        0
+  endedAt:                -
+  endReason:              -
+
+  id:                     t1/reviewer/1
+  role:                   reviewer
+  provider:               claude
+  mode:                   headless
+  status:                 unknown
+  blockedOn:              -
+  sessionEpoch:           2
+  attempts:               3
+  sessionId:              session:t1/reviewer/1
+  retryAt:                2026-09-12T00:00:00.000Z
+  unknownSince:           2026-09-12T00:00:00.000Z
+  lastTurn:               {"id":"turn-failed","outcome":"failed","error":"No rollout\\nTry again"}
+  pendingRequests:        1
+  endedAt:                -
+  endReason:              -
+
+Messages
+  runId:                  t1/reviewer/0
+  kind:                   initial
+  status:                 delivered
+  attempts:               1
+  deliveredAt:            2026-09-12T00:00:00.000Z
+  text:                   First line\\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+  runId:                  t1/planner/0
+  (none)
+  runId:                  t1/implementer/0
+  kind:                   human
+  status:                 sent
+  attempts:               1
+  deliveredAt:            -
+  text:                   Continue
+
+  runId:                  t1/reviewer/1
+  (none)
+
+Open questions
+  id:                     question-1
+  taskId:                 t1
+  runId:                  t1/implementer/0
+  question:               Which mode?
+  options:                ["One","Two"]
+  blocking:               true
+  askedAt:                2026-09-12T00:00:00.000Z
+  answer:                 -
+  answeredAt:             -
+
+
+Pending approvals
+  runId:                  t1/reviewer/1
+  id:                     request-1
+  generation:             2
+  kind:                   command_approval
+  blocking:               true
+  summary:                Run tests?
+  receivedAt:             2026-09-12T00:00:00.000Z
+
+
+Outbox (10, newest last)
+  key:                    notify-2
+  status:                 running
+  started_at:             2026-09-12T00:00:00.000Z
+  executor_finished_at:   2026-09-12T00:00:00.000Z
+  result:                 {"kind":"notify","ok":false,"error":{"code":"fatal","message":"fixture\\nerror"}}
+
+  key:                    notify-3
+  status:                 pending
+  started_at:             -
+  executor_finished_at:   -
+  result:                 -
+
+  key:                    notify-4
+  status:                 pending
+  started_at:             -
+  executor_finished_at:   -
+  result:                 -
+
+  key:                    notify-5
+  status:                 pending
+  started_at:             -
+  executor_finished_at:   -
+  result:                 -
+
+  key:                    notify-6
+  status:                 pending
+  started_at:             -
+  executor_finished_at:   -
+  result:                 -
+
+  key:                    notify-7
+  status:                 pending
+  started_at:             -
+  executor_finished_at:   -
+  result:                 -
+
+  key:                    notify-8
+  status:                 pending
+  started_at:             -
+  executor_finished_at:   -
+  result:                 -
+
+  key:                    notify-9
+  status:                 pending
+  started_at:             -
+  executor_finished_at:   -
+  result:                 -
+
+  key:                    notify-10
+  status:                 pending
+  started_at:             -
+  executor_finished_at:   -
+  result:                 -
+
+  key:                    notify-11
+  status:                 pending
+  started_at:             -
+  executor_finished_at:   -
+  result:                 -
+
+Findings
+  open:                   1
+  addressed:              0
+  disputed:               0
+  resolved:               1
+  waived:                 0
+
+  title:                  Fix bug
+  location:               {"path":"src/widget.ts","startLine":12,"endLine":14,"side":"new","status":"moved"}
+"
+`;

@@ -1,5 +1,12 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { lstat, mkdir, realpath, symlink, unlink } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  open,
+  realpath,
+  symlink,
+  unlink,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -102,27 +109,35 @@ export class TaskServer {
       throw new Error(
         `Codex ${CODEX_VERSION} required; regenerate bindings before upgrading`,
       );
-    const child = spawn(
-      this.executable,
-      ["app-server", "--listen", `unix://${this.socket}`],
-      {
-        cwd: this.directory,
-        env,
-        stdio: "ignore",
-        shell: false,
-      },
-    );
-    this.child = child;
-    this.exit = new Promise<void>((resolveExit) => {
-      child.once("exit", () => resolveExit());
-      child.once("error", () => resolveExit());
-    });
-    await new Promise<void>((resolveSpawn, reject) => {
-      child.once("spawn", resolveSpawn);
-      child.once("error", () =>
-        reject(new Error("Could not start private Codex app-server")),
+    const logPath = join(this.directory, "app-server.log");
+    const log = await open(logPath, "a", 0o600);
+    try {
+      const child = spawn(
+        this.executable,
+        ["app-server", "--listen", `unix://${this.socket}`],
+        {
+          cwd: this.directory,
+          env,
+          stdio: ["ignore", "ignore", log.fd],
+          shell: false,
+        },
       );
-    });
+      this.child = child;
+      this.exit = new Promise<void>((resolveExit) => {
+        child.once("exit", () => resolveExit());
+        child.once("error", () => resolveExit());
+      });
+      await new Promise<void>((resolveSpawn, reject) => {
+        child.once("spawn", resolveSpawn);
+        child.once("error", () =>
+          reject(new Error("Could not start private Codex app-server")),
+        );
+      });
+      process.stderr.write(`Codex app-server stderr: ${logPath}\n`);
+    } finally {
+      // The child owns its inherited descriptor until exit.
+      await log.close();
+    }
   }
   async stop() {
     const child = this.child;
