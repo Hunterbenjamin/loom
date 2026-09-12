@@ -1,0 +1,32 @@
+[
+  {
+    "name": "cooldown",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "interactive"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "rateLimit": {
+          "resetsInMs": 5000
+        }
+      },
+      {
+        "stall": 5000
+      },
+      {
+        "tool": "report_progress",
+        "input": {
+          "summary": "Alive",
+          "stepIndex": null,
+          "decisions": [],
+          "testResults": []
+        }
+      }
+    ]
+  }
+]
