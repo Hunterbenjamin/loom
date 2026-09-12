@@ -2,10 +2,10 @@
 
 A local, Linear-style control surface for coding agents. Loom moves tasks through
 Backlog → Todo → In progress → In review → Awaiting approval → Done, and runs Codex and
-Claude Code agents at each stage. It sits on top of GitHub, Herdr, the Codex app-server and
+Claude Code agents at each stage. It sits on top of GitHub, tmux, the Codex app-server and
 Claude Code, and every one of those keeps working on its own.
 
-**Status:** pre-alpha. We're running feasibility spikes (see `docs/build-plan.md`).
+**Status:** pre-alpha. Phase 2 (adapters) is complete; the coordinator is next (see `docs/build-plan.md`).
 
 - `docs/architecture.md`: the design and the principles behind it
 - `docs/build-plan.md`: the build phases, and how Loom starts building itself
@@ -31,6 +31,6 @@ pnpm --filter @loom/desktop perf    # the Playwright performance harness
 ```
 
 It renders from an in-memory fixture store and talks to nothing. The Terminal tab runs a real
-PTY; set `LOOM_ATTACH_AGENT=<name>` to point it at `herdr agent attach` instead of a shell. See
+PTY; set `LOOM_ATTACH_PANE=<session>:<window-id>` to attach it to a pane on Loom's tmux server instead of a shell. See
 `apps/desktop/README.md` for the keyboard map, the environment variables and the performance
 budgets.
