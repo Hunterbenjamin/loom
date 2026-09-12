@@ -129,7 +129,11 @@ export class Outbox {
     for (const action of actions) {
       const entry = entries.find((row) => row.key === action.key);
       if (!entry) throw new Error("Emitted action missing from next outbox");
-      assertSame(action, entry.action, "Emitted action disagrees with outbox");
+      assertSame(
+        action,
+        entry.action,
+        `Emitted action disagrees with outbox for key: ${action.key}`,
+      );
     }
     for (const entry of entries)
       for (const dependency of entry.dependsOn ?? []) {

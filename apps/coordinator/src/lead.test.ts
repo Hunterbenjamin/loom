@@ -1,4 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import type { HumanCommand, ProviderSessionId } from "@loom/core";
 import { leadToolNames } from "@loom/mcp";
@@ -310,4 +311,68 @@ test("a lost pane receipt is recovered by explicit open, never by adopting the w
   await h.coordinator.lead.open();
   expect(h.paneHost.launches).toHaveLength(3);
   expect((await h.paneHost.getPane(shell))?.dead).toBe(false);
+});
+
+test("configured MCP port wins over the Lead recipe and recovery refreshes both session types", async () => {
+  const { h } = await setup();
+  await h.coordinator.lead.open();
+  const saved = await recipe(h);
+  const task = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Recovery test",
+    description: "Fake planner",
+  });
+  h.coordinator.submitHuman(task.task.id, { type: "move", to: "todo" });
+  await h.coordinator.settle();
+  const runRecipe = present(
+    h.coordinator.recipes.all().find((r) => r.provider === "claude"),
+  );
+
+  // Reserve a different port while the old endpoint is still listening, then test its busy error.
+  const listener = createServer();
+  const closeListener = () =>
+    new Promise<void>((resolve, reject) => {
+      if (!listener.listening) return resolve();
+      listener.close((error) => (error ? reject(error) : resolve()));
+    });
+  cleanups.push(closeListener);
+  await new Promise<void>((resolve, reject) => {
+    listener.once("error", reject);
+    listener.listen(0, "127.0.0.1", resolve);
+  });
+  const address = listener.address();
+  if (!address || typeof address === "string") throw new Error("No test port");
+  const mcpPort = address.port;
+  expect(mcpPort).not.toBe(saved.mcpPort);
+  await h.coordinator.stop();
+  const config = { ...h.config, mcpPort };
+  const store = await openStore({
+    dataRoot: h.dataRoot,
+    instance: config.instance,
+    config: reconcileConfig(config),
+  });
+  const second = new Coordinator({
+    config,
+    store,
+    adapters: h.adapters,
+    serveProtocol: false,
+  });
+  cleanups.push(() => second.stop());
+  const settings = vi.spyOn(h.adapters.claude, "writeSettings");
+  await expect(second.start()).rejects.toThrow(
+    `Port ${mcpPort} is in use; set LOOM_MCP_PORT`,
+  );
+  await closeListener();
+  await second.start();
+  const url = `http://127.0.0.1:${mcpPort}/mcp`;
+  expect(second.mcpUrl?.toString()).toBe(url);
+  for (const settingsPath of [saved.settingsPath, runRecipe.settingsPath])
+    expect(settings).toHaveBeenCalledWith(
+      settingsPath,
+      expect.objectContaining({ type: "http", url }),
+    );
+  expect(second.lead.sessionId).toBe(saved.sessionId);
+  expect(
+    h.paneHost.launches.filter((launch) => launch.runId === "lead"),
+  ).toHaveLength(1);
 });

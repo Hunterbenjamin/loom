@@ -193,7 +193,19 @@ export class Coordinator {
   async start(): Promise<RecoveryReport> {
     await this.recipes.load();
     await this.lead.load();
-    this.mcp = await serveHttp(this.mcpOptions(), this.lead.mcpPort);
+    // Stable instance configuration wins; only ephemeral instances reuse the Lead recipe's port.
+    const mcpPort = this.config.mcpPort || this.lead.mcpPort;
+    try {
+      this.mcp = await serveHttp(this.mcpOptions(), mcpPort);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("EADDRINUSE") || message.includes("in use")) {
+        throw new Error(
+          `Port ${mcpPort} is in use; set LOOM_MCP_PORT to a different value`,
+        );
+      }
+      throw error;
+    }
     await this.lead.recover();
     const report = await recover(
       {

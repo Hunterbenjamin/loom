@@ -107,10 +107,11 @@ before launching in the instance data directory. Its fixed pane workspace is `le
 on the instance's private tmux server). `LOOM_MODEL_LEAD` overrides the configured Claude model.
 `open_lead_session` is serialized and idempotent; it returns the existing live attach target or
 creates the pane. `stop_lead_session` records the stop before closing the pane. Startup recovery
-relaunches a confirmed dead pane from the recipe, resumes a session with a provider-confirmed transcript,
-and leaves a missing pane alone until an explicit open. The saved MCP port is rebound on restart
-so an existing Lead process keeps its endpoint. A conflicting listener causes startup to fail
-rather than silently changing that endpoint.
+relaunches a confirmed dead pane from the recipe, resumes a session with a provider-confirmed
+transcript, and leaves a missing pane alone until an explicit open. The configured stable MCP port
+takes precedence; an instance using ephemeral ports rebinds the saved Lead port on restart so an
+existing process keeps its endpoint. Lead settings are rewritten during recovery to use the current
+endpoint. A conflicting listener causes startup to fail rather than silently changing that endpoint.
 
 Lead's token selects a separate MCP tool set on the coordinator's existing host: `list_tasks`,
 `inspect_task`, `create_task`, `move_task`, `approve_plan`, `reject_plan`, `approve_merge`,

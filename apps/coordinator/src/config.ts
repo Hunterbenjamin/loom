@@ -28,44 +28,63 @@ const bind = z
   })
   .refine((v) => v.port >= 0 && v.port <= 65535, "port out of range");
 
-export const configSchema = z.object({
-  instance,
-  dataRoot: z.string().min(1),
-  /** Where task worktrees are created. Never inside a repository. */
-  worktreeRoot: z.string().startsWith("/"),
-  baseBranch: z.string().min(1).default("main"),
-  bind,
-  /** Compared in constant time on every `hello`. Absence is an error, not an open socket. */
-  token: z.string().min(16),
-  leadModel: z.string().min(1).optional(),
-  models: z.object({ codex: z.string().min(1), claude: z.string().min(1) }),
-  /** GitHub logins Loom and its agents push as; their comments are not findings. */
-  excludedAuthors: z.array(z.string().min(1)).default([]),
-  caps: z
-    .object({
-      total: z.number().int().positive(),
-      codex: z.number().int().positive(),
-      claude: z.number().int().positive(),
-    })
-    .default({ total: 4, codex: 3, claude: 3 }),
-  retry: z
-    .object({
-      baseMs: z.number().int().positive(),
-      capMs: z.number().int().positive(),
-      maxAttempts: z.number().int().positive(),
-    })
-    .default({ baseMs: 10_000, capMs: 300_000, maxAttempts: 3 }),
-  stallAfterMs: z.number().int().positive().default(900_000),
-  unknownGraceMs: z.number().int().positive().default(60_000),
-  deliveryTimeoutMs: z.number().int().positive().default(10_000),
-  githubPollMs: z.number().int().positive().default(60_000),
-  /** The full resync: every non-terminal task gets a pass about this often (design §5.1). */
-  resyncMs: z.number().int().positive().default(60_000),
-  heartbeatMs: z.number().int().positive().default(15_000),
-  tmuxExecutable: z.string().min(1).default("tmux"),
-  codexExecutable: z.string().min(1).default("codex"),
-  claudeExecutable: z.string().min(1).default("claude"),
-});
+const port = z.number().int().min(1).max(65535);
+
+/**
+ * An ephemeral bind (port 0, as tests use) gets ephemeral neighbours; a fixed bind gets fixed
+ * ones, so a restart keeps the URLs written into every live run's settings valid.
+ */
+const derivedPort = (bindPort: number, offset: number): number =>
+  bindPort === 0 ? 0 : bindPort + offset;
+
+export const configSchema = z
+  .object({
+    instance,
+    dataRoot: z.string().min(1),
+    /** Where task worktrees are created. Never inside a repository. */
+    worktreeRoot: z.string().startsWith("/"),
+    baseBranch: z.string().min(1).default("main"),
+    bind,
+    /** Stable port for the MCP HTTP server; defaults to bind.port+1. */
+    mcpPort: port.optional(),
+    /** Stable port for the Claude hook receiver; defaults to bind.port+2. */
+    hookPort: port.optional(),
+    /** Compared in constant time on every `hello`. Absence is an error, not an open socket. */
+    token: z.string().min(16),
+    leadModel: z.string().min(1).optional(),
+    models: z.object({ codex: z.string().min(1), claude: z.string().min(1) }),
+    /** GitHub logins Loom and its agents push as; their comments are not findings. */
+    excludedAuthors: z.array(z.string().min(1)).default([]),
+    caps: z
+      .object({
+        total: z.number().int().positive(),
+        codex: z.number().int().positive(),
+        claude: z.number().int().positive(),
+      })
+      .default({ total: 4, codex: 3, claude: 3 }),
+    retry: z
+      .object({
+        baseMs: z.number().int().positive(),
+        capMs: z.number().int().positive(),
+        maxAttempts: z.number().int().positive(),
+      })
+      .default({ baseMs: 10_000, capMs: 300_000, maxAttempts: 3 }),
+    stallAfterMs: z.number().int().positive().default(900_000),
+    unknownGraceMs: z.number().int().positive().default(60_000),
+    deliveryTimeoutMs: z.number().int().positive().default(10_000),
+    githubPollMs: z.number().int().positive().default(60_000),
+    /** The full resync: every non-terminal task gets a pass about this often (design §5.1). */
+    resyncMs: z.number().int().positive().default(60_000),
+    heartbeatMs: z.number().int().positive().default(15_000),
+    tmuxExecutable: z.string().min(1).default("tmux"),
+    codexExecutable: z.string().min(1).default("codex"),
+    claudeExecutable: z.string().min(1).default("claude"),
+  })
+  .transform((config) => ({
+    ...config,
+    mcpPort: config.mcpPort ?? derivedPort(config.bind.port, 1),
+    hookPort: config.hookPort ?? derivedPort(config.bind.port, 2),
+  }));
 
 export type CoordinatorConfig = z.output<typeof configSchema>;
 
@@ -85,8 +104,11 @@ export const reconcileConfig = (
   models: config.models as Record<Provider, string>,
 });
 
-const required = (name: string): string => {
-  const value = process.env[name];
+const required = (
+  name: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string => {
+  const value = env[name];
   if (!value) throw new Error(`${name} is required`);
   return value;
 };
@@ -96,14 +118,18 @@ export function configFromEnvironment(
   env: NodeJS.ProcessEnv = process.env,
 ): CoordinatorConfig {
   const optional = (name: string) => env[name] || undefined;
+  const bindStr = optional("LOOM_BIND") ?? "127.0.0.1:47800";
+  const bindMatch = bindStr.match(/^(\[[^\]]+\]|[^:]+):(\d+)$/);
+  const bindPort = bindMatch ? Number(bindMatch[2]) : 47800;
+
   return configSchema.parse({
-    instance: env.LOOM_INSTANCE ?? required("LOOM_INSTANCE"),
-    dataRoot: env.LOOM_DATA_ROOT ?? required("LOOM_DATA_ROOT"),
+    instance: env.LOOM_INSTANCE ?? required("LOOM_INSTANCE", env),
+    dataRoot: env.LOOM_DATA_ROOT ?? required("LOOM_DATA_ROOT", env),
     worktreeRoot:
-      env.LOOM_WORKTREE_ROOT ?? `${required("LOOM_DATA_ROOT")}/worktrees`,
+      env.LOOM_WORKTREE_ROOT ?? `${required("LOOM_DATA_ROOT", env)}/worktrees`,
     baseBranch: optional("LOOM_BASE_BRANCH"),
     bind: optional("LOOM_BIND"),
-    token: env.LOOM_TOKEN ?? required("LOOM_TOKEN"),
+    token: env.LOOM_TOKEN ?? required("LOOM_TOKEN", env),
     models: {
       codex: env.LOOM_MODEL_CODEX ?? "gpt-5.1-codex",
       claude: env.LOOM_MODEL_CLAUDE ?? "claude-opus-5",
@@ -116,6 +142,12 @@ export function configFromEnvironment(
     tmuxExecutable: optional("LOOM_TMUX"),
     codexExecutable: optional("LOOM_CODEX"),
     claudeExecutable: optional("LOOM_CLAUDE"),
+    mcpPort: env.LOOM_MCP_PORT
+      ? Number(env.LOOM_MCP_PORT)
+      : derivedPort(bindPort, 1),
+    hookPort: env.LOOM_HOOK_PORT
+      ? Number(env.LOOM_HOOK_PORT)
+      : derivedPort(bindPort, 2),
   });
 }
 

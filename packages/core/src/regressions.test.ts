@@ -254,3 +254,54 @@ it("a precondition failure observed while GitHub is unavailable is resolved afte
   const recovered = fixed(unknown.next, f.observations);
   expect(recovered.next.task.stage).toBe("awaiting_approval");
 });
+
+it("answer_provider_request action does not include command-only fields like type", () => {
+  const f = fixture();
+  const r = f.state.runs[1];
+  if (!r) throw Error("Missing run");
+  const o = f.observations.runs[1];
+  if (!o?.provider.ok || o.provider.value?.provider !== "codex") {
+    throw Error("Missing Codex provider");
+  }
+  o.provider.value.generation = 2;
+  o.provider.value.pendingRequests = [
+    {
+      requestId: "request-1",
+      kind: "command_approval",
+      isBlocking: true,
+      summary: "Run tests",
+      receivedAt: now,
+    },
+  ];
+  f.observations.inputs = [
+    command({
+      type: "answer_provider_request",
+      runId: r.id,
+      requestId: "request-1",
+      generation: 2,
+      decision: "accept",
+      answers: null,
+    }),
+  ];
+  const r1 = fixed(f.state, f.observations);
+  const action = r1.actions.find((a) => a.kind === "answer_provider_request");
+  if (!action) throw Error("Missing answer_provider_request action");
+  // Verify the action has the correct fields and no 'type' field
+  expect(action).toMatchObject({
+    kind: "answer_provider_request",
+    runId: r.id,
+    requestId: "request-1",
+    generation: 2,
+    decision: "accept",
+    answers: null,
+  });
+  // Make sure 'type' field is not present in the action
+  expect("type" in action).toBe(false);
+  // Verify the outbox entry matches the action
+  const entry = r1.next.outbox.find(
+    (row) => row.kind === "answer_provider_request",
+  );
+  if (!entry) throw Error("Missing outbox entry");
+  if (!entry.action) throw Error("Missing action in outbox");
+  expect(entry.action).toEqual(action);
+});
