@@ -1,0 +1,16 @@
+{
+  "name": "@loom/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Stage rules and the reconciler. Pure logic, no I/O. Phase 1a: types only.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

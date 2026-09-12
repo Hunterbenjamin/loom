@@ -1,0 +1,173 @@
+// Phase 1a has no logic. These checks prove the contracts compile and stay internally consistent;
+// `pnpm typecheck` does the real work, and vitest runs them as no-ops.
+
+import { describe, expectTypeOf, it } from "vitest";
+import type {
+  Action,
+  ActionKind,
+  ActionOutputs,
+  ActionResult,
+  IsoTime,
+  McpCall,
+  McpToolName,
+  McpTools,
+  Observations,
+  ProviderSessionId,
+  Reconcile,
+  ReconcileResult,
+  RepoId,
+  Run,
+  RunId,
+  Stage,
+  Task,
+  TaskId,
+  TaskState,
+  WorktreePath,
+} from "./index.js";
+
+const now = "2026-09-12T00:00:00Z" as IsoTime;
+const taskId = "t1" as TaskId;
+const worktreePath = "/private/var/loom/wt/t1" as WorktreePath;
+
+const task: Task = {
+  id: taskId,
+  repoId: "loom" as RepoId,
+  title: "Add a thing",
+  description: "",
+  stage: "in_progress",
+  stageEnteredAt: now,
+  version: 7,
+  blocked: null,
+  failed: null,
+  requirePlanApproval: false,
+  reviewRound: 0,
+  reviewRoundCap: 3,
+  providers: { planner: "claude", implementer: "codex", reviewer: "claude" },
+  blockedBy: [],
+  budgetMinutes: null,
+  createdAt: now,
+  updatedAt: now,
+  worktreePath,
+  branch: "feat/thing",
+  prNumber: null,
+  attention: { reasons: [], since: null },
+};
+
+const run: Run = {
+  id: "t1/implementer/0" as RunId,
+  taskId,
+  role: "implementer",
+  provider: "codex",
+  mode: "interactive",
+  origin: "loom",
+  worktreePath,
+  round: 0,
+  attempts: 1,
+  model: "gpt-5.6-luna",
+  sessionId: "01a08ff4-b43e-71d3-aae7-fa59a9070465" as ProviderSessionId,
+  sessionEpoch: 0,
+  codexGeneration: 1,
+  herdr: { agentName: "loom-t1-impl", paneId: "w1:p1" },
+  status: "working",
+  blockedOn: null,
+  lastTurn: null,
+  pendingRequests: [],
+  lastActivityAt: now,
+  retryAt: null,
+  launchedAt: now,
+  endedAt: null,
+  endReason: null,
+};
+
+const state: TaskState = {
+  task,
+  worktree: null,
+  runs: [run],
+  messages: [],
+  questions: [],
+  findings: [],
+  approvals: [],
+  artifacts: [],
+  outbox: [],
+  config: {
+    retry: { baseMs: 10_000, capMs: 300_000, maxAttempts: 3 },
+    stallAfterMs: 15 * 60_000,
+    unknownGraceMs: 60_000,
+    deliveryTimeoutMs: 10_000,
+    githubPollMs: 60_000,
+  },
+};
+
+const observations: Observations = {
+  now,
+  git: null,
+  github: null,
+  runs: [
+    {
+      runId: run.id,
+      provider: { ok: false, reason: "app-server socket closed", at: now },
+      herdr: null,
+    },
+  ],
+  externalSessions: [],
+  capacity: {
+    version: 1,
+    active: { codex: 1, claude: 0 },
+    caps: { total: 4, codex: 2, claude: 2 },
+    coolingDownUntil: { codex: null, claude: null },
+  },
+  dependencies: [],
+  inputs: [],
+};
+
+describe("core contracts", () => {
+  it("sample state and observations match the types", () => {
+    expectTypeOf(state).toEqualTypeOf<TaskState>();
+    expectTypeOf(observations).toEqualTypeOf<Observations>();
+  });
+
+  it("reconcile has the documented signature", () => {
+    expectTypeOf<Reconcile>().parameters.toEqualTypeOf<
+      [TaskState, Observations]
+    >();
+    expectTypeOf<Reconcile>().returns.toEqualTypeOf<ReconcileResult>();
+  });
+
+  it("every action kind has exactly one output type", () => {
+    expectTypeOf<ActionKind>().toEqualTypeOf<keyof ActionOutputs>();
+    expectTypeOf<ActionResult["kind"]>().toEqualTypeOf<ActionKind>();
+    expectTypeOf<
+      Extract<ActionResult, { kind: "open_pr"; ok: true }>["output"]
+    >().toEqualTypeOf<ActionOutputs["open_pr"]>();
+    expectTypeOf<
+      Extract<Action, { kind: "merge_pr" }>["matchHeadSha"]
+    >().not.toBeAny();
+  });
+
+  it("the MCP registry covers every tool, and every submitting tool persists as a call", () => {
+    expectTypeOf<keyof McpTools>().toEqualTypeOf<McpToolName>();
+    expectTypeOf<McpCall["tool"]>().toEqualTypeOf<
+      Exclude<McpToolName, "get_task_context">
+    >();
+  });
+
+  it("branded IDs don't mix", () => {
+    expectTypeOf<TaskId>().not.toEqualTypeOf<RunId>();
+    expectTypeOf<string>().not.toExtend<TaskId>();
+  });
+
+  it("the stage list is the one in docs/design/core.md", () => {
+    expectTypeOf<Stage>().toEqualTypeOf<
+      | "backlog"
+      | "todo"
+      | "planning"
+      | "plan_approval"
+      | "in_progress"
+      | "in_review"
+      | "awaiting_approval"
+      | "merging"
+      | "done"
+      | "canceled"
+    >();
+  });
+});

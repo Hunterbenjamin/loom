@@ -252,7 +252,7 @@ that crosses providers goes only through artifacts.
 | UI closed or crashed | Nothing happens. On reopen, the UI reconnects and gets a fresh snapshot. |
 | Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, Herdr agents, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts). |
 | Herdr or Codex daemon restart | Same process. Session IDs are what recovery relies on. *(spike 05)* |
-| Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, mark it blocked and notify the human. |
+| Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, flag the task failed and notify the human (see `docs/design/core.md` §3). |
 | Stall | No events for N minutes → set the attention flag. Don't kill it; the human may be typing. |
 | Rate limits | Codex `account/rateLimits/updated` or Claude StopFailure → the provider is cooling down until its reset. Queue new work, and offer to switch providers only for runs that haven't started. |
 | Duplicate or out-of-order events | Idempotent handlers, compare-and-set transitions, one reconcile at a time per task. |
