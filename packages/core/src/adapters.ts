@@ -160,6 +160,16 @@ export interface HerdrAdapter {
 // ---------------------------------------------------------------- Codex
 
 export interface CodexAdapter {
+  /** One adapter per task. Owns a child process with a private CODEX_HOME/socket. Idempotent. */
+  startServer(): Promise<void>;
+  /** Stops only this adapter's child process; never a shared daemon. Idempotent. */
+  stopServer(): Promise<void>;
+  /** Reconnect without stopping the server; caller resumes recorded threads afterwards. */
+  reconnect(): Promise<void>;
+  /** Fresh connection: read, then resume if unloaded. Only recorded Loom-owned IDs; unavailable is null. */
+  checkResumable(threadId: ProviderSessionId): Promise<boolean | null>;
+  /** Latest provider activity evidence, never the time of an unchanged poll. Persist in the coordinator. */
+  activityAt(threadId: ProviderSessionId): IsoTime | null;
   /** Current app-server connection generation; null while disconnected. */
   generation(): number | null;
   startThread(req: {
