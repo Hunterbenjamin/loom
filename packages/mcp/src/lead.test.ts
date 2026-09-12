@@ -118,7 +118,8 @@ test("answer_pane_prompt schema rejects invalid choices", async () => {
 
   // Negative number
   expect(
-    schema.safeParse({ taskId: "task_01", runId: "run_01", choice: -1 }).success,
+    schema.safeParse({ taskId: "task_01", runId: "run_01", choice: -1 })
+      .success,
   ).toBe(false);
 
   // Invalid string
@@ -128,7 +129,7 @@ test("answer_pane_prompt schema rejects invalid choices", async () => {
   ).toBe(false);
 
   // Missing runId
-  expect(
-    schema.safeParse({ taskId: "task_01", choice: 5 }).success,
-  ).toBe(false);
+  expect(schema.safeParse({ taskId: "task_01", choice: 5 }).success).toBe(
+    false,
+  );
 });

@@ -21,7 +21,7 @@ import type {
 import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
-import { checkSendGate, checkPanePromptGate } from "./gate.js";
+import { checkPanePromptGate, checkSendGate } from "./gate.js";
 import { type LaunchDeps, startRun } from "./launch.js";
 import { indexChanges, mapFindings } from "./mapping.js";
 import type { PullRequestCache } from "./observe.js";
@@ -358,15 +358,10 @@ export class Executor {
   ): Promise<Record<string, never>> {
     const { adapters } = this.deps;
     const run = this.run(state, action.runId);
-    const decision = await checkPanePromptGate(
-      adapters,
-      this.deps.now(),
-      run,
-    );
+    const decision = await checkPanePromptGate(adapters, this.deps.now(), run);
     if (!decision.ok)
       throw new PreconditionFailed(`Refusing to answer: ${decision.reason}`);
-    if (!run.pane)
-      throw new PreconditionFailed("The run has no pane");
+    if (!run.pane) throw new PreconditionFailed("The run has no pane");
 
     // Handle different choice types
     if (typeof action.choice === "number") {

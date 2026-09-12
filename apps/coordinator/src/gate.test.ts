@@ -102,4 +102,3 @@ test("a run waiting at a permission dialog receives no paste", async () => {
   await h.coordinator.settle();
   expect(h.paneHost.writes.length).toBeGreaterThan(writes);
 }, 30_000);
-
