@@ -51,14 +51,6 @@ const fields = {
     decision: z.enum(["accept", "decline", "cancel"]),
     answers: z.record(text, z.array(text)).nullable(),
   },
-  answer_pane_prompt: {
-    runId: id,
-    choice: z.union([positive, z.literal("enter"), z.literal("escape")]),
-    text: z.string().optional(),
-    expectedDialog: z
-      .object({ requestId: id, at: time, command: text, sessionEpoch: count })
-      .optional(),
-  },
   stop_run: { runId: id },
   push_branch: { worktreePath: text, branch: text, expectedHeadSha: sha },
   open_pr: {
@@ -98,6 +90,9 @@ const fields = {
       z.enum(["enter", "escape"]),
     ]),
     text: text.optional(),
+    expectedDialog: z
+      .object({ requestId: id, at: time, command: text, sessionEpoch: count })
+      .optional(),
   },
 } as const;
 export const actionKind = z.enum(

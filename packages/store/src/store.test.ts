@@ -25,7 +25,7 @@ import {
   task,
   taskId,
 } from "../test/fixtures.js";
-import { actionKind } from "./action-schemas.js";
+import { actionKind, actionSchema } from "./action-schemas.js";
 import { openReadOnlyStore, openStore, type Store } from "./index.js";
 
 let root: string;
@@ -501,6 +501,31 @@ describe("diagnostic readers", () => {
 });
 
 describe("schema drift detection", () => {
+  it("retains the Operator permission occurrence when decoding an outbox action", () => {
+    const expectedDialog = {
+      requestId: "request-1",
+      at: "2026-09-12T00:00:00.000Z",
+      command: "pnpm install",
+      sessionEpoch: 3,
+    };
+    const action = {
+      key: "operator-permission",
+      taskId: "task-1",
+      kind: "answer_pane_prompt",
+      runId: "run-1",
+      choice: 1,
+      expectedDialog,
+    };
+    expect(actionSchema.parse(JSON.parse(JSON.stringify(action)))).toEqual(
+      action,
+    );
+    expect(
+      actionSchema.safeParse({
+        ...action,
+        expectedDialog: { ...expectedDialog, sessionEpoch: -1 },
+      }).success,
+    ).toBe(false);
+  });
   it("stores the answer_pane_prompt action kind in schema", () => {
     // Verify that answer_pane_prompt is in the store's actionKind enum
     // This test ensures the fix for the regression is in place

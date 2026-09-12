@@ -94,7 +94,9 @@ export function operatorPolicy(
 ): PolicyDecision {
   if (["pass_failed", "publish_failed", "stale_process"].includes(event.kind))
     return { row: "bug.file", summary: event.message, file: true };
-  const vanished = state.runs.find((r) => r.endReason === "vanished");
+  // Older ended runs are history, not evidence that the current work vanished.
+  const latest = state.runs.at(-1);
+  const vanished = latest?.endReason === "vanished" ? latest : null;
   if (vanished) {
     if (state.task.stage !== "in_progress")
       return {

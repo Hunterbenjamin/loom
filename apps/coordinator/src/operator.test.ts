@@ -73,6 +73,20 @@ test("quota is instance-wide, dedupe precedes quota, autoFix input is durable", 
   h.coordinator.operator.failure("pass_failed", null, "alpha");
   expect(h.store.operator.count(h.clock.now())).toBe(5);
 });
+test("autoFix starts a planner through normal reconciliation", async () => {
+  const h = await setup(true);
+  await file(h, "planner launch regression");
+  await h.coordinator.settle();
+  const task = h.store.tasks()[0];
+  if (!task) throw new Error("task");
+  expect(task.stage).toBe("planning");
+  expect(h.store.runs(task.id)).toEqual([
+    expect.objectContaining({ role: "planner", origin: "loom" }),
+  ]);
+  expect(
+    h.store.transitions(task.id).map((transition) => transition.to),
+  ).toEqual(expect.arrayContaining(["todo", "planning"]));
+});
 test("one headless identity is saved before launch and stopped events remain durable", async () => {
   const h = await setup();
   const original = h.adapters.claude.startHeadless;

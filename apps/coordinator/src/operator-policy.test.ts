@@ -72,6 +72,14 @@ describe("Operator policy v1", () => {
   );
   test("fallback escalates", () =>
     expect(decide(fixture("backlog"))).toMatchObject({ row: "fallback" }));
+  test("a historical vanished run does not override current approval", () => {
+    const f = fixture("awaiting_approval");
+    f.state.runs = [
+      { ...run("planner", "claude"), endedAt: now, endReason: "vanished" },
+      { ...run("reviewer", "claude"), endedAt: now, endReason: "submitted" },
+    ];
+    expect(decide(f)).toMatchObject({ row: "merge.approval" });
+  });
   test("vanished dirty work takes precedence over retry", () => {
     const f = fixture("in_progress");
     f.state.runs = [{ ...run(), endedAt: now, endReason: "vanished" }];
