@@ -187,3 +187,15 @@ The real Haiku test passed on 2026-09-12: one context read through a separate MC
 persisted inputs. The SDK requires `outputSchema.type = "object"` even when the JSON Schema
 represents the success/error union. Tests exercise that requirement through `tools/list`.
 Interactive Claude and real Codex registration are documented but were not exercised here.
+
+## Lead identity
+
+The coordinator supplies `leadHost` and resolves its private session token to `{kind: "lead",
+active: true}`. This identity lists only the Lead tools exported by `leadInputSchemas`; their
+schemas reuse `@loom/protocol` human commands and task creation. Task-run identities cannot invoke
+Lead tools by name, and Lead cannot invoke run-result tools. A stopped Lead token is inactive.
+
+Lead mutations return the same command outcome as the CLI, inside the MCP result's `value`.
+A `human` outcome records an inbox input, not a passed guard; `inspect_task` reads the current
+persisted diagnostics including rejected input receipts. `create_task` accepts the same fields as
+the protocol command (use null for repository defaults and an empty `blockedBy` array).

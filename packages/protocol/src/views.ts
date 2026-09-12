@@ -275,3 +275,15 @@ export const taskInbox = z.strictObject({
   planVersion: count.nullable(),
 });
 export type TaskInbox = z.output<typeof taskInbox>;
+
+// Instance-level Lead identity; it is not a task or run.
+export const leadTarget = runTarget
+  .omit({ runId: true, taskId: true })
+  .extend({ identity: z.literal("lead") });
+export type LeadTarget = z.output<typeof leadTarget>;
+export const leadState = z.strictObject({
+  id: z.literal("lead"),
+  sessionId: providerSessionId.nullable(),
+  status: z.enum(["working", "idle", "waiting", "unknown", "stopped"]),
+});
+export type LeadState = z.output<typeof leadState>;

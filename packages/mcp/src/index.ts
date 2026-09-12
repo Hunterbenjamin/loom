@@ -1,3 +1,9 @@
+export {
+  type LeadHost,
+  leadCommand,
+  leadInputSchemas,
+  leadToolNames,
+} from "./lead.js";
 export { InMemoryHost } from "./memory.js";
 export {
   errorSchema,

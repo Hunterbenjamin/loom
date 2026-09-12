@@ -8,6 +8,7 @@ import { humanCommand, providerRules } from "./entities.js";
 import { inputId, repoId, requestId, runId, sha, taskId } from "./ids.js";
 import { subscription } from "./subscriptions.js";
 import {
+  leadTarget,
   reviewRangeMode,
   reviewState,
   reviewStateChange,
@@ -48,6 +49,8 @@ export const protocolError = z.strictObject({
 });
 
 export const command = z.union([
+  z.strictObject({ kind: z.literal("open_lead_session") }),
+  z.strictObject({ kind: z.literal("stop_lead_session") }),
   /** A `HumanCommand` for one task. Validated here, then queued as an input. */
   z.strictObject({ kind: z.literal("human"), taskId, command: humanCommand }),
   /**
@@ -97,6 +100,7 @@ export const commandRequest = z.strictObject({
 
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
+  z.strictObject({ kind: z.literal("lead_stopped") }),
   /**
    * The command was validated and recorded as an input. It has not run yet: watch the patches and
    * the transition log for what reconcile did with it.
@@ -104,7 +108,10 @@ export const ackResult = z.union([
   z.strictObject({ kind: z.literal("human"), inputId }),
   /** The task now exists, in `backlog`. Moving it to `todo` is a separate human command. */
   z.strictObject({ kind: z.literal("task_created"), taskId }),
-  z.strictObject({ kind: z.literal("attach_session"), target: runTarget }),
+  z.strictObject({
+    kind: z.literal("attach_session"),
+    target: z.union([runTarget, leadTarget]),
+  }),
   z.strictObject({ kind: z.literal("diff"), diff: taskDiff }),
   z.strictObject({ kind: z.literal("review_state"), state: reviewState }),
   /** The scope now in force, which may differ from what was asked for. */

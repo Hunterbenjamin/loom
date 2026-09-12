@@ -7,6 +7,7 @@ export const ptySpawnRequest = z.strictObject({
   rows: z.number().int().min(1).max(1000),
   label: z.string().max(200),
   runId: runId.nullable().optional(),
+  lead: z.boolean().optional(),
 });
 /** The contract between the renderer and the Electron main process. Terminals only. */
 
@@ -16,6 +17,7 @@ export interface PtySpawnRequest {
   rows: number;
   /** Shown in the panel header so the human knows what they are typing into. */
   label: string;
+  lead?: boolean;
   runId?: import("@loom/core").RunId | null;
 }
 

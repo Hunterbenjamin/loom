@@ -20,8 +20,9 @@ import type {
   TaskId,
   TaskState,
 } from "@loom/core";
-import { serveHttp } from "@loom/mcp";
+import { leadCommand, serveHttp } from "@loom/mcp";
 import type { Change, Subscription } from "@loom/protocol";
+import { command as commandSchema } from "@loom/protocol";
 import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import {
@@ -30,7 +31,9 @@ import {
   epochOf,
 } from "./config.js";
 import { Executor } from "./executor.js";
+import { inspectTask } from "./inspect.js";
 import type { LaunchDeps } from "./launch.js";
+import { LeadSession } from "./lead.js";
 import { Loop } from "./loop.js";
 import { createMcpHost } from "./mcp-host.js";
 import { observe as observeOwners, PullRequestCache } from "./observe.js";
@@ -81,6 +84,9 @@ export class Coordinator {
   readonly store: Store;
   readonly adapters: Adapters;
   readonly recipes: RecipeStore;
+  readonly lead: LeadSession;
+  private leadPoll: NodeJS.Timeout | null = null;
+  private pollingLead = false;
   readonly loop: Loop;
   readonly executor: Executor;
   readonly protocol: ProtocolServer;
@@ -120,6 +126,13 @@ export class Coordinator {
     this.startedAt = this.now();
     this.epoch = epochOf(this.startedAt);
     this.recipes = new RecipeStore(this.store.dataDirectory);
+    this.lead = new LeadSession({
+      adapters: this.adapters,
+      config: this.config,
+      dataDirectory: this.store.dataDirectory,
+      mcpEntry: (token) => this.launchDeps().mcpEntry(token),
+      now: () => this.now(),
+    });
 
     this.loop = new Loop({
       store: this.store,
@@ -168,7 +181,8 @@ export class Coordinator {
 
   /** A run's MCP token, resolved against current run state. Null means an unknown token. */
   resolveRunToken(token: string): { runId: RunId; active: boolean } | null {
-    return this.mcpOptions().resolveToken(token);
+    const identity = this.mcpOptions().resolveToken(token);
+    return identity && "runId" in identity ? identity : null;
   }
 
   /** The MCP endpoint agents reach, as their per-run config records it. */
@@ -178,7 +192,9 @@ export class Coordinator {
 
   async start(): Promise<RecoveryReport> {
     await this.recipes.load();
-    this.mcp = await serveHttp(this.mcpOptions());
+    await this.lead.load();
+    this.mcp = await serveHttp(this.mcpOptions(), this.lead.mcpPort);
+    await this.lead.recover();
     const report = await recover(
       {
         store: this.store,
@@ -200,6 +216,10 @@ export class Coordinator {
 
   /** Starts the timers that make this a long-running process, rather than a driven loop. */
   run(): void {
+    this.leadPoll = setInterval(() => {
+      void this.publishLead();
+    }, 1500);
+    this.leadPoll.unref?.();
     this.pump = setInterval(() => {
       void this.settle().catch((error) =>
         this.log(`Settle failed: ${(error as Error).message}`),
@@ -211,6 +231,7 @@ export class Coordinator {
   }
 
   async stop(): Promise<void> {
+    if (this.leadPoll) clearInterval(this.leadPoll);
     if (this.pump) clearInterval(this.pump);
     if (this.resync) clearInterval(this.resync);
     this.pump = this.resync = null;
@@ -322,11 +343,29 @@ export class Coordinator {
       workflow: this.workflow,
       repo: (taskId) => this.repo(taskId),
     });
-    return { host, resolveToken, buildAnchor };
+    return {
+      host,
+      buildAnchor,
+      resolveToken: (token: string) =>
+        this.lead.resolve(token) ?? resolveToken(token),
+      leadHost: {
+        invoke: async (name: string, input: Record<string, unknown>) => {
+          if (name === "list_tasks") return this.store.tasks();
+          if (name === "list_repos") return this.store.repos();
+          if (name === "inspect_task")
+            return inspectTask(this.store, input.taskId as TaskId);
+          return this.command(leadCommand(name, input));
+        },
+      },
+    };
   }
 
   private subscribeHints(): void {
     const onHint = (hint: { worktreePath: string | null }) => {
+      if (hint.worktreePath === this.store.dataDirectory) {
+        void this.publishLead();
+        return;
+      }
       if (!hint.worktreePath) {
         this.resyncAll();
         return;
@@ -363,8 +402,9 @@ export class Coordinator {
           new Set(
             this.recipes
               .all()
-              .flatMap((recipe) =>
-                recipe.sessionId ? [recipe.sessionId] : [],
+              .flatMap((recipe) => (recipe.sessionId ? [recipe.sessionId] : []))
+              .concat(
+                this.lead.sessionId ? [this.lead.sessionId as never] : [],
               ),
           ),
         coolingDownUntil: () => ({
@@ -438,8 +478,28 @@ export class Coordinator {
     return changes;
   }
 
+  private async publishLead(): Promise<void> {
+    if (this.pollingLead) return;
+    this.pollingLead = true;
+    try {
+      const value = await this.lead.state();
+      this.protocol.publish(
+        this.published.replace("lead", null, [
+          { collection: "lead", key: "lead", value },
+        ]),
+      );
+    } catch {
+      this.log("Could not refresh Lead status");
+    } finally {
+      this.pollingLead = false;
+    }
+  }
+
   private async refreshAll(scope: readonly Subscription[]): Promise<void> {
     await this.ensure(scope);
+    this.published.replace("lead", null, [
+      { collection: "lead", key: "lead", value: await this.lead.state() },
+    ]);
     this.published.replace(
       "repos",
       null,
@@ -476,7 +536,7 @@ export class Coordinator {
         };
       }
   > {
-    const command = value as {
+    const command = commandSchema.parse(value) as {
       kind: string;
       taskId?: TaskId;
       runId?: string;
@@ -484,6 +544,16 @@ export class Coordinator {
     } & Record<string, unknown>;
     try {
       switch (command.kind) {
+        case "open_lead_session": {
+          const target = await this.lead.open();
+          await this.publishLead();
+          return { ok: true, result: { kind: "attach_session", target } };
+        }
+        case "stop_lead_session": {
+          await this.lead.stop();
+          await this.publishLead();
+          return { ok: true, result: { kind: "lead_stopped" } };
+        }
         case "create_task": {
           const state = this.createTask({
             repoId: command.repoId as RepoId,

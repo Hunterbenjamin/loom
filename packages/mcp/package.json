@@ -12,6 +12,7 @@
   "dependencies": {
     "@loom/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^4.6.2"
+    "zod": "^4.6.2",
+    "@loom/protocol": "workspace:*"
   }
 }

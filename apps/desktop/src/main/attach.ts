@@ -1,13 +1,13 @@
 import type { RunId } from "@loom/core";
-import type { RunTarget } from "@loom/protocol";
+import type { LeadTarget, RunTarget } from "@loom/protocol";
 import { TrackerClient } from "../shared/client.js";
 import type { ConnectionConfig } from "../shared/connection.js";
 
 /** Resolve in main, from the authenticated coordinator. The renderer supplies only a run ID. */
 export function resolveAttach(
   config: ConnectionConfig,
-  runId: RunId,
-): Promise<RunTarget> {
+  runId: RunId | "lead",
+): Promise<RunTarget | LeadTarget> {
   if (config.mode !== "live")
     return Promise.reject(new Error("No coordinator configured"));
   return new Promise((resolve, reject) => {
@@ -24,7 +24,11 @@ export function resolveAttach(
         if (status !== "connected" || requested) return;
         requested = true;
         void client
-          .command({ kind: "open_attach_session", runId })
+          .command(
+            runId === "lead"
+              ? { kind: "open_lead_session" }
+              : { kind: "open_attach_session", runId },
+          )
           .then((outcome) => {
             clearTimeout(timer);
             client.stop();
@@ -33,7 +37,9 @@ export function resolveAttach(
               return reject(new Error("Invalid attach acknowledgement"));
             const target = outcome.result.target;
             if (
-              target.runId !== runId ||
+              (runId === "lead"
+                ? !("identity" in target)
+                : !("runId" in target) || target.runId !== runId) ||
               target.attach?.kind !== "pane_host" ||
               !target.pane ||
               target.pane.dead ||
@@ -43,6 +49,11 @@ export function resolveAttach(
                 new Error("This run has no live pane in this instance"),
               );
             resolve(target);
+          })
+          .catch((error) => {
+            clearTimeout(timer);
+            client.stop();
+            reject(error);
           });
       },
     });

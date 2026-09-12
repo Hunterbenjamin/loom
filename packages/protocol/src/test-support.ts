@@ -61,6 +61,7 @@ export function snapshot(): SnapshotBody {
   const task = id.task("LOOM-101");
   const other = id.task("LOOM-102");
   return {
+    leads: [],
     inbox: [],
     repos: [
       {

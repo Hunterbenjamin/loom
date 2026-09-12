@@ -14,6 +14,7 @@ import type {
   AckOutcome,
   ClientState,
   Command,
+  LeadState,
   PatchFrame,
   RunTarget,
   TaskInbox,
@@ -71,6 +72,8 @@ export interface State {
   connection: string;
   inbox: TaskInbox[];
   runTargets: RunTarget[];
+  lead: LeadState;
+  instance: string;
 }
 
 export const VIEWS: { id: ViewId; label: string; hint: string }[] = [
@@ -144,6 +147,7 @@ export type Store = ReturnType<typeof createStore>;
 export function createStore(
   snapshot: Snapshot = buildSnapshot(taskCount()),
   live = false,
+  instance = live ? "unconfigured" : "fixtures",
 ) {
   let state: State = {
     snapshot,
@@ -152,6 +156,8 @@ export function createStore(
     connection: live ? "connecting" : "fixtures",
     inbox: [],
     runTargets: [],
+    instance,
+    lead: { id: "lead", sessionId: null, status: live ? "stopped" : "idle" },
   };
   let send: ((command: Command) => Promise<AckOutcome>) | null = null;
   const listeners = new Set<() => void>();
@@ -219,6 +225,7 @@ export function createStore(
           !patch || patch.changes.some((c) => c.collection === "inbox")
             ? [...client.collections.inbox.values()]
             : state.inbox,
+        lead: client.collections.lead.get("lead") ?? state.lead,
         runTargets:
           !patch || patch.changes.some((c) => c.collection === "run_target")
             ? [...client.collections.run_target.values()]
