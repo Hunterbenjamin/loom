@@ -596,18 +596,27 @@ Scenarios are JSON files next to the tests. For example, an implementer with one
 Inputs may use `$HEAD`, `$FINDING_<n>` and `$QUESTION_<n>`, which are replaced at run time. Scenarios are
 validated with zod when loaded, and a scenario with steps left over when its run ends fails the test.
 
-## 10. Provisional until spike 05
+## 10. Restart recovery
 
-These parts follow the architecture's restart table but aren't verified:
+Verified in [spike 05](../../spikes/05-restart-matrix/FINDINGS.md) on herdr 0.9.0, with spikes 01 and 02
+for the provider sides.
 
-| Area | Current assumption |
-|---|---|
-| Coordinator restart | Load SQLite; run `pending`/`running` outbox rows again; `thread/resume` every live Codex run; poll `claude agents`; reconcile every task that isn't terminal. |
-| Codex app-server restart | Generation + 1; requests from older generations are dropped, never answered. Runs are `unknown` until `thread/resume`. A turn that shows as `interrupted` after the crash counts as a failed attempt. |
-| Herdr server restart | Interactive runs go `unknown`. Claude runs are still found through `claude agents`, Codex runs through the app-server. Whether panes survive, and what to restart, is open. |
-| Resume attempts | "N attempts" is `retry.maxAttempts` (3) for now. |
-| Thresholds | `unknownGraceMs` 60 s, `deliveryTimeoutMs` 10 s, `stallAfterMs` 15 min: placeholders. |
-| Hook spooling | Whether Claude hooks should go to a spool file while the coordinator is down. |
+| Fault | What happens | Reconcile |
+|---|---|---|
+| Coordinator restart | Providers and Herdr are untouched. | Load SQLite; run `pending` and `running` outbox rows again; `thread/resume` every live Codex run; poll `claude agents`; reconcile every non-terminal task. |
+| Herdr client detach | Nothing: same PIDs, same IDs, turns finish. | None. |
+| Herdr server stop, crash or kill | Every pane process dies. With `resume_agents_on_restore = false`, required for Loom sessions, panes return as bare shells in the right cwd, with no agent names or session refs. (`true` relaunches agents from a canonical command that drops `--settings`, `--model`, `--remote` and the pane environment, which produces sessions that look recovered and aren't.) | Interactive runs go `unknown`, then are relaunched from stored state: `herdr agent start` with the full stored command line (Claude `--resume <id> --settings … --model …`; Codex `resume <thread> --remote <sock>`), then `report-agent-session` for Codex. Claude's in-flight turn is lost: re-send the message. A Codex turn completed meanwhile if its app-server was outside Herdr: read it with `thread/read`. About 20 s for two agents. |
+| Codex app-server restart | Generation + 1; older request IDs are dropped, never answered. The unfinished turn reads `interrupted`. | Runs `unknown` until `thread/resume`; the interrupted turn is a failed attempt and is re-sent. |
+| Claude process dies, Herdr fine | The `claude agents` entry vanishes with no SessionEnd. | Headless: retry with `--resume`. Interactive: `vanished` and attention; the human relaunches (§3). |
+
+Rules that follow: one Codex app-server per task, as a Loom child process outside Herdr; no decision is
+ever derived from Herdr's status, and `agent prompt --wait` is never called; the intended command line and
+environment of every interactive run are Loom state, never inferred from a pane's argv.
+
+Still placeholders: `unknownGraceMs` 60 s, `deliveryTimeoutMs` 10 s, `stallAfterMs` 15 min. `claude agents
+--json` took up to about 5 s to list a relaunched session, so the grace period must exceed that. Untested:
+a machine restart, `herdr update --handoff`, a Claude permission prompt across a restart, and spooling
+hooks while the coordinator is down.
 
 ## 11. Out of v1
 
