@@ -141,9 +141,11 @@ export function human(
       c.voidApprovals("stage_left");
       for (const finding of cmd.findings)
         c.finding({ ...finding, source: "human", blocking: true });
-      // In in_review stage, clear the review state to end the current reviewer round
+      // During review the reviewer round in flight is over: the human's findings replace its
+      // verdict, so its run is superseded like any other run a stage change leaves behind.
       if (task.stage === "in_review") {
-        state.review = null;
+        const reviewer = c.current("reviewer");
+        if (reviewer) c.end(reviewer, "superseded", true);
       }
       c.stage("in_progress", "Human requested changes");
       c.fix(sequence);

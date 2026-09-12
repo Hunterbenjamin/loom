@@ -622,20 +622,8 @@ export class Coordinator {
                 details: [],
               },
             };
-          const taskId = command.taskId;
-          const inputId = this.submitHuman(taskId, command.command);
-          // Settle once to allow reconcile to run and set the disposition
-          await this.settle();
-          // Return the result with the disposition if available
-          const disposition = this.store.inputDisposition(taskId, inputId);
-          const result: Record<string, unknown> = {
-            kind: "human",
-            inputId,
-          };
-          if (disposition) {
-            result.disposition = disposition;
-          }
-          return { ok: true, result };
+          const inputId = this.submitHuman(command.taskId, command.command);
+          return { ok: true, result: { kind: "human", inputId } };
         }
         case "open_attach_session": {
           const runId = command.runId as string;
