@@ -5,6 +5,7 @@ import {
   type CodexErrorObservation,
   type CodexThreadObservation,
   type IsoTime,
+  type McpServerEntry,
   normalizeText,
   type OnHint,
   type ProviderSessionId,
@@ -513,6 +514,24 @@ class AppServerAdapter implements CodexAdapter {
 }
 
 /** Codex's refusal to read a loaded thread that has not had its first user message yet. */
+/**
+ * Loom's MCP registration in Codex's `mcp_servers.<name>` vocabulary. Codex 0.154 reads HTTP
+ * headers from `http_headers`, not Claude's `headers`: passed through unchanged, the reviewer
+ * connected without its bearer token and every tool call answered `unknown_run`.
+ */
+export function codexMcpServer(entry: McpServerEntry): Record<string, unknown> {
+  if ("command" in entry)
+    return {
+      command: entry.command,
+      args: entry.args,
+      ...(entry.env ? { env: entry.env } : {}),
+    };
+  return {
+    url: entry.url,
+    ...(entry.headers ? { http_headers: entry.headers } : {}),
+  };
+}
+
 export const isNotMaterialized = (error: unknown): boolean =>
   typeof error === "object" &&
   error !== null &&
