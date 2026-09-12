@@ -1,0 +1,30 @@
+[
+  {
+    "name": "duplicate native hint",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "interactive"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "status": "idle"
+      },
+      {
+        "duplicate": "last_event"
+      },
+      {
+        "tool": "report_progress",
+        "input": {
+          "summary": "Alive",
+          "stepIndex": null,
+          "decisions": [],
+          "testResults": []
+        }
+      }
+    ]
+  }
+]

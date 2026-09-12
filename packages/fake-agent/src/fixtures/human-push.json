@@ -1,0 +1,41 @@
+[
+  {
+    "name": "human pushes after review",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "interactive"
+    },
+    "steps": [
+      {
+        "github": "push",
+        "files": {
+          "example.txt": "human change"
+        }
+      }
+    ]
+  },
+  {
+    "name": "review human head",
+    "agent": {
+      "provider": "claude",
+      "role": "reviewer",
+      "mode": "headless"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "tool": "submit_review",
+        "input": {
+          "reviewedSha": "$HEAD",
+          "summary": "Reviewed",
+          "findings": [],
+          "verdicts": [],
+          "testResults": []
+        }
+      }
+    ]
+  }
+]

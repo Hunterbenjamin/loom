@@ -153,6 +153,21 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  packages/fake-agent:
+    dependencies:
+      '@loom/core':
+        specifier: workspace:*
+        version: link:../core
+      '@loom/mcp':
+        specifier: workspace:*
+        version: link:../mcp
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.30.0
+        version: 1.30.0(zod@4.6.2)
+      zod:
+        specifier: ^4.6.2
+        version: 4.6.2
+
   packages/mcp:
     dependencies:
       '@loom/core':

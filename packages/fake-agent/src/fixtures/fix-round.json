@@ -1,0 +1,134 @@
+[
+  {
+    "name": "implementer with one fix round",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "interactive"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "status": "working"
+      },
+      {
+        "git": "commit",
+        "files": {
+          "example.txt": "first implementation"
+        },
+        "message": "first implementation"
+      },
+      {
+        "tool": "submit_for_review",
+        "input": {
+          "headSha": "$HEAD",
+          "summary": "Ready",
+          "testResults": [],
+          "handoff": {
+            "summary": "Ready",
+            "nextSteps": []
+          }
+        }
+      },
+      {
+        "status": "idle"
+      },
+      {
+        "expect": "message",
+        "match": "findings"
+      },
+      {
+        "git": "commit",
+        "files": {
+          "example.txt": "fixed implementation"
+        },
+        "message": "fixed implementation"
+      },
+      {
+        "tool": "resolve_finding",
+        "input": {
+          "findingId": "$FINDING_0",
+          "resolution": "fixed",
+          "note": "Fixed",
+          "commitSha": "$HEAD"
+        }
+      },
+      {
+        "tool": "submit_for_review",
+        "input": {
+          "headSha": "$HEAD",
+          "summary": "Ready",
+          "testResults": [],
+          "handoff": {
+            "summary": "Ready",
+            "nextSteps": []
+          }
+        }
+      },
+      {
+        "status": "idle"
+      }
+    ]
+  },
+  {
+    "name": "first review",
+    "agent": {
+      "provider": "claude",
+      "role": "reviewer",
+      "mode": "headless"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "tool": "submit_review",
+        "input": {
+          "reviewedSha": "$HEAD",
+          "summary": "Reviewed",
+          "findings": [
+            {
+              "severity": "major",
+              "title": "Fix bug",
+              "body": "Wrong value",
+              "location": null
+            }
+          ],
+          "verdicts": [],
+          "testResults": []
+        }
+      }
+    ]
+  },
+  {
+    "name": "verify fix",
+    "agent": {
+      "provider": "claude",
+      "role": "reviewer",
+      "mode": "headless"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "tool": "submit_review",
+        "input": {
+          "reviewedSha": "$HEAD",
+          "summary": "Reviewed",
+          "findings": [],
+          "verdicts": [
+            {
+              "findingId": "$FINDING_0",
+              "status": "resolved",
+              "note": "Verified"
+            }
+          ],
+          "testResults": []
+        }
+      }
+    ]
+  }
+]

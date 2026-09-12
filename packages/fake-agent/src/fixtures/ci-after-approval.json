@@ -1,0 +1,23 @@
+[
+  {
+    "name": "CI fails after human approval",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "interactive"
+    },
+    "steps": [
+      {
+        "github": "ci",
+        "conclusion": "failure"
+      },
+      {
+        "expect": "message",
+        "match": "findings"
+      },
+      {
+        "status": "idle"
+      }
+    ]
+  }
+]
