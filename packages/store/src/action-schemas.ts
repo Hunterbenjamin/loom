@@ -6,8 +6,8 @@ import {
   contract,
   count,
   errorSchema,
-  herdrRef,
   id,
+  paneRef,
   positive,
   provider,
   role,
@@ -195,7 +195,7 @@ const outputs = {
   start_run: z.object({
     sessionId: id,
     codexGeneration: count.nullable(),
-    herdr: herdrRef.nullable(),
+    pane: paneRef.nullable(),
   }),
   send_message: z.object({ transportRef: text.nullable() }),
   interrupt_run: empty,

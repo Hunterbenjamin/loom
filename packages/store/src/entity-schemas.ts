@@ -22,8 +22,8 @@ import {
   failedReason,
   findingStatus,
   hash,
-  herdrRef,
   id,
+  paneRef,
   positive,
   provider,
   providerRules,
@@ -54,7 +54,6 @@ const attentionReason = z.enum([
   "question",
   "provider_permission",
   "provider_input",
-  "provider_dialog",
   "blocked",
   "failed",
   "run_vanished",
@@ -116,7 +115,7 @@ export const worktreeSchema = contract<Worktree>()(
     baseBranch: text,
     baseSha: sha,
     portSlot: count.nullable(),
-    herdrWorkspaceId: text.nullable(),
+    paneWorkspaceId: text.nullable(),
     createdAt: time,
     removedAt: time.nullable(),
     git: z
@@ -144,7 +143,7 @@ export const runSchema = contract<Run>()(
     sessionId: id.nullable(),
     sessionEpoch: count,
     codexGeneration: count.nullable(),
-    herdr: herdrRef.nullable(),
+    pane: paneRef.nullable(),
     status: z.enum([
       "starting",
       "working",
@@ -154,9 +153,7 @@ export const runSchema = contract<Run>()(
       "ended",
       "unknown",
     ]),
-    blockedOn: z
-      .enum(["permission", "input", "dialog", "rate_limit"])
-      .nullable(),
+    blockedOn: z.enum(["permission", "input", "rate_limit"]).nullable(),
     lastTurn: z
       .object({
         id,
