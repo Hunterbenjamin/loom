@@ -218,7 +218,7 @@ describe("every attention reason", () => {
       },
     ],
     [
-      "status_unknown",
+      "observability_failure",
       (f) => {
         const run = f.state.runs[1] as Run;
         run.unknownSince = now;
