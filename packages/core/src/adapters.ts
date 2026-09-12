@@ -67,6 +67,8 @@ export interface GitAdapter {
   readWorktree(
     path: WorktreePath,
     baseBranch: string,
+    /** Every fixing commit pending validation; omitted means no candidates requested. */
+    reachableCandidates?: readonly Sha[],
   ): Promise<GitWorktreeObservation>;
   /** Idempotent: an existing worktree for the same branch is returned, not recreated. */
   createWorktree(req: {
