@@ -582,7 +582,7 @@ export function observeFakes(
     github: { ok: true, at: now, value: runner.adapters.github.snapshot() },
     runs: [],
     inputs: [],
-    externalSessions: [],
+    externalSessions: { ok: true, at: now, value: [] },
     dependencies: [],
     capacity: {
       version: runner.state.task.version,
