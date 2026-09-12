@@ -132,6 +132,15 @@ Rules:
 - `--settings` is part of a Claude session's identity. Whatever relaunches a Claude agent must pass it
   again; a session running without it is unobservable even though it has the right ID.
 
+### Lead session
+
+The coordinator also owns one interactive Claude Lead session per instance, outside the task/run
+model. Its recipe and per-session credentials live under the instance data directory; its pane is
+in the fixed `loom-lead` workspace on the same private server. Lead uses a separate MCP identity
+with human-command tools. Those tools enqueue the same guarded inputs as the CLI; they do not
+change stage ownership. Task-run tools and Lead tools reject each other's identities. See
+[Lead](design/ui.md#lead) for its lifecycle, recovery and bottom-bar UI.
+
 ### Claude Code
 
 Verified in [spike 02](../spikes/02-claude-hooks/FINDINGS.md) (Claude Code 2.1.268):

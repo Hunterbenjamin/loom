@@ -114,10 +114,12 @@ test("configFromEnvironment reads MCP and hook ports from environment", () => {
     ...baseEnv,
     LOOM_MCP_PORT: "9000",
     LOOM_HOOK_PORT: "9001",
+    LOOM_MODEL_LEAD: "fake-lead-model",
   };
   const config = configFromEnvironment(env);
   expect(config.mcpPort).toBe(9000);
   expect(config.hookPort).toBe(9001);
+  expect(config.leadModel).toBe("fake-lead-model");
 
   // Without env vars, should default to bind.port+1 and bind.port+2
   const configWithDefaults = configFromEnvironment(baseEnv);

@@ -1,7 +1,7 @@
 // xterm.js 6 over node-pty, with the addons and the kitty key shim spike 03 specified.
 // Terminals are for humans: nothing here parses output or decides anything.
 
-import type { Task } from "@loom/core";
+import type { RunId, Task } from "@loom/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -33,6 +33,50 @@ export function TerminalTab({
       ),
     (a, b) => a.length === b.length && a.every((r, i) => r === b[i]),
   );
+  return (
+    <div className="terminal-wrap">
+      {live ? (
+        <select
+          aria-label="Terminal run"
+          value={runId ?? ""}
+          onChange={(event) =>
+            store.setRun(
+              runs.find((r) => r.id === event.target.value)?.id ?? null,
+            )
+          }
+        >
+          <option value="">Select a run</option>
+          {runs.map((run) => (
+            <option key={run.id} value={run.id}>
+              {run.role} · {run.provider} · {run.id}
+            </option>
+          ))}
+        </select>
+      ) : null}
+      <TerminalSession
+        label={task.id}
+        runId={runId}
+        theme={theme}
+        live={live}
+      />
+    </div>
+  );
+}
+
+/** The shared attach client for task runs and the instance Lead. Unmount only detaches. */
+export function TerminalSession({
+  label,
+  runId = null,
+  lead = false,
+  theme,
+  live,
+}: {
+  label: string;
+  runId?: RunId | null;
+  lead?: boolean;
+  theme: "dark" | "light";
+  live: boolean;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState("starting...");
   const [command, setCommand] = useState("");
@@ -40,11 +84,11 @@ export function TerminalTab({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    if (live && !runId) {
+    if (live && !runId && !lead) {
       setStatus("Select a run to attach");
       return;
     }
-    const id = `${task.id}:${runId ?? "fixture"}:terminal:${crypto.randomUUID()}`;
+    const id = `${label}:${runId ?? "fixture"}:terminal:${crypto.randomUUID()}`;
     const terminal = new Terminal({
       fontFamily: '"SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace',
       fontSize: 12,
@@ -106,7 +150,8 @@ export function TerminalTab({
         id,
         cols: terminal.cols,
         rows: terminal.rows,
-        label: task.id,
+        label,
+        lead,
         runId,
       })
       .then((result) => {
@@ -157,29 +202,11 @@ export function TerminalTab({
       void window.loomTerminal.kill(id);
       terminal.dispose();
     };
-  }, [task.id, theme, live, runId]);
+  }, [label, theme, live, runId, lead]);
 
   return (
     <div className="terminal-wrap">
       <div className="terminal-bar">
-        {live ? (
-          <select
-            aria-label="Terminal run"
-            value={runId ?? ""}
-            onChange={(event) =>
-              store.setRun(
-                runs.find((r) => r.id === event.target.value)?.id ?? null,
-              )
-            }
-          >
-            <option value="">Select a run</option>
-            {runs.map((run) => (
-              <option key={run.id} value={run.id}>
-                {run.role} · {run.provider} · {run.id}
-              </option>
-            ))}
-          </select>
-        ) : null}
         <span className="mono terminal-command" title={command}>
           {command || "..."}
         </span>

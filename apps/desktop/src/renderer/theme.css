@@ -855,3 +855,90 @@ ul.plain {
   width: 100%;
   resize: vertical;
 }
+
+/* Shared window chrome. Lead overlays the Tracker so the list never resizes on toggle. */
+.shell {
+  padding-bottom: 34px;
+}
+.bottom-bar {
+  position: fixed;
+  inset: auto 0 0;
+  height: 34px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: var(--bg-raised);
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+}
+.connection-state,
+.lead-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.connection-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.connection-dot.connected {
+  background: #64b891;
+}
+.lead-badge {
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  font-variant-numeric: tabular-nums;
+}
+.lead-panel {
+  position: fixed;
+  bottom: 34px;
+  left: 0;
+  right: 0;
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  min-height: 160px;
+  background: var(--bg-raised);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 24px #0003;
+  animation: lead-open 120ms ease-out;
+}
+.lead-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  font-size: 11px;
+}
+.lead-resize {
+  margin: 0;
+  border: 0;
+  height: 5px;
+  flex-shrink: 0;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.lead-panel .terminal-wrap {
+  flex: 1;
+  min-height: 0;
+}
+@keyframes lead-open {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lead-panel {
+    animation: none;
+  }
+}

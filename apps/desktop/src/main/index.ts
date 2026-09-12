@@ -90,9 +90,11 @@ function wire(window: BrowserWindow): void {
       const target =
         connection.mode === "fixtures"
           ? null
-          : request.runId
-            ? await resolveAttach(connection, request.runId)
-            : null;
+          : request.lead
+            ? await resolveAttach(connection, "lead")
+            : request.runId
+              ? await resolveAttach(connection, request.runId)
+              : null;
       if (connection.mode !== "fixtures" && !target?.attach)
         throw new Error("Select a run with a live terminal pane");
       if (window.isDestroyed()) throw new Error("Window closed");

@@ -7,6 +7,7 @@ import { BoardView } from "./ui/board.js";
 import { Detail } from "./ui/detail.js";
 import { InboxView } from "./ui/inbox.js";
 import { useShortcuts } from "./ui/keys.js";
+import { LeadBar } from "./ui/lead.js";
 import { ListView } from "./ui/list.js";
 import { Palette, StagePicker } from "./ui/palette.js";
 import { Sidebar } from "./ui/sidebar.js";
@@ -124,6 +125,7 @@ export function App() {
         </div>
       </div>
 
+      <LeadBar />
       <Palette />
       <StagePicker />
       {toast ? <div className="toast">{toast}</div> : null}

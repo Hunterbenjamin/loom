@@ -38,6 +38,7 @@ import {
 } from "./ids.js";
 import {
   commentThread,
+  leadState,
   reviewState,
   runTarget,
   taskChanges,
@@ -52,6 +53,11 @@ import {
  * task-list level and reaches every client; the rest follow subscriptions.
  */
 export const collections = {
+  lead: {
+    value: leadState,
+    key: z.literal("lead"),
+    keyOf: (v: z.output<typeof leadState>) => v.id,
+  },
   inbox: {
     value: taskInbox,
     key: taskId,
@@ -129,6 +135,7 @@ export function keyOf<N extends CollectionName>(
 }
 
 export const snapshotBody = z.strictObject({
+  leads: z.array(leadState).default([]),
   inbox: z.array(taskInbox),
   repos: z.array(repo),
   tasks: z.array(task),
@@ -149,6 +156,7 @@ export const snapshotBody = z.strictObject({
 
 /** Which snapshot collection each patch collection lands in. */
 export const COLLECTION_FIELDS = {
+  lead: "leads",
   inbox: "inbox",
   repo: "repos",
   task: "tasks",
@@ -170,6 +178,7 @@ export const COLLECTION_FIELDS = {
 export type SnapshotBody = z.output<typeof snapshotBody>;
 
 export const emptySnapshotBody = (): SnapshotBody => ({
+  leads: [],
   inbox: [],
   repos: [],
   tasks: [],

@@ -86,6 +86,42 @@ in the latency numbers.
   window closing;
 - an exported attention derivation in `packages/core`, so the UI never re-implements the rule.
 
+## Lead
+
+Every window has a 34px bottom bar: connection state and instance on the left, and a Lead toggle
+with the number of Needs-you rows on the right. `⌘J` opens or closes Lead, including while typing
+in its terminal. The panel overlays the lower third of the window. Its top edge supports pointer
+and arrow-key resizing; height and visibility live only in that window's memory. Closing detaches
+that terminal client and leaves the session running. Reopening attaches again. Toggle and resize
+state belong to the bar component, so neither updates the task store nor re-renders the task list.
+The terminal module loads only when first opened, preserving the cold-start path.
+
+The header shows working, idle or waiting from the coordinator's `claude agents --json` observation.
+An absent or unavailable provider observation is unknown, never inferred from terminal output.
+Restart stops the session, revokes its token and opens a fresh session through the same attach flow.
+Fixture mode previews the bar and terminal without contacting a coordinator or launching an agent.
+
+Lead is one interactive Claude session per instance, not a task run. The coordinator persists its
+session ID, private token, launch recipe and per-session settings under `<instance data>/lead/`
+before launching in the instance data directory. Its fixed pane workspace is `lead` (`loom-lead`
+on the instance's private tmux server). `LOOM_MODEL_LEAD` overrides the configured Claude model.
+`open_lead_session` is serialized and idempotent; it returns the existing live attach target or
+creates the pane. `stop_lead_session` records the stop before closing the pane. Startup recovery
+relaunches a confirmed dead pane from the recipe, resumes a session with a provider-confirmed
+transcript, and leaves a missing pane alone until an explicit open. The configured stable MCP port
+takes precedence; an instance using ephemeral ports rebinds the saved Lead port on restart so an
+existing process keeps its endpoint. Lead settings are rewritten during recovery to use the current
+endpoint. A conflicting listener causes startup to fail rather than silently changing that endpoint.
+
+Lead's token selects a separate MCP tool set on the coordinator's existing host: `list_tasks`,
+`inspect_task`, `create_task`, `move_task`, `approve_plan`, `reject_plan`, `approve_merge`,
+`request_changes`, `answer_question`, `answer_provider_request`, `retry_task`, `cancel_task`, and
+`list_repos`. Inspection uses the same view as `loom task inspect --json`. Mutations use the CLI's
+human-command path and keep every core guard; an input acknowledgement means queued, not approved.
+Task-run tokens cannot call these tools, and Lead cannot call task-run result tools. Its first
+message requires repository work to become Loom tasks and forbids merging or pushing to a base
+branch. The task model, core stages and reconciler are unchanged.
+
 ## Performance
 
 The Workbench inherits the shell's budgets and harness: keystroke to glyph p95 ≤ 16 ms, 120 fps

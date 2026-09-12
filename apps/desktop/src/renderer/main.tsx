@@ -12,7 +12,11 @@ const config = connectionConfig.parse(await window.loomHost.connection());
 const store =
   config.mode === "fixtures"
     ? createStore()
-    : createStore(emptySnapshot(), true);
+    : createStore(
+        emptySnapshot(),
+        true,
+        config.mode === "live" ? config.instance : "unconfigured",
+      );
 if (config.mode === "live") {
   const client = new TrackerClient({
     ...config,

@@ -240,3 +240,13 @@ pnpm test
 pnpm lint
 pnpm typecheck
 ```
+
+## Lead
+
+`open_lead_session` opens the instance's interactive Claude Lead; `stop_lead_session` stops it and
+revokes its token. `LOOM_MODEL_LEAD` defaults to `LOOM_MODEL_CLAUDE`. Its private recipe and settings
+are in `<instance data>/lead/`, with cwd at the instance data directory. No task or run is created.
+The configured stable MCP port takes precedence over the recipe; ephemeral instances reuse the
+saved Lead port across coordinator restarts. Recovery rewrites Lead settings to the current
+endpoint and relaunches only confirmed dead Lead panes; absence requires an explicit open.
+See [the UI design](../../docs/design/ui.md#lead) for controls and tool scope.

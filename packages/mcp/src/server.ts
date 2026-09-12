@@ -18,6 +18,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { type LeadHost, leadInputSchemas, leadToolNames } from "./lead.js";
 import {
   anchorSchema,
   errorSchema,
@@ -31,6 +32,10 @@ import {
   timeSchema,
 } from "./schemas.js";
 
+export type McpIdentity =
+  | { runId: RunId; active: boolean; kind?: "run" }
+  | { kind: "lead"; active: boolean };
+
 export type McpInput = Extract<Input, { type: "mcp" }>;
 export interface McpHost {
   /** Persist the input, serialize a reconcile pass for its task, commit, then return its disposition. */
@@ -40,13 +45,9 @@ export interface McpHost {
 }
 export interface McpServerOptions {
   host: McpHost;
+  leadHost?: LeadHost;
   /** Re-read authoritative liveness on every call; null means an unknown token. */
-  resolveToken(
-    token: string,
-  ):
-    | { runId: RunId; active: boolean }
-    | null
-    | Promise<{ runId: RunId; active: boolean } | null>;
+  resolveToken(token: string): McpIdentity | null | Promise<McpIdentity | null>;
   /** Read the exact reviewed blobs, verifying the path and range; never read the working file. */
   buildAnchor(input: {
     runId: RunId;
@@ -96,6 +97,8 @@ async function invoke(
   const identity = token ? await options.resolveToken(token) : null;
   if (!identity)
     return failure("unknown_run", "The token does not identify a run");
+  if (identity.kind === "lead")
+    return failure("guard_failed", "Lead identity cannot call task-run tools");
   if (!identity.active)
     return failure("stale_run", "The run has ended or was superseded");
   const runId = runIdSchema.parse(identity.runId);
@@ -192,26 +195,70 @@ export function createMcpServer(
     { name: "loom", version: "0.0.0" },
     { capabilities: { tools: {} } },
   );
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: names.map((name) => ({
-      name,
-      description: descriptions[name],
-      inputSchema: z.toJSONSchema(inputSchemas[name], { io: "input" }) as {
-        type: "object";
-      },
-      outputSchema: {
-        ...z.toJSONSchema(resultSchema(outputSchemas[name]), { io: "input" }),
-        type: "object" as const,
-      },
-      annotations: {
-        readOnlyHint: name === "get_task_context",
-        destructiveHint: false,
-        openWorldHint: false,
-      },
-    })),
-  }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    const identity = token ? await options.resolveToken(token) : null;
+    if (identity?.kind === "lead")
+      return {
+        tools: leadToolNames.map((name) => ({
+          name,
+          description: `Lead: ${name.replaceAll("_", " ")}. Uses Loom's human commands and guards.`,
+          inputSchema: z.toJSONSchema(leadInputSchemas[name] as z.ZodObject, {
+            io: "input",
+          }) as { type: "object" },
+          annotations: {
+            readOnlyHint: ["list_tasks", "inspect_task", "list_repos"].includes(
+              name,
+            ),
+            destructiveHint: false,
+            openWorldHint: false,
+          },
+        })),
+      };
+    return {
+      tools: names.map((name) => ({
+        name,
+        description: descriptions[name],
+        inputSchema: z.toJSONSchema(inputSchemas[name], { io: "input" }) as {
+          type: "object";
+        },
+        outputSchema: {
+          ...z.toJSONSchema(resultSchema(outputSchemas[name]), { io: "input" }),
+          type: "object" as const,
+        },
+        annotations: {
+          readOnlyHint: name === "get_task_context",
+          destructiveHint: false,
+          openWorldHint: false,
+        },
+      })),
+    };
+  });
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const name = request.params.name;
+    if (leadToolNames.includes(name)) {
+      const identity = token ? await options.resolveToken(token) : null;
+      if (!identity) return reply(failure("unknown_run", "Unknown identity"));
+      if (identity.kind !== "lead")
+        return reply(
+          failure("guard_failed", "Task-run identity cannot call Lead tools"),
+        );
+      if (!identity.active)
+        return reply(failure("stale_run", "Lead session stopped"));
+      const parsed = (leadInputSchemas[name] as z.ZodObject).safeParse(
+        request.params.arguments ?? {},
+      );
+      if (!parsed.success)
+        return reply(failure("invalid_input", "Tool input failed validation"));
+      try {
+        if (!options.leadHost) throw new Error("Lead unavailable");
+        return reply({
+          ok: true,
+          value: await options.leadHost.invoke(name, parsed.data),
+        });
+      } catch {
+        throw new Error("Loom host could not complete the request");
+      }
+    }
     if (!names.includes(name as McpToolName))
       return reply(failure("invalid_input", "Unknown Loom tool"));
     try {

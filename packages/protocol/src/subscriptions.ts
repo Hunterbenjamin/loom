@@ -66,7 +66,7 @@ export function taskInView(task: Task, view: ViewName): boolean {
 }
 
 /** Collections that reach every client, whatever it subscribed to. */
-const ALWAYS: CollectionName[] = ["repo", "inbox"];
+const ALWAYS: CollectionName[] = ["repo", "inbox", "lead"];
 
 export interface Scope {
   views: { views: ViewName[]; repoIds: Set<string> | null }[];
@@ -111,7 +111,7 @@ export function taskInScope(scope: Scope, task: Task): boolean {
 /** The task a change belongs to, or null when it isn't task-scoped. */
 export function ownerTask(change: Change): string | null {
   if (change.op === "delete") return change.taskId;
-  if (change.collection === "repo") return null;
+  if (change.collection === "repo" || change.collection === "lead") return null;
   if (change.collection === "task") return change.value.id;
   return change.value.taskId;
 }

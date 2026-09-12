@@ -227,6 +227,7 @@ async function open(
   const ensurePane = paneHost.ensurePane.bind(paneHost);
   paneHost.ensurePane = async (request) => {
     const ref = await ensurePane(request);
+    if (request.runId === "lead") return ref;
     for (const task of store.tasks())
       for (const run of store.loadTaskState(task.id).runs)
         if (

@@ -51,6 +51,7 @@ export const configSchema = z
     hookPort: port.optional(),
     /** Compared in constant time on every `hello`. Absence is an error, not an open socket. */
     token: z.string().min(16),
+    leadModel: z.string().min(1).optional(),
     models: z.object({ codex: z.string().min(1), claude: z.string().min(1) }),
     /** GitHub logins Loom and its agents push as; their comments are not findings. */
     excludedAuthors: z.array(z.string().min(1)).default([]),
@@ -133,6 +134,7 @@ export function configFromEnvironment(
       codex: env.LOOM_MODEL_CODEX ?? "gpt-5.1-codex",
       claude: env.LOOM_MODEL_CLAUDE ?? "claude-opus-5",
     },
+    leadModel: optional("LOOM_MODEL_LEAD"),
     excludedAuthors: optional("LOOM_EXCLUDED_AUTHORS")
       ?.split(",")
       .map((v) => v.trim())
