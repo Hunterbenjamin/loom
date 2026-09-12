@@ -287,7 +287,9 @@ terminal someone deliberately closed is worse than asking, so the run ends with 
 `run_vanished` attention, and the human's `retry` relaunches it (resuming the session when the provider
 still has it). Closing a Codex pane is different: it only detaches, and the thread keeps running (§4).
 
-**Attention** is derived on every reconcile. A task needs the human while any of these reasons holds:
+**Attention** is derived on every reconcile by `deriveAttention`, which `packages/core` exports as a
+pure function so the UI renders the same rule instead of re-implementing it. A task needs the human
+while any of these reasons holds:
 
 | Reason | Condition |
 |---|---|
@@ -301,6 +303,12 @@ still has it). Closing a Codex pane is different: it only detaches, and the thre
 | `stalled` | A run is `working` with no provider activity for `stallAfterMs`. Nothing is killed. |
 | `status_unknown` | A run has been `unknown` for longer than `unknownGraceMs` |
 | `over_budget` | Time in stages `planning` through `awaiting_approval` exceeds `budgetMinutes` |
+
+`Attention` keeps a `since` per reason: `reasonSince` has exactly one entry per current reason, each
+the time that reason first appeared and has held since, and `since` is the earliest of them. A queue
+sorts by how long each thing has waited, which a single timestamp for the whole set cannot answer
+once a second reason appears. `reasonSince` is additive, so a row written before it existed falls
+back to the set's `since`.
 
 Terminal tasks (`done`, `canceled`) suppress attention while retaining historical questions and failures.
 Uncertain delivery uses `provider_input` attention plus a notification. `activeElapsedMs` accumulates

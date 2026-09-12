@@ -188,8 +188,18 @@ const HAS_WORKTREE: Stage[] = [
 ];
 
 function attentionFor(reasons: AttentionReason[], since: IsoTime | null) {
-  return { reasons, since: reasons.length > 0 ? since : null };
+  const reasonSince: Partial<Record<AttentionReason, IsoTime>> = {};
+  // One `since` per reason: the first is the set's own, later ones are more recent, so the
+  // set's `since` stays the earliest and a sorted inbox has something to sort.
+  const age = since ? minutesAgo(since) : 0;
+  reasons.forEach((reason, i) => {
+    if (since) reasonSince[reason] = minutesBefore(Math.round(age / (i + 1)));
+  });
+  return { reasons, reasonSince, since: reasons.length > 0 ? since : null };
 }
+
+const minutesAgo = (at: IsoTime): number =>
+  Math.round((Date.parse(NOW) - Date.parse(at)) / 60_000);
 
 /**
  * `taskCount` repeats the seed list to make a longer list. The app always uses the 40 written
