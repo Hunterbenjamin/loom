@@ -110,4 +110,43 @@ describe("stale entry detection", () => {
     // Use a very high PID that's unlikely to exist
     expect(isStaleEntry({ ...entry, pid: 999999 } as typeof entry)).toBe(true);
   });
+
+  test("isStaleEntry uses hook activity for null-pid entries", () => {
+    const entries = parseAgentsOutput(fixture);
+    const entry = entries[0];
+    if (!entry) throw new Error("Expected at least one entry in fixture");
+    const nullPidEntry = { ...entry, pid: null } as typeof entry;
+
+    const now = "2026-09-12T13:00:00.000Z";
+    const stallAfterMs = 900000; // 15 minutes
+
+    // Recent hook activity: entry is live
+    const recentHookTime = "2026-09-12T12:59:00.000Z"; // 1 minute ago
+    expect(
+      isStaleEntry(nullPidEntry, {
+        hookLastEventAt: recentHookTime,
+        stallAfterMs,
+        now,
+      }),
+    ).toBe(false);
+
+    // Stale hook activity: entry is stale
+    const staleHookTime = "2026-09-12T12:00:00.000Z"; // 1 hour ago
+    expect(
+      isStaleEntry(nullPidEntry, {
+        hookLastEventAt: staleHookTime,
+        stallAfterMs,
+        now,
+      }),
+    ).toBe(true);
+
+    // No hook activity but have hook options: entry is live (conservative)
+    expect(
+      isStaleEntry(nullPidEntry, {
+        hookLastEventAt: null,
+        stallAfterMs,
+        now,
+      }),
+    ).toBe(false);
+  });
 });

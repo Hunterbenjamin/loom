@@ -5,6 +5,16 @@ import type { RunId, WorktreePath } from "./ids.js";
 import { deriveStatus } from "./status.js";
 
 export function observeRuns(c: Context): void {
+  // Enforce terminal-task invariant: end all external runs on done/canceled tasks
+  if (c.task.stage === "done" || c.task.stage === "canceled") {
+    const endReason =
+      c.task.stage === "done" ? "task_done" : ("canceled" as const);
+    for (const run of c.state.runs) {
+      if (run.origin === "external" && !run.endedAt) {
+        c.end(run, endReason);
+      }
+    }
+  }
   for (const run of c.state.runs) {
     if (run.endedAt || run.origin === "external") continue;
     // A launch result must be committed before old snapshots can describe this attempt.
@@ -114,6 +124,16 @@ export function observeRuns(c: Context): void {
           why: "retry",
         });
       }
+    }
+  }
+  // End external runs whose sessions have disappeared
+  for (const run of c.state.runs) {
+    if (run.origin !== "external" || run.endedAt) continue;
+    const stillActive = c.observations.externalSessions.some(
+      (s) => s.provider === run.provider && s.sessionId === run.sessionId,
+    );
+    if (!stillActive) {
+      c.end(run, "vanished");
     }
   }
   for (const session of c.observations.externalSessions) {

@@ -143,6 +143,8 @@ export async function observeExternal(
   /** Every session Loom has ever launched, from the launch recipes. A run that has scrolled out
    * of the loaded snapshot is still Loom's, and must never be adopted as an external session. */
   launched: ReadonlySet<string> = new Set(),
+  now?: string,
+  stallAfterMs?: number,
 ): Promise<ExternalSessionObservation[]> {
   const worktree = state.task.worktreePath;
   if (!worktree) return [];
@@ -159,8 +161,25 @@ export async function observeExternal(
   ]);
   const external: ExternalSessionObservation[] = [];
   for (const entry of sessions) {
-    // Filter out stale entries (dead process)
-    if (isStaleEntry(entry)) continue;
+    // Filter out stale entries (dead process or stale hook activity for null-pid)
+    let hookInfo:
+      | { hookLastEventAt: string | null; stallAfterMs: number; now: string }
+      | undefined;
+    if (now && stallAfterMs) {
+      try {
+        const hooks = await adapters.claude.hookSummary(
+          entry.sessionId as never,
+        );
+        hookInfo = {
+          hookLastEventAt: hooks.lastEventAt,
+          stallAfterMs,
+          now,
+        };
+      } catch {
+        // If we can't get hook info, use conservative assumptions
+      }
+    }
+    if (isStaleEntry(entry, hookInfo)) continue;
     if (known.has(`claude ${entry.sessionId}`)) continue;
     let cwd: WorktreePath;
     try {
@@ -259,6 +278,8 @@ export async function observe(
       deps.adapters,
       state,
       deps.launchedSessions(),
+      now,
+      state.config.stallAfterMs,
     ),
     capacity,
     dependencies: deps.dependencies(),
