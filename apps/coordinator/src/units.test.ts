@@ -4,10 +4,18 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { FileChange, Finding, FindingId, Sha, TaskId } from "@loom/core";
+import type {
+  FileChange,
+  Finding,
+  FindingId,
+  Sha,
+  TaskId,
+  TaskState,
+} from "@loom/core";
 import { expect, test } from "vitest";
 import { configFromEnvironment, configSchema } from "./config.js";
 import { deriveClaudeSessionId, newToken, uuidV5 } from "./derive.js";
+import { deriveBashPrefixes, FIXED_BASH_PREFIXES } from "./launch.js";
 import { indexChanges, mapFindings, mapRange } from "./mapping.js";
 import { ENVIRONMENT_ALLOWLIST, runEnvironment } from "./recipes.js";
 import { createWorkflowReader, parseWorkflow } from "./workflow.js";
@@ -274,4 +282,125 @@ test("mapFindings gives each anchored finding a new location version", () => {
     findingId: anchored.id,
     location: { startLine: 12, status: "moved", version: 1 },
   });
+});
+
+test("fixed bash prefixes include git and pnpm commands", () => {
+  expect(FIXED_BASH_PREFIXES).toContain("git add");
+  expect(FIXED_BASH_PREFIXES).toContain("git commit");
+  expect(FIXED_BASH_PREFIXES).toContain("git status");
+  expect(FIXED_BASH_PREFIXES).toContain("git diff");
+  expect(FIXED_BASH_PREFIXES).toContain("git log");
+  expect(FIXED_BASH_PREFIXES).toContain("pnpm install");
+  expect(FIXED_BASH_PREFIXES).toContain("pnpm exec vitest");
+  expect(FIXED_BASH_PREFIXES).toContain("pnpm exec biome");
+  expect(FIXED_BASH_PREFIXES).toContain("pnpm exec tsc");
+  // These should NOT be included
+  expect(FIXED_BASH_PREFIXES).not.toContain("git push");
+  expect(FIXED_BASH_PREFIXES).not.toContain("git merge");
+  expect(FIXED_BASH_PREFIXES).not.toContain("gh");
+  expect(FIXED_BASH_PREFIXES).not.toContain("rm");
+  expect(FIXED_BASH_PREFIXES).not.toContain("curl");
+});
+
+test("deriveBashPrefixes returns fixed prefixes when no workflow reader is provided", async () => {
+  const state = {
+    task: { id: "t1" as TaskId, repoId: "r1" as never },
+    runs: [],
+  } as unknown as TaskState;
+  const prefixes = await deriveBashPrefixes(state);
+  expect(prefixes).toEqual(FIXED_BASH_PREFIXES);
+});
+
+test("deriveBashPrefixes combines fixed prefixes with WORKFLOW.md commands", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-bash-prefixes-"));
+  try {
+    const state = {
+      task: { id: "t1" as TaskId, repoId: "r1" as never },
+      runs: [],
+    } as unknown as TaskState;
+    const reader = createWorkflowReader();
+
+    // Create a WORKFLOW.md with custom commands
+    await writeFile(
+      join(root, "WORKFLOW.md"),
+      "## test\n```\npnpm test\n```\n## lint\n```\npnpm lint\n```\n",
+    );
+
+    const repoById = (repoId: string) =>
+      repoId === "r1" ? { root } : undefined;
+
+    const prefixes = await deriveBashPrefixes(state, reader, repoById);
+
+    // Should include all fixed prefixes
+    for (const fixed of FIXED_BASH_PREFIXES) {
+      expect(prefixes).toContain(fixed);
+    }
+
+    // Should also include WORKFLOW.md commands as "pnpm <name>"
+    expect(prefixes).toContain("pnpm test");
+    expect(prefixes).toContain("pnpm lint");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("deriveBashPrefixes deduplicates commands", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-bash-dedup-"));
+  try {
+    const state = {
+      task: { id: "t1" as TaskId, repoId: "r1" as never },
+      runs: [],
+    } as unknown as TaskState;
+    const reader = createWorkflowReader();
+
+    // Create a WORKFLOW.md with a command that matches a fixed prefix
+    await writeFile(
+      join(root, "WORKFLOW.md"),
+      "## install\n```\npnpm install\n```\n",
+    );
+
+    const repoById = (repoId: string) =>
+      repoId === "r1" ? { root } : undefined;
+
+    const prefixes = await deriveBashPrefixes(state, reader, repoById);
+
+    // Should not duplicate "pnpm install"
+    const count = prefixes.filter((p) => p === "pnpm install").length;
+    expect(count).toBe(1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("deriveBashPrefixes returns fixed prefixes when WORKFLOW.md is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-bash-missing-"));
+  try {
+    const state = {
+      task: { id: "t1" as TaskId, repoId: "r1" as never },
+      runs: [],
+    } as unknown as TaskState;
+    const reader = createWorkflowReader();
+
+    const repoById = (repoId: string) =>
+      repoId === "r1" ? { root } : undefined;
+
+    const prefixes = await deriveBashPrefixes(state, reader, repoById);
+
+    // Should return fixed prefixes even if WORKFLOW.md is missing
+    expect(prefixes).toEqual(FIXED_BASH_PREFIXES);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("deriveBashPrefixes returns fixed prefixes when repoById is not provided", async () => {
+  const state = {
+    task: { id: "t1" as TaskId, repoId: "r1" as never },
+    runs: [],
+  } as unknown as TaskState;
+  const reader = createWorkflowReader();
+
+  const prefixes = await deriveBashPrefixes(state, reader);
+
+  expect(prefixes).toEqual(FIXED_BASH_PREFIXES);
 });

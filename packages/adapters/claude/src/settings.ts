@@ -51,6 +51,8 @@ export interface SettingsRequest {
   /** The name Loom's tools appear under, inside Claude, as `mcp__<name>__*`. */
   mcpServerName: string;
   mcpServer: McpServerEntry;
+  /** Bash command prefixes that should be automatically allowed (e.g., 'pnpm test', 'git commit'). */
+  bashCommandPrefixes?: string[];
 }
 
 const hookUrl = (base: string, event: string): string => {
@@ -103,8 +105,19 @@ export function buildSettings(request: SettingsRequest): ClaudeSettingsFile {
       },
     ];
   }
+
+  // Build the permission allow list with MCP and Bash permissions
+  const allow: string[] = [`mcp__${request.mcpServerName}`];
+
+  // Add Bash permissions for each command prefix
+  if (request.bashCommandPrefixes && request.bashCommandPrefixes.length > 0) {
+    for (const prefix of request.bashCommandPrefixes) {
+      allow.push(`Bash(${prefix}:*)`);
+    }
+  }
+
   return {
-    permissions: { allow: [`mcp__${request.mcpServerName}`] },
+    permissions: { allow },
     hooks,
   };
 }

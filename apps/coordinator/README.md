@@ -241,6 +241,58 @@ pnpm lint
 pnpm typecheck
 ```
 
+## Permission allowlists
+
+Interactive Claude implementer runs receive an automatically-derived permission allowlist for Bash
+commands, so they execute approved project commands without stopping on permission prompts. This
+allows implementers to work continuously without human intervention.
+
+### Fixed allowlist
+
+Every interactive Claude implementer run is pre-allowed these command prefixes:
+
+- `git add` — stage changes
+- `git commit` — commit staged changes
+- `git status` — show repository status
+- `git diff` — show uncommitted changes
+- `git log` — show commit history
+- `pnpm install` — install dependencies
+- `pnpm exec vitest` — run tests
+- `pnpm exec biome` — run formatter/linter
+- `pnpm exec tsc` — run type checker
+
+The following are **explicitly never allowed**, even if a workflow command references them:
+
+- `git push` — coordinator handles merges through GitHub
+- `git merge` — coordinator handles merges through GitHub
+- `gh` — coordinator manages GitHub through its own adapter
+- `rm` — prevents accidental data loss
+- `curl` — hook communication uses its own curl; nested curl creates layering issues
+
+### Derived from WORKFLOW.md
+
+In addition to the fixed allowlist, any command defined in the repository's `WORKFLOW.md` is
+converted to a `pnpm <name>` prefix and automatically allowed. For example:
+
+```markdown
+## test
+```
+pnpm test
+```
+
+## build
+```
+pnpm build
+```
+```
+
+This WORKFLOW.md exposes commands `test` and `build`, which are converted to prefixes `pnpm test`
+and `pnpm build` and included in the permission allowlist. The coordinator reads the file once per
+run, so editing WORKFLOW.md in a worktree takes effect without restarting the coordinator.
+
+**Note:** If WORKFLOW.md is malformed or missing, the run receives only the fixed allowlist and
+continues without error. See [WORKFLOW.md policy](./README.md#workflowmd-design-note-133-settled-here) for details.
+
 ## Lead
 
 `open_lead_session` opens the instance's interactive Claude Lead; `stop_lead_session` stops it and
