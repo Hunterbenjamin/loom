@@ -108,6 +108,8 @@ export type AttentionReason =
   | "provider_dialog"
   | "blocked"
   | "failed"
+  /** An interactive run vanished; only a human relaunches it. */
+  | "run_vanished"
   | "stalled"
   | "status_unknown"
   | "over_budget";
@@ -204,7 +206,10 @@ export type RunEndReason =
   | "submitted"
   | "superseded"
   | "canceled"
+  /** A headless run's process died. Retried automatically. */
   | "crashed"
+  /** An interactive run's session disappeared: a crash and a human closing the pane look the same. */
+  | "vanished"
   | "failed"
   | "task_done";
 
@@ -242,14 +247,17 @@ export interface Run {
   worktreePath: WorktreePath;
   /** The review round this run belongs to (0 for the planner and the first implementer run). */
   round: number;
-  /** 1-based, per (task, role, round). */
-  attempt: number;
+  /** Launches of this run so far, 1-based. A retry bumps it and keeps the row. */
+  attempts: number;
   model: string;
   /**
-   * (ref: provider) Claude: chosen before launch, so never null.
+   * (ref: provider) Claude: UUIDv5 of `<runId>#<sessionEpoch>`, chosen before launch, so never null,
+   * and reused by every attempt of that epoch.
    * Codex: the thread ID from `thread/start`, recorded before the first `turn/start`.
    */
   sessionId: ProviderSessionId | null;
+  /** +1 only when the provider can no longer resume the session, deriving a fresh one. */
+  sessionEpoch: number;
   /** Codex app-server connection generation; scopes request IDs. (ref) */
   codexGeneration: number | null;
   /** Interactive runs only. (ref: Herdr) */
@@ -268,7 +276,7 @@ export interface Run {
   pendingRequests: ProviderRequest[];
   /** Last provider observation of any kind. Drives stall detection. */
   lastActivityAt: IsoTime | null;
-  /** Earliest time the next attempt may launch, after a failure. */
+  /** Earliest time the next attempt may launch, after a failure. Headless runs only. */
   retryAt: IsoTime | null;
   launchedAt: IsoTime | null;
   endedAt: IsoTime | null;

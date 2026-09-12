@@ -35,16 +35,19 @@ Types: [`entities.ts`](../../packages/core/src/entities.ts), [`ids.ts`](../../pa
 
 ### Run
 
-One launch of one agent in one role. A retry is a new run (`attempt + 1`); a fix round reuses the
-implementer's run and session.
+One run of one agent in one role, one row per (task, role, round). A retry relaunches that same row
+(`attempts + 1`) and keeps its session; a fix round reuses the implementer's run and session. Only a
+human relaunches an interactive run (§3).
 
 | Field | Own | Notes |
 |---|---|---|
-| `id` | A | Deterministic: `<taskId>/<role>/<round>/<attempt>`. |
+| `id` | A | Deterministic: `<taskId>/<role>/<round>`. Stable across attempts. |
 | `taskId`, `role`, `provider`, `mode`, `model` | A | Planner and reviewer are `headless`; implementer is `interactive`. |
 | `origin` | A | `loom`, or `external` for a session started by hand in the worktree (observe-only). |
-| `worktreePath`, `round`, `attempt` | A | |
-| `sessionId` | R provider | Claude: UUIDv5 of the run ID, set when the row is inserted, before launch. Codex: thread ID from `thread/start`, recorded before the first `turn/start`. |
+| `worktreePath`, `round` | A | |
+| `attempts` | A | Launches of this run so far. A retry bumps it and keeps the row. |
+| `sessionId` | R provider | Claude: UUIDv5 of `<runId>#<sessionEpoch>`, set when the row is inserted, before launch, and reused by every attempt of that epoch. Codex: thread ID from `thread/start`, recorded before the first `turn/start`. |
+| `sessionEpoch` | A | Starts at 0. +1 only when the provider can no longer resume the session, which derives a fresh Claude session ID (for Codex, a new `thread/start`). |
 | `codexGeneration` | R Codex | App-server connection generation; scopes request IDs. |
 | `herdr` | R Herdr | `{agentName, paneId}` for interactive runs. |
 | `status`, `blockedOn` | D | From provider observations; §4. |
@@ -52,7 +55,7 @@ implementer's run and session.
 | `pendingRequests` | C provider | Approvals and questions the provider is waiting on. |
 | `lastActivityAt` | A | Last provider observation of any kind. Drives stall detection. |
 | `retryAt` | A | Backoff: `min(10s·2^(n−1), cap)`. |
-| `launchedAt`, `endedAt`, `endReason` | A | `submitted`, `superseded`, `canceled`, `crashed`, `failed`, `task_done`. |
+| `launchedAt`, `endedAt`, `endReason` | A | `submitted`, `superseded`, `canceled`, `crashed`, `vanished`, `failed`, `task_done`. |
 
 ### Worktree
 
@@ -134,7 +137,7 @@ Append-only; one row per committed stage change or flag change.
 ### IDs
 
 Reconcile is pure, so it can't draw random IDs. IDs it creates are derived from stable keys: run IDs
-from `(task, role, round, attempt)`, Claude session IDs as UUIDv5 of the run ID, message IDs from
+from `(task, role, round)`, Claude session IDs as UUIDv5 of `<runId>#<sessionEpoch>`, message IDs from
 `(run, purpose, sequence)`, action keys from the intent (§5.5). IDs that arrive with an input (finding
 IDs, question IDs) are assigned by the I/O layer when the input is persisted.
 
@@ -154,7 +157,8 @@ IDs, question IDs) are assigned by the I/O layer when the input is persisted.
 
 Triggers: **H** human command, **M** MCP tool call from the task's *current* run for that role, **R** a fact
 found by reconcile. "Start X" means insert the run row (with its session ID for Claude), then `start_run`,
-then the first `send_message` once the session ID is recorded.
+then the first `send_message` once the session ID is recorded. "Resume X" reuses the existing run row and
+its session, with `start_run` carrying `resume: true`.
 
 | # | From | To | Trigger | Guard | Actions |
 |---|---|---|---|---|---|
@@ -170,12 +174,12 @@ then the first `send_message` once the session ID is recorded.
 | 10 | in_review | awaiting_approval | M `submit_review` | `reviewedSha` = round head = PR head; a verdict for every `addressed`/`disputed` finding; after applying it, 0 open blocking; PR not conflicting; CI not failing | Store findings and verdicts; `stop_run` reviewer; `notify` attention |
 | 11 | in_review | in_progress | M `submit_review` | Same SHA and verdict guards; open blocking > 0; `reviewRound < reviewRoundCap`; converging | Store findings; `stop_run` reviewer; `send_message` fix round to the implementer (resume it if it ended) |
 | 12 | in_review | in_review, flag | M `submit_review` | Open blocking > 0 and `reviewRound ≥ cap` → `blocked: review_round_cap`. A finding reopened, or open blocking ≥ last round's → `blocked: review_not_converging` | Store findings; `stop_run` reviewer; `notify` attention |
-| 13 | in_review (blocked by #12) | in_progress | H `grant_review_round` | — | For `review_round_cap`, `reviewRoundCap += 1`; clear flag; `send_message` fix round |
+| 13 | in_review (blocked by #12) | in_progress | H `grant_review_round` | — | For `review_round_cap`, `reviewRoundCap += 1`; clear flag; `send_message` fix round to the implementer (resuming its run if it ended) |
 | 14 | in_review (blocked by #12) | awaiting_approval | H `waive_finding` × n | 0 open blocking afterwards | Clear flag; `notify` |
 | 15 | awaiting_approval | merging | H `approve(headSha)` | `headSha` = PR head = last reviewed head; 0 open blocking; CI `success`, `pending` or `none`; not conflicting | Insert merge Approval (head, findings snapshot, CI); `merge_pr(matchHeadSha, auto = CI pending)` |
 | 16 | awaiting_approval, merging | in_review | R new commit: PR head ≠ last reviewed head | — | Void approval (`new_commit`); `disable_auto_merge` if enabled; `map_findings` to the new head; `reviewRound += 1`; start reviewer |
-| 17 | awaiting_approval, merging | in_progress | R CI `failure` on the head | — | One blocking `ci` finding per failed check (deduped by check-run ID); void approval (`ci_failed`); `disable_auto_merge` if enabled; `send_message` fix round |
-| 18 | awaiting_approval | in_progress | H `request_changes(findings)` | At least one finding | Store them as blocking `human` findings; `send_message` fix round. Doesn't count against the cap. |
+| 17 | awaiting_approval, merging | in_progress | R CI `failure` on the head | — | One blocking `ci` finding per failed check (deduped by check-run ID); void approval (`ci_failed`); `disable_auto_merge` if enabled; `send_message` fix round to the implementer (resuming its run if it ended) |
+| 18 | awaiting_approval | in_progress | H `request_changes(findings)` | At least one finding | Store them as blocking `human` findings; `send_message` fix round to the implementer (resuming its run if it ended). Doesn't count against the cap. |
 | 19 | merging | awaiting_approval | R `merge_pr` failed with `precondition` (head moved, not mergeable) | — | Void approval; `notify`. If the head moved, #16 applies instead. |
 | 20 | any but done | done | R PR `merged` | — | Void open approvals; end all runs (`task_done`): `stop_run` headless runs, leave interactive panes to the human; `notify` |
 | 21 | any but done, canceled | canceled | H `cancel` | — | `interrupt_run` working runs, `stop_run` headless runs, end runs (`canceled`); void approvals; `disable_auto_merge` if enabled. The PR and branch stay as they are. |
@@ -216,8 +220,17 @@ no retries for the task. MCP submissions from the current run and human commands
 | `failed: non_retryable_error` | Provider error with no retry (for example, Codex `willRetry: false` with an unsupported model) | Human `retry` |
 | `failed: action_failed` | An action returned `fatal` | Human `retry` |
 
-Retries within the limit are not flags: a failed or crashed run gets `retryAt` and a `schedule` action,
-and the next attempt resumes the stored session ID when the provider still has it.
+**Retrying automatically is for headless runs only.** A failed or crashed headless run keeps its row,
+gets `retryAt` and a `schedule` action, and relaunches as `attempts + 1` against the same session ID
+(§1 "Run"): `start_run` with `resume: true` while the provider still has the session, otherwise
+`sessionEpoch + 1` and a fresh one. Retries within `retry.maxAttempts` (3) set no flag; exhausting them
+sets `failed: retries_exhausted`.
+
+**An interactive run is never relaunched automatically.** From outside, a human closing the pane and a
+crash look identical: the `claude agents` entry disappears with no SessionEnd (spike 02). Reopening a
+terminal someone deliberately closed is worse than asking, so the run ends with `vanished`, the task gets
+`run_vanished` attention, and the human's `retry` relaunches it (resuming the session when the provider
+still has it). Closing a Codex pane is different: it only detaches, and the thread keeps running (§4).
 
 **Attention** is derived on every reconcile. A task needs the human while any of these reasons holds:
 
@@ -229,6 +242,7 @@ and the next attempt resumes the stored session ID when the provider still has i
 | `provider_permission` / `provider_input` / `provider_dialog` | A live run's `blockedOn` is `permission` / `input` / `dialog` |
 | `blocked` | `blocked` is set, except for `dependencies` and `provider_cooling_down`, which just wait |
 | `failed` | `failed` is set |
+| `run_vanished` | An interactive run's session disappeared. Loom won't relaunch it; the human does. |
 | `stalled` | A run is `working` with no provider activity for `stallAfterMs`. Nothing is killed. |
 | `status_unknown` | A run has been `unknown` for longer than `unknownGraceMs` |
 | `over_budget` | Time in stages `planning` through `awaiting_approval` exceeds `budgetMinutes` |
@@ -260,6 +274,11 @@ Input: a `thread/read` or `thread/resume` snapshot on the coordinator's own app-
 A thread Loom didn't start on its own server (plain `codex` in the worktree) is an external session.
 It is observe-only: Loom never resumes it on a second server or derives its status from disk.
 
+Closing an interactive Codex pane only detaches the attach client; the thread keeps running on the
+coordinator's app-server, so the run continues and Loom offers to reattach rather than relaunching. If
+the thread itself is gone (absent from the server and not resumable), the run ends with `vanished` and
+raises attention instead of retrying.
+
 ### Claude (spike 02)
 
 Input: the session's `claude agents --json` entry (owner of live status), refined by folded hooks. Poll
@@ -272,7 +291,8 @@ Input: the session's `claude agents --json` entry (owner of live status), refine
 | `waiting` | Anything else | `blocked` / `permission` | Don't wait for the Notification; it's 6 s late. |
 | `idle` | — | `idle` | An Esc interrupt shows only here. |
 | absent (after being present) | SessionEnd seen | `ended` | |
-| absent (after being present) | no SessionEnd | `failed` (crash) | Retry: `claude --resume <id> --settings …`. |
+| absent, headless | no SessionEnd | `failed` (crash) | Retried automatically: `claude --resume <id> --settings …`. |
+| absent, interactive | no SessionEnd | `ended`, reason `vanished` | Indistinguishable from a human closing the pane, so Loom never relaunches it: attention `run_vanished`, and the human's `retry` relaunches (§3). |
 | absent (never present) | — | `starting` | If Herdr shows `blocked` before SessionStart: `trust_dialog`. |
 | any | StopFailure | `failed`; a rate-limit error → `blocked` / `rate_limit` | StopFailure is untested (spike 02). |
 | reading unavailable | — | `unknown` | |
@@ -340,7 +360,7 @@ asked for it.
 | `create_worktree` | git | `{path, headSha, baseSha}` → Worktree row; `task.worktreePath` |
 | `write_task_files` | git | — |
 | `open_workspace` | Herdr | `{workspaceId}` → `worktree.herdrWorkspaceId` |
-| `start_run` | by provider and mode (below) | `{sessionId, codexGeneration, herdr}` → run row. For Codex, this is what unlocks the first `send_message` (principle 7). |
+| `start_run` | by provider and mode (below) | Carries `{runId, attempt, sessionEpoch, sessionId, resume}`. `resume: true` reuses the session (Claude `--resume <id>`, Codex `thread/resume`); `resume: false` starts a fresh one (Claude `--session-id <derived>`, Codex `thread/start`, which assigns the ID). Returns `{sessionId, codexGeneration, herdr}` → run row. For Codex, this is what unlocks the first `send_message` (principle 7). |
 | `send_message` | by provider and mode | `{transportRef}` → message `sent`. `delivered` comes only from observation (§5.5). |
 | `interrupt_run` | by provider and mode | — (the run's status confirms it) |
 | `answer_provider_request` | Codex `answerRequest` (current generation only) | — (`serverRequest/resolved` and a new snapshot confirm it) |
@@ -370,14 +390,15 @@ backoff (`<key>#<n>`). `precondition` means the world moved: re-read and decide 
 1. **Deterministic.** The same state and observations give the same result.
 2. **Fixed point.** Running reconcile again on `next` with the same owner readings (and the inputs now
    consumed) produces no transitions, and only actions whose keys are already in the outbox.
-3. **Action keys name the intent**: `start_run:<runId>`, `send_message:<messageId>`,
+3. **Action keys name the intent**: `start_run:<runId>#<attempt>`, `send_message:<messageId>`,
    `push_branch:<taskId>:<sha>`, `open_pr:<taskId>:<branch>`, `merge_pr:<approvalId>`,
    `map_findings:<taskId>:<headSha>`, `schedule:<taskId>:<why>:<at>`. The outbox's key is unique, so
    emitting the same intent twice is a no-op.
 4. **Actions run at least once.** After a crash, pending outbox rows run again. So every executor checks
    the owner before acting: an existing worktree on the branch, an existing PR for the branch, a session
    already live under that ID, a remote head already equal to the SHA. Merges are safe through
-   `--match-head-commit`.
+   `--match-head-commit`. A run's session ID is fixed for its epoch, so a repeated `start_run` finds that
+   same session and adopts it instead of starting a second one.
 5. **Inputs are consumed exactly once**, in the same transaction as the compare-and-set. A pass that
    loses the race consumes nothing.
 6. **Stage CAS**: `UPDATE tasks SET …, version = version + 1 WHERE id = ? AND version = ?`.
@@ -477,8 +498,8 @@ CREATE TABLE worktrees (path TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES 
   created_at TEXT NOT NULL, removed_at TEXT);
 CREATE TABLE runs (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
   role TEXT NOT NULL, provider TEXT NOT NULL, mode TEXT NOT NULL, origin TEXT NOT NULL,
-  worktree_path TEXT NOT NULL, round INTEGER NOT NULL, attempt INTEGER NOT NULL, model TEXT NOT NULL,
-  session_id TEXT, codex_generation INTEGER, herdr TEXT,
+  worktree_path TEXT NOT NULL, round INTEGER NOT NULL, attempts INTEGER NOT NULL, model TEXT NOT NULL,
+  session_id TEXT, session_epoch INTEGER NOT NULL DEFAULT 0, codex_generation INTEGER, herdr TEXT,
   status TEXT NOT NULL, blocked_on TEXT, last_turn TEXT, pending_requests TEXT NOT NULL,
   last_activity_at TEXT, retry_at TEXT, launched_at TEXT, ended_at TEXT, end_reason TEXT,
   UNIQUE (provider, session_id));
@@ -613,7 +634,7 @@ These parts follow the architecture's restart table but aren't verified:
 | 7 | `merge_pr` succeeding never moves a task; only an observed merge does. | Done is derived from GitHub. |
 | 8 | Cancel leaves the PR and branch alone. | GitHub owns them. The human closes the PR if they want it closed. |
 | 9 | The git adapter creates worktrees; Herdr only opens a workspace on the path. | Git owns branches, and headless runs shouldn't need Herdr. |
-| 10 | IDs are derived (Claude session = UUIDv5 of the run ID). | Keeps reconcile pure. The same run always gets the same session, so `start_run` is naturally idempotent. |
+| 10 | IDs are derived: run ID `<task>/<role>/<round>`, Claude session = UUIDv5 of `<runId>#<sessionEpoch>`. A retry keeps the row and the session ID; only a session the provider can't resume bumps the epoch. | Keeps reconcile pure, lets a retry actually resume, and makes `start_run` idempotent: a repeat targets the same session. |
 | 11 | `ReconcileResult` also returns `transitions` and `inputs`. | The audit log and MCP replies must commit atomically with the state. |
 | 12 | Inbox and outbox tables. | Inputs are consumed exactly once; actions run at least once and survive a crash. |
 | 13 | Capacity is compare-and-set on a global version. | Reconcile is per task, but caps are global. |
@@ -624,3 +645,15 @@ These parts follow the architecture's restart table but aren't verified:
 | 18 | Claude hooks are kept as a receipt log. | They can't be re-read; `claude agents` still owns status. |
 | 19 | `packages/core` has no runtime dependencies and compiles with `types: []`. Zod schemas live in `packages/mcp` and `packages/protocol`, tested equal to the core types. | Node APIs can't be imported into core by accident, and core stays exhaustively testable. |
 | 20 | Flags stop automatic starts and retries, not submissions or human commands. | A submission is still valid work; the human always has control. |
+| 21 | Interactive runs are never relaunched automatically. They end as `vanished` and raise attention. | A human closing the pane and a crash are indistinguishable, and reopening a terminal someone just closed is worse than asking. Headless retries are unaffected. |
+
+## 13. Notes for Phase 1b
+
+Raised in review. No design change now, but each has to be settled while implementing.
+
+| # | Note |
+|---|---|
+| 1 | **Capacity counts idle runs.** An idle implementer holds its slot through `in_review` and `awaiting_approval`, so a cap of 4 fills up with tasks nobody is working on. Either count only runs that are `working` or `blocked`, or release the slot when the implementer goes idle and re-acquire it for a fix round, which needs a wait state for when the cap is full. |
+| 2 | **The clean-tree guard needs a definition.** `submit_for_review` (#9) must ignore git-ignored files (`.task/` among them) and ignored build output, and its `guard_failed` details must name the offending paths so the agent can act on them. |
+| 3 | **Nothing reads `WORKFLOW.md` yet.** `get_task_context` returns its commands, but no entity, action or adapter method loads or validates it. Decide where it's read and cached (the repo row, or per worktree), and what happens when it's missing or malformed. |
+| 4 | **`packages/protocol` is still undrafted.** It's Phase 1's fifth deliverable, and the Phase 4 UI work depends on it. Its snapshot is mostly these entities plus derived views: attention, and the review shell state from spike 04. |

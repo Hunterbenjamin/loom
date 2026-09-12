@@ -59,9 +59,16 @@ export type Action = ActionBase &
         mode: RunMode;
         worktreePath: WorktreePath;
         model: string;
-        /** Claude: the pre-chosen session ID. Codex: null on first start (thread/start assigns it). */
+        /** Which launch of the run this is; part of the action key. */
+        attempt: number;
+        /** The run's current session epoch; the Claude session ID derives from it. */
+        sessionEpoch: number;
+        /** Claude: the derived session ID. Codex: the thread to resume, else null (thread/start assigns it). */
         sessionId: ProviderSessionId | null;
-        /** Resume `sessionId` instead of starting fresh. */
+        /**
+         * True: reuse the session (Claude `--resume`, Codex `thread/resume`). False: start a fresh one.
+         * Either way the ID is fixed for the epoch, so repeating this action adopts the same session.
+         */
         resume: boolean;
       }
     | {

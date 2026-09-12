@@ -54,7 +54,7 @@ const task: Task = {
 };
 
 const run: Run = {
-  id: "t1/implementer/0/1" as RunId,
+  id: "t1/implementer/0" as RunId,
   taskId,
   role: "implementer",
   provider: "codex",
@@ -62,9 +62,10 @@ const run: Run = {
   origin: "loom",
   worktreePath,
   round: 0,
-  attempt: 1,
+  attempts: 1,
   model: "gpt-5.6-luna",
   sessionId: "01a08ff4-b43e-71d3-aae7-fa59a9070465" as ProviderSessionId,
+  sessionEpoch: 0,
   codexGeneration: 1,
   herdr: { agentName: "loom-t1-impl", paneId: "w1:p1" },
   status: "working",

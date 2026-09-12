@@ -90,7 +90,7 @@ export interface GetTaskContextOutput {
     reviewRoundCap: number;
   };
   role: Role;
-  run: { id: RunId; round: number; attempt: number };
+  run: { id: RunId; round: number; attempts: number };
   worktree: {
     path: WorktreePath;
     branch: string;
