@@ -256,6 +256,8 @@ export interface ClaudeAdapter {
     settingsPath: string,
     /** This run's registration. Omitted: the adapter's default, for tests and probes. */
     mcpServer?: McpServerEntry,
+    /** Bash command prefixes to pre-allow without prompts (e.g., 'pnpm test', 'git commit'). */
+    bashCommandPrefixes?: string[],
   ): Promise<void>;
   /**
    * Pane command for an interactive run: `--session-id` (or `--resume`), the per-run
