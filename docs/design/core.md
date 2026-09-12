@@ -50,7 +50,7 @@ human relaunches an interactive run (§3).
 | `sessionId` | R provider | Claude: UUIDv5 of `<runId>#<sessionEpoch>`, set when the row is inserted, before launch, and reused by every attempt of that epoch. Codex: thread ID from `thread/start`, recorded before the first `turn/start`. |
 | `sessionEpoch` | A | Starts at 0. +1 only when the provider can no longer resume the session, which derives a fresh Claude session ID (for Codex, a new `thread/start`). |
 | `codexGeneration` | R Codex | App-server connection generation; scopes request IDs. |
-| `herdr` | R Herdr | `{agentName, paneId}` for interactive runs. |
+| `pane` | R pane host | `{hostGeneration, sessionName, windowId, paneId}` for interactive runs. `hostGeneration` scopes the pane ID: tmux restarts them at `%0` after a server death. |
 | `status`, `blockedOn` | D | From provider observations; §4. |
 | `lastTurn` | C provider | `{id, outcome, error}`. Kept apart from `status`. |
 | `pendingRequests` | C provider | Approvals and questions the provider is waiting on. |
@@ -81,7 +81,7 @@ interactive failure recovery remains a human action.
 | `path` | A | Primary key. Canonical realpath (`/private/var/…`, never `/var/…`). |
 | `taskId`, `repoId`, `branch`, `baseBranch`, `baseSha` | A | `baseSha` is the base when the worktree was created. |
 | `portSlot` | A | Null until ports land (Phase 5). |
-| `herdrWorkspaceId` | R Herdr | |
+| `paneWorkspaceId` | R pane host | The task's pane-host session; one window per run lives in it. |
 | `createdAt`, `removedAt` | A | |
 | `git` | C git | `{headSha, dirty, aheadOfBase, at}`. |
 
@@ -158,7 +158,7 @@ Append-only; one row per committed stage change or flag change.
 Delivery metadata follows the original `Message` fields. Core writes it and the store must retain it:
 `via` identifies the transport path (absent before send), `expectedTurnId` identifies a steered turn,
 `baselineTurnId` identifies the last observed turn before sending (absent/null means none), and
-`deliveryAttention` defaults to false. These fields are not reconstructed from Herdr output.
+`deliveryAttention` defaults to false. These fields are never reconstructed from a terminal.
 
 `CiCheck.id` is required: the GitHub adapter supplies the stringified stable check-run ID. Core uses
 it as the CI finding's external identity; name/head fallbacks are no longer permitted. The ID remains
@@ -186,7 +186,7 @@ retry/timing thresholds. `githubPollMs` is the coordinator's polling policy; cor
 | `todo` | nobody | Queued for capacity and dependencies. |
 | `planning` | planner (headless) | |
 | `plan_approval` | nobody | Only when `requirePlanApproval`. |
-| `in_progress` | implementer (interactive, in Herdr) | |
+| `in_progress` | implementer (interactive, in a pane) | |
 | `in_review` | reviewer (headless, editing disabled) | The implementer's session stays alive for fix rounds. |
 | `awaiting_approval` | nobody | Human reviews the diff. |
 | `merging` | nobody | Merge requested; waiting to see it on GitHub. |
@@ -270,7 +270,6 @@ no retries for the task. MCP submissions from the current run and human commands
 | `blocked: review_round_cap` / `review_not_converging` | #12 | #13, #14, or cancel |
 | `blocked: provider_cooling_down` | Codex: `usageAllowed: false` or a `rateLimitExceeded`/`usageLimitExceeded` error. Claude: StopFailure with a rate-limit error. Only for a run that needs to start or continue. | `until` passes and a fresh snapshot allows usage |
 | `blocked: pr_closed` | PR read as `closed` without merge | PR reopened (read), or cancel |
-| `blocked: trust_dialog` | Interactive Claude start reports not ready, or Herdr `blocked` before any SessionStart | SessionStart arrives and the session is busy or idle |
 | `failed: retries_exhausted` | A run failed `maxAttempts` (3) times | Human `retry` (new monotonic attempt, retry-budget offset resets) |
 | `failed: non_retryable_error` | Provider error with no retry (for example, Codex `willRetry: false` with an unsupported model) | Human `retry` |
 | `failed: action_failed` | An action returned `fatal` | Human `retry` |
@@ -294,7 +293,7 @@ still has it). Closing a Codex pane is different: it only detaches, and the thre
 | `plan_needs_approval` | Stage `plan_approval` |
 | `needs_approval` | Stage `awaiting_approval` |
 | `question` | An unanswered `ask_human` question (blocking or not) |
-| `provider_permission` / `provider_input` / `provider_dialog` | A live run's `blockedOn` is `permission` / `input` / `dialog` |
+| `provider_permission` / `provider_input` | A live run's `blockedOn` is `permission` / `input` |
 | `blocked` | `blocked` is set, except for `dependencies` and `provider_cooling_down`, which just wait |
 | `failed` | `failed` is set |
 | `run_vanished` | An interactive run's session disappeared. Loom won't relaunch it; the human does. |
@@ -310,10 +309,11 @@ timestamp instead of recomputing elapsed time from `stageEnteredAt`.
 
 ## 4. Run status
 
-Status comes from the provider's own channel. The terminal is never parsed. Herdr's screen-derived state
-does not replace an unavailable provider reading: that run remains `unknown`. Herdr may explain a
-pre-session Claude trust dialog or pane presence, but never supplies status that triggers a stage
-transition. `status` and `lastTurn.outcome` are separate: an idle thread can have a failed last turn.
+Status comes from the provider's own channel. The terminal is never parsed. The pane host supplies no
+agent state at all — it has none to give — so an unavailable provider reading leaves the run `unknown`
+no matter what the pane looks like. Its one contribution is a native fact: a pane that is `dead` before
+any provider evidence proves the launch failed, which turns `starting` into `ended` / `vanished`.
+`status` and `lastTurn.outcome` are separate: an idle thread can have a failed last turn.
 
 ### Codex (spike 01)
 
@@ -355,7 +355,7 @@ Input: the session's `claude agents --json` entry (owner of live status), refine
 | absent (after being present) | SessionEnd seen | `ended` | |
 | absent, headless | no SessionEnd | `failed` (crash) | Retried automatically: `claude --resume <id> --settings …`. |
 | absent, interactive | no SessionEnd | `ended`, reason `vanished` | Indistinguishable from a human closing the pane, so Loom never relaunches it: attention `run_vanished`, and the human's `retry` relaunches (§3). |
-| absent (never present) | — | `starting` | If Herdr shows `blocked` before SessionStart: `trust_dialog`. |
+| absent (never present) | — | `starting` | Unless the run's pane is dead, which proves the launch failed: `ended` / `vanished`. A folder-trust dialog is indistinguishable from a slow start; the stall attention surfaces it. |
 | any | StopFailure | `failed`; a rate-limit error → `blocked` / `rate_limit` | StopFailure is untested (spike 02). |
 | reading unavailable | — | `unknown` | |
 
@@ -427,7 +427,7 @@ Do not prune an outbox receipt while a live intent/dependency or a replayable re
 | `git: Reading<GitWorktreeObservation>` | git: HEAD, branch, dirty, ahead/behind, `merge-tree` conflicts, remote head | Guards #9, #10, #15; new-commit detection |
 | `github: Reading<PullRequestObservation \| null>` | GitHub, conditional GET with ETag | PR head, state, mergeability, CI, reviews and human comments |
 | `runs[].provider` | Codex thread snapshot or Claude session (agents entry + hooks + headless exit) | §4 status, pending requests, delivery confirmation |
-| `runs[].herdr` | Herdr agent (interactive runs) | Trust-dialog explanation and pane presence; never authoritative run status |
+| `runs[].pane` | Pane host (interactive runs) | Native pane facts only: pid, command name, `dead`, exit status, start path. Never run status |
 | `externalSessions` | `claude agents --json`, Codex thread list, both joined on realpath `cwd` | Recorded as `origin: external` runs |
 | `capacity` | Coordinator (across tasks) | Global and per-provider caps, cooling-down providers; `version` for CAS |
 | `dependencies` | Coordinator (other tasks) | `blockedBy` |
@@ -460,8 +460,8 @@ asked for it.
 |---|---|---|
 | `create_worktree` | git | `{path, headSha, baseSha}` → Worktree row; `task.worktreePath` |
 | `write_task_files` | git | — |
-| `open_workspace` | Herdr | `{workspaceId}` → `worktree.herdrWorkspaceId` |
-| `start_run` | by provider and mode (below) | Carries `{runId, attempt, sessionEpoch, sessionId, resume}`. `resume: true` reuses the session (Claude `--resume <id>`, Codex `thread/resume`); `resume: false` starts a fresh one (Claude `--session-id <derived>`, Codex `thread/start`, which assigns the ID). Returns `{sessionId, codexGeneration, herdr}` → run row. For Codex, this is what unlocks the first `send_message` (principle 7). |
+| `open_workspace` | pane host | `{workspaceId}` → `worktree.paneWorkspaceId` |
+| `start_run` | by provider and mode (below) | Carries `{runId, attempt, sessionEpoch, sessionId, resume}`. `resume: true` reuses the session (Claude `--resume <id>`, Codex `thread/resume`); `resume: false` starts a fresh one (Claude `--session-id <derived>`, Codex `thread/start`, which assigns the ID). Returns `{sessionId, codexGeneration, pane}` → run row. For Codex, this is what unlocks the first `send_message` (principle 7). |
 | `send_message` | by provider and mode | `{transportRef}` → message `sent`. `delivered` comes only from observation (§5.5). |
 | `interrupt_run` | by provider and mode | — (the run's status confirms it) |
 | `answer_provider_request` | Codex `answerRequest` (current generation only) | — (`serverRequest/resolved` and a new snapshot confirm it) |
@@ -481,10 +481,10 @@ backoff (`<key>#<n>`). `precondition` means the world moved: re-read and decide 
 
 | | Codex headless | Codex interactive | Claude headless | Claude interactive |
 |---|---|---|---|---|
-| start | `thread/start` (read-only sandbox for reviewers) | `thread/start`, then a Herdr pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | Herdr pane: `claude --session-id <id> --settings <per-run>` |
-| send | `turn/start`, or `turn/steer` with `expectedTurnId` | the same, through the app-server, not the pane | SDK | `herdr agent prompt` |
-| interrupt | `turn/interrupt` | `turn/interrupt` | SDK interrupt | `herdr agent send-keys esc` |
-| resume | `thread/resume` | `thread/resume`, then reattach the pane | SDK resume | Herdr pane: `claude --resume <id> --settings <per-run>` |
+| start | `thread/start` (read-only sandbox for reviewers) | `thread/start`, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>` |
+| send | `turn/start`, or `turn/steer` with `expectedTurnId` | the same, through the app-server, not the pane | SDK | `pasteText`, gated on provider status |
+| interrupt | `turn/interrupt` | `turn/interrupt` | SDK interrupt | `sendKey Escape` |
+| resume | `thread/resume` | `thread/resume`, then reattach the pane | SDK resume | A pane: `claude --resume <id> --settings <per-run> --mcp-config <per-run>` |
 
 #### Outbox record and execution rules
 
@@ -544,19 +544,22 @@ instead of reusing the old receipt. These guarantees do not undo an external sid
 
 ### 5.5 When a message counts as delivered
 
-Never on Herdr's `ok`, and never on a transport response alone.
+Never on the pane host's `"written"`, and never on a transport response alone.
 
 | Path | `sent` when | `delivered` when |
 |---|---|---|
 | Codex `turn/start` | the response returns a turn ID | `turn/started` for that turn, or a snapshot containing it (resume doesn't replay `turn/started`) |
 | Codex `turn/steer` | the response returns the expected turn ID | a user-message item with the message's text hash appears in that turn. **Provisional**: seen in spike 01, not a documented guarantee. |
-| Claude (interactive or headless) | `herdr agent prompt` returns `ok`, or the SDK accepts it | `UserPromptSubmit` for the session whose normalized `prompt` hash matches (tabs → 4 spaces, CRLF → LF) |
+| Claude (interactive or headless) | `pasteText` returns `"written"`, or the SDK accepts it | `UserPromptSubmit` for the session whose normalized `prompt` hash matches (tabs → 4 spaces, CRLF → LF) |
 
 Several prompts can join one Claude turn and share a `prompt_id`; each is still matched by its own
 `UserPromptSubmit`. If a message is still not delivered after `deliveryTimeoutMs`: when the provider is
-idle and shows no new turn, resend once under the same message ID; otherwise add attention. Herdr
-`blocked` means a dialog is up (`provider_dialog`). Loom never generates text that starts with `/` or `!`,
-and the Herdr adapter refuses it anyway (`refused` → the message fails and the human is notified).
+idle and shows no new turn, resend once under the same message ID; otherwise add attention. **A paste is
+gated on the provider's status**: in spike 06 a paste into a pending permission dialog approved the
+command instead of delivering a prompt, so `pasteText` is only called for a run the provider reports as
+idle or working, and the state-check/input race is treated as uncertain delivery, never auto-retried.
+Loom never generates text that starts with `/` or `!`, and the pane host refuses it anyway (the message
+fails and the human is notified).
 
 The timeout resend keeps the message ID but uses `send_message:<id>#2`, since the first action key
 already succeeded. Transport failures separately use bounded action retries with suffixed keys.
@@ -577,7 +580,7 @@ sessionId}`) that only enqueue passes; nothing parses terminal output.
 |---|---|---|
 | `GitAdapter` | `realpath`, `readWorktree`, `changedFiles` (NUL-delimited metadata, renames, hunks), `readBlob` | `createWorktree`, `push` (refuses any head except the expected one; never forces), `writeTaskFiles` (and `.git/info/exclude`) |
 | `GitHubAdapter` | `findPullRequest` (conditional, ETag) | `openPullRequest` (idempotent), `mergePullRequest` (squash, `--match-head-commit`, optional `--auto`), `disableAutoMerge` |
-| `HerdrAdapter` | `getAgent`, `listAgents`, `subscribe` | `openWorkspace`, `startAgent` (scrubbed environment), `prompt` (refuses `/` and `!`), `interrupt` (Esc) |
+| `PaneHost` | `getPane`, `listPanes`, `listClients`, `subscribe` | `ensureWorkspace`, `ensurePane` (allowlisted environment, no shell), `pasteText` (refuses `/` and `!`; returns only `"written"`), `sendKey` (Escape), `attachArgs`, `closePane` |
 | `CodexAdapter` | `readThread`, `resumeThread`, `readRateLimits`, `generation`, `subscribe` | `startThread`, `startTurn`, `steerTurn`, `interruptTurn`, `answerRequest` (rejects a stale generation), `unsubscribe`, `attachArgs` |
 | `ClaudeAdapter` | `listSessions` (`claude agents --json`), `hookSummary`, `headlessState`, `subscribe` | `interactiveArgs`, `startHeadless`, `sendHeadless`, `interruptHeadless` |
 
@@ -589,9 +592,12 @@ Codex `review/start`, and anything that reads a pane's screen.
 Types: [`mcp.ts`](../../packages/core/src/mcp.ts). `packages/mcp` will hold the zod schemas, with a
 type-level test that they equal these types.
 
-**Identity.** Each run gets its own MCP endpoint token in its per-run config (`--settings` for Claude,
-`-c` for Codex). The token maps to the run, and through the run to the task, so no tool takes a task or
-run ID, and an agent can't act on another task.
+**Identity.** Each run gets its own MCP endpoint token in its per-run config. Claude ignores
+`mcpServers` in a `--settings` file (2.1.269), so the token goes in the run's MCP config —
+`--mcp-config <per-run>` for an interactive run, `mcpServers` passed to the Agent SDK for a headless
+one — beside, not inside, the settings file that carries the hooks. Codex takes it with `-c`. The token
+maps to the run, and through the run to the task, so no tool takes a task or run ID, and an agent can't
+act on another task.
 
 **Flow.** Validate the input against the schema → resolve the token to a run → persist it as an `mcp`
 input (assigning finding and question IDs, and building each finding's full anchor from the reviewed
@@ -641,12 +647,12 @@ CREATE TABLE task_dependencies (task_id TEXT NOT NULL REFERENCES tasks(id),
   blocked_by TEXT NOT NULL REFERENCES tasks(id), PRIMARY KEY (task_id, blocked_by));
 CREATE TABLE worktrees (path TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
   repo_id TEXT NOT NULL, branch TEXT NOT NULL, base_branch TEXT NOT NULL, base_sha TEXT NOT NULL,
-  port_slot INTEGER UNIQUE, herdr_workspace_id TEXT, git_cache TEXT,
+  port_slot INTEGER UNIQUE, pane_workspace_id TEXT, git_cache TEXT,
   created_at TEXT NOT NULL, removed_at TEXT);
 CREATE TABLE runs (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
   role TEXT NOT NULL, provider TEXT NOT NULL, mode TEXT NOT NULL, origin TEXT NOT NULL,
   worktree_path TEXT NOT NULL, round INTEGER NOT NULL, attempts INTEGER NOT NULL, model TEXT NOT NULL,
-  session_id TEXT, session_epoch INTEGER NOT NULL DEFAULT 0, codex_generation INTEGER, herdr TEXT,
+  session_id TEXT, session_epoch INTEGER NOT NULL DEFAULT 0, codex_generation INTEGER, pane TEXT,
   status TEXT NOT NULL, blocked_on TEXT, last_turn TEXT, pending_requests TEXT NOT NULL,
   last_activity_at TEXT, retry_at TEXT, launched_at TEXT, ended_at TEXT, end_reason TEXT,
   seen_at TEXT, unknown_since TEXT, observed_attempt INTEGER, retry_base_attempt INTEGER DEFAULT 0,
@@ -719,7 +725,7 @@ coordinator keeps them to fold into `ClaudeHookSummary` after a restart. It's pr
 
 ## 9. fake-agent
 
-`packages/fake-agent` implements the provider side of `CodexAdapter`, `ClaudeAdapter` and `HerdrAdapter`
+`packages/fake-agent` implements the provider side of `CodexAdapter`, `ClaudeAdapter` and `PaneHost`
 in memory, plus a fake `GitHubAdapter`, all driven by scenarios. Its agents call the real Loom MCP
 server. Tests run the real core, store and executor against it with a fake clock, and never start a
 real agent.
@@ -758,25 +764,25 @@ validated with zod when loaded, and a scenario with steps left over when its run
 
 ## 10. Restart recovery
 
-Verified in [spike 05](../../spikes/05-restart-matrix/FINDINGS.md) on herdr 0.9.0, with spikes 01 and 02
-for the provider sides.
+Verified in [spike 05](../../spikes/05-restart-matrix/FINDINGS.md) and re-measured on tmux in
+[spike 06](../../spikes/06-tmux-pane-host/FINDINGS.md), with spikes 01 and 02 for the provider sides.
 
 | Fault | What happens | Reconcile |
 |---|---|---|
-| Coordinator restart | Providers and Herdr are untouched. | Load SQLite; run `pending` and `running` outbox rows again; `thread/resume` every live Codex run; poll `claude agents`; reconcile every non-terminal task. |
-| Herdr client detach | Nothing: same PIDs, same IDs, turns finish. | None. |
-| Herdr server stop, crash or kill | Every pane process dies. With `resume_agents_on_restore = false`, required for Loom sessions, panes return as bare shells in the right cwd, with no agent names or session refs. (`true` relaunches agents from a canonical command that drops `--settings`, `--model`, `--remote` and the pane environment, which produces sessions that look recovered and aren't.) | Interactive runs go `unknown`, then are relaunched from stored state: `herdr agent start` with the full stored command line (Claude `--resume <id> --settings … --model …`; Codex `resume <thread> --remote <sock>`), then `report-agent-session` for Codex. Claude's in-flight turn is lost: re-send the message. A Codex turn completed meanwhile if its app-server was outside Herdr: read it with `thread/read`. About 20 s for two agents. |
+| Coordinator restart | Providers and the pane host are untouched. | Load SQLite; run `pending` and `running` outbox rows again; `thread/resume` every live Codex run; poll `claude agents`; reconcile every non-terminal task. |
+| A client detaches | Nothing: same PIDs, same IDs, turns finish. Other clients stay attached. | None. |
+| Pane host stop, crash or kill | Every pane process dies. The host has no restore feature, and needs none. Pane IDs restart at `%0`, so every stored `PaneRef` from the old generation names nothing. | Interactive runs go `unknown`, then are relaunched from stored state: `ensureWorkspace` + `ensurePane` with the full stored command line and environment (Claude `--resume <id> --settings … --model …`; Codex `resume <thread> --remote <sock>`). Claude's in-flight turn is lost: re-send the message. A Codex turn completed meanwhile because its app-server is outside the host: read it with `thread/read`. About 30 s to a fresh reply from both. |
 | Codex app-server restart | Generation + 1; older request IDs are dropped, never answered. The unfinished turn reads `interrupted`. | Runs `unknown` until `thread/resume`; the interrupted turn is a failed attempt and is re-sent. |
-| Claude process dies, Herdr fine | The `claude agents` entry vanishes with no SessionEnd. | Headless: retry with `--resume`. Interactive: `vanished` and attention; the human relaunches (§3). |
+| Claude process dies, host fine | The `claude agents` entry vanishes with no SessionEnd; the pane reads `dead`. | Headless: retry with `--resume`. Interactive: `vanished` and attention; the human relaunches (§3). |
 
-Rules that follow: one Codex app-server per task, as a Loom child process outside Herdr; no decision is
-ever derived from Herdr's status, and `agent prompt --wait` is never called; the intended command line and
-environment of every interactive run are Loom state, never inferred from a pane's argv.
+Rules that follow: one Codex app-server per task, as a Loom child process outside the pane host; no
+decision is ever derived from a pane; the intended command line and environment of every interactive run
+are Loom state, never inferred from a pane's argv.
 
 Still placeholders: `unknownGraceMs` 60 s, `deliveryTimeoutMs` 10 s, `stallAfterMs` 15 min. `claude agents
 --json` took up to about 5 s to list a relaunched session, so the grace period must exceed that. Untested:
-a machine restart, `herdr update --handoff`, a Claude permission prompt across a restart, and spooling
-hooks while the coordinator is down.
+a machine restart, a Claude permission prompt across a restart, and spooling hooks while the
+coordinator is down.
 
 Resume attempts remain bounded by `retry.maxAttempts` (3 by default).
 
@@ -804,7 +810,7 @@ Resume attempts remain bounded by `retry.maxAttempts` (3 by default).
 | 6 | A voided approval disarms auto-merge first (`disable_auto_merge`). | `--auto` could otherwise merge a head the human never approved. |
 | 7 | `merge_pr` succeeding never moves a task; only an observed merge does. | Done is derived from GitHub. |
 | 8 | Cancel leaves the PR and branch alone. | GitHub owns them. The human closes the PR if they want it closed. |
-| 9 | The git adapter creates worktrees; Herdr only opens a workspace on the path. | Git owns branches, and headless runs shouldn't need Herdr. |
+| 9 | The git adapter creates worktrees; the pane host only opens a session on the path. | Git owns branches, and headless runs shouldn't need a terminal at all. |
 | 10 | IDs are derived: run ID `<task>/<role>/<round>`, Claude session = UUIDv5 of `<runId>#<sessionEpoch>`. A retry keeps the row and the session ID; only a session the provider can't resume bumps the epoch. | Keeps reconcile pure, lets a retry actually resume, and makes `start_run` idempotent: a repeat targets the same session. |
 | 11 | `ReconcileResult` also returns `transitions` and `inputs`. | The audit log and MCP replies must commit atomically with the state. |
 | 12 | Inbox and outbox tables. | Inputs are consumed exactly once; actions run at least once and survive a crash. |
@@ -812,7 +818,7 @@ Resume attempts remain bounded by `retry.maxAttempts` (3 by default).
 | 14 | MCP identity comes from a per-run token; tools take no IDs. | An agent can't act on another task, or as a superseded run. |
 | 15 | `ask_human` returns immediately; the answer comes as a message. | No tool call held open for hours; it works the same for both providers. |
 | 16 | Codex steer counts as delivered on the user-message item (provisional). | `turn/steer` joins an existing turn, so there's no `turn/started`. |
-| 17 | Status derived from Herdr never triggers a stage transition. | Principle 4: Herdr reads the screen. |
+| 17 | The pane host supplies no run status, only native pane facts. | Principle 4: anything else would be read off a screen. |
 | 18 | Claude hooks are kept as a receipt log. | They can't be re-read; `claude agents` still owns status. |
 | 19 | `packages/core` has no runtime dependencies and compiles with `types: []`. Zod schemas live in `packages/mcp` and `packages/protocol`, tested equal to the core types. | Node APIs can't be imported into core by accident, and core stays exhaustively testable. |
 | 20 | Flags stop automatic starts and retries, not submissions or human commands. | A submission is still valid work; the human always has control. |

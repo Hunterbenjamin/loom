@@ -10,7 +10,7 @@ The scripted provider that every automated test uses instead of a real agent, pe
 [`docs/design/core.md`](../design/core.md) §9. It implements the provider side of the adapter
 interfaces in `packages/core/src/adapters.ts` in memory, driven by scenarios, with a fake clock.
 
-- **Fakes:** `CodexAdapter`, `ClaudeAdapter`, `HerdrAdapter` and `GitHubAdapter`. Each produces the
+- **Fakes:** `CodexAdapter`, `ClaudeAdapter`, `PaneHost` and `GitHubAdapter`. Each produces the
   same observation shapes the real adapters do (look at their fixtures under
   `packages/adapters/*/src/fixtures` for realistic values), including the required fields:
   `resumable`, `activityAt`, check-run IDs. Git may be real: throwaway repositories in the OS temp

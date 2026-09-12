@@ -1,7 +1,8 @@
 /**
- * Herdr asks the client for kitty keyboard flags (CSI > 5 u) and passes CSI-u straight through
- * to the agent, but xterm.js 6.0 ignores the request. Without this, Shift+Enter arrives as a
- * bare CR and both Claude and Codex submit the prompt instead of inserting a newline.
+ * The pane host asks the client for kitty keyboard flags (CSI > 5 u) and passes CSI-u straight
+ * through to the agent, but xterm.js 6.0 ignores the request. Without this, Shift+Enter arrives
+ * as a bare CR and both Claude and Codex submit the prompt instead of inserting a newline. tmux
+ * also needs `extended-keys always` and `extended-keys-format csi-u`; neither replaces the other.
  */
 const KITTY_CODES: Record<string, number> = {
   Enter: 13,

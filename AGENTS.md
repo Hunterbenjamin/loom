@@ -2,7 +2,7 @@
 
 Loom is a local desktop app with a background coordinator. The coordinator runs coding agents
 (Codex, Claude Code) through a task workflow, and the app is a Linear-style view of that work.
-GitHub, Herdr, Codex and Claude Code stay independent tools. Loom observes and drives them; it
+GitHub, tmux, Codex and Claude Code stay independent tools. Loom observes and drives them; it
 doesn't replace them.
 
 **Current phase: 2, adapters** (see `docs/build-plan.md`). `packages/core` holds the reconciler and
@@ -20,7 +20,7 @@ If you need to break one of these, update `docs/architecture.md` in the same PR 
 1. **One owner per fact.**
    - GitHub owns branches, PRs, CI and merges.
    - Providers own sessions and transcripts.
-   - Herdr owns terminal processes.
+   - The pane host (tmux, on a private server) owns terminal processes.
    - The coordinator owns tasks, stages, plans, findings, approvals, and the links between them.
 2. **Reconcile; don't copy events.** An event is a hint to re-read state from its owner. Every handler
    must be idempotent: running it twice has the same effect as running it once.
@@ -41,7 +41,7 @@ These directories are planned. Each one is created when its first code lands.
 packages/core          stage rules + reconciler; pure logic, no I/O
 packages/store         SQLite schema + migrations
 packages/protocol      typed coordinator ↔ UI API (zod)
-packages/adapters/*    codex, claude, herdr, github, git
+packages/adapters/*    codex, claude, tmux, github, git
 packages/mcp           MCP tools that agents call
 packages/fake-agent    scripted provider used by tests
 apps/coordinator       background process + CLI (`loom`)
@@ -74,12 +74,13 @@ Run all three before opening a PR.
 
 Agents working on this repo run on the same machine as the user's real work.
 
-- Never stop, restart or reconfigure the user's main Herdr server or the shared Codex app-server
-  daemon. For experiments, use a named Herdr session and a private
-  `codex app-server --listen unix://…` socket.
+- Never stop, restart or reconfigure the user's own tmux servers or the shared Codex app-server
+  daemon. tmux servers are addressed by socket: only ever touch `-L loom-<instance>` or a
+  throwaway `-L loom-test-<pid>` of your own, never the default socket. For Codex experiments, use
+  a private `codex app-server --listen unix://…` socket.
 - Never read, type into or close panes, agents, threads or sessions you didn't create.
-- Never edit global config (`~/.claude/settings.json`, `~/.codex/config.toml`,
-  `~/.config/herdr/config.toml`). Use per-process flags instead: `claude --settings`, `codex -c`, environment variables.
+- Never edit global config (`~/.claude/settings.json`, `~/.codex/config.toml`, `~/.tmux.conf`).
+  Use per-process flags instead: `claude --settings`, `codex -c`, `tmux -L … -f …`, environment variables.
 - Once the coordinator exists, development instances will run with `LOOM_INSTANCE=dev` and their own data directory and
   ports. Only reach the stable instance through the MCP tools you were given.
 - No force-pushes, no pushes to `main`, no merging. Open a PR and let a human merge it.

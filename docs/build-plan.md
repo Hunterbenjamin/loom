@@ -2,7 +2,7 @@
 
 ## Phase 0: spikes (now, in parallel)
 
-Spikes 01–04 run in parallel, one agent each, in their own Herdr worktrees. Spike 05 runs after 01 and 02
+Spikes 01–04 run in parallel, one agent each, in their own worktrees. Spike 05 runs after 01 and 02
 are merged, because it tests the recovery paths they establish. Each spike produces a `FINDINGS.md`. Where
 the findings change the design, update `docs/architecture.md`.
 
@@ -24,7 +24,7 @@ It runs in two steps:
 
 ## Phase 2: adapters (in parallel, 3–4 agents)
 
-- One agent per adapter (codex, claude, herdr, github, git), plus `packages/mcp`.
+- One agent per adapter (codex, claude, tmux, github, git), plus `packages/mcp`.
 - Each adapter lives in its own package and passes the shared contract tests against `fake-agent`.
 - Checks against real providers are opt-in.
 - The human keeps ownership of the core.
@@ -41,7 +41,7 @@ The `apps/coordinator` CLI takes one task on this repo through the whole cycle: 
 **Built for remote access from the start, even though v1 runs on one machine:** the coordinator binds
 to a configurable address (loopback by default) with token authentication, and `packages/protocol`
 carries no localhost assumptions. This is a few lines now and a rewrite later. It's what allows a
-phone inbox (Phase 5) and, eventually, moving the coordinator, Herdr and the worktrees to an
+phone inbox (Phase 5) and, eventually, moving the coordinator, the pane host and the worktrees to an
 always-on machine while the laptop and phone stay clients.
 
 From then on, all Loom work is filed as Loom tasks.
@@ -70,7 +70,7 @@ Agents build the UI screens in parallel, working against the fixed protocol and 
 - Parallelize only across fixed interfaces and separate directories.
 - Run at most 3–4 agents at a time. The limit is how much the human can review.
 - Until the coordinator exists, the human is the coordinator. Don't build an orchestrator out of one agent
-  that drives the others through Herdr.
+  that drives the others through the pane host.
 - Cross-review: Codex reviews Claude's PRs, and Claude reviews Codex's. Write down every annoyance; that
   list becomes the first backlog.
 
@@ -78,7 +78,7 @@ Agents build the UI screens in parallel, working against the fixed protocol and 
 
 - **Two instances.**
   - *prod* is the installed build. It runs as a launchd agent with its own data directory, and manages this project.
-  - *dev* is built from a worktree with `LOOM_INSTANCE=dev`. It has its own data directory, ports, Herdr session
+  - *dev* is built from a worktree with `LOOM_INSTANCE=dev`. It has its own data directory, ports, pane-host server
     (`loom-dev`) and sandbox GitHub repo. Agents use it for end-to-end tests.
 - **Merging to `main` doesn't change anything that's running.** `loom release` builds and installs a new version, then restarts prod.
   Keep the last few builds so you can roll back.
@@ -86,4 +86,4 @@ Agents build the UI screens in parallel, working against the fixed protocol and 
 - **Core changes get extra scrutiny.** Tasks that touch `packages/core`, migrations in `packages/store`, or the stage rules carry a `core` label.
   They need plan approval and a careful human review.
 - **Tests don't spawn real agents.** Automated tests use `fake-agent`. Real providers are opt-in and use the cheapest model.
-- **If prod breaks,** every session keeps running in Herdr, Codex and Claude Code. Fix Loom directly with Herdr and Claude, or roll back.
+- **If prod breaks,** every session keeps running in tmux, Codex and Claude Code. Fix Loom directly in a tmux pane with Claude, or roll back.

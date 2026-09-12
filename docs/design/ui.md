@@ -40,7 +40,7 @@ so losing them costs nothing.
 ```
 
 - **Sidebar:** repos → tasks → runs, with the run's status and attention badge (needs permission,
-  question, blocked, vanished) drawn from the snapshot, never from the terminal. This is what Herdr's
+  question, blocked, vanished) drawn from the snapshot, never from the terminal. This is what a terminal's
   sidebar shows for agents, made task-aware.
 - **Tabs and splits:** a tab holds a binary split tree; every leaf is a panel. Layout comes from a
   proven grid library (dockview-style: tabs, splits, drag), not hand-rolled.
@@ -52,7 +52,7 @@ so losing them costs nothing.
   `?` for the map. Chosen to match tmux so muscle memory transfers to a raw terminal. Everything is
   reachable without the prefix through the command palette.
 - **Terminals:** each terminal panel is its own attach client. Two windows, and a Ghostty window,
-  can show the same agent at the same time; the pane host must allow multiple clients (see below).
+  can show the same agent at the same time; the pane host allows multiple clients (see below).
   Closing a panel detaches; it never stops the agent.
 
 ## Pane host
@@ -61,8 +61,11 @@ The pane host keeps agent PTYs alive across window closes and app restarts, lets
 clients attach, delivers keys, and starts processes in a worktree with a controlled environment. It
 is replaceable behind one adapter interface; the Workbench is its user interface.
 
-Spike 06 measures tmux for this role. Herdr's one-attached-client rule conflicts with the multi-window
-model above, and its agent-awareness duplicates Loom's, so if tmux meets the budgets it replaces Herdr.
+[Spike 06](../../spikes/06-tmux-pane-host/FINDINGS.md) measured tmux for this role and it passed, so
+tmux is the pane host (`packages/adapters/tmux`). Herdr's one-attached-client rule conflicted with the
+multi-window model above, and its agent-awareness duplicated Loom's. The Workbench attaches through a
+*grouped* session per view — clients on the same tmux session share its current window, so each view
+needs its own — and any number of clients, Ghostty included, may attach to the same pane.
 The coordinator owning PTYs itself stays a later option if the multiplexer's redraw layer ever shows
 in the latency numbers.
 

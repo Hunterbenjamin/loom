@@ -10,7 +10,7 @@ One fast place to:
 - step into their terminals;
 - review and approve the results.
 
-GitHub, Herdr, Codex and Claude Code keep working on their own, and anything done directly in them
+GitHub, tmux, Codex and Claude Code keep working on their own, and anything done directly in them
 shows up in Loom.
 
 ## Workflow
@@ -38,9 +38,10 @@ carry for them are in [`docs/design/ui.md`](design/ui.md).
 └──────────────▲ snapshot + patches over a local WebSocket
 ┌──────────────┴── Coordinator (launchd agent, Node/TS) ─────────────┐
 │ SQLite (WAL) · reconciler · stage rules · run supervisor           │
-│ MCP server for agents · adapters: git, GitHub, Herdr, Codex, Claude │
+│ MCP server for agents · adapters: git, GitHub, tmux, Codex, Claude  │
 └──┬──────────────┬──────────────┬──────────────┬────────────────────┘
- GitHub     Codex daemon   Claude processes  Herdr server ── Ghostty / Herdr TUI
+ GitHub     Codex daemon   Claude processes  tmux server ── any number of
+                                             (-L loom-<instance>)  attached clients
 ```
 
 ## Ownership
@@ -51,19 +52,20 @@ carry for them are in [`docs/design/ui.md`](design/ui.md).
 | Branches, PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time |
 | Diffs | The worktree or the PR | Computed on demand |
 | Session transcripts and live status | Codex daemon / Claude Code | Cache + references |
-| Terminal processes | Herdr, only while its server is alive | References (pane IDs, agent names), plus each run's intended command line and environment, so Loom can relaunch it |
+| Terminal processes | tmux, only while its server is alive | References (`{hostGeneration, sessionName, windowId, paneId}`), plus each run's intended command line and environment, so Loom can relaunch it. Pane IDs restart at `%0` after a server death, so every ref is scoped to a host generation |
 
 Done is derived from GitHub: a task is Done only once its PR is merged.
 
 ## Synchronization
 
 - **Reconcile from current state.** Every event enqueues `reconcile(taskId)`: hooks, app-server
-  notifications, Herdr events, and changes found by polling GitHub. Reconcile re-reads from each owner,
+  notifications, pane-host hints, and changes found by polling GitHub. Reconcile re-reads from each owner,
   compares that with the desired state, and takes idempotent actions. A full resync runs about every 60 seconds.
 - **One reconcile at a time per task.** Stage transitions are compare-and-set on a version column
   and are logged in a `transitions` table.
 - **Join key: the worktree path.**
-  - Claude hooks, Codex threads, Herdr panes and `claude agents --json` all report their working directory (`cwd`).
+  - Claude hooks, Codex threads, tmux panes and `claude agents --json` all report their working directory (`cwd`).
+    A pane's `pane_start_path` survives its process, so a dead pane still joins to its task.
   - Compare real paths: macOS reports the same folder as both `/var/…` and `/private/var/…`.
   - A branch maps to its PR.
   - Sessions started by hand inside a task's worktree attach to that task.
@@ -86,9 +88,9 @@ Each provider has four channels:
 
 | Channel | Codex | Claude Code |
 |---|---|---|
-| **Control** | App-server over a unix socket: `thread/start`, `turn/start`, `turn/steer`, `turn/interrupt`; the coordinator answers approval requests. | Headless roles: Agent SDK or `claude -p --output-format stream-json`. Interactive: `herdr agent prompt` (refusing text that starts with `/` or `!`), and `herdr agent send-keys esc` to interrupt. |
-| **Observe** | App-server notifications: `turn/*`, `item/*`, `turn/diff/updated`, `turn/plan/updated`, `account/rateLimits/updated`. | `claude agents --json` owns live status (`busy`, `waiting`, `idle`). Per-session hooks from `--settings` add detail: HTTP for most events, a `command` hook for SessionStart. Herdr's state is a fallback. See [Claude Code](#claude-code). |
-| **Attach** | A Herdr pane running `codex resume <thread> --remote unix://…` against the coordinator's server. Concurrent attach verified on 0.154.0; see [spike 01 findings](../spikes/01-codex-shared-thread/FINDINGS.md). | A Herdr pane; "take over" a headless run with `claude --resume <id>`. For the in-app view, see [Embedded terminals](#embedded-terminals). |
+| **Control** | App-server over a unix socket: `thread/start`, `turn/start`, `turn/steer`, `turn/interrupt`; the coordinator answers approval requests. | Headless roles: Agent SDK or `claude -p --output-format stream-json`. Interactive: the pane host's `pasteText` (refusing text that starts with `/` or `!`), and `sendKey Escape` to interrupt. |
+| **Observe** | App-server notifications: `turn/*`, `item/*`, `turn/diff/updated`, `turn/plan/updated`, `account/rateLimits/updated`. | `claude agents --json` owns live status (`busy`, `waiting`, `idle`). Per-session hooks from `--settings` add detail: HTTP for most events, a `command` hook for SessionStart. The pane host supplies no status at all. See [Claude Code](#claude-code). |
+| **Attach** | A tmux pane running `codex resume <thread> --remote unix://…` against the coordinator's server. Concurrent attach verified on 0.154.0; see [spike 01 findings](../spikes/01-codex-shared-thread/FINDINGS.md). | A tmux pane; "take over" a headless run with `claude --resume <id>`. For the in-app view, see [Embedded terminals](#embedded-terminals). |
 | **Signal** (agent → Loom) | Loom MCP tools | Loom MCP tools |
 
 The Loom MCP tools are `get_task_context`, `submit_plan`, `report_progress`, `ask_human`,
@@ -119,15 +121,14 @@ Rules:
   quality-critical implementation on Claude, and bulk or tightly specified implementation on Codex,
   whose budget is larger. Review is cross-provider wherever it can be, so a second model reads the
   first one's work. Name the model explicitly when launching a run; never rely on a tool's default.
-- Herdr's Claude and Codex integrations report session identity only, on SessionStart. Herdr works out
-  working and blocked states from the screen, so it's only a fallback.
-- Run one Codex app-server per task as a Loom child process, never in a Herdr pane. Outside Herdr a
-  mid-flight turn completes through a Herdr restart; in a pane it ends interrupted (spike 05).
-- Never make a decision from Herdr's agent status, and never call `herdr agent prompt --wait`. The
-  status is derived from the terminal title and can stay stale indefinitely after a restart, which
-  makes `--wait` hang on a prompt that was delivered and answered. Confirm from the provider.
-- Record Codex thread IDs into Herdr yourself with `herdr pane report-agent-session --source herdr:codex`.
-  The integration hook doesn't fire on resume, so after any recovery the reference is otherwise missing.
+- The pane host has no agent awareness, and must never be given any. It reports native pane facts
+  only: pid, foreground command name, `pane_dead`, exit status, start path. Loom owns the link from a
+  pane to a run, and records it before launch (principle 7).
+- Run one Codex app-server per task as a Loom child process, never in a pane. Outside the pane host a
+  mid-flight turn completes through a host restart; in a pane it ends interrupted (spike 05).
+- A pane is not evidence of a session. `pane_current_command` was `2.1.269` for Claude and `node` for
+  Codex's launcher, and cwd identifies the task, not the session (spike 06 §4). Reject an ambiguous
+  match instead of guessing.
 - `--settings` is part of a Claude session's identity. Whatever relaunches a Claude agent must pass it
   again; a session running without it is unobservable even though it has the right ID.
 
@@ -152,41 +153,57 @@ Verified in [spike 02](../spikes/02-claude-hooks/FINDINGS.md) (Claude Code 2.1.2
   wait for the permission Notification; it arrives about 6 s late.
 - **Turns are identified by `prompt_id`.** A prompt sent while Claude is working joins the running
   turn, so several prompts can share one turn and one Stop.
-- **Sending text with `herdr agent prompt`** delivered 89 of 89 plain prompts exactly once. Text
-  starting with `/` runs a slash command, and text starting with `!` runs a shell command with no
-  permission prompt, so the adapter must refuse or escape both. Tabs and CR are normalized.
-  `agent_blocked` means a dialog is waiting for the human. A message counts as delivered only when
-  its UserPromptSubmit arrives.
+- **Sending text through the pane host** delivered 89 of 89 plain prompts exactly once on both hosts.
+  Text starting with `/` runs a slash command, and text starting with `!` runs a shell command with no
+  permission prompt, so the adapter refuses both. Tabs and CR are normalized. A paste is only ever
+  "bytes written": in spike 06 a paste into a pending permission dialog **approved the command** and
+  submitted no prompt, so the coordinator gates every send on the provider's status. A message counts
+  as delivered only when its UserPromptSubmit arrives.
 - **Crashes** give no SessionEnd; detect one as the `claude agents` entry disappearing. Resume with
   `claude --resume <id> --settings <loom settings>`. The killed turn's in-flight tool call is missing
   from the transcript.
 - **Background sessions (`claude --bg`)** ignore `--session-id` and can't be prompted while running,
   so Loom doesn't launch runs that way. Background sessions it finds are observe-only.
 - **Trust dialog.** A new worktree shows Claude's folder-trust dialog, whose default choice exits the
-  session, so a blind Enter kills it. Loom shows the dialog to the human until pre-trusting worktrees
-  is solved.
+  session, so a blind Enter kills it. Only the human answers it. Herdr used to report it from the
+  screen; the pane host does not, and no provider-native signal for it has been measured, so such a
+  run stays `starting` until SessionStart and the existing stall attention surfaces it. Measuring what
+  `claude agents --json` reports while the dialog is up is an open question.
 
-### Embedded terminals
+### The pane host
 
-Verified for both providers in [spike 03](../spikes/03-embedded-terminal/FINDINGS.md) (herdr 0.9.0):
+tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen in
+[spike 06](../spikes/06-tmux-pane-host/FINDINGS.md) (tmux 3.7c) and built in
+`packages/adapters/tmux`. Terminal behaviour was verified in
+[spike 03](../spikes/03-embedded-terminal/FINDINGS.md) and re-measured in spike 06:
 
-- The in-app view is node-pty in the Electron main process running `herdr agent attach <name>`,
-  rendered with xterm.js.
-- **One attached client per terminal.** A second attach is refused, and `--takeover` evicts the
-  current client. Taking over is always the user's choice, never automatic: offer "Open elsewhere ·
-  Take over here", and show "Taken over · Reattach" when Loom's own client is evicted. Herdr doesn't
-  report whether a terminal has a client attached, so Loom finds out by trying.
-- **The attached client sets the pane's size, and the size sticks after detach.** Give the embedded
+- The in-app view is node-pty in the Electron main process running the host's `attachArgs`,
+  rendered with xterm.js. Keystroke to glyph was 5–6 ms p95.
+- **Any number of clients may attach.** Two Loom windows and a native Ghostty window showed the
+  same agent at once, with no eviction and no takeover flow. Detaching one never stops the agent.
+- **One session per task, one window per run**, and a *grouped* session per attach target: clients
+  on the same session share its current window, so each view gets its own grouped session and picks
+  its window independently.
+- **The shared pane has one size**, and the latest active client's size wins (`window-size latest`,
+  `aggressive-resize on`); a differently sized view is cropped or padded. Give the embedded
   terminal a minimum width (about 100 columns), and resize only when the panel resizes, debounced.
-- **Scrollback lives in Herdr.** Attach runs on the alternate screen, so history and search read
-  provider transcripts, not the terminal buffer.
-- Closing a panel sends SIGHUP: the attach exits and the agent keeps running. Quitting or crashing the
-  app leaves no stale attachment.
-- **Start Herdr servers and agents with a scrubbed environment**, without `CLAUDE_CODE_*` or `HERDR_*`
-  variables. An inherited `CLAUDE_CODE_CHILD_SESSION` turned off transcript saving in Claude agents,
-  which breaks resuming (principle 7).
-- "Open in Ghostty" uses AppleScript (`new window with configuration`, with an absolute path to
-  `herdr`) and keeps the returned window ID, so Loom can focus that window later.
+- **Scrollback lives in tmux.** The mouse wheel enters copy mode and reaches tmux history; search
+  and history still read provider transcripts, not the terminal buffer.
+- Closing a panel detaches that client; the pane and its process keep running. A host restart kills
+  every pane process, and Loom relaunches each run from the stored command line and environment.
+- **Shift+Enter needs `extended-keys always`, `extended-keys-format csi-u` and
+  `terminal-features ",xterm*:extkeys"`**, loaded before the pane exists — and still needs the
+  renderer's CSI-u shim. Changing the options afterwards does not reach an existing pane.
+- **The pane environment is an allowlist, built by Loom.** `-e NAME=` overrides a value but does not
+  remove the name; only `set-environment -r` removes, `update-environment` must be empty so
+  attaching adds nothing, and `PATH` comes from the tmux *client* process rather than `-e`. An
+  inherited `CLAUDE_CODE_CHILD_SESSION` turned off transcript saving in Claude agents, which breaks
+  resuming (principle 7).
+- **Pane exits come from `pane_dead` plus `pane_dead_status`** (`remain-on-exit on`), with a global
+  `pane-died` hook feeding one control-mode subscription. `%exit` means the control client is
+  leaving, never that a pane exited. Measured: dead 136 ms after the keystroke, hint 773 ms later.
+- "Open in Ghostty" uses AppleScript (`new window with configuration`, running the host's
+  `attachArgs`) and keeps the returned window ID, so Loom can focus that window later.
 
 ## Stage rules: code versus agents
 
@@ -207,11 +224,11 @@ Verified for both providers in [spike 03](../spikes/03-embedded-terminal/FINDING
 
 ## Parallel work
 
-- One task = one branch = one worktree = one Herdr workspace.
+- One task = one branch = one worktree = one pane-host session, with one window per run.
 - A `WORKFLOW.md` owned by each repo lists its setup, env bootstrap, test, lint, dev-server and teardown
   commands, plus its prompt templates.
 - **Ports:** each task gets a slot (`PORT = base + slot*10`), written into the worktree's env. Dev servers run
-  in Herdr panes.
+  in panes of the task's session.
 - **Services and databases:** each task gets its own compose project or database name. If a repo can't
   support that, it's marked serial-tests and a lock guards its test step.
 - **Dependencies:** "blocked by" links. A task starts only after its blockers are merged. No stacked PRs in v1.
@@ -269,8 +286,8 @@ that crosses providers goes only through artifacts.
 | Failure | Handling |
 |---|---|
 | UI closed or crashed | Nothing happens. On reopen, the UI reconnects and gets a fresh snapshot. |
-| Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, Herdr agents, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts). |
-| Herdr server stop, crash or kill | Every pane process dies, shells included (spike 05). Loom-managed sessions run with `resume_agents_on_restore = false`, so panes come back as bare shells in the right worktree and Loom relaunches each agent from stored state: session or thread ID, kind, full command line and environment. Measured at about 20 s for two agents. A Codex turn in flight completes if its app-server runs outside Herdr; Claude's is lost and re-sent. |
+| Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, panes, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts). |
+| Pane host stop, crash or kill | Every pane process dies, shells included (spikes 05 and 06). The host has no restore feature and needs none: Loom recreates the server, its sessions and each run's pane from stored state — session or thread ID, cwd, full command line and environment. Pane IDs restart at `%0`, so stale refs name nothing and every ref carries its host generation. Measured at about 30 s to a fresh reply from both providers. A Codex turn in flight completes because its app-server runs outside the pane host; Claude's is lost and re-sent. |
 | Codex app-server restart | Runs are `unknown` until `thread/resume`; the interrupted turn is a failed attempt and is re-sent (spike 01). |
 | Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, flag the task failed and notify the human (see `docs/design/core.md` §3). |
 | Stall | No events for N minutes → set the attention flag. Don't kill it; the human may be typing. |
@@ -311,10 +328,10 @@ guarantees that a command did not run. The broader restart matrix remains spike 
 
 ## Verified versus to be confirmed
 
-**Verified.** Checked against docs and the CLI help of codex-cli 0.154, Claude Code 2.1.268, herdr 0.9.0 and gh 2.90 (Sept 2026):
+**Verified.** Checked against docs and the CLI help of codex-cli 0.154, Claude Code 2.1.268, tmux 3.7c and gh 2.90 (Sept 2026):
 - **Codex:** the app-server thread, turn and approval methods and the rate-limit events; the shared daemon; TUI `--remote`.
 - **Claude Code:** `--session-id`; HTTP hooks and the event list above; background sessions and `claude agents --json`; Agent SDK resume and fork.
-- **Herdr:** the socket API with `events.subscribe`; agent start, prompt, wait, read, send-keys and attach; `worktree create`; `report-agent-session`.
+- **tmux:** `new-session`/`new-window` with `-e` and an argv command; `list-panes -a -F`; `set-environment -r`; `set-buffer`/`paste-buffer -p`; `send-keys`; grouped sessions; control mode with `refresh-client -B`.
 - **GitHub CLI:** `gh pr merge --match-head-commit`.
 - **Pierre Diffs:** `@pierre/diffs` 1.4.2 (Apache-2.0), with annotations and a worker pool.
 - **ghostty-web:** 0.4.0 (MIT), with the xterm.js API.
@@ -322,11 +339,13 @@ guarantees that a command did not run. The broader restart matrix remains spike 
 **To be confirmed** (see `spikes/`):
 - **01 completed:** concurrent Codex attach and approval fan-out on 0.154.0. See the findings for
   bounded recovery results and remaining race/timeout questions; transport remains experimental.
-- **02 completed:** `claude agents --json` for status, per-session hooks for detail; `herdr agent prompt`
+- **02 completed:** `claude agents --json` for status, per-session hooks for detail; pasting a prompt
   delivers reliably, but text starting with `/` or `!` must be refused. See the findings.
-- **03 completed:** embedded `herdr agent attach` with xterm.js works; one attached client per
-  terminal; "Open in Ghostty" via AppleScript. See the findings.
+- **03 completed:** an embedded attach client with xterm.js works; "Open in Ghostty" via AppleScript.
+  See the findings.
+- **06 completed:** tmux meets the pane-host budgets and allows concurrent clients, so it replaces
+  Herdr; provider-gated sends and per-generation pane refs are required. See the findings.
 - **04 completed:** Pierre with `CodeView` and workers handles large diffs; anchoring findings across
   commits is Loom's job. See the findings.
-- **05 completed:** nothing in a pane survives a Herdr restart; `resume_agents_on_restore = false` and
-  Loom relaunches from stored state; the Codex app-server lives outside Herdr. See the findings.
+- **05 completed:** nothing in a pane survives a host restart; Loom relaunches from stored state, and
+  the Codex app-server lives outside the pane host. See the findings.
