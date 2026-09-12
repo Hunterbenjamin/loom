@@ -41,7 +41,11 @@ export const configSchema = z.object({
   /** GitHub logins Loom and its agents push as; their comments are not findings. */
   excludedAuthors: z.array(z.string().min(1)).default([]),
   caps: z
-    .object({ total: z.number().int().positive(), codex: z.number().int().positive(), claude: z.number().int().positive() })
+    .object({
+      total: z.number().int().positive(),
+      codex: z.number().int().positive(),
+      claude: z.number().int().positive(),
+    })
     .default({ total: 4, codex: 3, claude: 3 }),
   retry: z
     .object({
@@ -65,7 +69,9 @@ export const configSchema = z.object({
 export type CoordinatorConfig = z.output<typeof configSchema>;
 
 /** The subset core sees. The pure functions are injected here, never serialized. */
-export const reconcileConfig = (config: CoordinatorConfig): ReconcileConfig => ({
+export const reconcileConfig = (
+  config: CoordinatorConfig,
+): ReconcileConfig => ({
   retry: config.retry,
   stallAfterMs: config.stallAfterMs,
   unknownGraceMs: config.unknownGraceMs,
@@ -92,7 +98,8 @@ export function configFromEnvironment(
   return configSchema.parse({
     instance: env.LOOM_INSTANCE ?? required("LOOM_INSTANCE"),
     dataRoot: env.LOOM_DATA_ROOT ?? required("LOOM_DATA_ROOT"),
-    worktreeRoot: env.LOOM_WORKTREE_ROOT ?? `${required("LOOM_DATA_ROOT")}/worktrees`,
+    worktreeRoot:
+      env.LOOM_WORKTREE_ROOT ?? `${required("LOOM_DATA_ROOT")}/worktrees`,
     baseBranch: optional("LOOM_BASE_BRANCH"),
     bind: optional("LOOM_BIND"),
     token: env.LOOM_TOKEN ?? required("LOOM_TOKEN"),
@@ -100,7 +107,10 @@ export function configFromEnvironment(
       codex: env.LOOM_MODEL_CODEX ?? "gpt-5.1-codex",
       claude: env.LOOM_MODEL_CLAUDE ?? "claude-opus-5",
     },
-    excludedAuthors: optional("LOOM_EXCLUDED_AUTHORS")?.split(",").map((v) => v.trim()).filter(Boolean),
+    excludedAuthors: optional("LOOM_EXCLUDED_AUTHORS")
+      ?.split(",")
+      .map((v) => v.trim())
+      .filter(Boolean),
     tmuxExecutable: optional("LOOM_TMUX"),
     codexExecutable: optional("LOOM_CODEX"),
     claudeExecutable: optional("LOOM_CLAUDE"),

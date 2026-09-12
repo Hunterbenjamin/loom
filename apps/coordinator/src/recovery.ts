@@ -8,8 +8,8 @@
 import type { ActionResult, InputId, Repo, TaskId } from "@loom/core";
 import type { RunningAction, Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
-import { relaunchFromRecipe } from "./launch.js";
 import type { LaunchDeps } from "./launch.js";
+import { relaunchFromRecipe } from "./launch.js";
 import type { RecipeStore } from "./recipes.js";
 
 export interface RecoveryDeps {
@@ -76,7 +76,11 @@ export async function recoverAction(
         });
         const pr = found.notModified ? null : found.value;
         return pr
-          ? { kind: "open_pr", ok: true, output: { number: pr.number, url: pr.url } }
+          ? {
+              kind: "open_pr",
+              ok: true,
+              output: { number: pr.number, url: pr.url },
+            }
           : null;
       }
       case "merge_pr": {
@@ -200,7 +204,9 @@ export async function recover(
       if (run.mode !== "interactive" || !run.pane) continue;
       // Decision 21: an interactive run is never relaunched just because it vanished. Only a pane
       // the host itself reports dead, whose run Loom still owns, is put back from its recipe.
-      const pane = await deps.adapters.paneHost.getPane(run.pane).catch(() => null);
+      const pane = await deps.adapters.paneHost
+        .getPane(run.pane)
+        .catch(() => null);
       const recipe = deps.recipes.get(run.id);
       if (pane !== null && !pane.dead) continue;
       if (!recipe || !state.worktree?.paneWorkspaceId) continue;

@@ -18,7 +18,9 @@ export type GateDecision =
 /** Statuses a message may be sent into. Anything else is uncertainty, and uncertainty waits. */
 const PERMITTED: Run["status"][] = ["idle", "working"];
 
-export function gateStatus(run: Run, observed: ReturnType<typeof deriveStatus>): GateDecision {
+export function gateStatus(
+  observed: ReturnType<typeof deriveStatus>,
+): GateDecision {
   if (!PERMITTED.includes(observed.status))
     return {
       ok: false,
@@ -28,7 +30,10 @@ export function gateStatus(run: Run, observed: ReturnType<typeof deriveStatus>):
           : `the provider status is ${observed.status}`,
     };
   if (observed.blockedOn !== null)
-    return { ok: false, reason: `the provider is waiting on ${observed.blockedOn}` };
+    return {
+      ok: false,
+      reason: `the provider is waiting on ${observed.blockedOn}`,
+    };
   return { ok: true, status: observed.status };
 }
 
@@ -48,13 +53,22 @@ export async function checkSendGate(
   if (!run.sessionId)
     return { ok: false, reason: "the run has no recorded session" };
   const observation = await observeRun(adapters, now, run);
-  const decision = gateStatus(run, deriveStatus(run, observation));
+  const decision = gateStatus(deriveStatus(run, observation));
   if (!decision.ok) return decision;
   if (action.via === "codex_turn_steer") {
-    const provider = observation.provider.ok ? observation.provider.value : null;
+    const provider = observation.provider.ok
+      ? observation.provider.value
+      : null;
     const turn = provider?.provider === "codex" ? provider.turns.at(-1) : null;
-    if (!turn || turn.id !== action.expectedTurnId || turn.status !== "inProgress")
-      return { ok: false, reason: "the expected turn is no longer in progress" };
+    if (
+      !turn ||
+      turn.id !== action.expectedTurnId ||
+      turn.status !== "inProgress"
+    )
+      return {
+        ok: false,
+        reason: "the expected turn is no longer in progress",
+      };
   }
   return decision;
 }

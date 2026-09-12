@@ -20,6 +20,7 @@ import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import { sha256 } from "./derive.js";
 import type { Loop } from "./loop.js";
+import { taskBrief } from "./prompts.js";
 import type { RecipeStore } from "./recipes.js";
 import type { WorkflowReader } from "./workflow.js";
 
@@ -40,7 +41,11 @@ export interface McpHostDeps {
   maxPasses?: number;
 }
 
-const findingViews = (state: TaskState, role: string, round: number): FindingView[] =>
+const findingViews = (
+  state: TaskState,
+  role: string,
+  round: number,
+): FindingView[] =>
   state.findings
     .filter((f) =>
       role === "reviewer"
@@ -102,8 +107,7 @@ export function createMcpHost(deps: McpHostDeps): {
       const state = deps.store.loadTaskState(taskId);
       const run = state.runs.find((r) => r.id === runId);
       const worktree = state.worktree;
-      if (!run || !worktree)
-        throw new Error("The run has no task context yet");
+      if (!run || !worktree) throw new Error("The run has no task context yet");
       const repo = deps.repo(taskId);
       const git = await deps.adapters.git
         .readWorktree(worktree.path, worktree.baseBranch)
@@ -129,7 +133,7 @@ export function createMcpHost(deps: McpHostDeps): {
         brief:
           typeof state.artifactContents.brief === "string"
             ? state.artifactContents.brief
-            : state.task.description,
+            : taskBrief(state.task),
         plan: state.plan
           ? (({ accepted: _accepted, ...plan }) => plan)(state.plan)
           : null,
@@ -143,7 +147,9 @@ export function createMcpHost(deps: McpHostDeps): {
         testResults: (state.artifactContents.test_results ??
           []) as GetTaskContextOutput["testResults"],
         answeredQuestions: state.questions.flatMap((q) =>
-          q.answer ? [{ id: q.id, question: q.question, answer: q.answer }] : [],
+          q.answer
+            ? [{ id: q.id, question: q.question, answer: q.answer }]
+            : [],
         ),
         // Design note 13.3: loaded and validated here, never a reconcile input.
         workflow: await deps.workflow.read(repo.root),
@@ -214,7 +220,9 @@ export function createMcpHost(deps: McpHostDeps): {
       throw new McpGuardError([`${path}: binary files have no lines`]);
     const oid = side === "new" ? change.newBlobOid : change.oldBlobOid;
     if (!oid)
-      throw new McpGuardError([`${path}: no ${side}-side blob in ${input.reviewedSha.slice(0, 12)}`]);
+      throw new McpGuardError([
+        `${path}: no ${side}-side blob in ${input.reviewedSha.slice(0, 12)}`,
+      ]);
     const blob = await deps.adapters.git.readBlob(worktree.path, oid);
     if (blob === null)
       throw new McpGuardError([`${path}: the blob could not be read as text`]);

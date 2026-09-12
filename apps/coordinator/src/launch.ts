@@ -5,20 +5,24 @@
 // `start_run` is at-least-once (design §5.4), so every path here adopts an existing session under
 // the same ID instead of starting a second one.
 
+import { join } from "node:path";
+import { mcpConfigPathFor } from "@loom/adapter-claude";
 import type {
+  Action,
   ActionOutputs,
   McpServerEntry,
   Role,
   TaskState,
 } from "@loom/core";
-import { mcpConfigPathFor } from "@loom/adapter-claude";
-import { join } from "node:path";
-import type { Action } from "@loom/core";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
 import { newToken } from "./derive.js";
 import { roleBrief } from "./prompts.js";
-import { type LaunchRecipe, RecipeStore, runEnvironment } from "./recipes.js";
+import {
+  type LaunchRecipe,
+  type RecipeStore,
+  runEnvironment,
+} from "./recipes.js";
 
 export type StartRunAction = Extract<Action, { kind: "start_run" }>;
 
@@ -100,7 +104,8 @@ export async function startRun(
     // it again. The token goes in the sibling MCP config, never in the settings file.
     await adapters.claude.writeSettings(settingsPath, deps.mcpEntry(token));
     const sessionId = action.sessionId;
-    if (!sessionId) throw new Error("A Claude run must know its session ID before launch");
+    if (!sessionId)
+      throw new Error("A Claude run must know its session ID before launch");
     if (action.mode === "headless") {
       await adapters.claude.startHeadless({
         sessionId,
@@ -141,7 +146,9 @@ export async function startRun(
     const started = await codex.startThread({
       cwd: action.worktreePath,
       model: action.model,
-      sandbox: READ_ONLY.includes(action.role) ? "read-only" : "workspace-write",
+      sandbox: READ_ONLY.includes(action.role)
+        ? "read-only"
+        : "workspace-write",
       developerInstructions: prompt,
       config: { mcp_servers: { loom: deps.mcpEntry(token) } },
     });
@@ -156,7 +163,8 @@ export async function startRun(
       pane: null,
     };
   const [executable, ...args] = codex.attachArgs(threadId);
-  if (!executable) throw new Error("The Codex adapter returned no attach command");
+  if (!executable)
+    throw new Error("The Codex adapter returned no attach command");
   const pane = await openPane(deps, state, action, {
     ...recipe,
     sessionId: threadId,
@@ -207,4 +215,3 @@ export async function relaunchFromRecipe(
     env: recipe.env,
   });
 }
-

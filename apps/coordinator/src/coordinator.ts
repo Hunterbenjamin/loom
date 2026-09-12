@@ -19,20 +19,23 @@ import type {
   TaskId,
   TaskState,
 } from "@loom/core";
-import type { Change, Subscription } from "@loom/protocol";
 import { serveHttp } from "@loom/mcp";
+import type { Change, Subscription } from "@loom/protocol";
 import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
-import { COORDINATOR_VERSION, type CoordinatorConfig, epochOf } from "./config.js";
+import {
+  COORDINATOR_VERSION,
+  type CoordinatorConfig,
+  epochOf,
+} from "./config.js";
 import { Executor } from "./executor.js";
-import { type LaunchDeps } from "./launch.js";
+import type { LaunchDeps } from "./launch.js";
 import { Loop } from "./loop.js";
 import { createMcpHost } from "./mcp-host.js";
 import { observe as observeOwners, PullRequestCache } from "./observe.js";
 import { RecipeStore } from "./recipes.js";
-import { recover, type RecoveryReport } from "./recovery.js";
+import { type RecoveryReport, recover } from "./recovery.js";
 import { ProtocolServer } from "./server.js";
-import { createWorkflowReader } from "./workflow.js";
 import {
   changesRow,
   PublishedRows,
@@ -40,9 +43,14 @@ import {
   taskRows,
   type ViewDeps,
 } from "./views.js";
+import { createWorkflowReader } from "./workflow.js";
 
 const TERMINAL = ["done", "canceled"];
-const EMPTY_ATTENTION: Attention = { reasons: [], reasonSince: {}, since: null };
+const EMPTY_ATTENTION: Attention = {
+  reasons: [],
+  reasonSince: {},
+  since: null,
+};
 
 export interface CoordinatorOptions {
   config: CoordinatorConfig;
@@ -343,9 +351,7 @@ export class Coordinator {
           claude: this.cooldowns.get("claude") ?? null,
         }),
         repoOf: (s) => {
-          const repo = this.store
-            .repos()
-            .find((r) => r.id === s.task.repoId);
+          const repo = this.store.repos().find((r) => r.id === s.task.repoId);
           return repo
             ? { github: repo.github, baseBranch: repo.baseBranch }
             : null;
@@ -433,10 +439,21 @@ export class Coordinator {
 
   // ---------------------------------------------------------------- commands
 
-  private async command(
-    value: unknown,
-  ): Promise<
-    { ok: true; result: unknown } | { ok: false; error: { code: "unknown_task" | "unknown_run" | "unavailable" | "invalid_input" | "internal"; message: string; details: string[] } }
+  private async command(value: unknown): Promise<
+    | { ok: true; result: unknown }
+    | {
+        ok: false;
+        error: {
+          code:
+            | "unknown_task"
+            | "unknown_run"
+            | "unavailable"
+            | "invalid_input"
+            | "internal";
+          message: string;
+          details: string[];
+        };
+      }
   > {
     const command = value as {
       kind: string;
@@ -452,8 +469,9 @@ export class Coordinator {
             title: command.title as string,
             description: command.description as string,
             providers: (command.providers ?? null) as ProviderRules | null,
-            requirePlanApproval: (command.requirePlanApproval ??
-              null) as boolean | null,
+            requirePlanApproval: (command.requirePlanApproval ?? null) as
+              | boolean
+              | null,
             blockedBy: (command.blockedBy ?? []) as TaskId[],
             budgetMinutes: (command.budgetMinutes ?? null) as number | null,
           });

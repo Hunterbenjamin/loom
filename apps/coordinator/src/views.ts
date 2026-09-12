@@ -79,7 +79,9 @@ export async function runTargetRow(
         dead: observation.dead,
         exitStatus: observation.exitCode,
         attachedClients: clients.length,
-        size: clients[0] ? { cols: clients[0].cols, rows: clients[0].rows } : null,
+        size: clients[0]
+          ? { cols: clients[0].cols, rows: clients[0].rows }
+          : null,
         observedAt: deps.now(),
       };
     try {
@@ -137,7 +139,8 @@ export async function taskRows(
         taskId,
         results,
         updatedAt:
-          state.artifacts.find((a) => a.kind === "test_results")?.createdAt ?? now,
+          state.artifacts.find((a) => a.kind === "test_results")?.createdAt ??
+          now,
       }),
     );
   for (const transition of deps.store.transitions(taskId))
@@ -215,7 +218,11 @@ export class PublishedRows {
   private readonly byOwner = new Map<string, Map<string, Published>>();
 
   /** Replaces one owner's rows (a task, or the repo list) and returns the changes that implies. */
-  replace(owner: string, taskId: TaskId | null, rows: readonly Row[]): Change[] {
+  replace(
+    owner: string,
+    taskId: TaskId | null,
+    rows: readonly Row[],
+  ): Change[] {
     const previous = this.byOwner.get(owner) ?? new Map<string, Published>();
     const next = new Map<string, Published>();
     const changes: Change[] = [];

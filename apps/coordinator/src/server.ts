@@ -5,12 +5,17 @@
 // Human commands are recorded as inputs and acknowledged with their input ID; reconcile decides
 // what happens next (principle 3).
 
-import { createServer, type Server as HttpServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
-import type { Change, ClientFrame, ServerFrame, Subscription } from "@loom/protocol";
+import { createServer, type Server as HttpServer } from "node:http";
+import type {
+  Change,
+  ClientFrame,
+  ServerFrame,
+  Subscription,
+} from "@loom/protocol";
 import {
   CLOSE,
-  PROTOCOL_VERSION,
+  COLLECTION_FIELDS,
   command as commandSchema,
   decodeClientFrame,
   emptySnapshotBody,
@@ -18,13 +23,13 @@ import {
   filterChanges,
   inScope,
   MAX_FRAME_BYTES,
+  PROTOCOL_VERSION,
+  type ProtocolError,
   scopeOf,
   supportsVersion,
   taskInScope,
-  COLLECTION_FIELDS,
-  type ProtocolError,
 } from "@loom/protocol";
-import { WebSocketServer, type WebSocket } from "ws";
+import { type WebSocket, WebSocketServer } from "ws";
 import type { Row } from "./views.js";
 
 export interface ServerCommandResult {
@@ -48,9 +53,7 @@ export interface ProtocolServerDeps {
   /** Everything currently published, used for a snapshot and for a resync. */
   snapshot(scope: readonly Subscription[]): Promise<Row[]>;
   /** Runs one command and answers with its `ackResult` payload or a typed error. */
-  command(
-    value: unknown,
-  ): Promise<ServerCommandResult | ServerCommandError>;
+  command(value: unknown): Promise<ServerCommandResult | ServerCommandError>;
   /** Asked when a client subscribes to something the coordinator has not published yet. */
   ensure(subscriptions: readonly Subscription[]): Promise<void>;
   onError(error: Error): void;
@@ -86,7 +89,9 @@ export class ProtocolServer {
   constructor(private readonly deps: ProtocolServerDeps) {}
 
   get url(): string | null {
-    return this.address ? `ws://${this.address.host}:${this.address.port}` : null;
+    return this.address
+      ? `ws://${this.address.host}:${this.address.port}`
+      : null;
   }
 
   get clients(): number {
@@ -95,9 +100,14 @@ export class ProtocolServer {
 
   async start(): Promise<void> {
     const http = createServer((_request, response) => {
-      response.writeHead(426).end("This endpoint speaks the Loom protocol only");
+      response
+        .writeHead(426)
+        .end("This endpoint speaks the Loom protocol only");
     });
-    const wss = new WebSocketServer({ server: http, maxPayload: MAX_FRAME_BYTES });
+    const wss = new WebSocketServer({
+      server: http,
+      maxPayload: MAX_FRAME_BYTES,
+    });
     wss.on("connection", (socket, request) => {
       const header = request.headers.authorization;
       this.accept(socket, header?.match(/^Bearer (.+)$/)?.[1] ?? null);
@@ -189,10 +199,16 @@ export class ProtocolServer {
         socket.close(CLOSE.badFrame, "bad frame");
         return;
       }
-      void this.handle(socket, decoded.frame, connection, authorized, (value) => {
-        connection = value;
-        clearTimeout(timer);
-      }).catch((error) =>
+      void this.handle(
+        socket,
+        decoded.frame,
+        connection,
+        authorized,
+        (value) => {
+          connection = value;
+          clearTimeout(timer);
+        },
+      ).catch((error) =>
         this.deps.onError(
           error instanceof Error ? error : new Error(String(error)),
         ),
@@ -299,7 +315,8 @@ export class ProtocolServer {
             result: { kind: "subscribed", scope: [...connection.scope] },
           },
         } as ServerFrame);
-        if (frame.wantSnapshot) await this.sendSnapshot(connection, frame.requestId);
+        if (frame.wantSnapshot)
+          await this.sendSnapshot(connection, frame.requestId);
         return;
       }
       case "resync":
@@ -383,7 +400,12 @@ export class ProtocolServer {
     error: ProtocolError,
   ): void {
     socket.send(
-      encodeFrame({ type: "error", requestId, error, fatal: true } as ServerFrame),
+      encodeFrame({
+        type: "error",
+        requestId,
+        error,
+        fatal: true,
+      } as ServerFrame),
     );
   }
 

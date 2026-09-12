@@ -33,8 +33,7 @@ export function mapRange(
   startLine: number,
   endLine: number,
 ): MappedRange {
-  if (!change)
-    return { path: null, startLine, endLine, status: "exact" };
+  if (!change) return { path: null, startLine, endLine, status: "exact" };
   if (change.status === "deleted")
     return { path: null, startLine: null, endLine: null, status: "outdated" };
   const path = change.newPath ?? change.oldPath;
@@ -81,7 +80,8 @@ export function mapFindings(
     if (!anchor) continue;
     const version = (finding.location?.version ?? 0) + 1;
     if (finding.location?.headSha === input.toHeadSha) continue;
-    const anchoredPath = anchor.side === "new" ? anchor.newPath : anchor.oldPath;
+    const anchoredPath =
+      anchor.side === "new" ? anchor.newPath : anchor.oldPath;
     if (!anchoredPath) continue;
     // An `old`-side anchor points into a blob the branch has moved past; once the file changes
     // again there is nothing honest to map it onto, so it is marked outdated rather than guessed.
@@ -93,14 +93,22 @@ export function mapFindings(
             path: anchoredPath,
             startLine: change ? null : anchor.startLine,
             endLine: change ? null : anchor.endLine,
-            status: (change ? "outdated" : "exact") as FindingLocation["status"],
+            status: (change
+              ? "outdated"
+              : "exact") as FindingLocation["status"],
           };
     mapped.push({
       findingId: finding.id,
       location: {
         headSha: input.toHeadSha,
         path: range.path ?? anchoredPath,
-        blobOid: change?.newBlobOid ?? (change ? null : (anchor.side === "new" ? anchor.newBlobOid : anchor.oldBlobOid)),
+        blobOid:
+          change?.newBlobOid ??
+          (change
+            ? null
+            : anchor.side === "new"
+              ? anchor.newBlobOid
+              : anchor.oldBlobOid),
         side: anchor.side,
         startLine: range.startLine,
         endLine: range.endLine,

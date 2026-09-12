@@ -111,9 +111,9 @@ export async function observeRun(
     try {
       resumable =
         run.provider === "codex"
-          ? await (
-              await adapters.codex(run.taskId)
-            ).checkResumable(run.sessionId)
+          ? await (await adapters.codex(run.taskId)).checkResumable(
+              run.sessionId,
+            )
           : await adapters.claude.resumable(run.sessionId, run.worktreePath);
     } catch {
       resumable = null;
@@ -236,7 +236,8 @@ export async function observe(
     version: counts.version,
     active: counts.active,
     caps: deps.config.caps,
-    coolingDownUntil: deps.coolingDownUntil() as CapacityObservation["coolingDownUntil"],
+    coolingDownUntil:
+      deps.coolingDownUntil() as CapacityObservation["coolingDownUntil"],
   };
   return {
     now: now as never,

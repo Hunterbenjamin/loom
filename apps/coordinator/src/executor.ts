@@ -125,7 +125,6 @@ export class Executor {
   }
 
   /** One action against its owner. Throws `PreconditionFailed` or `Fatal` to classify a failure. */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one arm per action kind is the clearest shape.
   private async perform(action: Action): Promise<unknown> {
     const { adapters, store } = this.deps;
     const state = store.loadTaskState(action.taskId);
@@ -188,7 +187,9 @@ export class Executor {
         const run = this.run(state, action.runId);
         if (!run.sessionId) return {};
         if (run.provider === "codex")
-          await (await adapters.codex(action.taskId)).unsubscribe(run.sessionId);
+          await (await adapters.codex(action.taskId)).unsubscribe(
+            run.sessionId,
+          );
         else if (run.mode === "headless")
           await adapters.claude
             .interruptHeadless(run.sessionId)
@@ -283,7 +284,12 @@ export class Executor {
   ): Promise<{ transportRef: string | null }> {
     const { adapters } = this.deps;
     const run = this.run(state, action.runId);
-    const decision = await checkSendGate(adapters, this.deps.now(), run, action);
+    const decision = await checkSendGate(
+      adapters,
+      this.deps.now(),
+      run,
+      action,
+    );
     if (!decision.ok)
       throw new PreconditionFailed(`Refusing to send: ${decision.reason}`);
     const sessionId = run.sessionId;

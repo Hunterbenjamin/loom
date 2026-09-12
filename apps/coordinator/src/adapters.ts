@@ -22,9 +22,10 @@ export interface Adapters {
   close(): Promise<void>;
 }
 
-export interface CodexFactory {
-  (taskId: TaskId, taskDirectory: string): CodexAdapter;
-}
+export type CodexFactory = (
+  taskId: TaskId,
+  taskDirectory: string,
+) => CodexAdapter;
 
 /** Keeps one Codex adapter per task and starts its server on first use. */
 export function codexPerTask(

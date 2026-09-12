@@ -3,7 +3,7 @@
 // with mode 0600, because it carries the run's MCP token. Its directory also holds the run's
 // Claude settings and MCP config, which are part of that session's identity.
 
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   Provider,

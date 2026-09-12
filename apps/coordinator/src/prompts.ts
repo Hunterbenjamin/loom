@@ -6,7 +6,10 @@
 import type { Role, Task } from "@loom/core";
 
 export interface BriefInput {
-  task: Pick<Task, "id" | "title" | "description" | "reviewRound" | "reviewRoundCap">;
+  task: Pick<
+    Task,
+    "id" | "title" | "description" | "reviewRound" | "reviewRoundCap"
+  >;
   role: Role;
   round: number;
   branch: string;

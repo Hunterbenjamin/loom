@@ -3,7 +3,13 @@
 // reconcile, commit with compare-and-set. On a conflict, reload and retry up to three times, then
 // re-enqueue and let a later pass do it.
 
-import type { Input, Observations, ReconcileResult, TaskId, TaskState } from "@loom/core";
+import type {
+  Input,
+  Observations,
+  ReconcileResult,
+  TaskId,
+  TaskState,
+} from "@loom/core";
 import { reconcile } from "@loom/core";
 import type { CommitOutcome, Store } from "@loom/store";
 
@@ -25,7 +31,11 @@ export interface LoopDeps {
   drainExecutor(): Promise<number>;
   observe(state: TaskState, inputs: Input[]): Promise<Observations>;
   /** Called inside the loop after a successful commit, before the next pass. */
-  onCommit(outcome: { taskId: TaskId; result: ReconcileResult; version: number }): void;
+  onCommit(outcome: {
+    taskId: TaskId;
+    result: ReconcileResult;
+    version: number;
+  }): void;
   onError(error: Error, taskId: TaskId): void;
   /** The store's default is one input per pass; the loop does not raise it (design §8). */
   inputLimit?: number;
