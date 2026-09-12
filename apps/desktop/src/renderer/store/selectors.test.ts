@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import type { Snapshot } from "../fixtures/index.js";
 import { minutesBefore, runId, taskId } from "../fixtures/ids.js";
+import type { Snapshot } from "../fixtures/index.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { rowsFor } from "./selectors.js";
 
