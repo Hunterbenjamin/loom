@@ -708,12 +708,14 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
           conclusion: "success",
           checks: [
             {
+              id: `ci-${index}-test`,
               name: "test",
               status: "completed",
               conclusion: "success",
               url: null,
             },
             {
+              id: `ci-${index}-lint`,
               name: "lint",
               status: "completed",
               conclusion: "success",
