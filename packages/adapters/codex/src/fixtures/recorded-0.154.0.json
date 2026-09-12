@@ -1,0 +1,21 @@
+{
+  "notification": {
+    "method": "remoteControl/status/changed",
+    "params": { "status": "disabled" },
+    "emittedAtMs": 1789188355822
+  },
+  "metadata": {
+    "id": "fixture-thread",
+    "cwd": "/fixture/repo",
+    "status": { "type": "idle" },
+    "updatedAt": 1789188355
+  },
+  "unloaded": {
+    "code": -32600,
+    "message": "thread not loaded: 00000000-0000-7000-8000-000000000000"
+  },
+  "missing": {
+    "code": -32600,
+    "message": "no rollout found for thread id 00000000-0000-7000-8000-000000000000"
+  }
+}

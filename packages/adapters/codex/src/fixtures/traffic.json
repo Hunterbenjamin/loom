@@ -1,0 +1,77 @@
+{
+  "initialize": {
+    "userAgent": "codex/0.154.0",
+    "codexHome": "/fixture/codex-home",
+    "platformFamily": "unix",
+    "platformOs": "macos"
+  },
+  "thread": {
+    "id": "01a08fff-1111-7111-8111-111111111111",
+    "cwd": "/fixture/repo",
+    "updatedAt": 1789200000,
+    "status": { "type": "active", "activeFlags": ["waitingOnApproval"] },
+    "turns": [
+      {
+        "id": "01a08fff-2222-7222-8222-222222222222",
+        "status": "inProgress",
+        "itemsView": "full",
+        "items": [
+          {
+            "type": "userMessage",
+            "id": "message-1",
+            "content": [
+              { "type": "text", "text": "A\tB\r\nC", "text_elements": [] }
+            ]
+          }
+        ],
+        "error": null,
+        "startedAt": 1789200000,
+        "completedAt": null
+      }
+    ]
+  },
+  "approval": {
+    "id": 0,
+    "method": "item/commandExecution/requestApproval",
+    "params": {
+      "kind": "command",
+      "threadId": "01a08fff-1111-7111-8111-111111111111",
+      "turnId": "01a08fff-2222-7222-8222-222222222222",
+      "itemId": "command-1",
+      "startedAtMs": 1789200000000,
+      "environmentId": null,
+      "command": "touch /tmp/loom-fixture",
+      "cwd": "/fixture/repo",
+      "availableDecisions": ["accept", "decline", "cancel"]
+    }
+  },
+  "limits": {
+    "ordinaryUsageAllowed": false,
+    "rateLimits": {
+      "primary": {
+        "usedPercent": 100,
+        "windowDurationMins": 300,
+        "resetsAt": 1789218000
+      },
+      "secondary": null
+    },
+    "rateLimitsByLimitId": {
+      "codex": {
+        "primary": null,
+        "secondary": {
+          "usedPercent": 100,
+          "windowDurationMins": 10080,
+          "resetsAt": 1789300000
+        }
+      }
+    }
+  },
+  "wrongTurn": {
+    "code": -32600,
+    "message": "expectedTurnId does not match the active turn"
+  },
+  "missing": {
+    "code": -32600,
+    "message": "no rollout found for thread id gone"
+  }
+}
