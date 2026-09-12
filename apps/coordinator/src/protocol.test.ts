@@ -4,7 +4,7 @@
 import type { TaskId } from "@loom/core";
 import { loadScenarios } from "@loom/fake-agent";
 import { PROTOCOL_VERSION } from "@loom/protocol";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { LoomClient } from "./client.js";
 import { createHarness, type Harness, ScenarioDriver } from "./test-support.js";
 
@@ -283,94 +283,95 @@ test("permission attribution and the selected run's attach target reach the wind
     expect(result.result.target.attach?.env).toEqual({});
 }, 30_000);
 
-test("external runs with empty model parse through the protocol schema", async () => {
-  // This test verifies that external runs with empty model field
-  // can be serialized and deserialized through the protocol without errors.
-  // The run schema in protocol/entities.ts must accept empty strings for the model field.
-  const externalRun = {
-    id: "task-123/implementer/0",
-    taskId: "task-123",
-    role: "implementer",
-    provider: "claude",
-    mode: "interactive",
-    origin: "external",
-    worktreePath: "/path/to/wt",
-    round: 0,
-    attempts: 0,
-    model: "", // External runs have empty model
-    sessionId: "session-123",
-    sessionEpoch: 0,
-    codexGeneration: null,
-    pane: null,
-    status: "idle",
-    blockedOn: null,
-    lastTurn: null,
-    pendingRequests: [],
-    lastActivityAt: "2026-09-12T09:00:00.000Z",
-    retryAt: null,
-    launchedAt: null,
-    endedAt: null,
-    endReason: null,
-  };
-
-  // Import the run schema from protocol
-  const { run } = await import("@loom/protocol");
-
-  // Verify it round-trips through JSON serialization
-  const serialized = JSON.stringify(externalRun);
-  const deserialized = JSON.parse(serialized);
-
-  // Parse with the protocol schema - should not throw
-  const parsed = run.parse(deserialized);
-  expect(parsed.model).toBe("");
-  expect(parsed.origin).toBe("external");
-}, 30_000);
-
-test("publish-failure deduplication logs the error once per (task, error cause)", async () => {
+test("an adopted external run with unknown model reaches snapshots and patches", async () => {
   const h = await served();
-  const logs: string[] = [];
-  const originalLog = h.coordinator.log.bind(h.coordinator);
-  h.coordinator.log = (message: string) => {
-    logs.push(message);
-    originalLog(message);
-  };
-
   const created = h.coordinator.createTask({
     repoId: h.repo.id,
-    title: "Task for publish failure test",
+    title: "External run",
     description: "",
   });
   const taskId = created.task.id;
-
-  // Directly test the deduplication logic by calling onCommit multiple times
-  // with a result that would cause publishTask to fail
-  // biome-ignore lint/suspicious/noExplicitAny: accessing private methods for test
-  const coordinator = h.coordinator as any;
-  const originalPublishTask = coordinator.publishTask.bind(coordinator);
-  let callCount = 0;
-  coordinator.publishTask = async () => {
-    callCount++;
-    throw new Error("Simulated publish failure");
-  };
-
-  // Call onCommit multiple times which should log only once
-  coordinator.onCommit(taskId, { actions: [], changed: new Set() });
-  await new Promise((r) => setTimeout(r, 10));
-  coordinator.onCommit(taskId, { actions: [], changed: new Set() });
-  await new Promise((r) => setTimeout(r, 10));
-  coordinator.onCommit(taskId, { actions: [], changed: new Set() });
-  await new Promise((r) => setTimeout(r, 10));
-
-  // Restore original method
-  coordinator.publishTask = originalPublishTask;
-
-  // Should have 3 calls to publishTask but only 1 log message about the error
-  expect(callCount).toBe(3);
-  const errorLogs = logs.filter(
-    (log) =>
-      log.includes("Could not publish") &&
-      log.includes("Simulated publish failure"),
+  h.coordinator.submitHuman(taskId, { type: "move", to: "todo" });
+  await h.coordinator.settle();
+  const worktree = h.store.loadTaskState(taskId).worktree;
+  if (!worktree) throw new Error("missing worktree");
+  const client = await connect(h, "external-patches", [
+    { kind: "task", taskId },
+  ] as never);
+  const sessionId = h.providers.create(
+    "claude",
+    worktree.path,
+    undefined,
+    "interactive",
   );
-  expect(errorLogs).toHaveLength(1);
-  expect(errorLogs[0]).toContain("suppressed");
+  h.coordinator.loop.enqueue(taskId);
+  await h.coordinator.settle();
+  await vi.waitFor(() => {
+    expect([...(client.state?.collections.run.values() ?? [])]).toContainEqual(
+      expect.objectContaining({ sessionId, origin: "external", model: "" }),
+    );
+  });
+  const snapshotClient = await connect(h, "external-snapshot", [
+    { kind: "task", taskId },
+  ] as never);
+  expect([
+    ...(snapshotClient.state?.collections.run.values() ?? []),
+  ]).toContainEqual(
+    expect.objectContaining({ sessionId, origin: "external", model: "" }),
+  );
+  expect(h.logs.filter((line) => line.includes("Could not publish"))).toEqual(
+    [],
+  );
+}, 30_000);
+
+test("publish errors deduplicate by task and cause, and reset after success", async () => {
+  const h = await served();
+  await connect(h, "publish-errors");
+  const taskId = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Publish errors",
+    description: "",
+  }).task.id;
+  const otherId = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Other task",
+    description: "",
+  }).task.id;
+  await h.coordinator.settle();
+  let cause: string | null = "first failure";
+  const original = h.coordinator.protocol.publish.bind(h.coordinator.protocol);
+  const publish = vi.spyOn(h.coordinator.protocol, "publish");
+  publish.mockImplementation((changes) => {
+    if (cause !== null) throw new Error(cause);
+    return original(changes);
+  });
+  const errors = () =>
+    h.logs.filter((line) => line.startsWith("Could not publish"));
+  const tick = async (id: TaskId) => {
+    const calls = publish.mock.calls.length;
+    h.coordinator.loop.enqueue(id);
+    await h.coordinator.settle();
+    await vi.waitFor(() =>
+      expect(publish.mock.calls.length).toBeGreaterThan(calls),
+    );
+    // Flush the publish promise's rejection handler without depending on a wall-clock sleep.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  };
+  try {
+    await tick(taskId);
+    await tick(taskId);
+    expect(errors()).toHaveLength(1);
+    await tick(otherId);
+    expect(errors()).toHaveLength(2);
+    cause = "second failure";
+    await tick(taskId);
+    expect(errors()).toHaveLength(3);
+    cause = null;
+    await tick(taskId);
+    cause = "first failure";
+    await tick(taskId);
+    expect(errors()).toHaveLength(4);
+  } finally {
+    publish.mockRestore();
+  }
 }, 30_000);

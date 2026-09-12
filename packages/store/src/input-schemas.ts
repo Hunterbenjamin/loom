@@ -123,6 +123,15 @@ const commandSchema = z.discriminatedUnion("type", [
     decision: z.enum(["accept", "decline", "cancel"]),
     answers: z.record(text, z.array(text)).nullable(),
   }),
+  z.object({
+    type: z.literal("answer_pane_prompt"),
+    runId: id,
+    choice: z.union([
+      z.number().int().min(0).max(9),
+      z.enum(["enter", "escape"]),
+    ]),
+    text: text.optional(),
+  }),
   z.object({ type: z.literal("send_message"), runId: id, text }),
   z.object({ type: z.literal("retry") }),
   z.object({ type: z.literal("grant_review_round") }),

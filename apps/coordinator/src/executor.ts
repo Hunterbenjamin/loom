@@ -21,7 +21,7 @@ import type {
 import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
-import { checkSendGate } from "./gate.js";
+import { checkPanePromptGate, checkSendGate } from "./gate.js";
 import { type LaunchDeps, startRun } from "./launch.js";
 import { indexChanges, mapFindings } from "./mapping.js";
 import type { PullRequestCache } from "./observe.js";
@@ -164,6 +164,8 @@ export class Executor {
         return this.send(action, state);
       case "interrupt_run":
         return this.interrupt(action, state);
+      case "answer_pane_prompt":
+        return this.answerPanePrompt(action, state);
       case "answer_provider_request": {
         const run = this.run(state, action.runId);
         if (!run.sessionId)
@@ -347,6 +349,36 @@ export class Executor {
     if (run.mode === "headless")
       await adapters.claude.interruptHeadless(run.sessionId);
     else if (run.pane) await adapters.paneHost.sendKey(run.pane, "Escape");
+    return {};
+  }
+
+  private async answerPanePrompt(
+    action: Extract<Action, { kind: "answer_pane_prompt" }>,
+    state: TaskState,
+  ): Promise<Record<string, never>> {
+    const { adapters } = this.deps;
+    const run = this.run(state, action.runId);
+    const decision = await checkPanePromptGate(adapters, this.deps.now(), run);
+    if (!decision.ok)
+      throw new PreconditionFailed(`Refusing to answer: ${decision.reason}`);
+    if (!run.pane) throw new PreconditionFailed("The run has no pane");
+
+    // Handle different choice types
+    if (typeof action.choice === "number") {
+      // Numeric choice: paste digit, wait 300ms, then press Enter
+      const digit = String(action.choice);
+      await adapters.paneHost.pasteText(run.pane, digit);
+      // Wait 300ms before sending Enter
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await adapters.paneHost.sendKey(run.pane, "Enter");
+    } else if (action.choice === "enter") {
+      // Just press Enter
+      await adapters.paneHost.sendKey(run.pane, "Enter");
+    } else if (action.choice === "escape") {
+      // Press Escape
+      await adapters.paneHost.sendKey(run.pane, "Escape");
+    }
+
     return {};
   }
 

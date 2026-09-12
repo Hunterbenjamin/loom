@@ -18,6 +18,9 @@ export type GateDecision =
 /** Statuses a message may be sent into. Anything else is uncertainty, and uncertainty waits. */
 const PERMITTED: Run["status"][] = ["idle", "working"];
 
+/** Statuses a pane prompt answer may be sent into. Allows blocked for interactive dialogs. */
+const PANE_PROMPT_PERMITTED: Run["status"][] = ["blocked", "idle"];
+
 export function gateStatus(
   observed: ReturnType<typeof deriveStatus>,
 ): GateDecision {
@@ -33,6 +36,18 @@ export function gateStatus(
     return {
       ok: false,
       reason: `the provider is waiting on ${observed.blockedOn}`,
+    };
+  return { ok: true, status: observed.status };
+}
+
+/** Gate for pane prompt answers: allows 'blocked' and 'idle' statuses. */
+export function gatePanePromptStatus(
+  observed: ReturnType<typeof deriveStatus>,
+): GateDecision {
+  if (!PANE_PROMPT_PERMITTED.includes(observed.status))
+    return {
+      ok: false,
+      reason: `the provider status is ${observed.status}`,
     };
   return { ok: true, status: observed.status };
 }
@@ -71,4 +86,23 @@ export async function checkSendGate(
       };
   }
   return decision;
+}
+
+/**
+ * Gate for pane prompt answers: the run must be interactive, Loom-owned, have a pane and session,
+ * and be in a state that allows answering prompts (blocked or idle).
+ */
+export async function checkPanePromptGate(
+  adapters: Adapters,
+  now: string,
+  run: Run,
+): Promise<GateDecision> {
+  if (run.endedAt) return { ok: false, reason: "the run has ended" };
+  if (run.origin !== "loom")
+    return { ok: false, reason: "the run is observe-only" };
+  if (!run.sessionId)
+    return { ok: false, reason: "the run has no recorded session" };
+  if (!run.pane) return { ok: false, reason: "the run has no pane" };
+  const observation = await observeRun(adapters, now, run);
+  return gatePanePromptStatus(deriveStatus(run, observation));
 }

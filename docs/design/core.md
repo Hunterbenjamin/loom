@@ -831,7 +831,7 @@ Resume attempts remain bounded by `retry.maxAttempts` (3 by default).
 | 19 | `packages/core` has no runtime dependencies and compiles with `types: []`. Zod schemas live in `packages/mcp` and `packages/protocol`, tested equal to the core types. | Node APIs can't be imported into core by accident, and core stays exhaustively testable. |
 | 20 | Flags stop automatic starts and retries, not submissions or human commands. | A submission is still valid work; the human always has control. |
 | 21 | Interactive runs are never relaunched automatically. They end as `vanished` and raise attention. | A human closing the pane and a crash are indistinguishable, and reopening a terminal someone just closed is worse than asking. Headless retries are unaffected. |
-| 22 | External runs (origin='external') record `model: ''` (empty string). | External runs represent sessions Loom did not launch—a developer ran Claude or Codex in the worktree by hand. Since Loom never chose the model, an empty string is the appropriate sentinel value, distinct from a recorded model or an unknown value. The empty string is preserved through protocol serialization and is validated as a valid run model in all schema definitions. |
+| 22 | External runs (origin='external') record `model: ''` (empty string). | External runs represent sessions Loom did not launch—a developer ran Claude or Codex in the worktree by hand. Since Loom never chose the model, an empty string records that it is unknown. Preserve it through protocol serialization. |
 
 ## 13. Phase 1b review notes and resolution
 

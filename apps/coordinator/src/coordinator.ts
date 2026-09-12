@@ -98,7 +98,7 @@ export class Coordinator {
   private readonly cooldowns = new Map<Provider, IsoTime | null>();
   private readonly timers = new Set<() => void>();
   private readonly diffScopes = new Set<string>();
-  private readonly publishFailures = new Map<string, boolean>();
+  private readonly publishFailures = new Map<TaskId, Set<string>>();
   private readonly workflow = createWorkflowReader((message) =>
     this.log(message),
   );
@@ -451,11 +451,13 @@ export class Coordinator {
 
   private onCommit(taskId: TaskId, result: ReconcileResult): void {
     void this.publishTask(taskId, result).catch((error) => {
-      const errorMessage = (error as Error).message;
-      const failureKey = `${taskId}:${errorMessage}`;
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const failures = this.publishFailures.get(taskId) ?? new Set<string>();
       // Log the error only once per (task, error message) pair
-      if (!this.publishFailures.has(failureKey)) {
-        this.publishFailures.set(failureKey, true);
+      if (!failures.has(errorMessage)) {
+        failures.add(errorMessage);
+        this.publishFailures.set(taskId, failures);
         this.log(
           `Could not publish ${taskId}: ${errorMessage} (further failures for this task/cause suppressed)`,
         );
@@ -470,12 +472,7 @@ export class Coordinator {
     if (!this.protocol.clients && !this.published.rows().length) return;
     const changes = await this.refreshTask(taskId);
     this.protocol.publish(changes);
-    // Clear the publish failure tracking for this task when publish succeeds
-    for (const [key] of this.publishFailures) {
-      if (key.startsWith(`${taskId}:`)) {
-        this.publishFailures.delete(key);
-      }
-    }
+    this.publishFailures.delete(taskId);
   }
 
   private viewDeps(): ViewDeps {
