@@ -233,6 +233,31 @@ export function taskRuns(snapshot: Snapshot, task: Task): Run[] {
   return snapshot.runs.filter((run) => run.taskId === task.id);
 }
 
+/** Live interactive runs that the task Terminal tab can attach to, newest first. */
+export function terminalsForTask(snapshot: Snapshot, task: Task): Run[] {
+  if (task.stage === "done" || task.stage === "canceled") return [];
+
+  return snapshot.runs
+    .map((run, index) => ({ run, index }))
+    .filter(
+      ({ run }) =>
+        run.taskId === task.id &&
+        run.mode === "interactive" &&
+        liveStatuses.includes(run.status) &&
+        run.endedAt === null,
+    )
+    .sort((a, b) => {
+      const aTime = a.run.launchedAt ? Date.parse(a.run.launchedAt) : null;
+      const bTime = b.run.launchedAt ? Date.parse(b.run.launchedAt) : null;
+      if (aTime !== null && bTime !== null && aTime !== bTime)
+        return bTime - aTime;
+      if (aTime !== null && bTime === null) return -1;
+      if (aTime === null && bTime !== null) return 1;
+      return a.index - b.index;
+    })
+    .map(({ run }) => run);
+}
+
 export function taskFindings(snapshot: Snapshot, task: Task): Finding[] {
   return snapshot.findings.filter((finding) => finding.taskId === task.id);
 }
