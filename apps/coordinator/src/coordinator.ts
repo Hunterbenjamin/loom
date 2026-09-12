@@ -367,7 +367,11 @@ export class Coordinator {
           if (name === "list_tasks") return this.store.tasks();
           if (name === "list_repos") return this.store.repos();
           if (name === "inspect_task")
-            return inspectTask(this.store, input.taskId as TaskId);
+            return inspectTask(
+              this.store,
+              input.taskId as TaskId,
+              this.adapters,
+            );
           return this.command(leadCommand(name, input));
         },
       },
@@ -450,6 +454,15 @@ export class Coordinator {
   }
 
   private onCommit(taskId: TaskId, result: ReconcileResult): void {
+    // Stop the app-server if the task just transitioned to a terminal stage.
+    const state = this.store.loadTaskState(taskId);
+    if (TERMINAL.includes(state.task.stage)) {
+      void this.adapters.stopCodexServer(taskId).catch((error) => {
+        this.log(
+          `Warning: could not stop Codex app-server for ${taskId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+    }
     void this.publishTask(taskId, result).catch((error) => {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
