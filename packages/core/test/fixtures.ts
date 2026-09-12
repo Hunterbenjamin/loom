@@ -37,6 +37,11 @@ export const config: TaskState["config"] = {
   unknownGraceMs: 60000,
   deliveryTimeoutMs: 10000,
   githubPollMs: 60000,
+  runModes: {
+    planner: "interactive",
+    implementer: "interactive",
+    reviewer: "interactive",
+  },
 };
 export const plan = {
   goal: "Make the change",
@@ -60,7 +65,7 @@ export function run(
     taskId,
     role,
     provider,
-    mode: role === "implementer" ? "interactive" : "headless",
+    mode: config.runModes[role] ?? "interactive",
     origin: "loom",
     worktreePath: path,
     round,

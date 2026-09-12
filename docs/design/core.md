@@ -44,7 +44,7 @@ human relaunches an interactive run (§3).
 | Field | Own | Notes |
 |---|---|---|
 | `id` | A | Deterministic: `<taskId>/<role>/<round>`. Stable across attempts. |
-| `taskId`, `role`, `provider`, `mode`, `model` | A | Planner and reviewer are `headless`; implementer is `interactive`. |
+| `taskId`, `role`, `provider`, `mode`, `model` | A | All roles default to `interactive` (visible in panes). Configure per-role modes via `LOOM_RUN_MODES` env var (e.g., `planner=headless,implementer=interactive,reviewer=headless`). |
 | `origin` | A | `loom`, or `external` for a session started by hand in the worktree (observe-only). |
 | `worktreePath`, `round` | A | |
 | `attempts` | A | Launches of this run so far. A retry bumps it and keeps the row. |

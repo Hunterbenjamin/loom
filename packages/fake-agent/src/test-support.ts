@@ -56,6 +56,12 @@ export async function setup(stage: Stage = "todo") {
   state.config = {
     ...state.config,
     sha256: (s) => createHash("sha256").update(s).digest("hex"),
+    // Tests: keep implementers interactive to match fixture scenarios; planner/reviewer headless
+    runModes: {
+      planner: "headless",
+      implementer: "interactive",
+      reviewer: "headless",
+    },
   };
   state.runs = [];
   state.task.branch = "feat/fake";

@@ -464,3 +464,47 @@ describe("launch results and persisted outbox", () => {
     );
   });
 });
+
+describe("run mode configuration", () => {
+  it("default config has interactive mode for all roles", () => {
+    const f = fixture("planning");
+    // Verify the default config has interactive mode for all roles
+    expect(f.state.config.runModes).toEqual({
+      planner: "interactive",
+      implementer: "interactive",
+      reviewer: "interactive",
+    });
+  });
+
+  it("run fixture uses config.runModes to set mode", () => {
+    const f = fixture("in_progress");
+    // Existing planner run from fixture should use config.runModes
+    const planner = f.state.runs.find((r) => r.role === "planner");
+    // The run fixture uses config.runModes, so it should be interactive
+    expect(planner?.mode).toBe("interactive");
+  });
+
+  it("reconcile creates runs respecting configured modes", () => {
+    const f = fixture("backlog");
+    f.state.task.stage = "todo";
+    f.state.runs = [];
+    f.state.desiredRun = { role: "implementer", round: 0, resume: false };
+    const r = fixed(f.state, f.observations);
+    // Verify implementer run is created with configured mode (interactive by default)
+    const impl = r.next.runs.find((run) => run.role === "implementer");
+    expect(impl?.mode).toBe("interactive");
+  });
+
+  it("reconcile respects runModes overrides when creating runs", () => {
+    const f = fixture("backlog");
+    f.state.task.stage = "todo";
+    f.state.runs = [];
+    // Override implementer to headless
+    f.state.config.runModes.implementer = "headless";
+    f.state.desiredRun = { role: "implementer", round: 0, resume: false };
+    const r = fixed(f.state, f.observations);
+    // Verify implementer run respects the override
+    const impl = r.next.runs.find((run) => run.role === "implementer");
+    expect(impl?.mode).toBe("headless");
+  });
+});

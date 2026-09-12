@@ -300,7 +300,7 @@ export function startDesired(c: Context): void {
           taskId: c.task.id,
           role: desired.role,
           provider,
-          mode: desired.role === "implementer" ? "interactive" : "headless",
+          mode: c.state.config.runModes[desired.role] ?? "interactive",
           origin: "loom",
           worktreePath: c.state.worktree.path as WorktreePath,
           round: desired.round,

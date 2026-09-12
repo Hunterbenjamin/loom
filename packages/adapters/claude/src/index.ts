@@ -123,7 +123,7 @@ export async function createClaudeAdapter(
       });
     },
 
-    interactiveArgs: ({ sessionId, resume, model, settingsPath }) => [
+    interactiveArgs: ({ sessionId, resume, model, settingsPath, readOnly }) => [
       "--settings",
       settingsPath,
       "--mcp-config",
@@ -132,11 +132,11 @@ export async function createClaudeAdapter(
       sessionId,
       "--model",
       model,
-      // Full access inside the run's own worktree (user decision, 2026-09-12): every prompt
-      // stalled a run until a human answered in tmux. Safety is the worktree, the send gate,
-      // code-owned transitions and branch protection on the base branch, not per-command prompts.
-      "--permission-mode",
-      "bypassPermissions",
+      // Implementers have full access inside their own worktree. Planners and reviewers omit the
+      // override so Claude keeps its read-only/default permission behavior.
+      ...(readOnly
+        ? []
+        : ["--permission-mode", "bypassPermissions"]),
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {
