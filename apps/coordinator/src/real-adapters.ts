@@ -34,11 +34,23 @@ export async function createRealAdapters(
     configPath: join(store.dataDirectory, "tmux.conf"),
     tmuxExecutable: config.tmuxExecutable,
   });
-  const claude = await createClaudeAdapter({
-    mcpServer: PLACEHOLDER,
-    log: store.hooks,
-    onError,
-  });
+  let claude: Awaited<ReturnType<typeof createClaudeAdapter>>;
+  try {
+    claude = await createClaudeAdapter({
+      mcpServer: PLACEHOLDER,
+      log: store.hooks,
+      receiver: { port: config.hookPort },
+      onError,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("EADDRINUSE") || message.includes("in use")) {
+      throw new Error(
+        `Port ${config.hookPort} is in use; set LOOM_HOOK_PORT to a different value`,
+      );
+    }
+    throw error;
+  }
   const codex = codexPerTask(store.dataDirectory, (_taskId, taskDirectory) =>
     createCodexAdapter({ taskDirectory, executable: config.codexExecutable }),
   );

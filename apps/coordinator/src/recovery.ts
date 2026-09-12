@@ -181,7 +181,30 @@ export async function recover(
       report.requeued.push(running.entry.key);
   }
 
+  // Rewrite settings files for all non-ended Claude runs so they pick up stable ports on restart.
   const tasks = deps.store.tasks();
+  for (const task of tasks) {
+    if (TERMINAL.includes(task.stage)) continue;
+    const state = deps.store.loadTaskState(task.id);
+    for (const run of state.runs) {
+      if (run.endedAt || run.provider !== "claude" || !run.sessionId) continue;
+      const recipe = deps.recipes.get(run.id);
+      if (!recipe?.settingsPath) continue;
+      try {
+        await deps.adapters.claude.writeSettings(
+          recipe.settingsPath,
+          deps.launch.mcpEntry(recipe.token),
+        );
+      } catch (error) {
+        deps.log(
+          `Could not rewrite settings for ${run.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+  }
+
   for (const task of tasks) {
     if (TERMINAL.includes(task.stage)) continue;
     const state = deps.store.loadTaskState(task.id);

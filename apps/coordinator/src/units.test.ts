@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FileChange, Finding, FindingId, Sha, TaskId } from "@loom/core";
 import { expect, test } from "vitest";
-import { configSchema } from "./config.js";
+import { configFromEnvironment, configSchema } from "./config.js";
 import { deriveClaudeSessionId, newToken, uuidV5 } from "./derive.js";
 import { indexChanges, mapFindings, mapRange } from "./mapping.js";
 import { ENVIRONMENT_ALLOWLIST, runEnvironment } from "./recipes.js";
@@ -71,6 +71,58 @@ test("the config refuses an instance or a bind address it cannot parse", () => {
   expect(() => configSchema.parse({ ...base, bind: "nonsense" })).toThrow();
   expect(() => configSchema.parse({ ...base, instance: "../prod" })).toThrow();
   expect(() => configSchema.parse({ ...base, token: "short" })).toThrow();
+});
+
+test("MCP and hook ports default to bind.port+1 and bind.port+2", () => {
+  const base = {
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+  };
+  // Default bind port is 47800, so defaults should be 47801 and 47802
+  const config = configSchema.parse(base);
+  expect(config.mcpPort).toBe(47801);
+  expect(config.hookPort).toBe(47802);
+
+  // Custom bind port should shift the defaults
+  const configCustomBind = configSchema.parse({
+    ...base,
+    bind: "127.0.0.1:8000",
+  });
+  expect(configCustomBind.mcpPort).toBe(8001);
+  expect(configCustomBind.hookPort).toBe(8002);
+
+  // Explicit ports override defaults
+  const configCustomPorts = configSchema.parse({
+    ...base,
+    mcpPort: 9000,
+    hookPort: 9001,
+  });
+  expect(configCustomPorts.mcpPort).toBe(9000);
+  expect(configCustomPorts.hookPort).toBe(9001);
+});
+
+test("configFromEnvironment reads MCP and hook ports from environment", () => {
+  const baseEnv = {
+    LOOM_INSTANCE: "dev",
+    LOOM_DATA_ROOT: "/tmp/loom",
+    LOOM_TOKEN: "0123456789abcdef0123",
+  };
+  const env = {
+    ...baseEnv,
+    LOOM_MCP_PORT: "9000",
+    LOOM_HOOK_PORT: "9001",
+  };
+  const config = configFromEnvironment(env);
+  expect(config.mcpPort).toBe(9000);
+  expect(config.hookPort).toBe(9001);
+
+  // Without env vars, should default to bind.port+1 and bind.port+2
+  const configWithDefaults = configFromEnvironment(baseEnv);
+  expect(configWithDefaults.mcpPort).toBe(47801); // 47800 + 1
+  expect(configWithDefaults.hookPort).toBe(47802); // 47800 + 2
 });
 
 test("WORKFLOW.md exposes only commands it can fully validate", async () => {
