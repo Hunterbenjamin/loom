@@ -1,0 +1,29 @@
+[
+  {
+    "pid": 80216,
+    "cwd": "/Users/example/.herdr/worktrees/loom/feat-ui-shell",
+    "kind": "interactive",
+    "startedAt": 1789186076370,
+    "sessionId": "17f1f804-b30f-444a-a4ec-f6d6ba8c7842",
+    "name": "feat-ui-shell-7b",
+    "status": "busy"
+  },
+  {
+    "pid": 87154,
+    "cwd": "/Users/example/.herdr/worktrees/loom/feat-adapter-claude",
+    "kind": "interactive",
+    "startedAt": 1789187194936,
+    "sessionId": "03f930c5-6f2b-492c-a82a-5d6a68cd35aa",
+    "name": "feat-adapter-claude-66",
+    "status": "waiting"
+  },
+  {
+    "id": "3ceeb489",
+    "sessionId": "3ceeb489-6eda-4a19-9a8f-2f1c7f4c18b1",
+    "kind": "background",
+    "status": "idle",
+    "state": "done",
+    "pid": 86722,
+    "cwd": "/private/var/folders/q4/40hztcsn5pl4nj5rx75sgzlr0000gn/T/loom-spike-02/bgrepo"
+  }
+]

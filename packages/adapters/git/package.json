@@ -1,0 +1,17 @@
+{
+  "name": "@loom/adapter-git",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Git CLI worktree observations and guarded actions.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@loom/core": "workspace:*",
+    "zod": "^4.0.0"
+  }
+}

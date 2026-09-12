@@ -140,6 +140,10 @@ Verified in [spike 02](../spikes/02-claude-hooks/FINDINGS.md) (Claude Code 2.1.2
   `timeout: 1`, plus a `command` hook for SessionStart, which HTTP hooks skip. With a dead endpoint,
   every session shows an error after every turn; a hung one adds its timeout to every hook. Sessions
   started by hand are still found through `claude agents --json`.
+- **A settings file carries hooks, not MCP servers.** `mcpServers` in a `--settings` file is
+  ignored by 2.1.269, so Loom's MCP server goes in a `--mcp-config` file written beside the
+  settings (and passed to the Agent SDK natively for headless runs). Verified in the Claude
+  adapter, phase 2.
 - **Status rules.** AskUserQuestion (via PreToolUse or PermissionRequest) means needs input; any other
   PermissionRequest means needs permission. Ignore subagent events with an empty `agent_type`. Don't
   wait for the permission Notification; it arrives about 6 s late.
@@ -271,7 +275,9 @@ that crosses providers goes only through artifacts.
 | Duplicate or out-of-order events | Idempotent handlers, compare-and-set transitions, one reconcile at a time per task. |
 | Review loops | At most 3 rounds. Escalate when a finding is reopened or the number of findings stops dropping. Each task has a time and cost budget. |
 
-Out of scope: message brokers, event-sourcing frameworks, multi-machine support, sync engines,
+Out of scope: message brokers, event-sourcing frameworks, sync engines, and multi-machine support in v1
+(one machine runs everything, but the coordinator binds to a configurable address with token
+authentication so a phone inbox and an always-on host can follow without a rewrite),
 plugins, a custom terminal emulator, a custom diff renderer. One exception: a small key encoder in the
 terminal renderer that sends Shift+Enter and other modified keys in the kitty keyboard format, until
 xterm.js supports that protocol itself.

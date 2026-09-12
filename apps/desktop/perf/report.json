@@ -1,0 +1,80 @@
+{
+  "at": "2026-09-12T04:45:10.649Z",
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 8,
+    "node": "v23.6.0"
+  },
+  "listRows": 500,
+  "coldStartRunsMs": [
+    366,
+    380,
+    1190
+  ],
+  "extras": {
+    "terminalKeystrokeP50Ms": 6.4,
+    "terminalKeystrokeSamples": 30,
+    "reviewWith200FindingsMs": 4.3,
+    "diffTaskId": "LOOM-125"
+  },
+  "rows": [
+    {
+      "key": "terminalKeystrokeP95Ms",
+      "label": "Keystroke to glyph in the terminal, p95",
+      "budget": "<= 16",
+      "measured": 9,
+      "ok": true
+    },
+    {
+      "key": "listScrollFps",
+      "label": "Scrolling a 500-row list",
+      "budget": ">= 110",
+      "measured": 119.87,
+      "ok": true
+    },
+    {
+      "key": "listScrollMaxFrameGapMs",
+      "label": "Scrolling a 500-row list, worst frame gap",
+      "budget": "<= 32",
+      "measured": 9.4,
+      "ok": true
+    },
+    {
+      "key": "viewSwitchP95Ms",
+      "label": "Switching view, p95",
+      "budget": "<= 50",
+      "measured": 17.7,
+      "ok": true
+    },
+    {
+      "key": "openIssueP95Ms",
+      "label": "Opening an issue, p95",
+      "budget": "<= 50",
+      "measured": 17.5,
+      "ok": true
+    },
+    {
+      "key": "diffFirstPaintMs",
+      "label": "Rendering a 50-file diff, first paint",
+      "budget": "<= 400",
+      "measured": 348.8,
+      "ok": true
+    },
+    {
+      "key": "coldStartMs",
+      "label": "Cold start to interactive",
+      "budget": "<= 1500",
+      "measured": 380,
+      "ok": true
+    },
+    {
+      "key": "idleCpuPercent",
+      "label": "Idle CPU with the window open",
+      "budget": "<= 3",
+      "measured": 0,
+      "ok": true
+    }
+  ],
+  "pass": true
+}
