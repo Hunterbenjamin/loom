@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { isPidAlive, isStaleEntry, parseAgentsOutput } from "./agents.js";
+import {
+  agentsEntrySchema,
+  isPidAlive,
+  isStaleEntry,
+  parseAgentsOutput,
+} from "./agents.js";
 
 const fixture = readFileSync(
   new URL("./fixtures/agents.json", import.meta.url),
@@ -148,5 +153,28 @@ describe("stale entry detection", () => {
         now,
       }),
     ).toBe(false);
+  });
+});
+
+describe("background records", () => {
+  test("a background record with state instead of status is accepted as its status", () => {
+    const parsed = agentsEntrySchema.parse({
+      sessionId: "s1",
+      cwd: "/tmp/x",
+      kind: "background",
+      state: "running",
+      pid: 1,
+    });
+    expect(parsed.status).toBe("running");
+  });
+  test("an interactive record without status is still rejected", () => {
+    expect(() =>
+      agentsEntrySchema.parse({
+        sessionId: "s2",
+        cwd: "/tmp/x",
+        kind: "interactive",
+        pid: 1,
+      }),
+    ).toThrow();
   });
 });

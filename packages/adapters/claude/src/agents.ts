@@ -19,13 +19,31 @@ const KNOWN_STATUSES = new Set(["busy", "waiting", "idle"]);
 const KNOWN_KINDS = new Set(["interactive", "background"]);
 
 /** Loose: 2.1.269 adds `name` and `startedAt`, and background entries carry `id` and `state`. */
-export const agentsEntrySchema = z.looseObject({
+const statusEntrySchema = z.looseObject({
   sessionId: z.string().min(1),
   cwd: z.string().min(1),
   status: z.string().min(1),
   kind: z.string().min(1),
   pid: z.number().int().nullish(),
 });
+
+// Native background records (the Operator is one) carry `state` instead of `status`. Accept
+// that shape explicitly; an interactive record without `status` must still fail rather than
+// pass as idle. Found by the Lead session on 2026-09-13 when the Operator's own record broke
+// every observation of the agents list.
+export const agentsEntrySchema = z.union([
+  statusEntrySchema,
+  z
+    .looseObject({
+      sessionId: z.string().min(1),
+      cwd: z.string().min(1),
+      kind: z.literal("background"),
+      status: z.undefined().optional(),
+      state: z.string().min(1),
+      pid: z.number().int().nullish(),
+    })
+    .transform((entry) => ({ ...entry, status: entry.state })),
+]);
 
 export const agentsOutputSchema = z.array(agentsEntrySchema);
 
