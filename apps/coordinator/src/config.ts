@@ -40,6 +40,7 @@ const derivedPort = (bindPort: number, offset: number): number =>
 /**
  * Parse LOOM_RUN_MODES format: "role1=mode1,role2=mode2,..."
  * Defaults all roles to "interactive" if not specified.
+ * Validates format and rejects invalid roles or modes.
  */
 function parseRunModes(value?: string): Record<Role, RunMode> {
   const defaults: Record<Role, RunMode> = {
@@ -52,17 +53,34 @@ function parseRunModes(value?: string): Record<Role, RunMode> {
 
   const parsed: Partial<Record<Role, RunMode>> = {};
   const parts = value.split(",").map((p) => p.trim());
+  const validRoles: Role[] = ["planner", "implementer", "reviewer"];
+  const validModes: RunMode[] = ["interactive", "headless"];
 
   for (const part of parts) {
-    const [role, mode] = part.split("=").map((s) => s.trim());
-    if (
-      role &&
-      mode &&
-      (role === "planner" || role === "implementer" || role === "reviewer") &&
-      (mode === "interactive" || mode === "headless")
-    ) {
-      parsed[role as Role] = mode as RunMode;
+    if (!part) continue; // Skip empty parts
+
+    const segments = part.split("=");
+    if (segments.length !== 2) {
+      throw new Error(
+        `Invalid LOOM_RUN_MODES entry "${part}": expected "role=mode" format`
+      );
     }
+
+    const [role, mode] = segments.map((s) => s.trim());
+
+    if (!validRoles.includes(role as Role)) {
+      throw new Error(
+        `Invalid role in LOOM_RUN_MODES: "${role}". Valid roles: ${validRoles.join(", ")}`
+      );
+    }
+
+    if (!validModes.includes(mode as RunMode)) {
+      throw new Error(
+        `Invalid mode in LOOM_RUN_MODES: "${mode}". Valid modes: ${validModes.join(", ")}`
+      );
+    }
+
+    parsed[role as Role] = mode as RunMode;
   }
 
   return { ...defaults, ...parsed };

@@ -100,8 +100,9 @@ against a schema before any transition.
 Rules:
 - Choose and record the session ID before launch: `claude --session-id <uuid>`, or the Codex thread ID
   returned by `thread/start`.
-- Planners and reviewers run headless; the implementer runs interactively. Codex clients can share
-  a live thread on the same app-server. Resume to subscribe, hydrate current state, then reconcile
+- All roles (planner, implementer, reviewer) run interactively by default for visibility in panes.
+  Override per-role modes via `LOOM_RUN_MODES` env var (e.g., `planner=headless,implementer=interactive,reviewer=headless`).
+  Codex clients can share a live thread on the same app-server. Resume to subscribe, hydrate current state, then reconcile
   notifications. Use `turn/steer` with `expectedTurnId` for mid-turn input.
 - Codex approval requests reach all subscribed clients, including a client resuming while a request
   is pending. Either client can answer; clear the prompt on `serverRequest/resolved`. Scope pending

@@ -123,7 +123,7 @@ export async function createClaudeAdapter(
       });
     },
 
-    interactiveArgs: ({ sessionId, resume, model, settingsPath }) => [
+    interactiveArgs: ({ sessionId, resume, model, settingsPath, readOnly }) => [
       "--settings",
       settingsPath,
       "--mcp-config",
@@ -132,8 +132,7 @@ export async function createClaudeAdapter(
       sessionId,
       "--model",
       model,
-      "--permission-mode",
-      "acceptEdits",
+      ...(readOnly ? [] : ["--permission-mode", "acceptEdits"]),
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {

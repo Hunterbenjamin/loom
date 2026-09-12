@@ -476,3 +476,39 @@ test("configFromEnvironment reads LOOM_RUN_MODES from environment", () => {
     reviewer: "headless",
   });
 });
+
+test("runModes rejects invalid role in LOOM_RUN_MODES", () => {
+  const base = {
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+    runModes: "invalid=headless",
+  };
+  expect(() => configSchema.parse(base)).toThrow(/Invalid role/);
+});
+
+test("runModes rejects invalid mode in LOOM_RUN_MODES", () => {
+  const base = {
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+    runModes: "planner=invalid",
+  };
+  expect(() => configSchema.parse(base)).toThrow(/Invalid mode/);
+});
+
+test("runModes rejects malformed entries in LOOM_RUN_MODES", () => {
+  const base = {
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+    runModes: "planner:headless",
+  };
+  expect(() => configSchema.parse(base)).toThrow(/expected "role=mode" format/);
+});

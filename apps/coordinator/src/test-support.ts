@@ -133,8 +133,8 @@ async function open(
     bind: "127.0.0.1:0",
     token: "test-token-0123456789abcdef",
     models: { codex: "fake-codex-model", claude: "fake-claude-model" },
-    // Tests default to headless to avoid tmux dependency; can be overridden in options.config
-    runModes: "planner=headless,implementer=headless,reviewer=headless",
+    // Tests: keep implementers interactive to match coordinator fixtures; planner/reviewer headless to avoid tmux
+    runModes: "planner=headless,implementer=interactive,reviewer=headless",
     ...options.config,
   });
   const store = await openStore({
