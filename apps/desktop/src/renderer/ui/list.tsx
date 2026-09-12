@@ -6,7 +6,7 @@ import type { SortKey } from "../store/store.js";
 import { AttentionChips, ProviderLabel, RunDot } from "./bits.js";
 import { age, stageLabel } from "./format.js";
 
-const COLUMNS = "1fr 128px 210px 92px 52px 44px";
+const COLUMNS = "1fr 128px 210px 160px 52px 44px";
 
 const HEADINGS: { key: SortKey; label: string }[] = [
   { key: "title", label: "Task" },
@@ -135,7 +135,7 @@ function Row({
           <span className="chip danger">{item.row.openBlocking} blocking</span>
         ) : null}
       </div>
-      <ProviderLabel run={item.row.run} />
+      <ProviderLabel run={item.row.run} runs={item.row.runs} />
       <div className="dim nums">
         {task.reviewRound > 0
           ? `${task.reviewRound}/${task.reviewRoundCap}`

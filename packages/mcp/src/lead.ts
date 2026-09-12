@@ -12,6 +12,7 @@ const humanTypes = {
   request_changes: "request_changes",
   answer_question: "answer_question",
   answer_provider_request: "answer_provider_request",
+  answer_pane_prompt: "answer_pane_prompt",
   retry_task: "retry",
   cancel_task: "cancel",
 } as const;

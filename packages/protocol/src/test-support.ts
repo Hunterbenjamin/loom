@@ -209,7 +209,7 @@ export function snapshot(): SnapshotBody {
         worktreePath: WT,
         round: 0,
         attempts: 1,
-        model: "gpt-5.3-codex",
+        model: "",
         sessionId: null,
         sessionEpoch: 1,
         codexGeneration: 4,

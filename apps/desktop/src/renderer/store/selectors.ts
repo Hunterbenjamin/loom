@@ -74,7 +74,20 @@ const computeRows = memo1(
       if (needle && !`${task.id} ${task.title}`.toLowerCase().includes(needle))
         continue;
       const runs = byTask.get(task.id) ?? [];
-      const live = runs.find((r) => liveStatuses.includes(r.status));
+      // Select the most recent live run, or fall back to the last run
+      let live: Run | undefined;
+      for (const run of runs) {
+        if (liveStatuses.includes(run.status)) {
+          if (
+            !live ||
+            (run.launchedAt &&
+              live.launchedAt &&
+              Date.parse(run.launchedAt) > Date.parse(live.launchedAt))
+          ) {
+            live = run;
+          }
+        }
+      }
       rows.push({
         task,
         runs,

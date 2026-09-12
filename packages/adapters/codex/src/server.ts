@@ -3,14 +3,30 @@ import {
   lstat,
   mkdir,
   open,
+  readFile,
   realpath,
+  rename,
   symlink,
   unlink,
+  writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { z } from "zod";
+import {
+  inspectProcess,
+  ownerSchema,
+  type ProcessOwner,
+  sameProcess,
+  socketOwner,
+  terminateOwned,
+} from "./process-owner.js";
+import { RpcConnection } from "./protocol.js";
+
+// Serialize adapters targeting the same directory within this coordinator.
+const operations = new Map<string, Promise<unknown>>();
 
 export const CODEX_VERSION = "0.154.0";
 export function serverEnvironment(codexHome: string): NodeJS.ProcessEnv {
@@ -25,12 +41,14 @@ export function serverEnvironment(codexHome: string): NodeJS.ProcessEnv {
   return { ...env, CODEX_HOME: codexHome };
 }
 
-/** Owns only the child it spawns. Never discovers or kills another server. */
+/** Reconnects to a verified per-task server and owns its lifecycle across coordinator restarts. */
 export class TaskServer {
   readonly home: string;
   readonly socket: string;
+  readonly pidfile: string;
   private child: ChildProcess | null = null;
   private exit: Promise<void> | null = null;
+  private owner: ProcessOwner | null = null;
   constructor(
     readonly directory: string,
     readonly executable: string,
@@ -45,6 +63,7 @@ export class TaskServer {
       throw new Error("Codex task directory must be absolute");
     this.home = join(directory, "codex-home");
     this.socket = join(directory, "app-server.sock");
+    this.pidfile = join(directory, "app-server.pid");
     if (this.socket.includes(":") || Buffer.byteLength(this.socket) > 100)
       throw new Error("Codex socket path must be short and contain no colon");
   }
@@ -67,15 +86,121 @@ export class TaskServer {
     }
     await symlink(this.credentialsSource, target);
   }
-  get running() {
-    return (
-      this.child !== null &&
-      this.child.exitCode === null &&
-      this.child.signalCode === null
+  private async serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const key = await realpath(this.directory).catch(() =>
+      resolve(this.directory),
     );
+    const previous = operations.get(key) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(operation);
+    operations.set(key, next);
+    try {
+      return await next;
+    } finally {
+      if (operations.get(key) === next) operations.delete(key);
+    }
   }
-  async start() {
-    if (this.running) return;
+  private async readOwner(): Promise<ProcessOwner | null> {
+    try {
+      const value: unknown = JSON.parse(await readFile(this.pidfile, "utf8"));
+      // Upgrade the initial numeric pidfile only after checking the task socket command.
+      if (typeof value === "number")
+        return inspectProcess(
+          z.number().int().min(2).parse(value),
+          this.socket,
+        );
+      return ownerSchema.parse(value);
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT")
+        return null;
+      throw error;
+    }
+  }
+  private async recordOwner(owner: ProcessOwner): Promise<void> {
+    const temporary = `${this.pidfile}.tmp`;
+    await writeFile(temporary, JSON.stringify(owner), { mode: 0o600 });
+    await rename(temporary, this.pidfile);
+    this.owner = owner;
+  }
+  private async removeFiles(): Promise<void> {
+    for (const path of [this.socket, this.pidfile]) {
+      await unlink(path).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+    }
+  }
+  private async tryAdoptServer(): Promise<boolean> {
+    const recorded = await this.readOwner();
+    const info = await lstat(this.socket).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+        return null;
+      },
+    );
+    if (info && !info.isSocket())
+      throw new Error("Refusing to replace a non-socket app-server path");
+    if (info) {
+      let connected: Awaited<ReturnType<typeof RpcConnection.connect>> | null =
+        null;
+      try {
+        connected = await RpcConnection.connect({
+          socketPath: this.socket,
+          timeoutMs: 5000,
+          onMessage: () => {},
+          onDisconnect: () => {},
+        });
+      } catch {
+        /* Reap only a verified owner below; a failed connection is not ownership. */
+      }
+      if (connected) {
+        try {
+          if (
+            (await realpath(connected.codexHome)) !==
+            (await realpath(this.home))
+          )
+            throw new Error(
+              "Refusing to adopt an app-server with a different CODEX_HOME",
+            );
+          const owner = await socketOwner(this.socket);
+          if (!owner)
+            throw new Error(
+              "Cannot verify the live task app-server's process owner",
+            );
+          await this.recordOwner(owner);
+          return true;
+        } finally {
+          connected.connection.close();
+        }
+      }
+    }
+    // Preserve and terminate the previous owner BEFORE overwriting its PID or unlinking its socket.
+    const stale =
+      recorded && (await sameProcess(recorded, this.socket))
+        ? recorded
+        : info
+          ? await socketOwner(this.socket)
+          : null;
+    if (stale) await terminateOwned(stale, this.socket);
+    await this.removeFiles();
+    this.owner = null;
+    return false;
+  }
+  get running(): boolean {
+    if (this.child)
+      return this.child.exitCode === null && this.child.signalCode === null;
+    if (!this.owner) return false;
+    // Liveness is only a hint; identity is checked again before any signal.
+    try {
+      process.kill(this.owner.pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  start(): Promise<void> {
+    return this.serialize(() => this.startOwned());
+  }
+  private async startOwned(): Promise<void> {
+    if (this.child && this.running) return;
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     await mkdir(this.home, { recursive: true, mode: 0o700 });
     const canonical = await realpath(this.home);
@@ -87,15 +212,10 @@ export class TaskServer {
         "CODEX_HOME must be a private directory, not a symlink to shared state",
       );
     }
-    try {
-      await lstat(this.socket);
-      throw new Error("Refusing to replace an existing app-server socket");
-    } catch (error) {
-      if (
-        !(error instanceof Error && "code" in error && error.code === "ENOENT")
-      )
-        throw error;
-    }
+
+    // Attempt to adopt an existing server before spawning a new one
+    if (await this.tryAdoptServer()) return;
+
     await this.linkCredentials();
     const env = serverEnvironment(this.home);
     const version = await promisify(execFile)(this.executable, ["--version"], {
@@ -133,29 +253,72 @@ export class TaskServer {
           reject(new Error("Could not start private Codex app-server")),
         );
       });
+      // Write the pidfile after successful spawn
+      if (child.pid !== undefined) {
+        const owner = await inspectProcess(child.pid, this.socket);
+        // A very short-lived failed child may already have exited.
+        if (owner) await this.recordOwner(owner);
+      }
       process.stderr.write(`Codex app-server stderr: ${logPath}\n`);
+      // Do not let a second adapter mistake a still-starting child for a stray.
+      const deadline = Date.now() + 5000;
+      while (this.running) {
+        const socket = await lstat(this.socket).catch(() => null);
+        if (socket?.isSocket()) break;
+        if (Date.now() >= deadline) {
+          await this.stopOwned();
+          throw new Error("Private Codex app-server did not create its socket");
+        }
+        await delay(25);
+      }
+      if (this.running && !this.owner) {
+        const owner =
+          child.pid === undefined
+            ? null
+            : await inspectProcess(child.pid, this.socket);
+        if (!owner)
+          throw new Error(
+            "Cannot record the private app-server's process identity",
+          );
+        await this.recordOwner(owner);
+      }
+    } catch (error) {
+      await this.stopOwned();
+      throw error;
     } finally {
       // The child owns its inherited descriptor until exit.
       await log.close();
     }
   }
-  async stop() {
-    const child = this.child;
-    if (!child) return;
-    if (this.running) child.kill("SIGTERM");
-    const timer = setTimeout(() => {
-      if (this.running) child.kill("SIGKILL");
-    }, 3000);
-    try {
-      await this.exit;
-    } finally {
-      clearTimeout(timer);
-      this.child = null;
-      this.exit = null;
+  stop(): Promise<void> {
+    return this.serialize(() => this.stopOwned());
+  }
+  private async stopOwned(): Promise<void> {
+    if (!this.owner && !this.child) return;
+    if (this.child) {
+      const child = this.child;
+      if (this.running) child.kill("SIGTERM");
+      const timer = setTimeout(() => {
+        if (this.running) child.kill("SIGKILL");
+      }, 3000);
+      try {
+        await this.exit;
+      } finally {
+        clearTimeout(timer);
+        this.child = null;
+        this.exit = null;
+      }
+    } else if (this.owner) {
+      await terminateOwned(this.owner, this.socket);
     }
-    // This socket belongs to the child above; never remove one during startup/discovery.
-    await unlink(this.socket).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== "ENOENT") throw error;
-    });
+    const recorded = await this.readOwner();
+    // An old handle must never remove the replacement server's files.
+    if (
+      !recorded ||
+      (recorded.pid === this.owner?.pid &&
+        recorded.startedAt === this.owner.startedAt)
+    )
+      await this.removeFiles();
+    this.owner = null;
   }
 }

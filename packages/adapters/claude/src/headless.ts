@@ -91,6 +91,9 @@ export class HeadlessRun {
       cwd: request.cwd,
       model: request.model,
       settings: request.settingsPath,
+      // Full access inside the run's worktree (user decision, 2026-09-12): a headless run has
+      // nobody to answer a prompt, and the read-only roles are still fenced by disallowedTools.
+      permissionMode: "bypassPermissions",
       // `sessionId` and `resume` are mutually exclusive: a fresh run names itself, a retry
       // reattaches to the ID Loom already recorded (principle 7).
       ...(request.resume

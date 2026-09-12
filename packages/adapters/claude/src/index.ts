@@ -91,6 +91,7 @@ export async function createClaudeAdapter(
     hookBaseUrl: receiver.baseUrl,
     mcpServerName,
     mcpServer: config.mcpServer,
+    bashCommandPrefixes: undefined, // Will be set per-run if interactive
   };
 
   const run = (sessionId: ProviderSessionId): HeadlessRun => {
@@ -113,10 +114,12 @@ export async function createClaudeAdapter(
     writeSettings: async (
       settingsPath: string,
       mcpServer?: McpServerEntry,
+      bashCommandPrefixes?: string[],
     ): Promise<void> => {
       await writeSettingsFiles(settingsPath, {
         ...settingsRequest,
         mcpServer: mcpServer ?? config.mcpServer,
+        bashCommandPrefixes,
       });
     },
 
@@ -129,8 +132,11 @@ export async function createClaudeAdapter(
       sessionId,
       "--model",
       model,
+      // Full access inside the run's own worktree (user decision, 2026-09-12): every prompt
+      // stalled a run until a human answered in tmux. Safety is the worktree, the send gate,
+      // code-owned transitions and branch protection on the base branch, not per-command prompts.
       "--permission-mode",
-      "acceptEdits",
+      "bypassPermissions",
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {
@@ -157,6 +163,11 @@ export async function createClaudeAdapter(
 
     interruptHeadless: async (sessionId: ProviderSessionId): Promise<void> => {
       await run(sessionId).interrupt();
+    },
+
+    closeHeadless: async (sessionId: ProviderSessionId): Promise<void> => {
+      headlessRuns.get(sessionId)?.close();
+      headlessRuns.delete(sessionId);
     },
 
     headlessState: async (

@@ -174,8 +174,23 @@ export interface PaneHost {
    * the provider's status and confirm delivery from the provider's own channel.
    */
   pasteText(ref: PaneRef, text: string): Promise<"written">;
-  /** Escape only. Confirmation comes from the provider's status, never from the host. */
-  sendKey(ref: PaneRef, key: "Escape"): Promise<void>;
+  /** Escape or digit keys (0-9). Confirmation comes from the provider's status, never from the host. */
+  sendKey(
+    ref: PaneRef,
+    key:
+      | "Escape"
+      | "Enter"
+      | "0"
+      | "1"
+      | "2"
+      | "3"
+      | "4"
+      | "5"
+      | "6"
+      | "7"
+      | "8"
+      | "9",
+  ): Promise<void>;
   /** Full argv for a human terminal: explicit socket, session and pane. No takeover; clients share. */
   attachArgs(ref: PaneRef): string[];
   /** The clients currently attached to the pane's session, for the UI's attach indicator. */
@@ -205,7 +220,7 @@ export interface CodexAdapter {
   startThread(req: {
     cwd: WorktreePath;
     model: string;
-    sandbox: "read-only" | "workspace-write";
+    sandbox: "read-only" | "workspace-write" | "danger-full-access";
     developerInstructions: string;
     config: Record<string, unknown>;
   }): Promise<{ threadId: ProviderSessionId; generation: number }>;
@@ -265,6 +280,8 @@ export interface ClaudeAdapter {
     settingsPath: string,
     /** This run's registration. Omitted: the adapter's default, for tests and probes. */
     mcpServer?: McpServerEntry,
+    /** Bash command prefixes to pre-allow without prompts (e.g., 'pnpm test', 'git commit'). */
+    bashCommandPrefixes?: string[],
   ): Promise<void>;
   /**
    * Pane command for an interactive run: `--session-id` (or `--resume`), the per-run
@@ -291,6 +308,8 @@ export interface ClaudeAdapter {
     text: string;
   }): Promise<void>;
   interruptHeadless(sessionId: ProviderSessionId): Promise<void>;
+  /** Closes the headless run and terminates its subprocess; unknown/closed sessions are a no-op. */
+  closeHeadless(sessionId: ProviderSessionId): Promise<void>;
   headlessState(
     sessionId: ProviderSessionId,
   ): Promise<ClaudeSessionObservation["headless"]>;

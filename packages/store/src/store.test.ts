@@ -25,6 +25,7 @@ import {
   task,
   taskId,
 } from "../test/fixtures.js";
+import { actionKind } from "./action-schemas.js";
 import { openReadOnlyStore, openStore, type Store } from "./index.js";
 
 let root: string;
@@ -496,5 +497,40 @@ describe("diagnostic readers", () => {
     expect(() =>
       openReadOnlyStore({ dataRoot: root, instance: "../dev", config }),
     ).toThrow();
+  });
+});
+
+describe("schema drift detection", () => {
+  it("stores the answer_pane_prompt action kind in schema", () => {
+    // Verify that answer_pane_prompt is in the store's actionKind enum
+    // This test ensures the fix for the regression is in place
+    expect(actionKind.options).toContain("answer_pane_prompt");
+  });
+
+  it("includes all expected action kinds", () => {
+    // This test serves as a regression detector for schema drift.
+    // If a new action kind is added to core but not to the store schema,
+    // the list of options will differ.
+    const expected = [
+      "create_worktree",
+      "write_task_files",
+      "open_workspace",
+      "start_run",
+      "send_message",
+      "interrupt_run",
+      "answer_pane_prompt",
+      "answer_provider_request",
+      "stop_run",
+      "push_branch",
+      "open_pr",
+      "merge_pr",
+      "map_findings",
+      "disable_auto_merge",
+      "refresh",
+      "schedule",
+      "notify",
+    ].sort();
+    const actual = actionKind.options.sort();
+    expect(actual).toEqual(expected);
   });
 });

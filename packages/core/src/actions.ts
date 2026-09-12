@@ -83,6 +83,12 @@ export type Action = ActionBase &
       }
     | { kind: "interrupt_run"; runId: RunId; reason: string }
     | {
+        kind: "answer_pane_prompt";
+        runId: RunId;
+        choice: number | "enter" | "escape";
+        text?: string;
+      }
+    | {
         kind: "answer_provider_request";
         runId: RunId;
         requestId: string;
@@ -165,6 +171,8 @@ export interface ActionOutputs {
   send_message: { transportRef: string | null };
   /** The interrupt was sent. The run's status confirms it later. */
   interrupt_run: Empty;
+  /** The pane prompt answer was sent. */
+  answer_pane_prompt: Empty;
   answer_provider_request: Empty;
   stop_run: Empty;
   push_branch: { remoteHeadSha: Sha };

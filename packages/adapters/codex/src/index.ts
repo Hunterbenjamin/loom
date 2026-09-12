@@ -247,7 +247,9 @@ class AppServerAdapter implements CodexAdapter {
     const params: ThreadStartParams = {
       ...req,
       config: z.record(z.string(), z.json()).parse(req.config),
-      approvalPolicy: "on-request",
+      // Never prompt (user decision, 2026-09-12): a command the sandbox forbids fails visibly
+      // in the transcript instead of parking the run on a request nobody is watching.
+      approvalPolicy: "never",
       approvalsReviewer: "user",
       ephemeral: false,
       historyMode: "legacy",
