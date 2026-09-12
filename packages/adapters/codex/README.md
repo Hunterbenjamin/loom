@@ -15,10 +15,14 @@ context; only its own `CODEX_HOME` is set. Authentication, when needed, must be
 provisioned separately for that home. The adapter does not copy credentials or
 change global config.
 
-1. `startServer()` starts the child and initializes the connection. Repeated calls
-   are idempotent. A preexisting socket is refused; an existing private server can
-   instead be reached explicitly with `reconnect()`. Only the child this instance
-   spawned can be stopped by `stopServer()`.
+1. `startServer()` starts or adopts the task's private server and initializes the
+   connection. Repeated calls are idempotent. Recovery verifies the socket's reported
+   `CODEX_HOME` and records the server PID and process birth time. `stopServer()`
+   terminates adopted servers as well as children; recovered-process signals require
+   the same birth time and exact private socket in the process command. Verified stale
+   owners are reaped before replacement. Foreign homes and non-socket paths are refused.
+   Recovery requires `ps` and `lsof` on PATH; `lsof` queries only the task's socket.
+   Numeric or missing ownership files from older versions are upgraded on adoption.
 2. Call `startThread()` with an explicit model and persist its ID and connection
    generation **before** calling `startTurn()`. Thread allocation never sends a turn.
 3. `subscribe()` emits hints for the coordinator to enqueue reconciliation. Reads
