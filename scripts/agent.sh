@@ -116,7 +116,7 @@ case "$kind" in
     ;;
   codex)
     [ -n "$model" ] && cmd+=(-c "model=\"$model\"")
-    [ "$auto" = 1 ] && cmd+=(--full-auto)
+    [ "$auto" = 1 ] && cmd+=(--approve-for-me)
     ;;
 esac
 # An escape hatch for testing this script's plumbing without starting a provider.
