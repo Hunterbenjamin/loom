@@ -131,3 +131,231 @@
 .wb-help p {
   margin: 8px;
 }
+
+.wb-sidebar {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  gap: 12px;
+}
+.wb-sidebar > input {
+  flex-shrink: 0;
+}
+.wb-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+}
+.wb-section-heading h2 {
+  font-size: 12px;
+  margin: 0;
+  font-weight: 600;
+}
+.wb-section-heading h2 span {
+  opacity: 0.5;
+  margin-left: 4px;
+}
+.wb-terminals {
+  flex: 0 1 40%;
+  overflow: auto;
+  min-height: 100px;
+}
+.wb-terminals details {
+  margin: 6px 0;
+}
+.wb-terminals summary {
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 0;
+  overflow-wrap: anywhere;
+}
+.wb-tree-pane {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 8px 7px 20px;
+  font-size: 12px;
+}
+.wb-tree-pane > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wb-tree-pane.dead {
+  opacity: 0.5;
+}
+.wb-tree-pane small {
+  margin-left: auto;
+}
+.wb-agents {
+  flex: 1;
+  min-height: 100px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.wb-agent-row {
+  display: flex;
+  align-items: center;
+  border-radius: 5px;
+}
+.wb-agent-row:hover,
+.wb-tree-pane:hover {
+  background: var(--line);
+}
+.wb-agent {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+}
+.wb-agent-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.wb-agent-text strong {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wb-agent-text small,
+.wb-state-label {
+  font-size: 11px;
+}
+.wb-agent-details {
+  padding: 8px 4px;
+  opacity: 0.6;
+}
+.wb-status {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: 11px;
+}
+.wb-status.working {
+  animation: wb-working 2s linear infinite;
+}
+.wb-status.working,
+.wb-state-label.working {
+  color: #759fe5;
+}
+.wb-status.waiting,
+.wb-state-label.waiting,
+.wb-waiting-count {
+  color: #d4a642;
+}
+.wb-status.finished,
+.wb-state-label.finished {
+  color: #65aa80;
+}
+.wb-status.failed,
+.wb-state-label.failed {
+  color: #d77b72;
+}
+.wb-status.unknown,
+.wb-state-label.unknown,
+.wb-status.idle,
+.wb-state-label.idle {
+  opacity: 0.6;
+}
+.wb-waiting-count {
+  font-size: 11px;
+}
+.wb-muted {
+  opacity: 0.6;
+  font-size: 12px;
+  padding: 8px 0;
+}
+@keyframes wb-working {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-status.working {
+    animation: none;
+  }
+}
+.wb-new-terminal {
+  width: 380px;
+  max-width: calc(100vw - 40px);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 16px 60px #0006;
+}
+.wb-new-terminal::backdrop {
+  background: #0007;
+}
+.wb-new-terminal h2 {
+  font-size: 17px;
+  margin: 0 0 20px;
+}
+.wb-new-terminal label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.wb-new-terminal input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  border-radius: 5px;
+}
+.wb-new-terminal form > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+.wb-new-terminal button {
+  padding: 8px 12px;
+  border-radius: 5px;
+}
+.wb-new-terminal button[type="submit"] {
+  background: #526eb0;
+  color: white;
+}
+.wb-new-terminal button:disabled {
+  opacity: 0.45;
+}
+.wb-terminals {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.wb-terminals > .wb-section-heading,
+.wb-pinned {
+  flex-shrink: 0;
+}
+.wb-pinned {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+.wb-pinned small {
+  opacity: 0.5;
+  font-size: 10px;
+}
+.wb-terminal-list {
+  overflow: auto;
+  min-height: 0;
+}
+.wb-tree-pane {
+  padding-left: 8px;
+}

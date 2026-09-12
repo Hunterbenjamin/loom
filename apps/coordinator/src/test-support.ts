@@ -1,3 +1,4 @@
+import { wireOperatorTerminal } from "./test-operator-terminal.js";
 // The test harness: a real coordinator (loop, executor, MCP server, store, protocol server)
 // against `@loom/fake-agent`'s providers, pane host and GitHub, a throwaway Git repository and a
 // fake clock. Nothing here starts an agent, a terminal, a daemon or a real network connection
@@ -145,6 +146,7 @@ async function open(
   const clock = new FakeClock();
   const providers = new FakeProviders(clock, reconcileConfig(config).sha256);
   const paneHost = new FakePaneHost();
+  wireOperatorTerminal(paneHost, providers);
   const repo: Repo = {
     id: "example-repo" as RepoId,
     root: (await createGitAdapter().realpath(repoRoot)) as WorktreePath,

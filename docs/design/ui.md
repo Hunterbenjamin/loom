@@ -1,6 +1,6 @@
 # UI design
 
-Tracker and Workbench are independently opened, fixed-mode windows on the same coordinator.
+Each window switches between Tracker and Workbench on the same coordinator.
 This note describes the first terminal Workbench slice.
 
 ## Modes
@@ -15,37 +15,33 @@ third mode. Agents write; the human reads and reviews. Editing is out of v1.
 
 ## Windows
 
-Every window has its own coordinator connection and immutable Tracker or Workbench mode.
-Command+Shift+W, the command palette, and the bottom-bar Workbench button open a new Workbench.
-The palette also offers New Tracker. Existing windows keep their mode.
+Every window has its own coordinator connection. Command+Shift+W and the bottom-bar mode button
+switch that same window between Tracker and Workbench; the button names the destination mode.
+The palette provides the same switch and explicit New Window commands remain separate.
 
-Tabs, splits, focused panel, filter and zoom exist only in that window's memory. Closing a window
-loses its layout and detaches its terminal clients; the underlying pane-host processes survive.
-New windows read the coordinator's cached, published inventory, without scanning the host on connect.
-After the first live window paints, the app prepares one hidden, empty Workbench with its own
-connection. Opening consumes that prepared window and prepares its replacement after a second.
-This keeps command-to-usable presentation within the opening budget; preparation time is recorded
-separately in the performance report. Fixture startup does not prepare a spare window.
+Both modes share the window's task store. Tracker selection and Workbench tabs/splits survive a
+round trip. Inactive mode effects are suspended: terminal viewers detach while hidden and attach
+again when shown, without stopping their native panes or agents. No hidden spare window is created.
+Closing a window closes only its viewers; the coordinator owns durable task state.
 
 ## Workbench
 
-- **Sidebar:** native tmux sessions (spaces) → canonical physical panes. Recorded task workspaces
-  show a task label; Lead and unlinked sessions keep their native names. Run linkage is only by a
-  unique recorded generation + pane ID, never cwd, title, command or native run tags. Dead panes
-  remain visible and dimmed. Filtering matches session/task/role/provider/pane names; each word
-  supports ordered-character fuzzy matching. Clicking replaces the focused panel's target; Enter
-  opens the agent in a new tab.
-- **Tabs and splits:** each outer tab owns a Dockview 4.13.1 Gridview. Splitting replaces a leaf
-  with two panels; the library handles sizing and may flatten equivalent adjacent axes. Drag a
+- **Sidebar:** live native terminal sessions, with Main and Operator pinned first. Rows use terminal
+  names rather than task titles. Run linkage is only by a unique recorded generation + pane ID,
+  never cwd, title, command or native run tags. Dead panes
+  disappear from the terminal list. Filtering matches terminal names. Clicking or pressing Enter
+  attaches the existing terminal, focusing its existing view if present, without a creation modal.
+- **Tabs and splits:** each outer tab owns a Dockview 4.13.1 Gridview. Splitting names and creates
+  an independent terminal, then adds its viewer next to the focused panel; the library handles sizing. Drag a
   panel header to an edge of another panel in the same tab to move it. Terminal mounts live as
   stable siblings over the library's cells, so moving cells, switching tabs and zooming do not
   dispose attach clients. Layout never leaves the window.
 - **Panel types in this slice:** terminal and task scratch shell. Scratch resolves the stored
   worktree and existing workspace in the coordinator and creates an idempotent native shell pane.
-  It is not a provider run. Closing its panel leaves the shell running. Plan, diff, activity and
+  It is not a provider run. Close terminal ends its native session and removes it from the list. Plan, diff, activity and
   code panels are deferred; Tracker retains its existing review surface.
 - **Bindings:** Ctrl+A then `|` / `-` splits right/down; `h j k l` focuses left/down/up/right;
-  `c` opens an empty tab; `n` / `p` switches tabs; `x` closes a panel; `z` toggles zoom;
+  `c` names and creates a terminal; `n` / `p` switches tabs; `x` closes a terminal (or hides a supervised agent view); `z` toggles zoom;
   `g` focuses the fuzzy agent filter; `?` opens the map. The prefix expires after 1.5 seconds;
   Escape cancels it, Ctrl+A Ctrl+A sends a literal Ctrl+A, and an unknown suffix cancels and
   passes through normally. Each action has the same dispatcher in the Command+K palette.
@@ -54,8 +50,8 @@ separately in the performance report. Fixture startup does not prepare a spare w
   including Lead's native waiting status. It does not count reason rows. Workbench attention
   navigation clears any hiding filter and selects the first flagged pane in sidebar order.
   The Lead toggle retains Tracker's existing inbox reason count and restart behavior.
-- **Terminals:** each panel owns an independent authenticated attach client. Replacing/closing a
-  panel kills only that client. Electron keys resources by webContents and panel/client identity,
+- **Terminals:** each panel owns an independent authenticated attach client. Mode/window teardown
+  kills only that client. Explicit Close terminal also asks the coordinator to end the native pane. Electron keys resources by webContents and panel/client identity,
   including pending spawns and late exit callbacks. Metadata patches update labels without
   rendering or remounting terminal components; theme changes update xterm options in place.
 
@@ -143,3 +139,37 @@ window must open in under 300 ms from an already-running coordinator.
 ## Out of v1
 
 Editing code, drag-and-drop between windows, a third mode, plugins, themes beyond dark and light.
+
+### Workbench terminals and agent status
+
+Workbench restores a viewer of an existing live terminal from native inventory on open. It never
+creates a shell during mounting or navigation. New Terminal and Split name and create a native
+shell before mounting a viewer with its exact identity. Closing a terminal ends that pane; native
+exit and close updates remove the row and all its views. Closing the last terminal leaves an empty
+Workbench with a New terminal action. Selecting an existing row never opens a naming modal.
+The standalone `loom-workbench` session has no task or provider run; tmux owns it, and no spare
+shell is launched to hold the session open.
+
+The sidebar places the native session/terminal tree above a separate agent-terminal list. Only
+live, recorded agent panes appear; headless runs, ended runs and task history are excluded. Status
+icons come from recorded provider observations and unanswered questions: working, awaiting
+response/permission, finished turn, idle, rate limited, failed, or unavailable. A quiet or
+disconnected terminal is never proof of completion. Waiting agents sort first and contribute to a
+visible count. Clicking an agent attaches its existing terminal in Workbench without switching to Tracker.
+
+New Tab (including the prefix shortcut) asks for a terminal name in a modal before creating a
+shell. Cancel creates nothing. Names are stored as native tmux window names and survive viewer
+reconnects; the tab and terminal tree show the name. Provider-confirmed completed turns can show a
+finished-turn icon while the agent terminal stays open. Idle and unknown status remain distinct.
+
+
+### Flat terminal navigation
+
+Workbench lists actual terminals directly, without task/issue groups or issue titles. Main and
+Operator are always pinned above the scrollable terminal list. Main attaches the existing Lead
+identity; Operator attaches its interactive session, with the same durable queue and policy
+checks as before. Both reuse their pinned tabs. Their Hide agent view button only detaches the viewer; stopping
+an agent uses its existing agent/task controls. Opening a workspace reserves its tmux session
+name without creating a shell; a session is created only when a real agent or explicitly requested
+human terminal needs a pane. The brief bootstrap process used while setting its environment is
+removed before launch returns, leaving no spare terminal.

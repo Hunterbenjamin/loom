@@ -287,6 +287,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
       description:
         `Part of the ${STAGE_LABELS[stage].toLowerCase()} work in ${repo.github}. ` +
         "The coordinator owns the stage; this card is a view of it.",
+      summary: null,
       stage,
       stageEnteredAt: minutesBefore(stageMinutes),
       version: between(random, 3, 40),

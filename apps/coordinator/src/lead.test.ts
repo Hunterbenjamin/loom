@@ -113,6 +113,7 @@ test("Lead tools share the CLI command path and inspection view; core still reje
     repoId: h.repo.id,
     title: "Delegated work",
     description: "Use a task",
+    summary: "Delegate work through a Loom task",
     providers: null,
     requirePlanApproval: null,
     blockedBy: [],

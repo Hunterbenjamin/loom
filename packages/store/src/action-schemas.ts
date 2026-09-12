@@ -31,6 +31,7 @@ const fields = {
     mode: z.enum(["headless", "interactive"]),
     worktreePath: text,
     model: text,
+    reasoningEffort: text.min(1).optional(),
     attempt: positive,
     sessionEpoch: count,
     sessionId: id.nullable(),
@@ -54,6 +55,7 @@ const fields = {
   stop_run: { runId: id },
   push_branch: { worktreePath: text, branch: text, expectedHeadSha: sha },
   open_pr: {
+    rescueHeadSha: sha.optional(),
     repoId: id,
     branch: text,
     baseBranch: text,
@@ -89,6 +91,9 @@ const fields = {
       z.enum(["enter", "escape"]),
     ]),
     text: text.optional(),
+    expectedDialog: z
+      .object({ requestId: id, at: time, command: text, sessionEpoch: count })
+      .optional(),
   },
 } as const;
 export const actionKind = z.enum(

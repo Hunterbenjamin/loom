@@ -93,6 +93,10 @@ export function Detail({ task }: { task: Task }) {
 }
 
 function Activity({ task }: { task: Task }) {
+  const notes = useStore(
+    (s) => s.notes.filter((n) => n.taskId === task.id),
+    shallowArray,
+  );
   const transitions = useStore(
     (s) => s.snapshot.transitions.filter((t) => t.taskId === task.id),
     shallowArray,
@@ -108,6 +112,13 @@ function Activity({ task }: { task: Task }) {
   const now = useStore((s) => s.snapshot.now);
 
   const events = [
+    ...notes.map((n) => ({
+      id: n.id,
+      at: n.at as import("@loom/core").IsoTime,
+      kind: "note",
+      text: n.body,
+      detail: `${n.author} · ${n.row} · ${n.outcome}`,
+    })),
     ...transitions.map((transition) => ({
       id: transition.id as string,
       at: transition.at,
@@ -160,6 +171,10 @@ function Activity({ task }: { task: Task }) {
 
   return (
     <div className="pad timeline">
+      <section className="task-description">
+        <div className="section-title">Description</div>
+        <div>{task.description.trim() || "No description."}</div>
+      </section>
       {events.map((event) => (
         <div className="event" key={event.id}>
           <span className="faint mono">{clock(event.at)}</span>

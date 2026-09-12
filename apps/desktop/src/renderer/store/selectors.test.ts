@@ -2,9 +2,35 @@ import { describe, expect, test } from "vitest";
 import { minutesBefore, runId, taskId } from "../fixtures/ids.js";
 import type { Snapshot } from "../fixtures/index.js";
 import { buildSnapshot } from "../fixtures/index.js";
-import { rowsFor } from "./selectors.js";
+import { rowsFor, terminalsForTask } from "./selectors.js";
 
 describe("rowsFor", () => {
+  test("selects an explicit summary and falls back to the description's first sentence", () => {
+    const fixture = buildSnapshot();
+    const first = fixture.tasks[0];
+    const second = fixture.tasks[1];
+    if (!first || !second) throw new Error("Missing fixture tasks");
+    const snapshot = {
+      ...fixture,
+      tasks: [
+        { ...first, summary: "Explicit list summary" },
+        {
+          ...second,
+          summary: null,
+          description: "Fallback sentence. Full detail stays hidden.",
+        },
+      ],
+    } as Snapshot;
+
+    const rows = rowsFor(snapshot, "all", "all", "");
+    expect(rows.find((row) => row.task.id === first.id)?.summary).toBe(
+      "Explicit list summary",
+    );
+    expect(rows.find((row) => row.task.id === second.id)?.summary).toBe(
+      "Fallback sentence.",
+    );
+  });
+
   test("selects the most recent live run when multiple live runs exist", () => {
     const fixture = buildSnapshot();
     const task = fixture.tasks[0];
@@ -134,5 +160,132 @@ describe("rowsFor", () => {
 
     // Should have null run
     expect(taskRow.run).toBeNull();
+  });
+});
+
+describe("terminalsForTask", () => {
+  const setup = () => {
+    const fixture = buildSnapshot();
+    const source = fixture.runs.find((run) => run.mode === "interactive");
+    const sourceTask = source
+      ? fixture.tasks.find((task) => task.id === source.taskId)
+      : undefined;
+    if (!source || !sourceTask) throw new Error("No interactive fixture run");
+    const task = { ...sourceTask, stage: "in_progress" as const };
+    return { fixture, source, task };
+  };
+
+  test("returns one live interactive run", () => {
+    const { fixture, source, task } = setup();
+    const run = {
+      ...source,
+      taskId: task.id,
+      status: "working" as const,
+      endedAt: null,
+    };
+
+    expect(terminalsForTask({ ...fixture, runs: [run] }, task)).toEqual([run]);
+  });
+
+  test("orders newest first and preserves snapshot order as the fallback", () => {
+    const { fixture, source, task } = setup();
+    const untimedFirst = {
+      ...source,
+      id: runId("untimed-first"),
+      taskId: task.id,
+      status: "starting" as const,
+      launchedAt: null,
+      endedAt: null,
+    };
+    const older = {
+      ...source,
+      id: runId("older"),
+      taskId: task.id,
+      status: "idle" as const,
+      launchedAt: minutesBefore(10),
+      endedAt: null,
+    };
+    const untimedSecond = {
+      ...untimedFirst,
+      id: runId("untimed-second"),
+    };
+    const newer = {
+      ...older,
+      id: runId("newer"),
+      launchedAt: minutesBefore(1),
+    };
+
+    expect(
+      terminalsForTask(
+        {
+          ...fixture,
+          runs: [untimedFirst, older, untimedSecond, newer],
+        },
+        task,
+      ).map((run) => run.id),
+    ).toEqual([newer.id, older.id, untimedFirst.id, untimedSecond.id]);
+  });
+
+  test("excludes ended, ended-at, headless, and other-task runs", () => {
+    const { fixture, source, task } = setup();
+    const eligible = {
+      ...source,
+      id: runId("eligible"),
+      taskId: task.id,
+      status: "blocked" as const,
+      endedAt: null,
+    };
+    const ended = {
+      ...eligible,
+      id: runId("ended"),
+      status: "ended" as const,
+    };
+    const hasEndedAt = {
+      ...eligible,
+      id: runId("has-ended-at"),
+      endedAt: minutesBefore(1),
+    };
+    const headless = {
+      ...eligible,
+      id: runId("headless"),
+      mode: "headless" as const,
+    };
+    const otherTask = {
+      ...eligible,
+      id: runId("other-task"),
+      taskId: taskId("other-task"),
+    };
+
+    expect(
+      terminalsForTask(
+        {
+          ...fixture,
+          runs: [ended, hasEndedAt, headless, otherTask, eligible],
+        },
+        task,
+      ),
+    ).toEqual([eligible]);
+  });
+
+  test.each(["done", "canceled"] as const)(
+    "suppresses stale runs for a %s task",
+    (stage) => {
+      const { fixture, source, task } = setup();
+      const run = {
+        ...source,
+        taskId: task.id,
+        status: "working" as const,
+        endedAt: null,
+      };
+
+      expect(
+        terminalsForTask({ ...fixture, runs: [run] }, { ...task, stage }),
+      ).toEqual([]);
+    },
+  );
+
+  test("returns no runs when the task has none", () => {
+    const { fixture, task } = setup();
+    expect(terminalsForTask({ ...fixture, runs: [] }, task)).toEqual([]);
   });
 });

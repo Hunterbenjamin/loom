@@ -125,10 +125,16 @@ export interface Attention {
 }
 
 export interface Task {
+  signature?: string | null;
   id: TaskId;
   repoId: RepoId;
   title: string;
   description: string;
+  /**
+   * Optional one-line summary of the task goal. Max 140 characters, no newlines.
+   * Owned by Loom. Provided at creation time; not editable after.
+   */
+  summary: string | null;
   stage: Stage;
   stageEnteredAt: IsoTime;
   /** Compare-and-set counter. Every committed change adds 1. */
@@ -262,6 +268,8 @@ export interface Run {
   /** Launches of this run so far, 1-based. A retry bumps it and keeps the row. */
   attempts: number;
   model: string;
+  /** Captured at creation; retries and recovery retain the same reasoning setting. */
+  reasoningEffort?: string;
   /**
    * (ref: provider) Claude: UUIDv5 of `<runId>#<sessionEpoch>`, chosen before launch, so never null,
    * and reused by every attempt of that epoch.
@@ -286,6 +294,14 @@ export interface Run {
   } | null;
   /** (cache: provider) */
   pendingRequests: ProviderRequest[];
+  /** Cached native Claude dialog, only while the provider reports waiting. Missing on legacy runs. */
+  pendingDialog?: {
+    requestId?: string;
+    command?: string;
+    kind: "permission" | "input";
+    tool: string;
+    at: IsoTime;
+  } | null;
   /** Last provider observation of any kind. Drives stall detection. */
   lastActivityAt: IsoTime | null;
   /** Earliest time the next attempt may launch, after a failure. Headless runs only. */
@@ -579,4 +595,49 @@ export interface Transition {
   reason: string;
   /** Task version after this change. */
   taskVersion: number;
+}
+
+/** Authored decisions have their own persistence and never imply a stage transition. */
+export interface TaskNote {
+  id: string;
+  taskId: string | null;
+  author: "operator" | "lead" | "human";
+  at: string;
+  eventId: string;
+  row: string;
+  outcome: string;
+  body: string;
+  forHuman: boolean;
+  occurrence: string;
+}
+
+// ---------------------------------------------------------------- Utilities
+
+/**
+ * Get a one-line summary for display in lists. Returns the summary if present,
+ * otherwise extracts and truncates the first sentence of the description to max 140 characters.
+ * Handles edge cases: empty description, no punctuation, very long first sentence.
+ */
+export function summarizeTask(
+  task: Pick<Task, "summary" | "description">,
+): string {
+  const summary = task.summary?.trim();
+  if (summary) return summary;
+
+  const firstLine = task.description.trim().split(/\r?\n/, 1)[0]?.trim() ?? "";
+  if (!firstLine) return "";
+
+  const sentenceEnd = firstLine.search(/[.!?](?=\s|$)/);
+  let firstSentence =
+    sentenceEnd >= 0 ? firstLine.slice(0, sentenceEnd + 1) : firstLine;
+
+  // Truncate to 140 chars if necessary (remove punctuation if truncating)
+  if (firstSentence.length > 140) {
+    firstSentence = `${firstSentence
+      .slice(0, 137)
+      .trim()
+      .replace(/[.!?]+$/, "")}...`;
+  }
+
+  return firstSentence;
 }

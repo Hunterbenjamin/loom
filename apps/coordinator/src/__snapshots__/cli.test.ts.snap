@@ -2,6 +2,7 @@
 
 exports[`empty task diagnostics omit questions and approvals in text 1`] = `
 "Task
+  signature:              -
   id:                     t1
   title:                  Implement core
   stage:                  backlog
@@ -30,6 +31,7 @@ Findings
 
 exports[`task inspect prints a complete fixture without a coordinator 1`] = `
 "Task
+  signature:              -
   id:                     t1
   title:                  Implement core
   stage:                  in_progress
@@ -57,6 +59,8 @@ Runs (4, newest last)
   unknownSince:           -
   lastTurn:               -
   pendingRequests:        0
+  requests:               []
+  pendingDialog:          -
   endedAt:                2026-09-12T00:00:00.000Z
   endReason:              submitted
 
@@ -73,6 +77,8 @@ Runs (4, newest last)
   unknownSince:           -
   lastTurn:               -
   pendingRequests:        0
+  requests:               []
+  pendingDialog:          -
   endedAt:                -
   endReason:              -
 
@@ -89,6 +95,8 @@ Runs (4, newest last)
   unknownSince:           -
   lastTurn:               -
   pendingRequests:        0
+  requests:               []
+  pendingDialog:          -
   endedAt:                -
   endReason:              -
 
@@ -105,6 +113,8 @@ Runs (4, newest last)
   unknownSince:           2026-09-12T00:00:00.000Z
   lastTurn:               {"id":"turn-failed","outcome":"failed","error":"No rollout\\nTry again"}
   pendingRequests:        1
+  requests:               [{"id":"request-1","generation":2,"kind":"command_approval","blocking":true,"summary":"Run tests?","receivedAt":"2026-09-12T00:00:00.000Z"}]
+  pendingDialog:          -
   endedAt:                -
   endReason:              -
 

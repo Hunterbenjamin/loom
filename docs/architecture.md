@@ -197,7 +197,8 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   rendered with xterm.js. Keystroke to glyph was 5–6 ms p95.
 - **Any number of clients may attach.** Two Loom windows and a native Ghostty window showed the
   same agent at once, with no eviction and no takeover flow. Detaching one never stops the agent.
-- **One session per task, one window per run**, and a *grouped* session per attach target: clients
+- **One session per task, one window per run, and no idle windows**: the session exists only
+  while a run or scratch pane does. There is also a *grouped* session per attach target: clients
   on the same session share its current window, so each view gets its own grouped session and picks
   its window independently. Workbench also uses tmux's `active-pane` client flag and initializes
   client-local selection before targeting sibling panes; the adapter integration test verifies
@@ -207,8 +208,16 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   terminal a minimum width (about 100 columns), and resize only when the panel resizes, debounced.
 - **Scrollback lives in tmux.** The mouse wheel enters copy mode and reaches tmux history; search
   and history still read provider transcripts, not the terminal buffer.
-- Closing a panel detaches that client; the pane and its process keep running. A host restart kills
-  every pane process, and Loom relaunches each run from the stored command line and environment.
+- Closing a human terminal explicitly ends its native pane through `close_terminal`, then refreshes
+  the inventory. Selecting an existing terminal only attaches; it never creates or resurrects a shell.
+  Native exits remove terminal rows and their views. Closing the app or switching modes only detaches
+  clients. Pinned and supervised agents use a separately labelled **Hide agent view** action; their
+  existing stop controls own stopping work, so a terminal close cannot accidentally trigger recovery.
+  A host restart kills every pane process, and Loom relaunches runs from stored recipes.
+- The terminal sidebar is a projection of live native panes, independent of task history and local
+  view layout. No default shell is recreated on render or navigation. New Terminal and Split are the
+  only shell-creation paths, and capture the native identity before mounting a viewer. This follows
+  [Herdr's pane close/runtime lifecycle](https://github.com/herdrdev/herdr/blob/d184b41fa36923c132629af725ff98bb02aa1b61/src/app/api/panes.rs#L1853).
 - **Shift+Enter needs `extended-keys always`, `extended-keys-format csi-u` and
   `terminal-features ",xterm*:extkeys"`**, loaded before the pane exists — and still needs the
   renderer's CSI-u shim. Changing the options afterwards does not reach an existing pane.
@@ -258,6 +267,13 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
 - **Caps:** a global cap (start at 4 agents) and a per-provider cap.
 
 ## Context handoffs
+
+Task agent routing can be overridden per role with the instance's `LOOM_PROVIDER_PLANNER`,
+`LOOM_PROVIDER_IMPLEMENTER`, and `LOOM_PROVIDER_REVIEWER` settings. Overrides apply to new
+runs, including later roles on existing tasks; they never migrate an existing provider session.
+Models remain configurable per provider, with explicit `LOOM_CODEX_REASONING_EFFORT` for Codex.
+The coordinator captures model and reasoning in durable run/action/recipe records before launch;
+retries preserve them, and Codex turns and the private TUI config receive the captured settings.
 
 Agents hand off through artifacts, not transcripts. Each task's artifacts live in the coordinator's data directory.
 Agents reach them through `get_task_context`, and as files in `<worktree>/.task/`, which is kept out of git via `.git/info/exclude`.
@@ -367,3 +383,22 @@ guarantees that a command did not run. The broader restart matrix remains spike 
   commits is Loom's job. See the findings.
 - **05 completed:** nothing in a pane survives a host restart; Loom relaunches from stored state, and
   the Codex app-server lives outside the pane host. See the findings.
+
+### Operator integration
+
+One coordinator-owned interactive Claude Operator consumes durable structured hints outside the
+per-task run/capacity model. SQLite owns its queue, decisions, notes, processing receipts, retry
+ledger and bug-filing accounting. A private recipe under the instance's `operator` directory owns
+its launch identity and recorded pane. Its terminal lives on the private tmux server and survives
+coordinator and viewer restarts. MCP-only capability
+configuration (`--tools ""`, strict MCP config and per-process settings) and a separate authenticated
+identity prevent the Operator agent from using task-run, shell and attach tools. Humans can attach
+its terminal through the pinned Workbench entry. Native Claude status gates queued input: busy,
+waiting and unknown sessions receive no paste. A durable prompt hash is recorded before paste;
+UserPromptSubmit confirms delivery and the matching Stop receipt finishes a turn. Uncertain
+delivery is never automatically replayed after restart.
+Every mutation is checked against policy v1 using fresh observations. Rescue commands reuse the
+core/outbox/executor path, without a submission or stage transition; automatic bug planning uses
+the existing `todo` input. Runtime bug repository routing is explicit. Desktop status and authored
+notes are projections, and notification dedupe is coordinator-owned. See the
+[Operator contract](design/agents.md#operator-implementation-contract).

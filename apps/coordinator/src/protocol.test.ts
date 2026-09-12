@@ -45,6 +45,71 @@ test("a client connects, takes a snapshot and sees its repo", async () => {
   expect(client.state?.epoch).toBe(h.coordinator.epoch);
 }, 30_000);
 
+test("human terminal close confirms native removal and publishes deletion to connected clients", async () => {
+  const h = await served();
+  const ref = {
+    hostGeneration: `loom-${h.config.instance}#1`,
+    sessionName: "loom-workbench",
+    windowId: "@7",
+    paneId: "%7",
+  };
+  const observation = {
+    ref,
+    dead: false,
+    exitCode: null,
+    pid: 12345,
+    command: "sh",
+    startCwd: h.repo.root,
+    cwd: h.repo.root,
+  };
+  let present = true;
+  vi.spyOn(h.paneHost, "listPanes").mockImplementation(async () =>
+    present ? [observation] : [],
+  );
+  vi.spyOn(h.paneHost, "listClients").mockResolvedValue([]);
+  vi.spyOn(h.paneHost, "getPane").mockImplementation(async () =>
+    present ? observation : null,
+  );
+  const close = vi
+    .spyOn(h.paneHost, "closeTerminal")
+    .mockImplementation(async () => {
+      present = false;
+    });
+  const client = await LoomClient.connect({
+    url: h.coordinator.protocol.url as string,
+    token: h.config.token,
+    clientId: "terminal-close",
+    kind: "cli",
+    subscriptions: [{ kind: "panes" }],
+  });
+  clients.push(client);
+  expect(
+    await client.command({ kind: "close_terminal", target: ref }),
+  ).toMatchObject({
+    ok: true,
+    result: { kind: "terminal_closed", target: ref },
+  });
+  expect(close).toHaveBeenCalledExactlyOnceWith(ref);
+  expect([...(client.state?.collections.pane.values() ?? [])]).toEqual([]);
+  expect(
+    await client.command({ kind: "close_terminal", target: ref }),
+  ).toMatchObject({ ok: true });
+  close.mockClear();
+  expect(
+    await client.command({
+      kind: "close_terminal",
+      target: { ...ref, hostGeneration: "loom-other#1" },
+    }),
+  ).toMatchObject({ ok: false });
+  expect(
+    await client.command({
+      kind: "close_terminal",
+      target: { ...ref, sessionName: "loom-operator" },
+    }),
+  ).toMatchObject({ ok: false });
+  expect(close).not.toHaveBeenCalled();
+}, 30_000);
+
 test("a bad token is refused and the socket closes", async () => {
   const h = await served();
   await expect(
@@ -67,6 +132,7 @@ test("a command is acknowledged, recorded as an input, and shows up as patches",
     repoId: h.repo.id,
     title: "Change the example",
     description: "Replace the contents of example.txt.",
+    summary: null,
     providers: null,
     requirePlanApproval: null,
     blockedBy: [],
@@ -109,6 +175,7 @@ test("a forced sequence gap is detected and only a fresh snapshot recovers", asy
     repoId: h.repo.id,
     title: "First",
     description: "",
+    summary: null,
     providers: null,
     requirePlanApproval: null,
     blockedBy: [],
@@ -191,6 +258,7 @@ test("list clients receive plan version and core-derived inbox metadata without 
   const client = await connect(h, "inbox-window");
   expect(client.state?.collections.inbox.get(created.task.id)).toEqual({
     taskId: created.task.id,
+    forHuman: null,
     reasonRuns: {},
     reviewedHead: null,
     planVersion: null,

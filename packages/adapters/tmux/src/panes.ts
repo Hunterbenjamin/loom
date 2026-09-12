@@ -3,7 +3,7 @@
 
 import type { PaneObservation, PaneRef, WorktreePath } from "@loom/core";
 import { z } from "zod";
-import { RUN_OPTION, TASK_OPTION, VIEW_OPTION } from "./config.js";
+import { RUN_OPTION, VIEW_OPTION } from "./config.js";
 
 const SEP = "\u001f";
 
@@ -18,7 +18,6 @@ const FIELDS = [
   "#{pane_start_path}",
   "#{pane_current_path}",
   `#{${RUN_OPTION}}`,
-  `#{${TASK_OPTION}}`,
   `#{${VIEW_OPTION}}`,
   "#{session_id}",
   "#{window_name}",
@@ -42,7 +41,6 @@ const row = z
     z.string(),
     z.string(),
     z.string(),
-    z.string(),
     z.string().regex(/^\$\d+$/),
     z.string(),
     z.string(),
@@ -59,7 +57,6 @@ const row = z
       startPath,
       currentPath,
       runId,
-      taskId,
       view,
       sessionId,
       windowName,
@@ -79,7 +76,6 @@ const row = z
       startPath,
       currentPath,
       runId: runId || null,
-      taskId: taskId || null,
       isView: view === "1",
     }),
   );

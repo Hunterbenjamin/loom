@@ -92,6 +92,7 @@ describe.skipIf(!available)("tmux pane host", () => {
     });
     const request = {
       workspaceId: workspace.workspaceId,
+      createWorkspace: true,
       key: crypto.randomUUID(),
       cwd,
       executable: "/bin/sh",
@@ -105,8 +106,175 @@ describe.skipIf(!available)("tmux pane host", () => {
       (await host.listPanes()).filter(
         (p) => p.ref.sessionName === workspace.workspaceId,
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect((await host.getPane(first))?.dead).toBe(false);
+  });
+
+  it("human close removes an exact terminal, including legacy untagged shells, without touching neighbours", async () => {
+    const req = {
+      workspaceId: "loom-close-check",
+      createWorkspace: true,
+      key: crypto.randomUUID(),
+      cwd,
+      executable: "/bin/sh",
+      args: [],
+      env: paneEnv(),
+    };
+    const first = await host.createScratch(req);
+    const second = await host.createScratch({
+      ...req,
+      key: crypto.randomUUID(),
+    });
+    // A mismatched identity must never close a pane, even when its numeric ID exists.
+    await host.closeTerminal({ ...first, windowId: "@999999" });
+    await host.closeTerminal({ ...first, sessionName: "wrong-session" });
+    await host.closeTerminal({ ...first, hostGeneration: "loom-old#1" });
+    expect((await host.getPane(first))?.dead).toBe(false);
+    await expect(host.closePane(first)).rejects.toMatchObject({
+      code: "pane_not_owned",
+    });
+    await host.closeTerminal(first);
+    await host.closeTerminal(first);
+    expect(await host.getPane(first)).toBeNull();
+    expect((await host.getPane(second))?.dead).toBe(false);
+    const legacyId = (
+      await tmux(
+        "new-window",
+        "-d",
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "-t",
+        "loom-close-check:",
+        "-n",
+        "shell",
+        "/bin/sh",
+      )
+    ).trim();
+    const legacy = (await host.listPanes()).find(
+      (p) => p.ref.paneId === legacyId,
+    );
+    if (!legacy) throw new Error("Missing legacy shell");
+    await host.closeTerminal(legacy.ref);
+    expect(await host.getPane(legacy.ref)).toBeNull();
+    await host.closeTerminal(second);
+    expect(
+      (await host.listPanes()).filter(
+        (p) => p.ref.sessionName === "loom-close-check",
+      ),
+    ).toEqual([]);
+  });
+
+  it("opens one standalone shell, reuses it across clients and reconnects, and replaces an exited shell", async () => {
+    const req = {
+      workspaceId: "loom-workbench",
+      label: "Named terminal",
+      createWorkspace: true,
+      key: crypto.randomUUID(),
+      cwd,
+      executable: "/bin/sh",
+      args: [],
+      env: paneEnv(),
+    };
+    const [first, second] = await Promise.all([
+      host.createScratch(req),
+      host.createScratch(req),
+    ]);
+    expect(second).toEqual(first);
+    const reopened = createTmuxPaneHost({
+      instance,
+      configPath: join(dir, "tmux.conf"),
+      tmuxExecutable: TMUX,
+      clientEnv: { PATH: "/usr/bin:/bin", HOME: process.env.HOME ?? "/tmp" },
+    });
+    expect(await reopened.createScratch(req)).toEqual(first);
+    const shells = async () =>
+      (await host.listPanes()).filter(
+        (p) => p.ref.sessionName === req.workspaceId,
+      );
+    expect(await shells()).toHaveLength(1);
+    expect((await shells())[0]?.windowName).toBe("Named terminal");
+    await tmux("send-keys", "-t", first.paneId, "exit", "Enter");
+    await until(async () => (await host.getPane(first))?.dead || null);
+    const replacement = await host.createScratch(req);
+    expect(replacement.paneId).not.toBe(first.paneId);
+    expect(await shells()).toHaveLength(1);
+    expect((await host.getPane(replacement))?.dead).toBe(false);
+    const another = await host.createScratch({
+      ...req,
+      key: crypto.randomUUID(),
+    });
+    expect(another.paneId).not.toBe(replacement.paneId);
+    expect(await shells()).toHaveLength(2);
+  });
+
+  it("reserves a task workspace without a blank shell and launches only the requested agent pane", async () => {
+    const { workspaceId } = await host.ensureWorkspace({
+      taskId: "t-no-shell" as TaskId,
+      cwd,
+      label: "An issue title",
+    });
+    expect(
+      (await host.listPanes()).filter((p) => p.ref.sessionName === workspaceId),
+    ).toEqual([]);
+    expect(await tmux("list-sessions", "-F", "#{session_name}")).not.toContain(
+      workspaceId,
+    );
+    const pane = await host.ensurePane({
+      workspaceId,
+      runId: "run-no-shell" as RunId,
+      cwd,
+      executable: "/bin/sleep",
+      args: ["30"],
+      env: paneEnv(),
+    });
+    const panes = (await host.listPanes()).filter(
+      (p) => p.ref.sessionName === workspaceId,
+    );
+    expect(panes.map((p) => p.ref)).toEqual([pane]);
+    expect(
+      await tmux("list-panes", "-t", workspaceId, "-F", "#{pane_id}"),
+    ).toBe(`${pane.paneId}\n`);
+    expect(
+      await host.ensurePane({
+        workspaceId,
+        runId: "run-no-shell" as RunId,
+        cwd,
+        executable: "/bin/sleep",
+        args: ["30"],
+        env: paneEnv(),
+      }),
+    ).toEqual(pane);
+  });
+
+  it("holds no idle window: the session lives exactly as long as Loom's panes", async () => {
+    const workspace = await host.ensureWorkspace({
+      taskId: "t-lazy" as TaskId,
+      cwd,
+      label: "lazy",
+    });
+    const windows = () =>
+      tmux("list-windows", "-t", `=${workspace.workspaceId}`, "-F", "#W")
+        .then((out) => out.split("\n").filter(Boolean))
+        .catch(() => null);
+    expect(await windows()).toBeNull();
+    const ref = await host.ensurePane({
+      workspaceId: workspace.workspaceId,
+      runId: "run-lazy" as RunId,
+      cwd,
+      executable: "/bin/sh",
+      args: ["-c", "sleep 30"],
+      env: paneEnv(),
+    });
+    expect(await windows()).toEqual(["run-lazy"]);
+    expect(
+      (await host.listPanes()).filter(
+        (p) => p.ref.sessionName === workspace.workspaceId,
+      ),
+    ).toHaveLength(1);
+    await host.closePane(ref);
+    expect(await windows()).toBeNull();
+    expect(await host.getPane(ref)).toBeNull();
   });
 
   it("loads the private config before any pane exists", async () => {

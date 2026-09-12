@@ -21,6 +21,8 @@ export type ViewName = z.output<typeof viewName>;
 
 export const subscription = z.union([
   z.strictObject({ kind: z.literal("panes") }),
+  /** Workbench status list, including agents without terminal panes. */
+  z.strictObject({ kind: z.literal("agents") }),
   /** A task list: the client receives the tasks these views match, and nothing else changes. */
   z.strictObject({
     kind: z.literal("views"),
@@ -67,10 +69,11 @@ export function taskInView(task: Task, view: ViewName): boolean {
 }
 
 /** Collections that reach every client, whatever it subscribed to. */
-const ALWAYS: CollectionName[] = ["repo", "inbox", "lead"];
+const ALWAYS: CollectionName[] = ["repo", "inbox", "lead", "operator"];
 
 export interface Scope {
   panes: boolean;
+  agents: boolean;
   views: { views: ViewName[]; repoIds: Set<string> | null }[];
   tasks: Set<string>;
   diffs: Set<string>;
@@ -80,6 +83,7 @@ export interface Scope {
 export function scopeOf(subscriptions: readonly Subscription[]): Scope {
   const scope: Scope = {
     panes: false,
+    agents: false,
     views: [],
     tasks: new Set(),
     diffs: new Set(),
@@ -94,6 +98,7 @@ export function scopeOf(subscriptions: readonly Subscription[]): Scope {
     else if (s.kind === "task") scope.tasks.add(s.taskId);
     else if (s.kind === "diff") scope.diffs.add(`${s.taskId}#${s.mode}`);
     else if (s.kind === "panes") scope.panes = true;
+    else if (s.kind === "agents") scope.agents = true;
     else scope.runs.add(s.runId);
   }
   return scope;
@@ -104,7 +109,7 @@ export function scopeOf(subscriptions: readonly Subscription[]): Scope {
  * CLI can connect and see everything without knowing the view names.
  */
 export function taskInScope(scope: Scope, task: Task): boolean {
-  if (scope.views.length === 0) return true;
+  if (scope.agents || scope.views.length === 0) return true;
   return scope.views.some(
     (v) =>
       (v.repoIds === null || v.repoIds.has(task.repoId)) &&
@@ -118,6 +123,7 @@ export function ownerTask(change: Change): string | null {
   if (
     change.collection === "repo" ||
     change.collection === "lead" ||
+    change.collection === "operator" ||
     change.collection === "pane_inventory"
   )
     return null;
@@ -130,6 +136,11 @@ export function inScope(scope: Scope, change: Change): boolean {
   if (change.collection === "pane" || change.collection === "pane_inventory")
     return scope.panes;
   if (ALWAYS.includes(change.collection)) return true;
+  if (
+    scope.agents &&
+    (change.collection === "run" || change.collection === "question")
+  )
+    return true;
   if (change.collection === "task") {
     if (change.op === "delete") return true;
     return taskInScope(scope, change.value) || scope.tasks.has(change.value.id);

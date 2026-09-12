@@ -1,4 +1,10 @@
-import type { Finding, Run, Stage, Task } from "@loom/core";
+import {
+  type Finding,
+  type Run,
+  type Stage,
+  summarizeTask,
+  type Task,
+} from "@loom/core";
 import { type Snapshot, STAGES } from "../fixtures/index.js";
 import {
   matchesView,
@@ -11,6 +17,8 @@ import {
 /** One row of the list: the task plus the few facts the columns need, computed once. */
 export interface Row {
   task: Task;
+  /** Explicit task summary, or the bounded first sentence of its description. */
+  summary: string;
   /** The run the human would look at first: the live one, else the last one. */
   run: Run | null;
   runs: Run[];
@@ -90,6 +98,7 @@ const computeRows = memo1(
       }
       rows.push({
         task,
+        summary: summarizeTask(task),
         runs,
         run: live ?? runs.at(-1) ?? null,
         openBlocking: blocking.get(task.id) ?? 0,
@@ -231,6 +240,31 @@ export function selectedRows(state: State): Row[] {
 
 export function taskRuns(snapshot: Snapshot, task: Task): Run[] {
   return snapshot.runs.filter((run) => run.taskId === task.id);
+}
+
+/** Live interactive runs that the task Terminal tab can attach to, newest first. */
+export function terminalsForTask(snapshot: Snapshot, task: Task): Run[] {
+  if (task.stage === "done" || task.stage === "canceled") return [];
+
+  return snapshot.runs
+    .map((run, index) => ({ run, index }))
+    .filter(
+      ({ run }) =>
+        run.taskId === task.id &&
+        run.mode === "interactive" &&
+        liveStatuses.includes(run.status) &&
+        run.endedAt === null,
+    )
+    .sort((a, b) => {
+      const aTime = a.run.launchedAt ? Date.parse(a.run.launchedAt) : null;
+      const bTime = b.run.launchedAt ? Date.parse(b.run.launchedAt) : null;
+      if (aTime !== null && bTime !== null && aTime !== bTime)
+        return bTime - aTime;
+      if (aTime !== null && bTime === null) return -1;
+      if (aTime === null && bTime !== null) return 1;
+      return a.index - b.index;
+    })
+    .map(({ run }) => run);
 }
 
 export function taskFindings(snapshot: Snapshot, task: Task): Finding[] {

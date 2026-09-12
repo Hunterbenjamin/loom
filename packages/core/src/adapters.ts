@@ -135,7 +135,7 @@ export interface GitHubAdapter {
  * Every method is idempotent on its key (`taskId`, `runId`, `PaneRef`).
  */
 export interface PaneHost {
-  /** Idempotent: the task's session, created if absent. Returns the session name. */
+  /** Idempotent: reserves a task session name; creates no shell. The first pane creates the session. */
   ensureWorkspace(req: {
     taskId: TaskId;
     cwd: WorktreePath;
@@ -154,8 +154,11 @@ export interface PaneHost {
     args: string[];
     env: Record<string, string>;
   }): Promise<PaneRef>;
-  /** Human shell in an existing workspace, idempotent on key within a host generation. */
+  /** Human shell, idempotent on key within a host generation. */
   createScratch(req: {
+    /** Allow a standalone human terminal workspace to be created without a task. */
+    createWorkspace?: boolean;
+    label?: string;
     workspaceId: string;
     key: string;
     cwd: WorktreePath;
@@ -199,6 +202,8 @@ export interface PaneHost {
   ): Promise<{ id: string; cols: number; rows: number }[]>;
   /** Kills a pane Loom started, named by a ref from the current generation. Idempotent. */
   closePane(ref: PaneRef): Promise<void>;
+  /** Explicit human close of a terminal from this host's inventory, including untagged shells. */
+  closeTerminal(ref: PaneRef): Promise<void>;
   subscribe(onHint: OnHint): Unsubscribe;
 }
 
@@ -227,6 +232,8 @@ export interface CodexAdapter {
   startTurn(req: {
     threadId: ProviderSessionId;
     text: string;
+    model?: string;
+    effort?: string;
   }): Promise<{ turnId: string }>;
   steerTurn(req: {
     threadId: ProviderSessionId;
@@ -300,6 +307,7 @@ export interface ClaudeAdapter {
     cwd: WorktreePath;
     model: string;
     settingsPath: string;
+    mcpOnly?: boolean;
     readOnly: boolean;
     prompt: string;
   }): Promise<void>;
@@ -307,6 +315,7 @@ export interface ClaudeAdapter {
     sessionId: ProviderSessionId;
     text: string;
   }): Promise<void>;
+  stopHeadless(sessionId: ProviderSessionId): Promise<void>;
   interruptHeadless(sessionId: ProviderSessionId): Promise<void>;
   /** Closes the headless run and terminates its subprocess; unknown/closed sessions are a no-op. */
   closeHeadless(sessionId: ProviderSessionId): Promise<void>;
@@ -324,4 +333,12 @@ export interface ClaudeAdapter {
   /** `RunObservation.activityAt`: latest hook receipt for the session; null means no evidence. */
   activityAt(sessionId: ProviderSessionId): Promise<IsoTime | null>;
   subscribe(onHint: OnHint): Unsubscribe;
+}
+
+/** Evidence from an adapter's own private resources; never inferred from logs. */
+export interface AdapterDiagnostic {
+  kind: "stale_process";
+  resource: "codex_server" | "claude_headless";
+  sessionId: string | null;
+  message: string;
 }

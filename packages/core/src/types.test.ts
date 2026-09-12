@@ -34,6 +34,7 @@ const task: Task = {
   repoId: "loom" as RepoId,
   title: "Add a thing",
   description: "",
+  summary: null,
   stage: "in_progress",
   stageEnteredAt: now,
   version: 7,

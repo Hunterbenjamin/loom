@@ -8,7 +8,8 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { memo, useEffect, useRef, useState } from "react";
-import { useStore, useStoreApi } from "../store/react.js";
+import { shallowArray, useStore } from "../store/react.js";
+import { terminalsForTask } from "../store/selectors.js";
 import { kittyEncode } from "./kitty.js";
 
 const THEMES = {
@@ -23,42 +24,66 @@ export function TerminalTab({
   task: Task;
   theme: "dark" | "light";
 }) {
-  const store = useStoreApi();
   const live = useStore((s) => s.live);
-  const runId = useStore((s) => s.ui.openRun);
   const runs = useStore(
-    (s) =>
-      s.snapshot.runs.filter(
-        (r) => r.taskId === task.id && r.mode === "interactive",
-      ),
-    (a, b) => a.length === b.length && a.every((r, i) => r === b[i]),
+    (s) => terminalsForTask(s.snapshot, task),
+    shallowArray,
   );
+  const [activeRunId, setActiveRunId] = useState<RunId | null>(null);
+  const selectedRunId = runs.some((run) => run.id === activeRunId)
+    ? activeRunId
+    : (runs[0]?.id ?? null);
+
+  useEffect(() => {
+    if (activeRunId !== selectedRunId) setActiveRunId(selectedRunId);
+  }, [activeRunId, selectedRunId]);
+
+  if (runs.length === 0) {
+    return (
+      <div className="terminal-empty faint">
+        {task.stage === "done" || task.stage === "canceled"
+          ? "Task is done"
+          : "No agent is running for this task"}
+      </div>
+    );
+  }
+
   return (
     <div className="terminal-tab">
-      {live ? (
-        <select
-          aria-label="Terminal run"
-          value={runId ?? ""}
-          onChange={(event) =>
-            store.setRun(
-              runs.find((r) => r.id === event.target.value)?.id ?? null,
-            )
-          }
-        >
-          <option value="">Select a run</option>
+      {runs.length > 1 ? (
+        <div className="terminal-tabs" role="tablist" aria-label="Task runs">
           {runs.map((run) => (
-            <option key={run.id} value={run.id}>
-              {run.role} · {run.provider} · {run.id}
-            </option>
+            <button
+              key={run.id}
+              type="button"
+              role="tab"
+              aria-controls={`terminal-pane-${run.id}`}
+              aria-selected={run.id === selectedRunId}
+              onClick={() => setActiveRunId(run.id)}
+            >
+              {run.role} · {run.provider}
+            </button>
           ))}
-        </select>
+        </div>
       ) : null}
-      <TerminalSession
-        label={task.id}
-        runId={runId}
-        theme={theme}
-        live={live}
-      />
+      <div className="terminal-panes">
+        {runs.map((run) => (
+          <div
+            className="terminal-pane"
+            id={`terminal-pane-${run.id}`}
+            key={run.id}
+            role="tabpanel"
+            hidden={run.id !== selectedRunId}
+          >
+            <TerminalSession
+              label={`${task.id} · ${run.role}`}
+              runId={run.id}
+              theme={theme}
+              live={live}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -66,20 +91,26 @@ export function TerminalTab({
 /** The shared attach client for task runs and the instance Lead. Unmount only detaches. */
 export const TerminalSession = memo(function TerminalSession({
   panelId,
+  shellKey,
+  shellName,
   pane,
   onKey,
   label,
   runId = null,
   lead = false,
+  operator = false,
   theme,
   live,
 }: {
   panelId?: string;
+  shellKey?: string;
+  shellName?: string;
   pane?: import("@loom/protocol").PaneIdentity;
   onKey?: (event: KeyboardEvent, literal: () => void) => boolean;
   label: string;
   runId?: RunId | null;
   lead?: boolean;
+  operator?: boolean;
   theme: "dark" | "light";
   live: boolean;
 }) {
@@ -101,7 +132,7 @@ export const TerminalSession = memo(function TerminalSession({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    if (live && !runId && !lead && !pane) {
+    if (live && !runId && !lead && !operator && !pane && !shellKey) {
       setStatus("Select a run to attach");
       return;
     }
@@ -179,7 +210,10 @@ export const TerminalSession = memo(function TerminalSession({
         rows: terminal.rows,
         label: settings.current.label,
         pane,
+        shellKey,
+        shellName,
         lead,
+        operator,
         runId,
       })
       .then((result) => {
@@ -232,7 +266,7 @@ export const TerminalSession = memo(function TerminalSession({
       void window.loomTerminal.kill(id);
       terminal.dispose();
     };
-  }, [panelId, pane, live, runId, lead]);
+  }, [panelId, pane, live, runId, lead, operator, shellKey, shellName]);
 
   return (
     <div className="terminal-wrap">

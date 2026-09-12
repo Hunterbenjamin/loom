@@ -25,7 +25,7 @@ import {
   task,
   taskId,
 } from "../test/fixtures.js";
-import { actionKind } from "./action-schemas.js";
+import { actionKind, actionSchema } from "./action-schemas.js";
 import { openReadOnlyStore, openStore, type Store } from "./index.js";
 
 let root: string;
@@ -65,6 +65,33 @@ function snapshotSql() {
 }
 
 describe("task transactions", () => {
+  it("round-trips tasks with and without summaries", async () => {
+    const store = await open();
+    store.putRepo(repo);
+    const summarized = {
+      ...task("with-summary" as TaskId),
+      summary: "A concise persisted goal",
+    };
+    const unsummarized = task("without-summary" as TaskId);
+    store.createTask(summarized);
+    store.createTask(unsummarized);
+    expect(store.tasks()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: summarized.id,
+          summary: "A concise persisted goal",
+        }),
+        expect.objectContaining({ id: unsummarized.id, summary: null }),
+      ]),
+    );
+    store.close();
+    const restarted = await open();
+    expect(restarted.loadTaskState(summarized.id).task.summary).toBe(
+      "A concise persisted goal",
+    );
+    expect(restarted.loadTaskState(unsummarized.id).task.summary).toBeNull();
+  });
+
   it("uses a real WAL database and isolates instances", async () => {
     const store = await seeded();
     const second = await open("test");
@@ -76,6 +103,24 @@ describe("task transactions", () => {
     await expect(
       openStore({ dataRoot: root, instance: "../dev", config }),
     ).rejects.toThrow();
+  });
+  it("persists native Claude dialog occurrences across reopen", async () => {
+    const store = await seeded();
+    const state = richState();
+    const run = required(state.runs[0]);
+    run.pendingDialog = {
+      requestId: "claude-hook:session:42",
+      command: "pnpm install",
+      tool: "Bash",
+      kind: "permission",
+      at: now,
+    };
+    expect(store.commit(taskId, result(state), 0).ok).toBe(true);
+    store.close();
+    const restarted = await open();
+    expect(
+      restarted.runs(taskId).find((r) => r.id === run.id)?.pendingDialog,
+    ).toEqual(run.pendingDialog);
   });
   it("round-trips every Phase 1b field through commit and reopen", async () => {
     const store = await seeded(),
@@ -501,6 +546,31 @@ describe("diagnostic readers", () => {
 });
 
 describe("schema drift detection", () => {
+  it("retains the Operator permission occurrence when decoding an outbox action", () => {
+    const expectedDialog = {
+      requestId: "request-1",
+      at: "2026-09-12T00:00:00.000Z",
+      command: "pnpm install",
+      sessionEpoch: 3,
+    };
+    const action = {
+      key: "operator-permission",
+      taskId: "task-1",
+      kind: "answer_pane_prompt",
+      runId: "run-1",
+      choice: 1,
+      expectedDialog,
+    };
+    expect(actionSchema.parse(JSON.parse(JSON.stringify(action)))).toEqual(
+      action,
+    );
+    expect(
+      actionSchema.safeParse({
+        ...action,
+        expectedDialog: { ...expectedDialog, sessionEpoch: -1 },
+      }).success,
+    ).toBe(false);
+  });
   it("stores the answer_pane_prompt action kind in schema", () => {
     // Verify that answer_pane_prompt is in the store's actionKind enum
     // This test ensures the fix for the regression is in place

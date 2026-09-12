@@ -6,6 +6,7 @@ import { runEnvironment } from "./recipes.js";
 // injected, so a test can run the whole thing against `@loom/fake-agent` and a temporary store.
 
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import type {
   Attention,
   HumanCommand,
@@ -22,11 +23,13 @@ import type {
   Task,
   TaskId,
   TaskState,
+  WorktreePath,
 } from "@loom/core";
 import { leadCommand, serveHttp } from "@loom/mcp";
 import type { Change, Subscription } from "@loom/protocol";
 import { command as commandSchema } from "@loom/protocol";
 import type { Store } from "@loom/store";
+import { z } from "zod";
 import type { Adapters } from "./adapters.js";
 import {
   COORDINATOR_VERSION,
@@ -40,6 +43,8 @@ import { LeadSession } from "./lead.js";
 import { Loop } from "./loop.js";
 import { createMcpHost } from "./mcp-host.js";
 import { observe as observeOwners, PullRequestCache } from "./observe.js";
+import { OperatorSession } from "./operator.js";
+import { attentionOccurrence } from "./operator-policy.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
 import { ProtocolServer } from "./server.js";
@@ -73,9 +78,11 @@ export interface CoordinatorOptions {
 }
 
 export interface CreateTaskInput {
+  signature?: string;
   repoId: RepoId;
   title: string;
   description: string;
+  summary?: string | null;
   providers?: ProviderRules | null;
   requirePlanApproval?: boolean | null;
   blockedBy?: TaskId[];
@@ -89,6 +96,7 @@ export class Coordinator {
   readonly adapters: Adapters;
   readonly recipes: RecipeStore;
   readonly lead: LeadSession;
+  readonly operator: OperatorSession;
   private leadPoll: NodeJS.Timeout | null = null;
   private pollingLead = false;
   readonly loop: Loop;
@@ -141,13 +149,51 @@ export class Coordinator {
       now: () => this.now(),
     });
 
+    this.operator = new OperatorSession({
+      store: this.store,
+      adapters: this.adapters,
+      config: this.config,
+      mcpEntry: (token) => this.launchDeps().mcpEntry(token),
+      now: () => this.now(),
+      observe: (state) => this.observe(state, []),
+      workflow: (state) => this.workflow.read(this.repo(state.task.id).root),
+      reconcile: (taskId) => this.loop.pass(taskId),
+      enqueue: (taskId) => this.loop.enqueue(taskId),
+      changed: async (taskId) => {
+        await this.publishOperator();
+        if (taskId) this.protocol.publish(await this.refreshTask(taskId));
+      },
+      createBug: (title, summary, description, signature) =>
+        this.createTask({
+          repoId: this.config.operator.repoId as RepoId,
+          title,
+          summary,
+          description,
+          signature,
+        }),
+    });
+    const diagnosticSubscription = this.adapters.subscribeDiagnostics?.(
+      (event) => {
+        if (event.sessionId && event.sessionId === this.operator.sessionId)
+          return;
+        this.operator.failure(
+          "stale_process",
+          event.taskId,
+          event.message,
+          event.sessionId,
+        );
+      },
+    );
+    if (diagnosticSubscription) this.timers.add(diagnosticSubscription);
     this.loop = new Loop({
       store: this.store,
       drainExecutor: () => this.executor.drain(),
       observe: (state, inputs) => this.observe(state, inputs),
       onCommit: ({ taskId, result }) => this.onCommit(taskId, result),
-      onError: (error, taskId) =>
-        this.log(`Pass for ${taskId} failed: ${error.message}`),
+      onError: (error, taskId) => {
+        this.log(`Pass for ${taskId} failed: ${error.message}`);
+        this.operator.failure("pass_failed", taskId, error.message);
+      },
     });
     this.executor = new Executor({
       store: this.store,
@@ -231,8 +277,10 @@ export class Coordinator {
   async start(): Promise<RecoveryReport> {
     await this.recipes.load();
     await this.lead.load();
+    await this.operator.load();
     // Stable instance configuration wins; only ephemeral instances reuse the Lead recipe's port.
-    const mcpPort = this.config.mcpPort || this.lead.mcpPort;
+    const mcpPort =
+      this.config.mcpPort || this.lead.mcpPort || this.operator.mcpPort;
     try {
       this.mcp = await serveHttp(this.mcpOptions(), mcpPort);
     } catch (error) {
@@ -259,6 +307,9 @@ export class Coordinator {
       this.store.outbox.runningAtStartup(),
     );
     for (const taskId of report.reconciled) this.loop.enqueue(taskId);
+    for (const task of this.store.tasks())
+      this.operator.capture(this.store.loadTaskState(task.id));
+    await this.operator.recover();
     await this.refreshAll([]);
     await this.inventory.refresh();
     this.panePoll = setInterval(() => void this.inventory.refresh(), 2000);
@@ -272,6 +323,10 @@ export class Coordinator {
   run(): void {
     this.leadPoll = setInterval(() => {
       void this.publishLead();
+      void this.operator
+        .pump()
+        .then(() => this.publishOperator())
+        .catch(() => {});
     }, 1500);
     this.leadPoll.unref?.();
     this.pump = setInterval(() => {
@@ -294,6 +349,7 @@ export class Coordinator {
     for (const cancel of this.timers) cancel();
     this.timers.clear();
     this.publishFailures.clear();
+    await this.operator.close();
     await this.protocol.stop();
     await this.mcp?.close();
     this.mcp = null;
@@ -323,6 +379,7 @@ export class Coordinator {
       repoId: repo.id,
       title: input.title,
       description: input.description,
+      summary: input.summary ?? null,
       stage: "backlog",
       stageEnteredAt: now,
       version: 0,
@@ -331,7 +388,14 @@ export class Coordinator {
       requirePlanApproval: input.requirePlanApproval ?? false,
       reviewRound: 0,
       reviewRoundCap: 3,
-      providers: input.providers ?? repo.defaultProviders,
+      providers: {
+        ...(input.providers ?? repo.defaultProviders),
+        ...Object.fromEntries(
+          Object.entries(this.config.providerOverrides).filter(
+            ([, value]) => value !== undefined,
+          ),
+        ),
+      },
       blockedBy: input.blockedBy ?? [],
       budgetMinutes: input.budgetMinutes ?? null,
       size: input.size ?? "normal",
@@ -341,6 +405,7 @@ export class Coordinator {
       branch: null,
       prNumber: null,
       attention: EMPTY_ATTENTION,
+      ...(input.signature ? { signature: input.signature } : {}),
     };
     const state = this.store.createTask(task);
     this.loop.enqueue(id);
@@ -406,7 +471,13 @@ export class Coordinator {
       host,
       buildAnchor,
       resolveToken: (token: string) =>
-        this.lead.resolve(token) ?? resolveToken(token),
+        this.operator.resolve(token) ??
+        this.lead.resolve(token) ??
+        resolveToken(token),
+      operatorHost: {
+        invoke: (name: string, input: Record<string, unknown>) =>
+          this.operator.invoke(name, input),
+      },
       leadHost: {
         invoke: async (name: string, input: Record<string, unknown>) => {
           if (name === "list_tasks") return this.store.tasks();
@@ -427,6 +498,10 @@ export class Coordinator {
     const onHint = (hint: { worktreePath: string | null }) => {
       if (hint.worktreePath === this.store.dataDirectory) {
         void this.publishLead();
+        void this.operator
+          .pump()
+          .then(() => this.publishOperator())
+          .catch(() => {});
         return;
       }
       if (!hint.worktreePath) {
@@ -472,7 +547,9 @@ export class Coordinator {
               .all()
               .flatMap((recipe) => (recipe.sessionId ? [recipe.sessionId] : []))
               .concat(
-                this.lead.sessionId ? [this.lead.sessionId as never] : [],
+                [this.lead.sessionId, this.operator.sessionId].filter(
+                  Boolean,
+                ) as never[],
               ),
           ),
         coolingDownUntil: () => ({
@@ -504,6 +581,7 @@ export class Coordinator {
   }
 
   private onCommit(taskId: TaskId, result: ReconcileResult): void {
+    this.operator.capture(result.next);
     // Stop the app-server if the task just transitioned to a terminal stage.
     const state = this.store.loadTaskState(taskId);
     if (TERMINAL.includes(state.task.stage)) {
@@ -525,6 +603,7 @@ export class Coordinator {
           `Could not publish ${taskId}: ${errorMessage} (further failures for this task/cause suppressed)`,
         );
       }
+      this.operator.failure("publish_failed", taskId, errorMessage);
     });
   }
 
@@ -567,6 +646,17 @@ export class Coordinator {
     return changes;
   }
 
+  private async publishOperator(): Promise<void> {
+    this.protocol.publish(
+      this.published.replace("operator", null, [
+        {
+          collection: "operator",
+          key: "operator",
+          value: this.operator.state(),
+        },
+      ]),
+    );
+  }
   private async publishLead(): Promise<void> {
     if (this.pollingLead) return;
     this.pollingLead = true;
@@ -586,6 +676,9 @@ export class Coordinator {
 
   private async refreshAll(scope: readonly Subscription[]): Promise<void> {
     await this.ensure(scope);
+    this.published.replace("operator", null, [
+      { collection: "operator", key: "operator", value: this.operator.state() },
+    ]);
     this.published.replace("lead", null, [
       { collection: "lead", key: "lead", value: await this.lead.state() },
     ]);
@@ -648,8 +741,67 @@ export class Coordinator {
     } & Record<string, unknown>;
     try {
       switch (command.kind) {
+        case "claim_notification": {
+          const note = this.store.operator.noteById(String(command.noteId));
+          const notice = this.store.operator.atomic(() => {
+            if (
+              !note?.forHuman ||
+              (note.taskId !== null &&
+                note.occurrence !==
+                  attentionOccurrence(
+                    this.store.loadTaskState(note.taskId as TaskId),
+                  )) ||
+              this.store.operator.get(`notified:${note.id}`, z.boolean())
+            )
+              return null;
+            this.store.operator.set(`notified:${note.id}`, true);
+            return { id: note.id, title: "Loom needs you", body: note.body };
+          });
+          return { ok: true, result: { kind: "notification", notice } };
+        }
+        case "open_operator_session":
+          await this.operator.open();
+          await this.publishOperator();
+          return {
+            ok: true,
+            result: { kind: "operator_state", state: this.operator.state() },
+          };
+        case "stop_operator_session":
+          await this.operator.stop();
+          await this.publishOperator();
+          return {
+            ok: true,
+            result: { kind: "operator_state", state: this.operator.state() },
+          };
+        case "operator_status":
+          return {
+            ok: true,
+            result: { kind: "operator_state", state: this.operator.state() },
+          };
+        case "open_operator_terminal":
+        case "open_workbench_terminal":
         case "open_pane_session": {
-          const ref = paneIdentity.parse(command.target);
+          if (command.kind === "open_operator_terminal") {
+            await this.operator.open();
+            await this.publishOperator();
+          }
+          const ref =
+            command.kind === "open_operator_terminal"
+              ? paneIdentity.parse(this.operator.paneRef)
+              : command.kind === "open_workbench_terminal"
+                ? await this.adapters.paneHost.createScratch({
+                    workspaceId: "loom-workbench",
+                    createWorkspace: true,
+                    key: command.key as string,
+                    label: (command.label as string | undefined) ?? "Terminal",
+                    cwd: homedir() as WorktreePath,
+                    executable: process.env.SHELL || "/bin/sh",
+                    args: ["-l"],
+                    env: runEnvironment(process.env, {}),
+                  })
+                : paneIdentity.parse(command.target);
+          if (command.kind !== "open_pane_session")
+            await this.inventory.refresh();
           if (!ref.hostGeneration.startsWith(`loom-${this.config.instance}#`))
             throw new Error("Pane belongs to another instance");
           const pane = await this.adapters.paneHost.getPane(ref);
@@ -685,14 +837,47 @@ export class Coordinator {
             },
           };
         }
+        case "close_terminal": {
+          const ref = paneIdentity.parse(command.target);
+          if (!ref.hostGeneration.startsWith(`loom-${this.config.instance}#`))
+            throw new Error("Pane belongs to another instance");
+          if (
+            ["loom-lead", "loom-main", "loom-operator"].includes(
+              ref.sessionName,
+            )
+          )
+            throw new Error(
+              "Pinned agents are stopped through their agent controls",
+            );
+          // A task's supervisor would recover an unannounced terminal death. Require
+          // its normal stop control instead of reporting a close that immediately reopens.
+          const active = this.store
+            .tasks()
+            .flatMap((task) => this.store.runs(task.id))
+            .find(
+              (run) =>
+                !run.endedAt && run.pane && paneKey(run.pane) === paneKey(ref),
+            );
+          if (active)
+            throw new Error(
+              "Stop the running task before closing its agent terminal",
+            );
+          await this.adapters.paneHost.closeTerminal(ref);
+          if (await this.adapters.paneHost.getPane(ref))
+            throw new Error("Terminal closure was not confirmed");
+          await this.inventory.refresh();
+          return { ok: true, result: { kind: "terminal_closed", target: ref } };
+        }
         case "create_scratch": {
           const state = this.store.loadTaskState(command.taskId as TaskId);
           if (!state.worktree?.paneWorkspaceId)
             throw new Error("Task has no existing pane workspace");
           const ref = await this.adapters.paneHost.createScratch({
             workspaceId: state.worktree.paneWorkspaceId,
+            createWorkspace: true,
             cwd: state.worktree.path,
             key: command.key as string,
+            label: command.label as string | undefined,
             executable: process.env.SHELL || "/bin/sh",
             args: ["-l"],
             env: runEnvironment(process.env, {}),
@@ -718,6 +903,7 @@ export class Coordinator {
             repoId: command.repoId as RepoId,
             title: command.title as string,
             description: command.description as string,
+            summary: (command.summary ?? null) as string | null,
             providers: (command.providers ?? null) as ProviderRules | null,
             requirePlanApproval: (command.requirePlanApproval ?? null) as
               | boolean

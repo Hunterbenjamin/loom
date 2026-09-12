@@ -40,6 +40,7 @@ const recipeSchema = z.object({
   provider: z.enum(["codex", "claude"]),
   mode: z.enum(["headless", "interactive"]),
   model: z.string().min(1),
+  reasoningEffort: z.string().min(1).optional(),
   attempt: z.number().int().positive(),
   sessionEpoch: z.number().int().nonnegative(),
   /** Recorded before launch. Null only until a Codex `thread/start` assigns one. */

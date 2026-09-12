@@ -65,10 +65,17 @@ const attentionReason = z.enum([
 
 export const taskSchema = contract<Task>()(
   z.object({
+    signature: z.string().nullable().optional(),
     id,
     repoId: id,
     title: text,
     description: text,
+    summary: z
+      .string()
+      .max(140)
+      .regex(/^[^\r\n]*$/, "Summary must be one line")
+      .nullable()
+      .default(null),
     stage,
     stageEnteredAt: time,
     version: count,
@@ -142,6 +149,7 @@ export const runSchema = contract<Run>()(
     round: count,
     attempts: count,
     model: text,
+    reasoningEffort: text.min(1).optional(),
     sessionId: id.nullable(),
     sessionEpoch: count,
     codexGeneration: count.nullable(),
@@ -173,6 +181,16 @@ export const runSchema = contract<Run>()(
         receivedAt: time,
       }),
     ),
+    pendingDialog: z
+      .object({
+        requestId: z.string().optional(),
+        command: z.string().optional(),
+        kind: z.enum(["permission", "input"]),
+        tool: z.string(),
+        at: time,
+      })
+      .nullable()
+      .optional(),
     lastActivityAt: time.nullable(),
     retryAt: time.nullable(),
     launchedAt: time.nullable(),

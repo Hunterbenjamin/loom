@@ -15,7 +15,7 @@ import {
   task,
   taskId,
 } from "../../../packages/store/test/fixtures.js";
-import { main } from "./cli.js";
+import { main, taskCreateCommand } from "./cli.js";
 
 let root: string;
 let store: Store;
@@ -121,6 +121,29 @@ function seed() {
   }
 }
 
+test("task create parses an optional summary without treating it as a description", () => {
+  expect(
+    taskCreateCommand([
+      "task",
+      "create",
+      "example-repo",
+      "Short title",
+      "Long description",
+      "--summary",
+      "One-line goal",
+      "--small",
+    ]),
+  ).toMatchObject({
+    title: "Short title",
+    description: "Long description",
+    summary: "One-line goal",
+    size: "small",
+  });
+  expect(
+    taskCreateCommand(["task", "create", "example-repo", "Short title"]),
+  ).toMatchObject({ description: "", summary: null });
+});
+
 test("task inspect prints a complete fixture without a coordinator", async () => {
   seed();
   const before = store.loadTaskState(taskId);
@@ -134,6 +157,8 @@ test("task inspect --json includes histories, receipts and pending approvals", a
   await main(["task", "inspect", taskId, "--json"]);
   const data = JSON.parse(output);
   expect(Object.keys(data)).toEqual([
+    "notes",
+    "reviewHistory",
     "task",
     "runs",
     "messages",

@@ -86,6 +86,8 @@ for (const live of [false, true])
     };
     window.loomHost = {
       mode: vi.fn(),
+      setMode: vi.fn(),
+      onModeChanged: vi.fn(() => () => {}),
       openWindow: vi.fn(),
       interactive() {},
       connection: vi.fn(),
@@ -119,7 +121,9 @@ for (const live of [false, true])
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     await vi.waitFor(async () => {
-      await act(async () => {});
+      await act(async () => {
+        await Promise.resolve();
+      });
       expect(spawn).toHaveBeenCalledTimes(1);
     });
     expect(spawn.mock.calls[0]).toMatchObject([

@@ -61,6 +61,8 @@ export function snapshot(): SnapshotBody {
   const task = id.task("LOOM-101");
   const other = id.task("LOOM-102");
   return {
+    operators: [],
+    notes: [],
     panes: [],
     paneInventory: [],
     leads: [],
@@ -85,6 +87,7 @@ export function snapshot(): SnapshotBody {
         repoId: REPO,
         title: "Write the coordinator to UI protocol",
         description: "Snapshot, patches, subscriptions, commands.",
+        summary: "Protocol layer for coordinator to UI communication.",
         stage: "in_review",
         stageEnteredAt: at("2026-09-12T07:00:00.000Z"),
         version: 12,
@@ -121,6 +124,7 @@ export function snapshot(): SnapshotBody {
         repoId: REPO,
         title: "Retire the Herdr adapter",
         description: "",
+        summary: null,
         stage: "done",
         stageEnteredAt: at("2026-09-11T09:00:00.000Z"),
         version: 30,

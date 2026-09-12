@@ -50,6 +50,7 @@ export function observeRuns(c: Context): void {
       if (provider.provider === "codex") {
         run.seenAt ??= c.now;
         run.codexGeneration = provider.generation;
+        delete run.pendingDialog;
         run.pendingRequests = provider.pendingRequests.map((r) => ({
           id: r.requestId,
           generation: provider.generation,
@@ -69,6 +70,12 @@ export function observeRuns(c: Context): void {
         if (provider.agentsEntry || provider.hooks.sessionStart)
           run.seenAt ??= c.now;
         run.pendingRequests = [];
+        if (
+          provider.agentsEntry?.status === "waiting" &&
+          provider.hooks.pendingDialog
+        )
+          run.pendingDialog = { ...provider.hooks.pendingDialog };
+        else delete run.pendingDialog;
         if (provider.hooks.lastStop)
           run.lastTurn = {
             id: provider.hooks.lastStop.promptId,
@@ -84,6 +91,7 @@ export function observeRuns(c: Context): void {
     }
     if (run.status === "unknown") {
       run.unknownSince ??= c.now;
+      delete run.pendingDialog;
       run.pendingRequests = [];
     } else run.unknownSince = null;
     if (derived.status === "ended")
@@ -201,6 +209,7 @@ function launch(c: Context, run: Run, resume: boolean): void {
     mode: run.mode,
     worktreePath: run.worktreePath,
     model: run.model,
+    ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
     attempt: run.attempts,
     sessionEpoch: run.sessionEpoch,
     sessionId: run.sessionId,
@@ -289,6 +298,19 @@ export function startDesired(c: Context): void {
     let run = c.state.runs.find(
       (r) => r.id === runId(c.task.id, desired.role, desired.round),
     );
+    const providerOverride = c.state.config.providerOverrides?.[desired.role];
+    if (
+      !run &&
+      providerOverride &&
+      c.task.providers[desired.role] !== providerOverride
+    ) {
+      c.change(
+        `Applied ${desired.role} provider setting: ${providerOverride}`,
+        () => {
+          c.task.providers[desired.role] = providerOverride;
+        },
+      );
+    }
     if (run && !run.endedAt) {
       c.state.desiredRun = null;
     } else if (c.capacity(desired.role)) {
@@ -306,6 +328,9 @@ export function startDesired(c: Context): void {
           round: desired.round,
           attempts: 1,
           model: c.state.config.models[provider],
+          ...(provider === "codex" && c.state.config.codexReasoningEffort
+            ? { reasoningEffort: c.state.config.codexReasoningEffort }
+            : {}),
           sessionId:
             provider === "claude"
               ? c.state.config.deriveClaudeSessionId(id, 0)

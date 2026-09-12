@@ -60,6 +60,7 @@ export type Action = ActionBase &
         mode: RunMode;
         worktreePath: WorktreePath;
         model: string;
+        reasoningEffort?: string;
         /** Which launch of the run this is; part of the action key. */
         attempt: number;
         /** The run's current session epoch; the Claude session ID derives from it. */
@@ -86,6 +87,12 @@ export type Action = ActionBase &
         kind: "answer_pane_prompt";
         runId: RunId;
         choice: number | "enter" | "escape";
+        expectedDialog?: {
+          requestId: string;
+          at: IsoTime;
+          command: string;
+          sessionEpoch: number;
+        };
         text?: string;
       }
     | {
@@ -107,6 +114,7 @@ export type Action = ActionBase &
       }
     | {
         kind: "open_pr";
+        rescueHeadSha?: Sha;
         repoId: RepoId;
         branch: string;
         baseBranch: string;
