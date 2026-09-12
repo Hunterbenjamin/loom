@@ -140,6 +140,10 @@ Verified in [spike 02](../spikes/02-claude-hooks/FINDINGS.md) (Claude Code 2.1.2
   `timeout: 1`, plus a `command` hook for SessionStart, which HTTP hooks skip. With a dead endpoint,
   every session shows an error after every turn; a hung one adds its timeout to every hook. Sessions
   started by hand are still found through `claude agents --json`.
+- **A settings file carries hooks, not MCP servers.** `mcpServers` in a `--settings` file is
+  ignored by 2.1.269, so Loom's MCP server goes in a `--mcp-config` file written beside the
+  settings (and passed to the Agent SDK natively for headless runs). Verified in the Claude
+  adapter, phase 2.
 - **Status rules.** AskUserQuestion (via PreToolUse or PermissionRequest) means needs input; any other
   PermissionRequest means needs permission. Ignore subagent events with an empty `agent_type`. Don't
   wait for the permission Notification; it arrives about 6 s late.
