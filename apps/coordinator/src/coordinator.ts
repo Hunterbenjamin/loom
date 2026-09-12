@@ -77,6 +77,7 @@ export interface CreateTaskInput {
   requirePlanApproval?: boolean | null;
   blockedBy?: TaskId[];
   budgetMinutes?: number | null;
+  size?: "small" | "normal" | null;
 }
 
 export class Coordinator {
@@ -291,6 +292,7 @@ export class Coordinator {
       providers: input.providers ?? repo.defaultProviders,
       blockedBy: input.blockedBy ?? [],
       budgetMinutes: input.budgetMinutes ?? null,
+      size: input.size ?? "normal",
       createdAt: now,
       updatedAt: now,
       worktreePath: null,
@@ -603,6 +605,7 @@ export class Coordinator {
               | null,
             blockedBy: (command.blockedBy ?? []) as TaskId[],
             budgetMinutes: (command.budgetMinutes ?? null) as number | null,
+            size: (command.size ?? null) as "small" | "normal" | null,
           });
           return {
             ok: true,

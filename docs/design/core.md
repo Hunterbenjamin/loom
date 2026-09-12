@@ -29,6 +29,7 @@ Types: [`entities.ts`](../../packages/core/src/entities.ts), [`ids.ts`](../../pa
 | `providers` | A | Planner, implementer, reviewer. Rule default plus human override. |
 | `blockedBy` | A | Task IDs that must be merged first. |
 | `budgetMinutes` | A | Exceeding it adds attention; nothing else. |
+| `size` | A | `'small'` or `'normal'` (default). Small tasks skip the planning stage and reduce reviewer scope. |
 | `worktreePath` | R git | The join key (realpath). Null until created. |
 | `branch` | R git/GitHub | Loom picks the name (`loom/<taskId>-<slug>`); git and GitHub own the branch. |
 | `prNumber` | R GitHub | |
@@ -204,7 +205,8 @@ a committed launch/session result and an authoritative usable reading before the
 |---|---|---|---|---|---|
 | 1 | backlog | todo | H `move todo` | — | — |
 | 2 | todo | backlog | H `move backlog` | — | — |
-| 3 | todo | planning | R | All `blockedBy` merged; no accepted plan; capacity CAS for the planner's provider; provider not cooling down; no flags | `create_worktree` (if none), `open_workspace`, `write_task_files`, start planner |
+| 3 | todo | planning | R | All `blockedBy` merged; no accepted plan; capacity CAS for the planner's provider; provider not cooling down; no flags; **task.size = 'normal'** | `create_worktree` (if none), `open_workspace`, `write_task_files`, start planner |
+| 3b | todo | in_progress | R | **Small task (task.size = 'small') fast path:** All `blockedBy` merged; no plan yet; capacity CAS for the implementer's provider; provider not cooling down; no flags | Auto-generate plan from task title (goal) and description (steps); mark as accepted; `create_worktree` (if none), `open_workspace`, `write_task_files`, start implementer |
 | 4 | todo | in_progress | R | As #3, but an accepted plan exists (task was parked after planning) | `write_task_files`, resume the implementer's session if it has one, else start implementer |
 | 5 | planning | plan_approval | M `submit_plan` | Plan passes schema; `requirePlanApproval` | Store plan vN; `stop_run` planner; `notify` attention; overlap warning (Phase 5) |
 | 6 | planning | in_progress | M `submit_plan` | Plan passes schema; not `requirePlanApproval`; capacity CAS | Store plan vN; `stop_run` planner; `write_task_files`; start implementer |
@@ -258,6 +260,8 @@ Notes on the rules:
   comment ID). They block only when their review's state is `changes_requested`; otherwise they're `minor`.
 - **Moving a card by hand.** Only the moves in the table are allowed. Anything else is rejected with
   `wrong_stage`, rather than guessed at.
+
+- **Small task fast path.** Tasks with `size: 'small'` auto-generate a plan from the task title (goal) and description (steps) and skip the planning stage entirely, routing directly from `todo` to `in_progress`. The auto-generated plan has `accepted: true`, so no plan approval is needed. This path reduces latency for docs, typos, and single-file fixes (target: ≤5 minutes). Small tasks are created with the `--small` CLI flag or via Lead/Operator tools with `size: 'small'`.
 
 ## 3. Flags and attention
 
