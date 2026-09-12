@@ -139,7 +139,7 @@ export function observeRuns(c: Context): void {
       sessionId: session.sessionId,
       sessionEpoch: 0,
       codexGeneration: null,
-      herdr: null,
+      pane: null,
       status: session.active ? "working" : "idle",
       blockedOn: null,
       lastTurn: null,
@@ -228,7 +228,7 @@ export function startDesired(c: Context): void {
       });
       return;
     }
-    if (!c.state.worktree.herdrWorkspaceId)
+    if (!c.state.worktree.paneWorkspaceId)
       c.emit(`open_workspace:${c.task.id}`, {
         kind: "open_workspace",
         worktreePath: c.state.worktree.path,
@@ -261,7 +261,7 @@ export function startDesired(c: Context): void {
               : null,
           sessionEpoch: 0,
           codexGeneration: null,
-          herdr: null,
+          pane: null,
           status: "starting",
           blockedOn: null,
           lastTurn: null,

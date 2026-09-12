@@ -65,9 +65,7 @@ export type BlockedReason =
   /** The run's provider is rate limited until `until`. */
   | "provider_cooling_down"
   /** The PR was closed without merging; the human decides whether to cancel. */
-  | "pr_closed"
-  /** Claude's folder-trust dialog is showing; only the human may answer it. */
-  | "trust_dialog";
+  | "pr_closed";
 
 export interface BlockedFlag {
   reason: BlockedReason;
@@ -105,7 +103,6 @@ export type AttentionReason =
   | "question"
   | "provider_permission"
   | "provider_input"
-  | "provider_dialog"
   | "blocked"
   | "failed"
   /** An interactive run vanished; only a human relaunches it. */
@@ -173,8 +170,8 @@ export interface Worktree {
   baseSha: Sha;
   /** `PORT = base + slot * 10`. Null until ports land (Phase 5). */
   portSlot: number | null;
-  /** (ref: Herdr) */
-  herdrWorkspaceId: string | null;
+  /** (ref: pane host) The tmux session hosting this task's panes. */
+  paneWorkspaceId: string | null;
   createdAt: IsoTime;
   removedAt: IsoTime | null;
   /** (cache: local git) */
@@ -198,7 +195,7 @@ export type RunStatus =
   /** No authoritative live channel right now. Never read as idle or failed. */
   | "unknown";
 
-export type RunBlockedOn = "permission" | "input" | "dialog" | "rate_limit";
+export type RunBlockedOn = "permission" | "input" | "rate_limit";
 
 export type TurnOutcome = "completed" | "interrupted" | "failed";
 
@@ -231,9 +228,14 @@ export interface ProviderRequest {
   receivedAt: IsoTime;
 }
 
-export interface HerdrRef {
-  agentName: string;
-  paneId: string | null;
+/**
+ * A pane in the pane host. `hostGeneration` scopes `paneId`: tmux pane IDs restart at `%0`
+ * after a server death, so a ref from an older generation names nothing (spike 06).
+ */
+export interface PaneRef {
+  hostGeneration: string;
+  sessionName: string;
+  paneId: string;
 }
 
 export interface Run {
@@ -260,8 +262,8 @@ export interface Run {
   sessionEpoch: number;
   /** Codex app-server connection generation; scopes request IDs. (ref) */
   codexGeneration: number | null;
-  /** Interactive runs only. (ref: Herdr) */
-  herdr: HerdrRef | null;
+  /** Interactive runs only. (ref: pane host) */
+  pane: PaneRef | null;
   /** (derived from provider observations) */
   status: RunStatus;
   /** (derived) Set only when `status` is `blocked`. */
@@ -300,7 +302,7 @@ export type MessagePurpose =
 export type MessageStatus =
   /** Recorded; no send action has succeeded yet. */
   | "pending"
-  /** The transport accepted it (Herdr `ok`, a `turn/start` response). Not proof of delivery. */
+  /** The transport accepted it (`pasteText` wrote it, a `turn/start` response). Not proof of delivery. */
   | "sent"
   /** The provider confirmed it (Codex `turn/started`, Claude `UserPromptSubmit`). */
   | "delivered"

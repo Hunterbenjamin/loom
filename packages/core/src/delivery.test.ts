@@ -108,17 +108,23 @@ describe("delivery requires provider evidence", () => {
       delivered: { via: "codex_user_message_item" },
     });
   });
-  it("Herdr ok alone never delivers", () => {
+  it("a written paste alone never delivers", () => {
     const f = prepared("claude");
-    f.observation.herdr = {
+    f.observation.pane = {
       ok: true,
       at: now,
       value: {
-        name: "agent",
-        paneId: "p1",
+        ref: {
+          hostGeneration: "loom-dev#1",
+          sessionName: "loom-t1",
+          paneId: "%1",
+        },
         cwd: f.run.worktreePath,
-        state: "idle",
-        agentSessionId: f.run.sessionId,
+        startCwd: f.run.worktreePath,
+        pid: 4242,
+        command: "node",
+        dead: false,
+        exitCode: null,
       },
     };
     expect(fixed(f.state, f.observations).next.messages[0]?.status).toBe(
@@ -203,7 +209,7 @@ describe("delivery requires provider evidence", () => {
       const r = fixed(f.state, f.observations);
       expect(r.next.messages[0]?.text).toBe(`Loom message:\n${text}`);
     });
-  it("unknown provider blocks send even if Herdr is idle", () => {
+  it("unknown provider blocks send even with a live pane", () => {
     const f = fixture();
     const run = f.state.runs[1] as Run;
     const o = f.observations.runs[1] as RunObservation;

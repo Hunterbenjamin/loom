@@ -1,7 +1,0 @@
-{
-  "id": "record",
-  "error": {
-    "code": "agent_blocked",
-    "message": "agent fixture-claude is blocked and requires interactive input"
-  }
-}

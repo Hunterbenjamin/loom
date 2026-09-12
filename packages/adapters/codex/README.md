@@ -1,7 +1,7 @@
 # Codex adapter
 
 `@loom/adapter-codex` implements the core Codex contract against **codex-cli 0.154.0**.
-It owns one child app-server per task, outside Herdr, with a dedicated `codex-home`
+It owns one child app-server per task, outside the pane host, with a dedicated `codex-home`
 and Unix socket beneath a caller-supplied task directory. It never reads a terminal,
 changes stages, sends an initial prompt, or answers a provider request automatically.
 

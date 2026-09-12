@@ -78,7 +78,7 @@ export function actionResult(
         baseBranch: action.baseBranch,
         baseSha: result.output.baseSha,
         portSlot: null,
-        herdrWorkspaceId: null,
+        paneWorkspaceId: null,
         createdAt: c.now,
         removedAt: null,
         git: {
@@ -93,7 +93,7 @@ export function actionResult(
       break;
     case "open_workspace":
       if (c.state.worktree)
-        c.state.worktree.herdrWorkspaceId = result.output.workspaceId;
+        c.state.worktree.paneWorkspaceId = result.output.workspaceId;
       break;
     case "start_run": {
       if (action.kind !== "start_run") break;
@@ -118,7 +118,7 @@ export function actionResult(
       }
       run.sessionId = result.output.sessionId;
       run.codexGeneration = result.output.codexGeneration;
-      run.herdr = result.output.herdr;
+      run.pane = result.output.pane;
       run.launchedAt = c.now;
       break;
     }

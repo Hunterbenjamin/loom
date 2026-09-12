@@ -27,7 +27,7 @@ describe("reconciliation ordering and recovery regressions", () => {
       command({ type: "cancel", reason: "Stop" }),
       actionInput(
         start,
-        { sessionId: "late", codexGeneration: 1, herdr: null },
+        { sessionId: "late", codexGeneration: 1, pane: null },
         "late",
       ),
     ];
@@ -150,7 +150,7 @@ describe("reconciliation ordering and recovery regressions", () => {
       resumable: null,
       activityAt: null,
       provider: { ok: false, at: now, reason: "Disconnected" },
-      herdr: null,
+      pane: null,
     };
     expect(
       fixed(f.state, f.observations).actions.some(

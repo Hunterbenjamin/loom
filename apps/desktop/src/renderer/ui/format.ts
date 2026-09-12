@@ -25,7 +25,6 @@ export const ATTENTION_LABELS: Record<AttentionReason, string> = {
   question: "Question",
   provider_permission: "Permission",
   provider_input: "Input",
-  provider_dialog: "Dialog",
   blocked: "Blocked",
   failed: "Failed",
   run_vanished: "Run vanished",

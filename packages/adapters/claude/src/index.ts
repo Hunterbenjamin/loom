@@ -1,7 +1,7 @@
 // The Claude Code adapter.
 //
 // Status comes from `claude agents --json`; hooks arriving at the receiver are hints and detail
-// (spike 02). Loom launches interactive runs in a Herdr pane and headless runs over the Agent SDK,
+// (spike 02). Loom launches interactive runs in a pane-host pane and headless runs over the Agent SDK,
 // always with a session ID it chose itself and a per-run settings file it wrote itself.
 
 import type {

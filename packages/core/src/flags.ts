@@ -74,29 +74,6 @@ export function reconcileFlags(c: Context): void {
       at: task.blocked.until,
       why: "cooldown_end",
     });
-  const trust = state.runs.find(
-    (r) =>
-      r.origin === "loom" &&
-      !r.endedAt &&
-      r.provider === "claude" &&
-      r.mode === "interactive" &&
-      r.blockedOn === "dialog" &&
-      !r.seenAt,
-  );
-  if (trust && !task.blocked)
-    c.block("trust_dialog", "Answer the folder trust dialog in the terminal");
-  else if (
-    !trust &&
-    task.blocked?.reason === "trust_dialog" &&
-    state.runs.some(
-      (r) =>
-        r.provider === "claude" &&
-        !r.endedAt &&
-        r.seenAt &&
-        (r.status === "working" || r.status === "idle"),
-    )
-  )
-    c.block(null);
 }
 
 export function attention(c: Context): void {
@@ -119,7 +96,6 @@ export function attention(c: Context): void {
       if (run.endedAt) continue;
       if (run.blockedOn === "permission") reasons.add("provider_permission");
       if (run.blockedOn === "input") reasons.add("provider_input");
-      if (run.blockedOn === "dialog") reasons.add("provider_dialog");
       if (run.status === "working") {
         const last = run.lastActivityAt ?? run.launchedAt;
         if (last) {

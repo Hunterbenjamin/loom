@@ -99,33 +99,6 @@ describe("flags derive and clear from authoritative evidence", () => {
       f.observations.github.value.state = "open";
     expect(fixed(closed.next, f.observations).next.task.blocked).toBeNull();
   });
-  it("trust dialog clears only after SessionStart and busy/idle status", () => {
-    const f = fixture();
-    const run = f.state.runs[2] as Run;
-    run.mode = "interactive";
-    run.seenAt = null;
-    const o = f.observations.runs[2] as RunObservation;
-    if (o.provider.ok && o.provider.value?.provider === "claude") {
-      o.provider.value.agentsEntry = null;
-      o.provider.value.hooks.sessionStart = null;
-    }
-    o.herdr = {
-      ok: true,
-      at: now,
-      value: {
-        name: "agent",
-        paneId: "p1",
-        cwd: run.worktreePath,
-        state: "blocked",
-        agentSessionId: null,
-      },
-    };
-    const blocked = fixed(f.state, f.observations);
-    expect(blocked.next.task.blocked?.reason).toBe("trust_dialog");
-    const fresh = fixture().observations.runs[2] as RunObservation;
-    f.observations.runs[2] = fresh;
-    expect(fixed(blocked.next, f.observations).next.task.blocked).toBeNull();
-  });
   it("non-retryable provider error flags directly", () => {
     const f = fixture("planning");
     const o = f.observations.runs[0] as RunObservation;
@@ -196,30 +169,6 @@ describe("every attention reason", () => {
       },
     ],
     [
-      "provider_dialog",
-      (f) => {
-        const run = f.state.runs[2] as Run;
-        run.mode = "interactive";
-        run.seenAt = null;
-        const o = f.observations.runs[2] as RunObservation;
-        if (o.provider.ok && o.provider.value?.provider === "claude") {
-          o.provider.value.agentsEntry = null;
-          o.provider.value.hooks.sessionStart = null;
-        }
-        o.herdr = {
-          ok: true,
-          at: now,
-          value: {
-            name: "agent",
-            paneId: "p",
-            cwd: run.worktreePath,
-            state: "blocked",
-            agentSessionId: null,
-          },
-        };
-      },
-    ],
-    [
       "blocked",
       (f) => {
         f.state.task.blocked = {
@@ -278,7 +227,7 @@ describe("every attention reason", () => {
           resumable: null,
           activityAt: null,
           provider: { ok: false, at: now, reason: "Offline" },
-          herdr: null,
+          pane: null,
         };
         f.observations.now = "2026-09-12T00:01:01.000Z" as typeof now;
       },

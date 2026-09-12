@@ -127,7 +127,7 @@ const SEEDS: [title: string, stage: Stage, repo: 0 | 1][] = [
   ["Write the SQLite schema and migrations", "in_progress", 0],
   ["Claude hook server with per-session settings", "in_progress", 1],
   ["Codex app-server adapter: thread lifecycle", "in_progress", 0],
-  ["Herdr adapter: agent start, attach, prompt", "in_progress", 1],
+  ["tmux pane host: ensure pane, attach, paste", "in_progress", 1],
   ["Retry headless runs with capped backoff", "in_progress", 0],
   ["Detect stalls without killing the run", "in_progress", 0],
   ["Review shell: file list, viewed state, jumps", "in_review", 0],
@@ -148,6 +148,8 @@ const SEEDS: [title: string, stage: Stage, repo: 0 | 1][] = [
   ["Drop ghostty-web from the stack", "canceled", 1],
 ];
 
+/** One pane-host generation: tmux pane IDs only mean anything inside one server lifetime. */
+const HOST_GENERATION = "loom-dev#1757548800";
 const THREE_RUNS = 7;
 const PERMISSION = 11;
 const FAILED = 22;
@@ -341,7 +343,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
         baseBranch: repo.baseBranch,
         baseSha: sha(index * 7 + 1),
         portSlot: index % 8,
-        herdrWorkspaceId: `w${index % 5}`,
+        paneWorkspaceId: `loom-${slug(title).slice(0, 20)}`,
         createdAt: minutesBefore(stageMinutes + 20),
         removedAt: stage === "done" ? minutesBefore(2) : null,
         git: {
@@ -389,11 +391,12 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
         ),
         sessionEpoch: index === FAILED ? 2 : 1,
         codexGeneration: provider === "codex" ? 4 : null,
-        herdr:
+        pane:
           role === "implementer"
             ? {
-                agentName: `loom-${slug(title).slice(0, 20)}`,
-                paneId: `w${index % 5}:p${roleIndex + 1}`,
+                hostGeneration: HOST_GENERATION,
+                sessionName: `loom-${slug(title).slice(0, 20)}`,
+                paneId: `%${index * 4 + roleIndex}`,
               }
             : null,
         status,
@@ -459,9 +462,13 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
           ),
           sessionEpoch: 1,
           codexGeneration: task.providers[role] === "codex" ? 4 : null,
-          herdr:
+          pane:
             role === "implementer"
-              ? { agentName: `loom-${slug(title)}`, paneId: `w2:p${round + 1}` }
+              ? {
+                  hostGeneration: HOST_GENERATION,
+                  sessionName: `loom-${slug(title)}`,
+                  paneId: `%${index * 4 + round + 2}`,
+                }
               : null,
           status: round === 1 && role === "implementer" ? "working" : "ended",
           blockedOn: null,

@@ -38,7 +38,7 @@ function send(c: Context, run: Run, message: Message): void {
         ? "codex_turn_steer"
         : "codex_turn_start"
       : run.mode === "interactive"
-        ? "herdr_prompt"
+        ? "pane_paste"
         : "claude_sdk";
   message.expectedTurnId =
     message.via === "codex_turn_steer" ? (turn?.id ?? null) : null;
