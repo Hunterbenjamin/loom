@@ -126,6 +126,12 @@ Rules:
   pane to a run, and records it before launch (principle 7).
 - Run one Codex app-server per task as a Loom child process, never in a pane. Outside the pane host a
   mid-flight turn completes through a host restart; in a pane it ends interrupted (spike 05).
+  On coordinator recovery, reconnect to the task's private socket and verify the reported
+  `CODEX_HOME`. Persist its PID and process birth time in the private task directory; verify both
+  birth time and the exact task socket in its command before signaling a recovered process.
+  Pre-pidfile servers are identified with a query scoped to that socket. Reap a verified stale
+  owner before replacing its record; refuse a foreign home or a non-socket path. Explicit shutdown
+  terminates adopted servers as well as children. Never discover or signal the shared daemon.
 - A pane is not evidence of a session. `pane_current_command` was `2.1.269` for Claude and `node` for
   Codex's launcher, and cwd identifies the task, not the session (spike 06 §4). Reject an ambiguous
   match instead of guessing.
