@@ -1,4 +1,4 @@
-// The Changes and Review tabs. Pierre renders the patch; Loom owns the review shell — the file
+// The Review tab. Pierre renders the patch; Loom owns the review shell — the file
 // list, viewed state, jumps, and the findings in the annotation slots (spike 04).
 
 import type { Finding, Task } from "@loom/core";
@@ -27,19 +27,13 @@ function parse(text: string, key: string): FileDiffMetadata[] {
   return parsed;
 }
 
-export function DiffTab({
-  task,
-  withFindings,
-}: {
-  task: Task;
-  withFindings: boolean;
-}) {
+export function DiffTab({ task }: { task: Task }) {
   const store = useStoreApi();
   const patch = useStore((s) => s.snapshot.patch);
   const now = useStore((s) => s.snapshot.now);
   const theme = useStore((s) => s.ui.theme);
   const findings = useStore(
-    (s) => (withFindings ? taskFindings(s.snapshot, task) : EMPTY_FINDINGS),
+    (s) => taskFindings(s.snapshot, task),
     shallowArray,
   );
   const comments = useStore((s) => s.snapshot.comments);
@@ -219,7 +213,16 @@ export function DiffTab({
   );
 
   return (
-    <div className="review">
+    // biome-ignore lint/a11y/noStaticElementInteractions: every file also has a focusable button
+    <div
+      className="review"
+      onKeyDown={(event) => {
+        if (!event.altKey) return;
+        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+        event.preventDefault();
+        step(event.key === "ArrowDown" ? 1 : -1);
+      }}
+    >
       <div className="file-list">
         {patch.files.map((file) => (
           <FileRow
@@ -237,29 +240,26 @@ export function DiffTab({
         <div className="terminal-bar">
           <span>
             {patch.files.length} files · {viewed.length} viewed
-            {withFindings ? ` · ${findings.length} findings` : ""}
+            {` · ${findings.length} findings`}
           </span>
           <span className="spacer" />
+          <select aria-label="Review range" defaultValue="whole_branch">
+            <option value="whole_branch">Whole branch</option>
+            <option value="since_last_review" disabled>
+              Since last review (unavailable)
+            </option>
+          </select>
           <span>
             <kbd>alt</kbd> <kbd>↑</kbd>/<kbd>↓</kbd> next file
           </span>
         </div>
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: a scroll container that also
-            takes alt+arrow; every file is reachable from the file list above it. */}
-        <div
-          className="diff-scroll"
-          onKeyDown={(event) => {
-            if (!event.altKey) return;
-            if (event.key === "ArrowDown") step(1);
-            if (event.key === "ArrowUp") step(-1);
-          }}
-        >
+        <div className="diff-scroll">
           <CodeView
             ref={handle}
             className="diff-scroll"
             items={items}
             options={options}
-            renderAnnotation={withFindings ? renderAnnotation : undefined}
+            renderAnnotation={renderAnnotation}
           />
         </div>
       </div>
@@ -268,7 +268,6 @@ export function DiffTab({
 }
 
 const EMPTY: string[] = [];
-const EMPTY_FINDINGS: Finding[] = [];
 
 let counter = 0;
 function bump(): number {

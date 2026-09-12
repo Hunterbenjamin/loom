@@ -19,7 +19,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "plan", label: "Plan" },
   { id: "agents", label: "Agents" },
   { id: "terminal", label: "Terminal" },
-  { id: "changes", label: "Changes" },
   { id: "review", label: "Review" },
 ];
 
@@ -77,10 +76,7 @@ export function Detail({ task }: { task: Task }) {
           {tab === "terminal" ? (
             <TerminalTab task={task} theme={theme} />
           ) : null}
-          {tab === "changes" ? (
-            <DiffTab task={task} withFindings={false} />
-          ) : null}
-          {tab === "review" ? <DiffTab task={task} withFindings /> : null}
+          {tab === "review" ? <DiffTab task={task} /> : null}
         </Suspense>
       </div>
     </div>
