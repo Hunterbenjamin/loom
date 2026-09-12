@@ -118,7 +118,7 @@ as TypeScript source by Vitest and by electron-vite — so `loom` needs a TypeSc
 until a build step lands:
 
 ```sh
-pnpm exec tsx apps/coordinator/src/cli.ts serve
+pnpm loom serve          # a root script over tsx, which is a workspace dev dependency
 ```
 
 `main(argv)` is exported from `src/cli.ts`, so the command table is callable directly as well.
