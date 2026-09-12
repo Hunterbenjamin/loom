@@ -233,6 +233,15 @@ export interface CodexAdapter {
 
 // ---------------------------------------------------------------- Claude
 
+/**
+ * A run's MCP registration, as Claude's `--mcp-config` file and the Agent SDK both take it.
+ * The run's token rides here, never in the `--settings` file: Claude Code 2.1.269 ignores
+ * `mcpServers` in settings, and a token in argv would reach `ps` and the logs.
+ */
+export type McpServerEntry =
+  | { command: string; args: string[]; env?: Record<string, string> }
+  | { type: "http"; url: string; headers?: Record<string, string> };
+
 export interface ClaudeAdapter {
   /** `claude agents --json`: the owner of live status. */
   listSessions(): Promise<ClaudeAgentsEntry[]>;
@@ -243,7 +252,11 @@ export interface ClaudeAdapter {
    * HTTP hooks pointing at this coordinator, the SessionStart command hook, and Loom's MCP
    * server. Never touches `~/.claude/settings.json`.
    */
-  writeSettings(settingsPath: string): Promise<void>;
+  writeSettings(
+    settingsPath: string,
+    /** This run's registration. Omitted: the adapter's default, for tests and probes. */
+    mcpServer?: McpServerEntry,
+  ): Promise<void>;
   /**
    * Pane command for an interactive run: `--session-id` (or `--resume`), the per-run
    * `--settings` file with HTTP hooks, the SessionStart command hook and Loom's MCP server.

@@ -653,6 +653,20 @@ export class Store {
         };
       });
   }
+  /** Every registered repo. The coordinator's snapshot needs the list, and nothing else owns it. */
+  repos(): Repo[] {
+    return this.db
+      .prepare("SELECT data FROM repos ORDER BY id")
+      .all()
+      .map((r) => decode(repoSchema, dataRow.parse(r).data));
+  }
+  /** Every task, newest stage changes included. Used for snapshots and the full resync. */
+  tasks(): Task[] {
+    return this.db
+      .prepare("SELECT data FROM tasks ORDER BY id")
+      .all()
+      .map((r) => decode(taskSchema, dataRow.parse(r).data));
+  }
   tasksByStage(stage: Stage): Task[] {
     return this.db
       .prepare("SELECT data FROM tasks WHERE stage = ? ORDER BY id")

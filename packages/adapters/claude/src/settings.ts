@@ -3,8 +3,9 @@
 // Never written to `~/.claude/settings.json`. At user level a dead coordinator shows an error in
 // every session after every turn, and a hung one adds its timeout to every hook (spike 02, §6).
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import type { McpServerEntry } from "@loom/core";
 import { HOOK_EVENTS } from "./hooks.js";
 
 /** Seconds. Claude's default is 600 (30 for UserPromptSubmit): a stuck coordinator would freeze sessions. */
@@ -18,11 +19,8 @@ export const HTTP_HOOK_EVENTS = HOOK_EVENTS.filter(
   (event) => !COMMAND_HOOK_EVENTS.includes(event as "SessionStart"),
 );
 
-export interface McpServerEntry {
-  command: string;
-  args: string[];
-  env?: Record<string, string>;
-}
+/** Re-exported from the contract: stdio, or the loopback HTTP endpoint `serveHttp` returns. */
+export type { McpServerEntry } from "@loom/core";
 
 export interface ClaudeSettingsFile {
   hooks: Record<
@@ -113,15 +111,34 @@ export async function writeSettingsFiles(
 ): Promise<{ settingsPath: string; mcpConfigPath: string }> {
   const mcpConfigPath = mcpConfigPathFor(settingsPath);
   await mkdir(dirname(settingsPath), { recursive: true });
+  // Mode 0600: the MCP config carries the run's token, and both files live outside the repo.
   await writeFile(
     settingsPath,
     `${JSON.stringify(buildSettings(request), null, 2)}\n`,
-    "utf8",
+    { encoding: "utf8", mode: 0o600 },
   );
   await writeFile(
     mcpConfigPath,
     `${JSON.stringify(buildMcpConfig(request), null, 2)}\n`,
-    "utf8",
+    { encoding: "utf8", mode: 0o600 },
   );
+  await Promise.all([chmod(settingsPath, 0o600), chmod(mcpConfigPath, 0o600)]);
   return { settingsPath, mcpConfigPath };
+}
+
+/** Reads a per-run MCP config back, for a launch that must register the same servers again. */
+export async function readMcpConfig(
+  mcpConfigPath: string,
+): Promise<McpConfigFile | null> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(mcpConfigPath, "utf8"));
+    const servers =
+      parsed && typeof parsed === "object"
+        ? (parsed as { mcpServers?: unknown }).mcpServers
+        : undefined;
+    if (!servers || typeof servers !== "object") return null;
+    return { mcpServers: servers as Record<string, McpServerEntry> };
+  } catch {
+    return null;
+  }
 }

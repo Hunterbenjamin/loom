@@ -1,0 +1,34 @@
+{
+  "name": "@loom/coordinator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The background process that runs the reconcile loop, the executor, the MCP host and the protocol server.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "loom": "./src/cli.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@loom/adapter-claude": "workspace:*",
+    "@loom/adapter-codex": "workspace:*",
+    "@loom/adapter-git": "workspace:*",
+    "@loom/adapter-github": "workspace:*",
+    "@loom/adapter-tmux": "workspace:*",
+    "@loom/core": "workspace:*",
+    "@loom/mcp": "workspace:*",
+    "@loom/protocol": "workspace:*",
+    "@loom/store": "workspace:*",
+    "ws": "^8.18.3",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@loom/fake-agent": "workspace:*",
+    "@types/ws": "^8.18.1",
+    "typescript": "^7.0.2"
+  }
+}

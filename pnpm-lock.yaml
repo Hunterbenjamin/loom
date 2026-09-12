@@ -21,6 +21,52 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@22.20.2)(vite@8.3.0(@types/node@22.20.2)(esbuild@0.28.2))
 
+  apps/coordinator:
+    dependencies:
+      '@loom/adapter-claude':
+        specifier: workspace:*
+        version: link:../../packages/adapters/claude
+      '@loom/adapter-codex':
+        specifier: workspace:*
+        version: link:../../packages/adapters/codex
+      '@loom/adapter-git':
+        specifier: workspace:*
+        version: link:../../packages/adapters/git
+      '@loom/adapter-github':
+        specifier: workspace:*
+        version: link:../../packages/adapters/github
+      '@loom/adapter-tmux':
+        specifier: workspace:*
+        version: link:../../packages/adapters/tmux
+      '@loom/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@loom/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      '@loom/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      '@loom/store':
+        specifier: workspace:*
+        version: link:../../packages/store
+      ws:
+        specifier: ^8.18.3
+        version: 8.21.3
+      zod:
+        specifier: ^4.6.2
+        version: 4.6.2
+    devDependencies:
+      '@loom/fake-agent':
+        specifier: workspace:*
+        version: link:../../packages/fake-agent
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   apps/desktop:
     dependencies:
       '@loom/core':

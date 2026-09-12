@@ -4,8 +4,8 @@
 // with a value instead.
 
 import { z } from "zod";
-import { humanCommand } from "./entities.js";
-import { inputId, requestId, runId, sha, taskId } from "./ids.js";
+import { humanCommand, providerRules } from "./entities.js";
+import { inputId, repoId, requestId, runId, sha, taskId } from "./ids.js";
 import { subscription } from "./subscriptions.js";
 import {
   reviewRangeMode,
@@ -51,6 +51,21 @@ export const command = z.union([
   /** A `HumanCommand` for one task. Validated here, then queued as an input. */
   z.strictObject({ kind: z.literal("human"), taskId, command: humanCommand }),
   /**
+   * Create a task. Not a `HumanCommand`: core reconciles a task that already exists, so creation
+   * is the coordinator writing a new backlog row, and the ack carries the ID it assigned.
+   */
+  z.strictObject({
+    kind: z.literal("create_task"),
+    repoId,
+    title: z.string().min(1).max(200),
+    description: z.string().max(20000),
+    /** Absent means the repo's own defaults. */
+    providers: providerRules.nullable(),
+    requirePlanApproval: z.boolean().nullable(),
+    blockedBy: z.array(taskId),
+    budgetMinutes: z.number().int().positive().nullable(),
+  }),
+  /**
    * Where to attach a terminal to this run. Returns the argv and the pane state; it starts no
    * process of its own and never takes a pane over from another client.
    */
@@ -87,6 +102,8 @@ export const ackResult = z.union([
    * the transition log for what reconcile did with it.
    */
   z.strictObject({ kind: z.literal("human"), inputId }),
+  /** The task now exists, in `backlog`. Moving it to `todo` is a separate human command. */
+  z.strictObject({ kind: z.literal("task_created"), taskId }),
   z.strictObject({ kind: z.literal("attach_session"), target: runTarget }),
   z.strictObject({ kind: z.literal("diff"), diff: taskDiff }),
   z.strictObject({ kind: z.literal("review_state"), state: reviewState }),

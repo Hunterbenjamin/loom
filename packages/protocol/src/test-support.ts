@@ -233,7 +233,7 @@ export function snapshot(): SnapshotBody {
           env: { LOOM_INSTANCE: "dev" },
         },
         pane: {
-          hostGeneration: 2,
+          hostGeneration: "loom-dev#2",
           sessionName: "loom-LOOM-101",
           windowId: "@4",
           paneId: "%3",
