@@ -200,6 +200,22 @@ export function human(
       );
       return null;
     }
+    case "answer_pane_prompt": {
+      const run = state.runs.find(
+        (r) => r.id === cmd.runId && r.origin === "loom" && !r.endedAt,
+      );
+      if (!run) return guard("Choose a live Loom run");
+      c.emit(
+        `answer_pane_prompt:${run.id}`,
+        {
+          kind: "answer_pane_prompt",
+          runId: cmd.runId,
+          choice: cmd.choice,
+          text: cmd.text,
+        },
+      );
+      return null;
+    }
     case "retry": {
       if (
         task.stage === "done" ||
