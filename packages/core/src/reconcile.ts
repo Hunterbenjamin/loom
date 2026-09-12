@@ -11,6 +11,7 @@ import type {
   Question,
   Role,
   Run,
+  RunMode,
   Task,
   Transition,
   Worktree,
@@ -50,6 +51,8 @@ export interface ReconcileConfig {
   worktreeRoot: string;
   baseBranch: string;
   models: Record<Provider, string>;
+  /** Run mode for each role: interactive or headless. */
+  runModes: Record<Role, RunMode>;
 }
 
 export interface OutboxEntry {
