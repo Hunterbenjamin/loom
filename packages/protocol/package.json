@@ -1,0 +1,17 @@
+{
+  "name": "@loom/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Typed coordinator to UI API: snapshot, patches, subscriptions and commands as zod schemas.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@loom/core": "workspace:*",
+    "zod": "^4.6.2"
+  }
+}

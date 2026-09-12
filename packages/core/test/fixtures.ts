@@ -108,7 +108,7 @@ export function fixture(stage: Stage = "in_progress"): {
       worktreePath: path,
       branch: "feat/core",
       prNumber: 1,
-      attention: { reasons: [], since: null },
+      attention: { reasons: [], reasonSince: {}, since: null },
     },
     worktree: {
       path,

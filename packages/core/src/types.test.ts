@@ -50,7 +50,7 @@ const task: Task = {
   worktreePath,
   branch: "feat/thing",
   prNumber: null,
-  attention: { reasons: [], since: null },
+  attention: { reasons: [], reasonSince: {}, since: null },
 };
 
 const run: Run = {

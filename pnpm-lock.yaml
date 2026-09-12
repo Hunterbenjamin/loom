@@ -57,6 +57,9 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0(react@19.3.0)
     devDependencies:
+      '@loom/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -158,6 +161,15 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@4.6.2)
+      zod:
+        specifier: ^4.6.2
+        version: 4.6.2
+
+  packages/protocol:
+    dependencies:
+      '@loom/core':
+        specifier: workspace:*
+        version: link:../core
       zod:
         specifier: ^4.6.2
         version: 4.6.2
