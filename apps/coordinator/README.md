@@ -7,7 +7,7 @@ own — `@loom/core` does — and it owns no facts any other tool owns.
 
 ```sh
 export LOOM_INSTANCE=dev LOOM_DATA_ROOT=~/.loom LOOM_TOKEN=$(openssl rand -hex 24)
-loom repo add ~/src/example example/repo
+loom repo add ~/src/example example/repo   # see "The CLI" for how to run `loom` today
 loom serve &
 loom task create example-repo "Rename the widget" "Rename Widget to Gadget everywhere."
 loom task move <task> todo
@@ -112,6 +112,16 @@ Phase 4, and the git adapter has no raw-patch reader yet.
 `loom` is a protocol client and holds no state. `loom serve` and `loom repo add` are the two
 exceptions: they are instance-local admin commands that open the store directly, because the
 protocol carries no repo registry.
+
+**Running it today:** no package in this repository emits JavaScript yet — everything is consumed
+as TypeScript source by Vitest and by electron-vite — so `loom` needs a TypeScript-aware runtime
+until a build step lands:
+
+```sh
+pnpm exec tsx apps/coordinator/src/cli.ts serve
+```
+
+`main(argv)` is exported from `src/cli.ts`, so the command table is callable directly as well.
 
 ## Tests
 
