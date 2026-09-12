@@ -86,9 +86,10 @@ describe("rowsFor", () => {
   test("a launched managed run outranks an adopted external run with no launch time", () => {
     const fixture = buildSnapshot();
     const task = fixture.tasks[0];
-    if (!task) throw new Error("No task in fixture");
-    const external = {
-      ...fixture.runs[0],
+    const base = fixture.runs[0];
+    if (!task || !base) throw new Error("No task or run in fixture");
+    const external: Run = {
+      ...base,
       id: runId("external-idle"),
       taskId: task.id,
       origin: "external" as const,
@@ -96,8 +97,8 @@ describe("rowsFor", () => {
       launchedAt: null,
       model: "",
     };
-    const managed = {
-      ...fixture.runs[1],
+    const managed: Run = {
+      ...base,
       id: runId("managed-working"),
       taskId: task.id,
       origin: "loom" as const,
