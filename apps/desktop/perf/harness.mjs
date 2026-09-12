@@ -24,7 +24,7 @@ const env = {
   LOOM_EXIT_WHEN_INTERACTIVE: "",
   ELECTRON_RENDERER_URL: "",
 };
-const args = [root, `--user-data-dir=${temporary}`];
+const args = [root, "--fixtures", `--user-data-dir=${temporary}`];
 let app;
 
 const LIST_ROWS = 500;

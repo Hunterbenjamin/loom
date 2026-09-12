@@ -2,10 +2,11 @@
 // receives the ack and the resulting patches, and detects a forced sequence gap.
 
 import type { TaskId } from "@loom/core";
+import { loadScenarios } from "@loom/fake-agent";
 import { PROTOCOL_VERSION } from "@loom/protocol";
 import { afterEach, expect, test } from "vitest";
 import { LoomClient } from "./client.js";
-import { createHarness, type Harness } from "./test-support.js";
+import { createHarness, type Harness, ScenarioDriver } from "./test-support.js";
 
 let open: Harness[] = [];
 const clients: LoomClient[] = [];
@@ -152,7 +153,7 @@ test("a client sees only what it subscribed to", async () => {
 }, 30_000);
 
 test("the handshake refuses an unsupported protocol version", async () => {
-  expect(PROTOCOL_VERSION).toBe(1);
+  expect(PROTOCOL_VERSION).toBe(2);
   const h = await served();
   const socket = new WebSocket(h.coordinator.protocol.url as string);
   await new Promise<void>((resolve) =>
@@ -175,4 +176,109 @@ test("the handshake refuses an unsupported protocol version", async () => {
     error: { code: "unsupported_protocol_version" },
   });
   socket.close();
+}, 30_000);
+
+test("list clients receive plan version and core-derived inbox metadata without task subscriptions", async () => {
+  const h = await served();
+  const created = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Inbox metadata",
+    description: "",
+  });
+  await h.coordinator.settle();
+  const client = await connect(h, "inbox-window");
+  expect(client.state?.collections.inbox.get(created.task.id)).toEqual({
+    taskId: created.task.id,
+    reasonRuns: {},
+    reviewedHead: null,
+    planVersion: null,
+  });
+  expect(client.state?.collections.run.size).toBe(0);
+});
+
+test("inbox carries the reviewed SHA and plan version from the completed fake review", async () => {
+  const h = await served();
+  const created = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Review metadata",
+    description: "Change the example",
+  });
+  h.coordinator.submitHuman(created.task.id, { type: "move", to: "todo" });
+  const driver = new ScenarioDriver(
+    h,
+    await loadScenarios(
+      new URL("./fixtures/walking-skeleton.json", import.meta.url),
+    ),
+  );
+  await driver.run();
+  await h.coordinator.settle();
+  const state = h.store.loadTaskState(created.task.id);
+  expect(state.task.stage).toBe("awaiting_approval");
+  expect(state.review?.lastReviewedHead).toBeTruthy();
+  const client = await connect(h, "review-inbox-window");
+  expect(client.state?.collections.inbox.get(created.task.id)).toMatchObject({
+    reviewedHead: state.review?.lastReviewedHead,
+    planVersion: state.plan?.version,
+  });
+}, 30_000);
+
+test("permission attribution and the selected run's attach target reach the window without recipe credentials", async () => {
+  const h = await served();
+  const created = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Permission metadata",
+    description: "Change the example",
+    providers: { planner: "claude", implementer: "claude", reviewer: "claude" },
+  });
+  const taskId = created.task.id;
+  h.coordinator.submitHuman(taskId, { type: "move", to: "todo" });
+  const driver = new ScenarioDriver(
+    h,
+    await loadScenarios(new URL("./fixtures/permission.json", import.meta.url)),
+  );
+  await driver.run({
+    until: () =>
+      h.store
+        .loadTaskState(taskId)
+        .runs.some((r) => r.role === "implementer" && r.status === "working"),
+    maxSteps: 300,
+  });
+  const run = h.store
+    .loadTaskState(taskId)
+    .runs.find((r) => r.role === "implementer");
+  if (!run?.sessionId) throw new Error("missing implementer");
+  h.providers.request(run.sessionId, "approval", "Approve a test tool");
+  h.coordinator.loop.enqueue(taskId);
+  await h.coordinator.settle();
+  const client = await connect(h, "permission-inbox-window");
+  expect(
+    client.state?.collections.task.get(taskId)?.attention.reasons,
+  ).toContain("provider_permission");
+  expect(
+    client.state?.collections.inbox.get(taskId)?.reasonRuns.provider_permission,
+  ).toMatchObject([
+    {
+      id: run.id,
+      role: "implementer",
+      provider: "claude",
+      mode: "interactive",
+    },
+  ]);
+  const result = await client.command({
+    kind: "open_attach_session",
+    runId: run.id,
+  });
+  expect(result).toMatchObject({
+    ok: true,
+    result: {
+      kind: "attach_session",
+      target: {
+        runId: run.id,
+        attach: { kind: "pane_host", env: {} },
+        pane: { paneId: run.pane?.paneId },
+      },
+    },
+  });
+  if (result.ok && result.result.kind === "attach_session")
+    expect(result.result.target.attach?.env).toEqual({});
 }, 30_000);

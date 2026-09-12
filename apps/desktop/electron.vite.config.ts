@@ -3,7 +3,9 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [
+      externalizeDepsPlugin({ exclude: ["@loom/protocol", "@loom/core"] }),
+    ],
     build: { rollupOptions: { input: "src/main/index.ts" } },
   },
   preload: {

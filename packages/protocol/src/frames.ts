@@ -31,7 +31,7 @@ import { patchBody } from "./patch.js";
 import { snapshotBody, snapshotMeta } from "./snapshot.js";
 import { subscription } from "./subscriptions.js";
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** 8 MiB. A patch never approaches it; `fetch_diff` is the only frame that can grow. */
 export const MAX_FRAME_BYTES = 8 * 1024 * 1024;

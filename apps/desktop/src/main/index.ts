@@ -1,13 +1,20 @@
 // The Electron main process. It owns the window and the PTYs behind the Terminal tab, and
-// nothing else: this shell has no coordinator, no adapters and no disk state.
+// no durable task state: the coordinator remains the owner.
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { app, BrowserWindow, ipcMain } from "electron";
-import type {
-  PtyExit,
-  PtySpawnRequest,
-  PtySpawnResult,
+import { connectionFromEnvironment } from "../shared/connection.js";
+import {
+  type PtyExit,
+  type PtySpawnResult,
+  ptySpawnRequest,
 } from "../shared/ipc.js";
+import { resolveAttach } from "./attach.js";
+
+const connection = connectionFromEnvironment(
+  process.env,
+  process.argv.includes("--fixtures"),
+);
 
 // node-pty is a native CommonJS addon; electron-vite externalizes it, so require it directly.
 const require = createRequire(import.meta.url);
@@ -73,18 +80,40 @@ function flush(window: BrowserWindow, id: string): void {
 }
 
 function wire(window: BrowserWindow): void {
+  ipcMain.handle("app:connection", () => connection);
   ipcMain.handle(
     "pty:spawn",
-    (_event, request: PtySpawnRequest): PtySpawnResult => {
+    async (event, raw: unknown): Promise<PtySpawnResult> => {
+      if (event.sender !== window.webContents)
+        throw new Error("Unknown window");
+      const request = ptySpawnRequest.parse(raw);
+      const target =
+        connection.mode === "fixtures"
+          ? null
+          : request.runId
+            ? await resolveAttach(connection, request.runId)
+            : null;
+      if (connection.mode !== "fixtures" && !target?.attach)
+        throw new Error("Select a run with a live terminal pane");
+      if (window.isDestroyed()) throw new Error("Window closed");
       sessions.get(request.id)?.proc.kill("SIGHUP");
-      const { file, args } = command();
+      const resolved = target?.attach;
+      const { file, args } = resolved
+        ? { file: resolved.argv[0] as string, args: resolved.argv.slice(1) }
+        : command();
       const proc = pty.spawn(file, args, {
         name: "xterm-256color",
         cols: request.cols,
         rows: request.rows,
-        cwd: process.env.HOME,
+        cwd: resolved?.cwd ?? process.env.HOME,
         env: {
-          ...(process.env as Record<string, string>),
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          HOME: process.env.HOME ?? "",
+          LANG: process.env.LANG ?? "en_US.UTF-8",
+          ...(process.env.TMUX_TMPDIR
+            ? { TMUX_TMPDIR: process.env.TMUX_TMPDIR }
+            : {}),
+          ...(process.env.TMPDIR ? { TMPDIR: process.env.TMPDIR } : {}),
           TERM: "xterm-256color",
           COLORTERM: "truecolor",
         },

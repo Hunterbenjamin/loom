@@ -216,6 +216,7 @@ export function toSnapshot(fixture: Snapshot): {
   return {
     meta: { seq: 1, now: fixture.now, epoch: "fixtures" },
     body: {
+      inbox: [],
       repos: fixture.repos.map((repo) => ({
         ...repo,
         root: canonical(repo.root),

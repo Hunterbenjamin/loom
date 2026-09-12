@@ -53,7 +53,11 @@ try {
   tmux("set-option", "-g", "status", "off");
 
   app = await electron.launch({
-    args: [root, `--user-data-dir=${join(temporary, "electron")}`],
+    args: [
+      root,
+      "--fixtures",
+      `--user-data-dir=${join(temporary, "electron")}`,
+    ],
     cwd: root,
     env,
   });
@@ -76,7 +80,7 @@ try {
       document.querySelector(".terminal-bar").textContent.includes("pid "),
   );
   await page.waitForFunction(() =>
-    window.loom.term.buffer.active
+    window.loom.term?.buffer.active
       .getLine(0)
       ?.translateToString()
       .includes("00000"),

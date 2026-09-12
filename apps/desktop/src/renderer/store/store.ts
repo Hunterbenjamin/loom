@@ -1,13 +1,31 @@
 // One in-memory snapshot, one UI state, one subscription. Everything a panel renders comes
 // from here; nothing reads disk or the network during an interaction.
 
-import type { Finding, FindingStatus, Stage, Task, TaskId } from "@loom/core";
+import type {
+  AttentionReason,
+  Finding,
+  FindingStatus,
+  RunId,
+  Stage,
+  Task,
+  TaskId,
+} from "@loom/core";
+import type {
+  AckOutcome,
+  ClientState,
+  Command,
+  PatchFrame,
+  RunTarget,
+  TaskInbox,
+} from "@loom/protocol";
+import { command as commandSchema } from "@loom/protocol";
 import { inputId, minutesBefore, transitionId } from "../fixtures/ids.js";
 import {
   buildSnapshot,
   type Comment,
   type Snapshot,
 } from "../fixtures/index.js";
+import { projectSnapshot } from "../live/snapshot.js";
 
 export type ViewId =
   | "all"
@@ -42,11 +60,17 @@ export interface UiState {
   palette: boolean;
   stagePicker: boolean;
   toast: string | null;
+  openRun: RunId | null;
+  openReason: AttentionReason | null;
 }
 
 export interface State {
   snapshot: Snapshot;
   ui: UiState;
+  live: boolean;
+  connection: string;
+  inbox: TaskInbox[];
+  runTargets: RunTarget[];
 }
 
 export const VIEWS: { id: ViewId; label: string; hint: string }[] = [
@@ -77,11 +101,7 @@ export function matchesView(task: Task, view: ViewId): boolean {
     case "all":
       return true;
     case "needs-you":
-      return (
-        task.attention.reasons.length > 0 ||
-        task.blocked !== null ||
-        task.failed !== null
-      );
+      return task.attention.reasons.length > 0;
     case "in-progress":
       return IN_PROGRESS.includes(task.stage);
     case "awaiting-approval":
@@ -108,6 +128,8 @@ const initialUi: UiState = {
   palette: false,
   stagePicker: false,
   toast: null,
+  openRun: null,
+  openReason: null,
 };
 
 /** The harness asks for a longer list with `?tasks=500`; the app itself never sets it. */
@@ -119,8 +141,19 @@ function taskCount(): number | undefined {
 
 export type Store = ReturnType<typeof createStore>;
 
-export function createStore(snapshot: Snapshot = buildSnapshot(taskCount())) {
-  let state: State = { snapshot, ui: initialUi };
+export function createStore(
+  snapshot: Snapshot = buildSnapshot(taskCount()),
+  live = false,
+) {
+  let state: State = {
+    snapshot,
+    ui: initialUi,
+    live,
+    connection: live ? "connecting" : "fixtures",
+    inbox: [],
+    runTargets: [],
+  };
+  let send: ((command: Command) => Promise<AckOutcome>) | null = null;
   const listeners = new Set<() => void>();
 
   const emit = () => {
@@ -139,6 +172,71 @@ export function createStore(snapshot: Snapshot = buildSnapshot(taskCount())) {
 
   const api = {
     getState: (): State => state,
+    setSender(sender: (command: Command) => Promise<AckOutcome>) {
+      send = sender;
+    },
+    async command(value: Command): Promise<AckOutcome> {
+      const parsed = commandSchema.safeParse(value);
+      const outcome: AckOutcome = !parsed.success
+        ? {
+            ok: false,
+            error: {
+              code: "invalid_input",
+              message: "Check the command fields",
+              details: [],
+            },
+          }
+        : send
+          ? await send(parsed.data)
+          : {
+              ok: false,
+              error: {
+                code: "unavailable",
+                message: live
+                  ? "Disconnected; command was not sent"
+                  : "Fixture mode: commands are not sent",
+                details: [],
+              },
+            };
+      setUi({
+        toast: outcome.ok
+          ? outcome.result.kind === "human"
+            ? `Queued by coordinator (${outcome.result.inputId}); watch Activity for the result.`
+            : "Coordinator acknowledged the command."
+          : `${outcome.error.code}: ${outcome.error.message}`,
+      });
+      return outcome;
+    },
+    setConnection(connection: string) {
+      state = { ...state, connection };
+      emit();
+    },
+    applyProtocol(client: ClientState, patch?: PatchFrame) {
+      state = {
+        ...state,
+        snapshot: projectSnapshot(state.snapshot, client, patch),
+        inbox:
+          !patch || patch.changes.some((c) => c.collection === "inbox")
+            ? [...client.collections.inbox.values()]
+            : state.inbox,
+        runTargets:
+          !patch || patch.changes.some((c) => c.collection === "run_target")
+            ? [...client.collections.run_target.values()]
+            : state.runTargets,
+      };
+      emit();
+    },
+    openAttention(
+      task: TaskId,
+      reason: AttentionReason,
+      tab: TabId,
+      run: RunId | null,
+    ) {
+      setUi({ openTask: task, openReason: reason, openRun: run, tab });
+    },
+    setRun(openRun: RunId | null) {
+      setUi({ openRun });
+    },
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -169,7 +267,12 @@ export function createStore(snapshot: Snapshot = buildSnapshot(taskCount())) {
       setUi({ cursor });
     },
     open(task: TaskId | null) {
-      setUi({ openTask: task, tab: task ? state.ui.tab : "activity" });
+      setUi({
+        openTask: task,
+        openRun: null,
+        openReason: null,
+        tab: task ? state.ui.tab : "activity",
+      });
     },
     setTab(tab: TabId) {
       setUi({ tab });
@@ -202,6 +305,18 @@ export function createStore(snapshot: Snapshot = buildSnapshot(taskCount())) {
      * the transition the coordinator would have written, so the Activity tab stays truthful.
      */
     moveTask(id: TaskId, to: Stage) {
+      if (live) {
+        if (to !== "backlog" && to !== "todo") {
+          api.toast("The coordinator controls this stage.");
+          return;
+        }
+        void api.command({
+          kind: "human",
+          taskId: id,
+          command: { type: "move", to },
+        });
+        return;
+      }
       const task = state.snapshot.tasks.find((t) => t.id === id);
       if (!task || task.stage === to) return;
       const at = minutesBefore(0);
@@ -240,6 +355,10 @@ export function createStore(snapshot: Snapshot = buildSnapshot(taskCount())) {
     },
 
     setFindingStatus(id: string, status: FindingStatus) {
+      if (live) {
+        api.toast("This action is not available in the live Tracker yet.");
+        return;
+      }
       setSnapshot({
         ...state.snapshot,
         findings: state.snapshot.findings.map(
@@ -250,6 +369,10 @@ export function createStore(snapshot: Snapshot = buildSnapshot(taskCount())) {
     },
 
     addComment(findingId: string, body: string) {
+      if (live) {
+        api.toast("This action is not available in the live Tracker yet.");
+        return;
+      }
       if (body.trim() === "") return;
       const comment: Comment = {
         id: `c-${findingId}-${state.snapshot.comments.length}`,
@@ -265,6 +388,10 @@ export function createStore(snapshot: Snapshot = buildSnapshot(taskCount())) {
     },
 
     toggleViewed(task: TaskId, path: string) {
+      if (live) {
+        api.toast("This action is not available in the live Tracker yet.");
+        return;
+      }
       const current = state.snapshot.viewedFiles[task] ?? [];
       const next = current.includes(path)
         ? current.filter((p) => p !== path)
@@ -276,6 +403,10 @@ export function createStore(snapshot: Snapshot = buildSnapshot(taskCount())) {
     },
 
     createTask(title: string, repo: string) {
+      if (live) {
+        api.toast("This action is not available in the live Tracker yet.");
+        return;
+      }
       const repoId =
         repo === "all" ? (state.snapshot.repos[0]?.id ?? "") : repo;
       const at = minutesBefore(0);

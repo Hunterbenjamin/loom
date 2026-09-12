@@ -66,7 +66,7 @@ export function taskInView(task: Task, view: ViewName): boolean {
 }
 
 /** Collections that reach every client, whatever it subscribed to. */
-const ALWAYS: CollectionName[] = ["repo"];
+const ALWAYS: CollectionName[] = ["repo", "inbox"];
 
 export interface Scope {
   views: { views: ViewName[]; repoIds: Set<string> | null }[];

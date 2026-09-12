@@ -10,7 +10,7 @@ import type {
   Stage,
 } from "./entities.js";
 import { later, millis, read } from "./helpers.js";
-import type { IsoTime } from "./ids.js";
+import type { IsoTime, RunId } from "./ids.js";
 
 export const budgetStage = (stage: string): boolean =>
   [
@@ -115,6 +115,8 @@ export interface AttentionSchedule {
 export interface AttentionDerivation {
   attention: Attention;
   schedules: AttentionSchedule[];
+  /** Runs responsible for each reason, derived alongside the reason itself. */
+  reasonRunIds: Partial<Record<AttentionReason, RunId[]>>;
 }
 
 /**
@@ -124,39 +126,51 @@ export interface AttentionDerivation {
 export function deriveAttention(input: AttentionInput): AttentionDerivation {
   const reasons = new Set<AttentionReason>();
   const schedules: AttentionSchedule[] = [];
+  const reasonRunIds: AttentionDerivation["reasonRunIds"] = {};
+  const fromRun = (reason: AttentionReason, runId: RunId) => {
+    reasons.add(reason);
+    const ids = reasonRunIds[reason] ?? [];
+    reasonRunIds[reason] = ids;
+    if (!ids.includes(runId)) ids.push(runId);
+  };
   const terminal = input.stage === "done" || input.stage === "canceled";
   if (!terminal) {
     if (input.stage === "plan_approval") reasons.add("plan_needs_approval");
     if (input.stage === "awaiting_approval") reasons.add("needs_approval");
-    if (input.questions.some((q) => q.answer === null)) reasons.add("question");
+    for (const question of input.questions)
+      if (question.answer === null) fromRun("question", question.runId);
     if (
       input.blocked &&
       !["dependencies", "provider_cooling_down"].includes(input.blocked.reason)
     )
       reasons.add("blocked");
-    if (input.failed) reasons.add("failed");
+    if (input.failed) {
+      reasons.add("failed");
+      if (input.failed.runId) fromRun("failed", input.failed.runId);
+    }
     for (const run of input.runs) {
       if (run.origin === "external") continue;
-      if (run.endReason === "vanished") reasons.add("run_vanished");
+      if (run.endReason === "vanished") fromRun("run_vanished", run.id);
       if (run.endedAt) continue;
-      if (run.blockedOn === "permission") reasons.add("provider_permission");
-      if (run.blockedOn === "input") reasons.add("provider_input");
+      if (run.blockedOn === "permission")
+        fromRun("provider_permission", run.id);
+      if (run.blockedOn === "input") fromRun("provider_input", run.id);
       if (run.status === "working") {
         const last = run.lastActivityAt ?? run.launchedAt;
         if (last) {
           const at = later(last, input.stallAfterMs);
-          if (at <= input.now) reasons.add("stalled");
+          if (at <= input.now) fromRun("stalled", run.id);
           else schedules.push({ at, why: "stall_check" });
         }
       }
       if (run.status === "unknown" && run.unknownSince) {
         const at = later(run.unknownSince, input.unknownGraceMs);
-        if (at <= input.now) reasons.add("status_unknown");
+        if (at <= input.now) fromRun("status_unknown", run.id);
         else schedules.push({ at, why: "poll" });
       }
     }
-    if (input.messages.some((m) => m.deliveryAttention))
-      reasons.add("provider_input");
+    for (const message of input.messages)
+      if (message.deliveryAttention) fromRun("provider_input", message.runId);
     if (
       input.budgetMinutes !== null &&
       input.activeElapsedMs > input.budgetMinutes * 60_000
@@ -176,7 +190,11 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
     reasonSince[reason] = held;
     if (!since || held < since) since = held;
   }
-  return { attention: { reasons: ordered, reasonSince, since }, schedules };
+  return {
+    attention: { reasons: ordered, reasonSince, since },
+    schedules,
+    reasonRunIds,
+  };
 }
 
 export function attention(c: Context): void {

@@ -47,7 +47,7 @@ const liveStatuses: Run["status"][] = [
   "unknown",
 ];
 
-export const rowsFor = memo1(
+const computeRows = memo1(
   (snapshot: Snapshot, view: ViewId, repo: string, query: string): Row[] => {
     const byTask = new Map<string, Run[]>();
     for (const run of snapshot.runs) {
@@ -89,6 +89,37 @@ export const rowsFor = memo1(
     return rows;
   },
 );
+
+let previousRows:
+  | {
+      snapshot: Snapshot;
+      view: ViewId;
+      repo: string;
+      query: string;
+      rows: Row[];
+    }
+  | undefined;
+export function rowsFor(
+  snapshot: Snapshot,
+  view: ViewId,
+  repo: string,
+  query: string,
+): Row[] {
+  const p = previousRows;
+  if (
+    p &&
+    p.snapshot.tasks === snapshot.tasks &&
+    p.snapshot.runs === snapshot.runs &&
+    p.snapshot.findings === snapshot.findings &&
+    p.view === view &&
+    p.repo === repo &&
+    p.query === query
+  )
+    return p.rows;
+  const rows = computeRows(snapshot, view, repo, query);
+  previousRows = { snapshot, view, repo, query, rows };
+  return rows;
+}
 
 export const sortRows = memo1(
   (rows: Row[], sort: SortKey, descending: boolean): Row[] => {
