@@ -215,3 +215,17 @@ test.each(["plan_approval", "awaiting_approval"] as const)(
     ]);
   },
 );
+
+test("answer-request CLI command requires correct arguments", async () => {
+  const _stderr = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation(() => true);
+
+  await expect(main(["task", "answer-request", taskId])).rejects.toThrow(
+    /loom task answer-request/,
+  );
+
+  await expect(
+    main(["task", "answer-request", taskId, "run-id", "request-id", "invalid"]),
+  ).rejects.toThrow("decision must be accept, decline, or cancel");
+});

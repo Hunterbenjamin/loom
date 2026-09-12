@@ -117,6 +117,8 @@ store directly, using a read-only connection without migrations or startup recov
 loom task list [--view needs_you]
 loom task show <task>
 loom task inspect <task> [--json]
+loom task answer <task> <questionId> <answer>
+loom task answer-request <task> <runId> <requestId> accept|decline|cancel
 ```
 
 `inspect` prints persisted task flags, all runs (newest last), message delivery history with
@@ -126,6 +128,11 @@ uses aligned columns without colour; `--json` returns the same data as one objec
 the coordinator stopped and reads the instance selected by `LOOM_INSTANCE` and `LOOM_DATA_ROOT`
 (with the usual CLI environment). These are the last stored observations, not a live provider
 refresh. No agents are contacted and no state is changed.
+
+`answer-request` answers a provider's approval request (e.g., a Codex `command_approval` for a
+test run). The decision is one of: `accept` (approve the operation), `decline` (reject it), or
+`cancel` (cancel the operation). The `generation` field (for Codex threading) is read from the
+run's current state in the snapshot.
 
 Each per-task Codex app-server appends stderr to `<taskDirectory>/app-server.log` (created with
 mode 0600). Startup logs the path; the file is preserved across restarts without rotation.
