@@ -32,6 +32,10 @@ export type Reading<T> =
 // ---------------------------------------------------------------- git
 
 export interface GitWorktreeObservation {
+  /** Tracked changes and non-ignored untracked paths; ignored output is excluded. */
+  dirtyPaths?: string[];
+  /** Reachability checks supplied by the git boundary for resolve_finding inputs. */
+  reachableCommits?: Sha[];
   path: WorktreePath;
   exists: boolean;
   branch: string | null;
@@ -190,6 +194,10 @@ export interface HerdrAgentObservation {
 // ---------------------------------------------------------------- per run, per task
 
 export interface RunObservation {
+  /** False only after an authoritative provider resume check. */
+  resumable?: boolean;
+  /** Provider activity time, not the time of a no-change poll. */
+  activityAt?: IsoTime;
   runId: RunId;
   provider: Reading<CodexThreadObservation | ClaudeSessionObservation | null>;
   /** Null for headless runs. `value: null` means Herdr has no such agent. */

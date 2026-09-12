@@ -1,0 +1,31 @@
+import type { Finding, MessagePurpose, Role } from "./entities.js";
+import type { IsoTime, MessageId, RunId, TaskId } from "./ids.js";
+import type { Reading } from "./observations.js";
+
+export const read = <T>(
+  reading: Reading<T> | null | undefined,
+): T | undefined => (reading?.ok ? reading.value : undefined);
+export const millis = (time: IsoTime): number => Date.parse(time);
+export const later = (time: IsoTime, ms: number): IsoTime =>
+  new Date(millis(time) + ms).toISOString() as IsoTime;
+export const runId = (task: TaskId, role: Role, round: number): RunId =>
+  `${task}/${role}/${round}` as RunId;
+export const messageId = (
+  run: RunId,
+  purpose: MessagePurpose,
+  sequence: string | number,
+): MessageId => `${run}/${purpose}/${sequence}` as MessageId;
+export const normalizeText = (text: string): string =>
+  text.replace(/\r\n/g, "\n").replace(/\t/g, "    ");
+export const openBlocking = (findings: Finding[]): number =>
+  findings.filter(
+    (f) => f.blocking && f.status !== "resolved" && f.status !== "waived",
+  ).length;
+export const clone = <T>(value: T): T => {
+  if (Array.isArray(value)) return value.map((item) => clone(item)) as T;
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, clone(v)]),
+    ) as T;
+  return value;
+};

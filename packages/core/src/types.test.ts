@@ -1,4 +1,4 @@
-// Phase 1a has no logic. These checks prove the contracts compile and stay internally consistent;
+// These checks prove the contracts compile and stay internally consistent;
 // `pnpm typecheck` does the real work, and vitest runs them as no-ops.
 
 import { describe, expectTypeOf, it } from "vitest";
@@ -90,6 +90,11 @@ const state: TaskState = {
   artifacts: [],
   outbox: [],
   config: {
+    deriveClaudeSessionId: (id, epoch) => `${id}#${epoch}` as ProviderSessionId,
+    sha256: (text) => `hash:${text}`,
+    worktreeRoot: "/tmp/loom",
+    baseBranch: "main",
+    models: { codex: "test", claude: "test" },
     retry: { baseMs: 10_000, capMs: 300_000, maxAttempts: 3 },
     stallAfterMs: 15 * 60_000,
     unknownGraceMs: 60_000,

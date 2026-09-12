@@ -1,18 +1,28 @@
-// The reconciler contract. Phase 1b implements `Reconcile`; this file only fixes its shape.
+// The pure reconciler contract. See engine.ts for the implementation and ../README.md for persistence requirements.
 
-import type { Action, ActionKind } from "./actions.js";
+import type { Action, ActionError, ActionKind } from "./actions.js";
 import type {
   Approval,
   Artifact,
   Finding,
   Message,
+  Plan,
+  Provider,
   Question,
+  Role,
   Run,
   Task,
   Transition,
   Worktree,
 } from "./entities.js";
-import type { ActionKey, InputId, IsoTime } from "./ids.js";
+import type {
+  ActionKey,
+  InputId,
+  IsoTime,
+  ProviderSessionId,
+  RunId,
+  Sha,
+} from "./ids.js";
 import type { McpError, McpToolName, McpTools } from "./mcp.js";
 import type { Observations } from "./observations.js";
 
@@ -25,6 +35,13 @@ export interface RetryPolicy {
 }
 
 export interface ReconcileConfig {
+  /** Pure caller-supplied UUIDv5 of `${runId}#${epoch}` in Loom's namespace. */
+  deriveClaudeSessionId: (runId: RunId, epoch: number) => ProviderSessionId;
+  /** Pure SHA-256; receives already normalized message text or canonical JSON. */
+  sha256: (text: string) => string;
+  worktreeRoot: string;
+  baseBranch: string;
+  models: Record<Provider, string>;
   retry: RetryPolicy;
   /** No provider activity for this long while working: `stalled` attention. Nothing is killed. */
   stallAfterMs: number;
@@ -36,9 +53,17 @@ export interface ReconcileConfig {
 }
 
 export interface OutboxEntry {
+  /** Retained so results and retries can recover the original intent. */
+  action?: Action;
+  retryAt?: IsoTime;
+  /** Executor must wait for these intents to succeed before executing this row. */
+  dependsOn?: ActionKey[];
+  retriedBy?: ActionKey;
+  retryBaseAttempt?: number;
+  error?: ActionError;
   key: ActionKey;
   kind: ActionKind;
-  status: "pending" | "running" | "succeeded" | "failed";
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
   attempts: number;
   createdAt: IsoTime;
   finishedAt: IsoTime | null;
@@ -46,6 +71,25 @@ export interface OutboxEntry {
 
 /** Everything Loom owns about one task, loaded in one read transaction. */
 export interface TaskState {
+  /** Persist these alongside the original entity records. */
+  consumedInputIds?: InputId[];
+  artifactContents?: Partial<Record<Artifact["kind"], unknown>>;
+  plan?: (Plan & { version: number; accepted: boolean }) | null;
+  review?: {
+    headSha: Sha;
+    lastReviewedHead: Sha | null;
+    previousBlocking: number | null;
+    verdictIds: Finding["id"][];
+  };
+  desiredRun?: { role: Role; round: number; resume: boolean } | null;
+  activeElapsedMs?: number;
+  budgetObservedAt?: IsoTime;
+  progress?: {
+    runId: RunId;
+    summary: string;
+    stepIndex: number | null;
+    at: IsoTime;
+  };
   task: Task;
   worktree: Worktree | null;
   /** Runs that haven't ended, plus the latest ended run per role. */
@@ -76,6 +120,8 @@ export type InputDisposition =
   | { inputId: InputId; accepted: false; error: McpError };
 
 export interface ReconcileResult {
+  /** Executor/store must CAS this version when starts or ends reserve/release capacity. */
+  capacityVersion?: number;
   next: TaskState;
   actions: Action[];
   /** New audit rows. */

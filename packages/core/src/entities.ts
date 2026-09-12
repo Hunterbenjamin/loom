@@ -237,6 +237,11 @@ export interface HerdrRef {
 }
 
 export interface Run {
+  seenAt?: IsoTime | null;
+  unknownSince?: IsoTime | null;
+  observedAttempt?: number;
+  /** Attempts remain monotonic for action keys; human retry resets this budget offset. */
+  retryBaseAttempt?: number;
   id: RunId;
   taskId: TaskId;
   role: Role;
@@ -307,6 +312,10 @@ export type DeliveryConfirmation =
   | { via: "claude_user_prompt_submit"; promptId: string };
 
 export interface Message {
+  via?: import("./actions.js").SendVia;
+  expectedTurnId?: string | null;
+  baselineTurnId?: string | null;
+  deliveryAttention?: boolean;
   id: MessageId;
   runId: RunId;
   purpose: MessagePurpose;
@@ -488,6 +497,8 @@ export interface FindingsSnapshot {
 export type CiConclusion = "success" | "pending" | "failure" | "none";
 
 export interface CiCheck {
+  /** GitHub check-run ID, required when importing a failed check as a finding. */
+  id?: string;
   name: string;
   status: "queued" | "in_progress" | "completed";
   conclusion: string | null;
