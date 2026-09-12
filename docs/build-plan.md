@@ -38,6 +38,12 @@ The `apps/coordinator` CLI takes one task on this repo through the whole cycle: 
 - a restart mid-run recovers;
 - a PR merged on github.com shows up as Done.
 
+**Built for remote access from the start, even though v1 runs on one machine:** the coordinator binds
+to a configurable address (loopback by default) with token authentication, and `packages/protocol`
+carries no localhost assumptions. This is a few lines now and a rewrite later. It's what allows a
+phone inbox (Phase 5) and, eventually, moving the coordinator, Herdr and the worktrees to an
+always-on machine while the laptop and phone stay clients.
+
 From then on, all Loom work is filed as Loom tasks.
 
 ## Phase 4: the UI, built through Loom
@@ -54,7 +60,10 @@ Agents build the UI screens in parallel, working against the fixed protocol and 
 - overlap warnings and a rebase queue;
 - GitHub issue import;
 - notifications;
-- routing around rate limits.
+- routing around rate limits;
+- a phone-friendly web build of the Needs-you inbox, approvals and review, served by the coordinator
+  over a private network such as Tailscale. No terminals: away from the desk, nearly every action is a
+  coordinator action.
 
 ## Guidance on parallel work
 
