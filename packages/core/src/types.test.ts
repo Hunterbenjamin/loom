@@ -129,7 +129,11 @@ const observations: Observations = {
       pane: null,
     },
   ],
-  externalSessions: { ok: true, value: [], at: "2026-09-12T00:00:00.000Z" as never },
+  externalSessions: {
+    ok: true,
+    value: [],
+    at: "2026-09-12T00:00:00.000Z" as never,
+  },
   capacity: {
     version: 1,
     active: { codex: 1, claude: 0 },

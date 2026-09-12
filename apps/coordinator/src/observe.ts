@@ -173,9 +173,7 @@ export async function observeExternal(
     return { sessions: [], readFailed: true };
   }
   // Only exclude Loom-launched sessions, not existing external runs
-  const known = new Set([
-    ...[...launched].map((id) => `claude ${id}`),
-  ]);
+  const known = new Set([...[...launched].map((id) => `claude ${id}`)]);
   const external: ExternalSessionObservation[] = [];
   for (const entry of sessions) {
     // Filter out stale entries (dead process or stale hook activity for null-pid)
@@ -304,9 +302,10 @@ export async function observe(
     now,
     state.config.stallAfterMs,
   );
-  const externalSessions: Reading<ExternalSessionObservation[]> = externalResult.readFailed
-    ? { ok: false, reason: "External sessions read failed", at: now as never }
-    : { ok: true, value: externalResult.sessions, at: now as never };
+  const externalSessions: Reading<ExternalSessionObservation[]> =
+    externalResult.readFailed
+      ? { ok: false, reason: "External sessions read failed", at: now as never }
+      : { ok: true, value: externalResult.sessions, at: now as never };
 
   return {
     now: now as never,
