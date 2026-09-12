@@ -468,13 +468,15 @@ class AppServerAdapter implements CodexAdapter {
       )
         return null;
       const params: ThreadReadParams = { threadId, includeTurns: false };
+      let loaded: boolean;
       try {
         const { thread } = await probe.rpc(
           "thread/read",
           params,
           schemas.metadataResult,
         );
-        return thread.id === threadId ? true : null;
+        if (thread.id !== threadId) return null;
+        loaded = thread.status.type !== "notLoaded";
       } catch (error) {
         if (
           !(error instanceof RpcError) ||
@@ -482,15 +484,19 @@ class AppServerAdapter implements CodexAdapter {
           error.message !== `thread not loaded: ${threadId}`
         )
           throw error;
-        // Only caller-recorded Loom threads may be checked: this fallback loads an unloaded thread.
-        const resume: ThreadResumeParams = { threadId, excludeTurns: true };
-        const { thread } = await probe.rpc(
-          "thread/resume",
-          resume,
-          schemas.metadataResult,
-        );
-        return thread.id === threadId ? true : null;
+        loaded = false;
       }
+      if (loaded) return true;
+      // A thread Codex knows but has not loaded is answered from its state database, which
+      // outlives the rollout file; only `thread/resume` proves the history is still there. Only
+      // caller-recorded Loom threads may be checked: this loads the thread.
+      const resume: ThreadResumeParams = { threadId, excludeTurns: true };
+      const { thread } = await probe.rpc(
+        "thread/resume",
+        resume,
+        schemas.metadataResult,
+      );
+      return thread.id === threadId ? true : null;
     } catch (error) {
       // The two 0.154.0 missing-history errors: the thread is not in Codex's state at all, or
       // it is but its rollout file is gone (the path carries the thread ID). Other errors,

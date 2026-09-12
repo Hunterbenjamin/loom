@@ -296,12 +296,17 @@ describe("Codex app-server adapter", () => {
     expect(await adapter.checkResumable("gone" as ProviderSessionId)).toBe(
       false,
     );
-    fake.handle(() => ({
-      error: {
-        code: -32600,
-        message: `failed to resolve rollout path \`/x/rollout-${threadId}.jsonl\`: No such file`,
-      },
-    }));
+    // Known to Codex's state database but its rollout file is gone: metadata reads fine, resume fails.
+    fake.handle((method) =>
+      method === "thread/resume"
+        ? {
+            error: {
+              code: -32600,
+              message: `failed to resolve rollout path \`/x/rollout-${threadId}.jsonl\`: file does not exist`,
+            },
+          }
+        : { result: { thread } },
+    );
     expect(await adapter.checkResumable(threadId)).toBe(false);
     fake.handle(() => ({
       error: { code: -32600, message: "permission denied" },
