@@ -212,9 +212,11 @@ export async function startRun(
     const started = await codex.startThread({
       cwd: action.worktreePath,
       model: action.model,
+      // Implementers get full access in their worktree (network included: `pnpm add` was
+      // blocked by workspace-write's no-network rule); planners and reviewers stay read-only.
       sandbox: READ_ONLY.includes(action.role)
         ? "read-only"
-        : "workspace-write",
+        : "danger-full-access",
       developerInstructions: prompt,
       config: { mcp_servers: { loom: codexMcpServer(deps.mcpEntry(token)) } },
     });

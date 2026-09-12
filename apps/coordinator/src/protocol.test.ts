@@ -4,7 +4,7 @@
 import type { TaskId } from "@loom/core";
 import { loadScenarios } from "@loom/fake-agent";
 import { PROTOCOL_VERSION } from "@loom/protocol";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { LoomClient } from "./client.js";
 import { createHarness, type Harness, ScenarioDriver } from "./test-support.js";
 
@@ -281,4 +281,97 @@ test("permission attribution and the selected run's attach target reach the wind
   });
   if (result.ok && result.result.kind === "attach_session")
     expect(result.result.target.attach?.env).toEqual({});
+}, 30_000);
+
+test("an adopted external run with unknown model reaches snapshots and patches", async () => {
+  const h = await served();
+  const created = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "External run",
+    description: "",
+  });
+  const taskId = created.task.id;
+  h.coordinator.submitHuman(taskId, { type: "move", to: "todo" });
+  await h.coordinator.settle();
+  const worktree = h.store.loadTaskState(taskId).worktree;
+  if (!worktree) throw new Error("missing worktree");
+  const client = await connect(h, "external-patches", [
+    { kind: "task", taskId },
+  ] as never);
+  const sessionId = h.providers.create(
+    "claude",
+    worktree.path,
+    undefined,
+    "interactive",
+  );
+  h.coordinator.loop.enqueue(taskId);
+  await h.coordinator.settle();
+  await vi.waitFor(() => {
+    expect([...(client.state?.collections.run.values() ?? [])]).toContainEqual(
+      expect.objectContaining({ sessionId, origin: "external", model: "" }),
+    );
+  });
+  const snapshotClient = await connect(h, "external-snapshot", [
+    { kind: "task", taskId },
+  ] as never);
+  expect([
+    ...(snapshotClient.state?.collections.run.values() ?? []),
+  ]).toContainEqual(
+    expect.objectContaining({ sessionId, origin: "external", model: "" }),
+  );
+  expect(h.logs.filter((line) => line.includes("Could not publish"))).toEqual(
+    [],
+  );
+}, 30_000);
+
+test("publish errors deduplicate by task and cause, and reset after success", async () => {
+  const h = await served();
+  await connect(h, "publish-errors");
+  const taskId = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Publish errors",
+    description: "",
+  }).task.id;
+  const otherId = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Other task",
+    description: "",
+  }).task.id;
+  await h.coordinator.settle();
+  let cause: string | null = "first failure";
+  const original = h.coordinator.protocol.publish.bind(h.coordinator.protocol);
+  const publish = vi.spyOn(h.coordinator.protocol, "publish");
+  publish.mockImplementation((changes) => {
+    if (cause !== null) throw new Error(cause);
+    return original(changes);
+  });
+  const errors = () =>
+    h.logs.filter((line) => line.startsWith("Could not publish"));
+  const tick = async (id: TaskId) => {
+    const calls = publish.mock.calls.length;
+    h.coordinator.loop.enqueue(id);
+    await h.coordinator.settle();
+    await vi.waitFor(() =>
+      expect(publish.mock.calls.length).toBeGreaterThan(calls),
+    );
+    // Flush the publish promise's rejection handler without depending on a wall-clock sleep.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  };
+  try {
+    await tick(taskId);
+    await tick(taskId);
+    expect(errors()).toHaveLength(1);
+    await tick(otherId);
+    expect(errors()).toHaveLength(2);
+    cause = "second failure";
+    await tick(taskId);
+    expect(errors()).toHaveLength(3);
+    cause = null;
+    await tick(taskId);
+    cause = "first failure";
+    await tick(taskId);
+    expect(errors()).toHaveLength(4);
+  } finally {
+    publish.mockRestore();
+  }
 }, 30_000);

@@ -82,6 +82,14 @@ const fields = {
     ]),
   },
   notify: { level: z.enum(["info", "attention"]), title: text, body: text },
+  answer_pane_prompt: {
+    runId: id,
+    choice: z.union([
+      z.number().int().min(0).max(9),
+      z.enum(["enter", "escape"]),
+    ]),
+    text: text.optional(),
+  },
 } as const;
 export const actionKind = z.enum(
   Object.keys(fields) as [keyof typeof fields, ...(keyof typeof fields)[]],
@@ -185,6 +193,12 @@ export const actionSchema = contract<Action>()(
       kind: z.literal("notify"),
       ...fields.notify,
     }),
+    z.object({
+      key: id,
+      taskId: id,
+      kind: z.literal("answer_pane_prompt"),
+      ...fields.answer_pane_prompt,
+    }),
   ]),
 );
 const empty = z.object({});
@@ -211,6 +225,7 @@ const outputs = {
   refresh: empty,
   schedule: empty,
   notify: empty,
+  answer_pane_prompt: empty,
 } as const;
 export const actionResultSchema = contract<ActionResult>()(
   z.union([
@@ -293,6 +308,11 @@ export const actionResultSchema = contract<ActionResult>()(
       kind: z.literal("notify"),
       ok: z.literal(true),
       output: outputs.notify,
+    }),
+    z.object({
+      kind: z.literal("answer_pane_prompt"),
+      ok: z.literal(true),
+      output: outputs.answer_pane_prompt,
     }),
     z.object({ kind: actionKind, ok: z.literal(false), error: errorSchema }),
   ]),

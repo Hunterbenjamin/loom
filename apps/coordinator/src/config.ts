@@ -139,6 +139,16 @@ export function configFromEnvironment(
       ?.split(",")
       .map((v) => v.trim())
       .filter(Boolean),
+    // Parallel-run caps. The defaults suit one person's rate limits; a dev instance building
+    // Loom with Loom queued planners behind them for an hour on 2026-09-12.
+    caps:
+      env.LOOM_CAP_TOTAL || env.LOOM_CAP_CODEX || env.LOOM_CAP_CLAUDE
+        ? {
+            total: Number(env.LOOM_CAP_TOTAL ?? 4),
+            codex: Number(env.LOOM_CAP_CODEX ?? 3),
+            claude: Number(env.LOOM_CAP_CLAUDE ?? 3),
+          }
+        : undefined,
     tmuxExecutable: optional("LOOM_TMUX"),
     codexExecutable: optional("LOOM_CODEX"),
     claudeExecutable: optional("LOOM_CLAUDE"),

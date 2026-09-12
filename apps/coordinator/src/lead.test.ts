@@ -134,7 +134,7 @@ test("Lead tools share the CLI command path and inspection view; core still reje
   });
   expect(await call("inspect_task", { taskId: task.id })).toEqual({
     ok: true,
-    value: inspectTask(h.store, task.id),
+    value: inspectTask(h.store, task.id, h.adapters),
   });
   const submit = vi.spyOn(h.coordinator, "submitHuman");
   const commands: [string, HumanCommand][] = [

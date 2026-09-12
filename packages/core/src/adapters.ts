@@ -211,7 +211,7 @@ export interface CodexAdapter {
   startThread(req: {
     cwd: WorktreePath;
     model: string;
-    sandbox: "read-only" | "workspace-write";
+    sandbox: "read-only" | "workspace-write" | "danger-full-access";
     developerInstructions: string;
     config: Record<string, unknown>;
   }): Promise<{ threadId: ProviderSessionId; generation: number }>;
@@ -299,6 +299,8 @@ export interface ClaudeAdapter {
     text: string;
   }): Promise<void>;
   interruptHeadless(sessionId: ProviderSessionId): Promise<void>;
+  /** Closes the headless run and terminates its subprocess; unknown/closed sessions are a no-op. */
+  closeHeadless(sessionId: ProviderSessionId): Promise<void>;
   headlessState(
     sessionId: ProviderSessionId,
   ): Promise<ClaudeSessionObservation["headless"]>;

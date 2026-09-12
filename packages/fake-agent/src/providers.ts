@@ -480,7 +480,15 @@ export class FakeProviders {
         return;
       const exists = !!existing;
       this.create("claude", req.cwd, req.sessionId);
-      if (exists && req.resume) this.recover(req.sessionId);
+      if (exists && req.resume) {
+        if (existing.value.provider === "claude")
+          existing.value.headless = {
+            exited: false,
+            exitCode: null,
+            error: null,
+          };
+        this.recover(req.sessionId);
+      }
       if (req.prompt) this.enqueue(req.sessionId, req.prompt);
     },
     sendHeadless: async (req) => {
@@ -488,6 +496,15 @@ export class FakeProviders {
     },
     interruptHeadless: async (id) => {
       this.finish(id, "interrupted");
+    },
+    closeHeadless: async (id) => {
+      const session = this.sessions.get(id);
+      if (session?.value.provider !== "claude" || !session.value.headless)
+        return;
+      session.queue = [];
+      session.value.agentsEntry = null;
+      session.value.headless = null;
+      this.event(id);
     },
     headlessState: async (id) => {
       const v = this.get(id).value;

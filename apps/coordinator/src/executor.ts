@@ -192,10 +192,11 @@ export class Executor {
           await (await adapters.codex(action.taskId)).unsubscribe(
             run.sessionId,
           );
-        else if (run.mode === "headless")
-          await adapters.claude
-            .interruptHeadless(run.sessionId)
-            .catch(() => undefined);
+        else if (run.mode === "headless") {
+          // Closing terminates the subprocess directly; an interrupt RPC can hang after exit.
+          // Let failures reach the outbox so cleanup can be retried.
+          await adapters.claude.closeHeadless(run.sessionId);
+        }
         return {};
       }
       case "push_branch": {
@@ -270,6 +271,19 @@ export class Executor {
       case "notify":
         this.deps.notify(action.level, action.title, action.body);
         return {};
+      default: {
+        // Handle unknown action kinds that may exist in the database but not in this executor version
+        const unknownAction = action as unknown as {
+          kind: string;
+          key: string;
+        };
+        throw new Fatal(
+          `Unknown action kind '${unknownAction.kind}' (key: ${unknownAction.key}). ` +
+            `This may indicate a schema drift between core and store. ` +
+            `Ensure the action kind is added to both packages/core/src/actions.ts ActionOutputs ` +
+            `and packages/store/src/action-schemas.ts.`,
+        );
+      }
     }
   }
 

@@ -5,6 +5,7 @@ import type {
   DependencyObservation,
   Input,
   InputDisposition,
+  PaneRef,
   ReconcileConfig,
   ReconcileResult,
   Repo,
@@ -285,6 +286,20 @@ export class Store {
   /** Full history in insertion order (newest last), including superseded runs. */
   runs(taskId: TaskId) {
     return readEntities(this.db, "runs", taskId, runSchema);
+  }
+  /**
+   * Update a run's pane info (used during recovery to persist relaunched pane details).
+   * Called outside of reconciliation to record pane relaunch before any pane operation.
+   */
+  updateRunPane(taskId: TaskId, runId: string, pane: PaneRef | null): void {
+    const raw = this.db
+      .prepare("SELECT task_id, data FROM runs WHERE id = ?")
+      .get(runId);
+    if (!raw) throw new Error(`Run ${runId} not found`);
+    const row = ownedRow.parse(raw);
+    if (row.task_id !== taskId) throw new Error(`Run belongs to another task`);
+    const run = decode(runSchema, row.data);
+    upsertEntity(this.db, "runs", taskId, runId, runSchema, { ...run, pane });
   }
   /** Full message history, including confirmed delivery and failed sends. */
   messages(taskId: TaskId) {

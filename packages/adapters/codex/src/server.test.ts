@@ -7,10 +7,12 @@ import {
   rm,
   stat,
   symlink,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ProviderSessionId } from "@loom/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createCodexAdapter } from "./index.js";
 import { serverEnvironment, TaskServer } from "./server.js";
@@ -61,11 +63,11 @@ it("owns one private child, preserves it across reconnect, and stops/restarts id
     await adapter.stopServer();
   }
 });
-it("refuses a preexisting socket path and never removes it", async () => {
+it("refuses a preexisting non-socket path and leaves it untouched", async () => {
   const socket = join(directory, "app-server.sock");
   await writeFile(socket, "belongs to someone else");
   const server = new TaskServer(directory, executable);
-  await expect(server.start()).rejects.toThrow("existing");
+  await expect(server.start()).rejects.toThrow("non-socket");
   await server.stop();
   expect(await readFile(socket, "utf8")).toBe("belongs to someone else");
 });
@@ -144,5 +146,166 @@ fi
     );
   } finally {
     await server.stop();
+  }
+});
+
+const pidOf = async () =>
+  JSON.parse(await readFile(join(directory, "fake-process.json"), "utf8"))
+    .pid as number;
+const spawns = async () =>
+  (await readFile(join(directory, "fake-spawns.log"), "utf8"))
+    .trim()
+    .split("\n")
+    .map(Number);
+
+it.each(["recorded", "numeric", "missing"])(
+  "adopts a %s owner and terminates it on shutdown",
+  async (metadata) => {
+    const first = new TaskServer(directory, executable);
+    const recovered = new TaskServer(directory, executable);
+    try {
+      await first.start();
+      const pid = await pidOf();
+      if (metadata === "missing") await unlink(first.pidfile);
+      if (metadata === "numeric") await writeFile(first.pidfile, String(pid));
+      await recovered.start();
+      expect(recovered.running).toBe(true);
+      expect(await spawns()).toEqual([pid]);
+      expect(
+        JSON.parse(await readFile(recovered.pidfile, "utf8")),
+      ).toMatchObject({ pid, startedAt: expect.any(String) });
+      await recovered.stop();
+      await recovered.stop();
+      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+      await expect(lstat(first.socket)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(lstat(first.pidfile)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await recovered.stop();
+      await first.stop();
+    }
+  },
+);
+
+it.each(["dead", "unlinked"])(
+  "reaps a %s predecessor before replacing its ownership record",
+  async (kind) => {
+    const first = new TaskServer(directory, executable);
+    const replacement = new TaskServer(directory, executable);
+    try {
+      await first.start();
+      const pid = await pidOf();
+      if (kind === "dead") {
+        process.kill(pid, "SIGKILL");
+        await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+      } else await unlink(first.socket);
+      await replacement.start();
+      expect(() => process.kill(pid, 0)).toThrow();
+      const nextPid = await pidOf();
+      expect(nextPid).not.toBe(pid);
+      expect(await spawns()).toEqual([pid, nextPid]);
+      // A stale handle must not unlink the newer server's socket or PID file.
+      await first.stop();
+      expect((await lstat(replacement.socket)).isSocket()).toBe(true);
+      expect(
+        JSON.parse(await readFile(replacement.pidfile, "utf8")),
+      ).toMatchObject({ pid: nextPid });
+    } finally {
+      await replacement.stop();
+      await first.stop();
+    }
+  },
+);
+
+it("serializes simultaneous starts from independent adapters", async () => {
+  const first = createCodexAdapter({ taskDirectory: directory, executable });
+  const second = createCodexAdapter({ taskDirectory: directory, executable });
+  try {
+    await Promise.all([first.startServer(), second.startServer()]);
+    expect(await spawns()).toEqual([await pidOf()]);
+    const generation = second.generation();
+    await second.startServer();
+    expect(second.generation()).toBe(generation);
+  } finally {
+    await second.stopServer();
+    await first.stopServer();
+  }
+});
+
+it("preserves a live socket whose server reports a different CODEX_HOME", async () => {
+  vi.stubEnv("FAKE_SERVER_HOME", directory);
+  const first = new TaskServer(directory, executable);
+  const other = new TaskServer(directory, executable);
+  try {
+    await first.start();
+    const pid = await pidOf();
+    await expect(other.start()).rejects.toThrow("different CODEX_HOME");
+    await other.stop();
+    expect((await lstat(first.socket)).isSocket()).toBe(true);
+    expect(() => process.kill(pid, 0)).not.toThrow();
+    expect(await spawns()).toEqual([pid]);
+  } finally {
+    await other.stop();
+    await first.stop();
+  }
+});
+
+it("never signals an unrelated process named by a stale pidfile", async () => {
+  await writeFile(
+    join(directory, "app-server.pid"),
+    JSON.stringify({ pid: process.pid, startedAt: "stale identity" }),
+  );
+  const server = new TaskServer(directory, executable);
+  const signals = vi.spyOn(process, "kill");
+  try {
+    await server.start();
+    await server.stop();
+    expect(
+      signals.mock.calls.filter(
+        ([pid, signal]) => pid === process.pid && signal !== 0,
+      ),
+    ).toEqual([]);
+  } finally {
+    signals.mockRestore();
+    await server.stop();
+  }
+});
+
+it("rejects malformed process ownership without signaling a process group", async () => {
+  await writeFile(join(directory, "app-server.pid"), "-1");
+  const server = new TaskServer(directory, executable);
+  await expect(server.start()).rejects.toThrow();
+  await server.stop();
+  expect(await readFile(server.pidfile, "utf8")).toBe("-1");
+});
+
+it("a fresh adapter resumes and reads the existing thread after coordinator recovery", async () => {
+  const first = createCodexAdapter({ taskDirectory: directory, executable });
+  const recovered = createCodexAdapter({
+    taskDirectory: directory,
+    executable,
+  });
+  const threadId = "existing-thread" as ProviderSessionId;
+  try {
+    await first.startServer();
+    await first.resumeThread(threadId);
+    const pid = await pidOf();
+    // A new coordinator has no ChildProcess handle or subscriptions from the old adapter.
+    await recovered.startServer();
+    await recovered.resumeThread(threadId);
+    expect(await recovered.readThread(threadId)).toMatchObject({
+      threadId,
+      status: "active",
+      turns: [{ id: "surviving-turn", status: "inProgress" }],
+    });
+    expect(await spawns()).toEqual([pid]);
+    await recovered.stopServer();
+    await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+  } finally {
+    await recovered.stopServer();
+    await first.stopServer();
   }
 });

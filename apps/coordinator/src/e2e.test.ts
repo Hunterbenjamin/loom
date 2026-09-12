@@ -5,7 +5,7 @@
 import { stat } from "node:fs/promises";
 import type { Sha, TaskId } from "@loom/core";
 import { loadScenarios } from "@loom/fake-agent";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { createHarness, type Harness, ScenarioDriver } from "./test-support.js";
 
 const scenarios = (name: string) =>
@@ -70,6 +70,17 @@ test("a task runs Todo to Done through plan, review, a fix round and a merge", a
 
   const done = h.store.loadTaskState(taskId);
   expect(done.runs.every((run) => run.endedAt !== null)).toBe(true);
+  for (const run of done.runs) {
+    if (run.provider !== "claude" || run.mode !== "headless" || !run.sessionId)
+      continue;
+    expect(await h.adapters.claude.headlessState(run.sessionId)).toBeNull();
+    expect(
+      (await h.adapters.claude.listSessions()).some(
+        (s) => s.sessionId === run.sessionId,
+      ),
+    ).toBe(false);
+    await h.adapters.claude.closeHeadless(run.sessionId);
+  }
   expect(done.task.attention.reasons).toEqual([]);
   const transitions = h.store.transitions(taskId).map((t) => t.to);
   expect(transitions).toEqual(
@@ -204,4 +215,41 @@ test("a human push to the branch after review voids the approval and re-reviews"
   const state = h.store.loadTaskState(taskId);
   expect(state.task.stage).toBe("in_review");
   expect(state.approvals.every((a) => a.voidedAt !== null)).toBe(true);
+}, 30_000);
+
+test("stopCodexServer is called when a task reaches done stage", async () => {
+  const h = await harness();
+  const taskId = start(h);
+  const driver = new ScenarioDriver(h, await scenarios("walking-skeleton"));
+  await driver.run();
+  await h.coordinator.settle();
+
+  expect(stageOf(h, taskId)).toBe("awaiting_approval");
+
+  // Approve and merge the PR
+  const pr = h.github.snapshot();
+  const headSha = pr?.headSha as Sha;
+  h.github.ci("success");
+  const approval = h.coordinator.submitHuman(taskId, {
+    type: "approve",
+    headSha,
+  });
+  await h.coordinator.settle();
+  expect(h.store.inputDisposition(taskId, approval)).toMatchObject({
+    accepted: true,
+  });
+
+  // Merge the PR to transition to done
+  h.github.merge();
+  h.coordinator.loop.enqueue(taskId);
+
+  // Spy on the stopCodexServer method
+  const stopSpy = vi.spyOn(h.adapters, "stopCodexServer");
+
+  // Settle the loop, which should call stopCodexServer for the task
+  await h.coordinator.settle();
+  expect(stageOf(h, taskId)).toBe("done");
+
+  // Verify stopCodexServer was called for the task
+  expect(stopSpy).toHaveBeenCalledWith(taskId);
 }, 30_000);
