@@ -3,8 +3,8 @@ import type { Run } from "@loom/core";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, test } from "vitest";
-import { buildSnapshot } from "../fixtures/index.js";
 import { runId } from "../fixtures/ids.js";
+import { buildSnapshot } from "../fixtures/index.js";
 import { ProviderLabel, RunDot } from "./bits.js";
 
 (
@@ -22,15 +22,15 @@ describe("RunDot", () => {
   function renderDot(run: Run | null): HTMLElement {
     const container = document.createElement("div");
     document.body.append(container);
-    cleanups.push(() => {
-      const root = createRoot(container);
-      root.unmount();
-      container.remove();
-    });
 
     const root = createRoot(container);
     act(() => {
       root.render(createElement(RunDot, { run }));
+    });
+
+    cleanups.push(() => {
+      root.unmount();
+      container.remove();
     });
 
     const span = container.querySelector("span");
@@ -140,15 +140,15 @@ describe("ProviderLabel", () => {
   function renderLabel(run: Run | null, runs?: Run[]): HTMLElement {
     const container = document.createElement("div");
     document.body.append(container);
-    cleanups.push(() => {
-      const root = createRoot(container);
-      root.unmount();
-      container.remove();
-    });
 
     const root = createRoot(container);
     act(() => {
       root.render(createElement(ProviderLabel, { run, runs }));
+    });
+
+    cleanups.push(() => {
+      root.unmount();
+      container.remove();
     });
 
     return container.firstElementChild as HTMLElement;
@@ -163,16 +163,17 @@ describe("ProviderLabel", () => {
   test("renders nothing when no run and blank=true", () => {
     const container = document.createElement("div");
     document.body.append(container);
-    cleanups.push(() => {
-      const root = createRoot(container);
-      root.unmount();
-      container.remove();
-    });
 
     const root = createRoot(container);
     act(() => {
       root.render(createElement(ProviderLabel, { run: null, blank: true }));
     });
+
+    cleanups.push(() => {
+      root.unmount();
+      container.remove();
+    });
+
     expect(container.innerHTML).toBe("");
   });
 
@@ -184,6 +185,8 @@ describe("ProviderLabel", () => {
     const elem = renderLabel(run, [run]);
     const text = elem.textContent || "";
     expect(text).toContain("·");
+    expect(text).toContain(run.role);
+    expect(text).toContain(run.provider);
     expect(text).toContain(run.model);
     const parts = text.split("·").map((s) => s.trim());
     expect(parts.length).toBe(3);
@@ -216,8 +219,16 @@ describe("ProviderLabel", () => {
   test("shows most recent run details when multiple runs", () => {
     const fixture = buildSnapshot();
     const run1 = { ...fixture.runs[0], model: "old-model" } as Run;
-    const run2 = { ...fixture.runs[0], id: runId("run-2"), model: "new-model" } as Run;
-    const run3 = { ...fixture.runs[0], id: runId("run-3"), model: "newer-model" } as Run;
+    const run2 = {
+      ...fixture.runs[0],
+      id: runId("run-2"),
+      model: "new-model",
+    } as Run;
+    const run3 = {
+      ...fixture.runs[0],
+      id: runId("run-3"),
+      model: "newer-model",
+    } as Run;
 
     const elem = renderLabel(run2, [run1, run2, run3]);
     const text = elem.textContent || "";

@@ -52,8 +52,8 @@ export const ProviderLabel = memo(function ProviderLabel({
 }) {
   if (!run) return blank ? null : <span className="faint">—</span>;
 
-  // Show role · provider · model for a single run
-  const label = `${run.role[0]} · ${run.provider === "codex" ? "c" : "C"} · ${run.model || "—"}`;
+  // Show role · provider · model for a single run (e.g., implementer · codex · claude-opus-5)
+  const label = `${run.role} · ${run.provider} · ${run.model || "—"}`;
 
   // If multiple runs, show the most recent one's details plus a count
   if (runs && runs.length > 1) {
