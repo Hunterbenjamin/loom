@@ -139,13 +139,15 @@ for _ in $(seq 1 60); do
       fi
       ;;
     codex)
-      # Codex has no status command. Its rollout transcript is the cheapest provider-owned signal:
-      # a session file for this worktree, written after the prompt went in.
-      if find "${CODEX_HOME:-$HOME/.codex}/sessions" -name 'rollout-*.jsonl' -type f \
-        -newermt "@$before" 2>/dev/null |
-        while read -r f; do head -n 1 "$f" | jq -e --arg cwd "$worktree" \
-          '.payload.cwd == $cwd' >/dev/null && echo hit; done | grep -q hit; then
-        confirmed=1
+      # Codex has no status command, but its state database records every thread with its cwd,
+      # creation time and first user message. A thread for this worktree, created after launch,
+      # whose first message is our prompt, is provider-owned proof the prompt landed. (The rollout
+      # transcript used before was not written for a fresh thread; this table was.)
+      db="$(ls -t "${CODEX_HOME:-$HOME/.codex}"/state_*.sqlite 2>/dev/null | head -n 1)"
+      if [ -n "$db" ] && command -v sqlite3 >/dev/null; then
+        q_wt="${worktree//\'/\'\'}"; q_prompt="${prompt//\'/\'\'}"
+        n="$(sqlite3 -readonly "$db" "select count(*) from threads where cwd = '$q_wt' and created_at >= $before and first_user_message = '$q_prompt';" 2>/dev/null || echo 0)"
+        [ "${n:-0}" -gt 0 ] && confirmed=1
       fi
       ;;
   esac
