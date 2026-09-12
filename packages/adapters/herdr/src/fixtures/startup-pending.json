@@ -1,0 +1,27 @@
+{
+  "id": "record",
+  "result": {
+    "type": "agent_started",
+    "agent": {
+      "terminal_id": "term_65b41cab3a5763",
+      "name": "fixture-claude",
+      "agent_status": "unknown",
+      "workspace_id": "w3",
+      "tab_id": "w3:t1",
+      "pane_id": "w3:p1",
+      "focused": false,
+      "launch_pending": true,
+      "state_change_seq": 0,
+      "cwd": "/fixture/work",
+      "foreground_cwd": "/fixture/work",
+      "revision": 0
+    },
+    "argv": [
+      "claude",
+      "--model",
+      "haiku",
+      "--session-id",
+      "00000000-0000-4000-8000-000000000001"
+    ]
+  }
+}

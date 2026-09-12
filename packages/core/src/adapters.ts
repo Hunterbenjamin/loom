@@ -140,12 +140,25 @@ export interface HerdrAdapter {
     kind: Provider;
     paneId: string;
     args: string[];
-  }): Promise<HerdrRef>;
+  }): Promise<
+    HerdrRef & {
+      /** Startup UI only, never authoritative provider/run status. */
+      startup: "ready" | "blocked" | "readiness_timeout";
+    }
+  >;
   getAgent(name: string): Promise<HerdrAgentObservation | null>;
   listAgents(): Promise<HerdrAgentObservation[]>;
   prompt(name: string, text: string): Promise<HerdrPromptResult>;
   /** `send-keys esc`. Confirmation comes from the provider's status, not from Herdr. */
   interrupt(name: string): Promise<void>;
+  /** Restore provider identity after resume; uses source `herdr:<provider>`. */
+  reportSession(
+    paneId: string,
+    provider: Provider,
+    sessionId: ProviderSessionId,
+  ): Promise<void>;
+  /** Full argv for a human terminal. Never requests takeover automatically. */
+  attachArgs(name: string): string[];
   subscribe(onHint: OnHint): Unsubscribe;
 }
 

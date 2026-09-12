@@ -1,0 +1,21 @@
+{
+  "id": "record",
+  "result": {
+    "type": "pane_process_info",
+    "process_info": {
+      "pane_id": "w1:p1",
+      "shell_pid": 95753,
+      "foreground_process_group_id": 95753,
+      "foreground_processes": [
+        {
+          "pid": 95753,
+          "name": "zsh",
+          "argv0": "zsh",
+          "argv": ["-zsh"],
+          "cmdline": "-zsh",
+          "cwd": "/fixture/work"
+        }
+      ]
+    }
+  }
+}
