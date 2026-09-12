@@ -199,9 +199,30 @@ function launch(c: Context, run: Run, resume: boolean): void {
       run,
       "initial",
       run.attempts,
-      `Continue the ${run.role} work for ${c.task.title}. Read the task files before acting.\nCurrent git observation: ${JSON.stringify(c.git ?? null)}\n${JSON.stringify(c.state.plan ?? null)}`,
+      [
+        `You are Loom's ${run.role} for task ${c.task.id}: ${c.task.title}.`,
+        "Call the Loom MCP tool `get_task_context` first; it is the only source that stays current.",
+        COMPLETION[run.role],
+        "Loom moves the task between stages; you never do. Don't merge and don't push to the base branch.",
+        `Current git observation: ${JSON.stringify(c.git ?? null)}`,
+        `Plan: ${JSON.stringify(c.state.plan ?? null)}`,
+      ].join("\n"),
     );
 }
+
+/**
+ * What "done" means for each role, stated in the first message. The first real run stopped after
+ * implementing, with the tree uncommitted and no submission, because nothing had told it the work
+ * ends with a tool call.
+ */
+const COMPLETION: Record<Run["role"], string> = {
+  planner:
+    "Your work is complete only when `submit_plan` has succeeded. Do not stop before it has.",
+  implementer:
+    "Implement the plan in this worktree, run the repo's tests, commit on this branch, and call `submit_for_review` with the commit's head SHA, a summary, your test results and a handoff. Your work is complete only when `submit_for_review` has succeeded. Do not stop before it has.",
+  reviewer:
+    "Review the branch against the plan, run the tests, and call `submit_review` once with every finding and a verdict for each addressed or disputed one. Your work is complete only when `submit_review` has succeeded.",
+};
 
 export function startDesired(c: Context): void {
   if (
