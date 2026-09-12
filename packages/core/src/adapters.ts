@@ -3,7 +3,7 @@
 // Subscriptions deliver hints: a reason to re-read, never a fact to act on.
 
 import type { ActionOutputs } from "./actions.js";
-import type { PaneRef, Provider } from "./entities.js";
+import type { PaneRef } from "./entities.js";
 import type {
   BlobOid,
   IsoTime,

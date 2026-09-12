@@ -235,6 +235,8 @@ export interface ProviderRequest {
 export interface PaneRef {
   hostGeneration: string;
   sessionName: string;
+  /** The pane's window. An attach client selects by window, so the ref has to carry it. */
+  windowId: string;
   paneId: string;
 }
 

@@ -70,6 +70,7 @@ const run: Run = {
   pane: {
     hostGeneration: "loom-dev#1757635200",
     sessionName: "loom-t1",
+    windowId: "@2",
     paneId: "%3",
   },
   status: "working",

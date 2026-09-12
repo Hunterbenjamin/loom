@@ -117,6 +117,7 @@ describe("delivery requires provider evidence", () => {
         ref: {
           hostGeneration: "loom-dev#1",
           sessionName: "loom-t1",
+          windowId: "@1",
           paneId: "%1",
         },
         cwd: f.run.worktreePath,

@@ -11,7 +11,12 @@ import type {
 import { deriveStatus } from "./index.js";
 
 const pane = (cwd: WorktreePath): PaneObservation => ({
-  ref: { hostGeneration: "loom-dev#1", sessionName: "loom-t1", paneId: "%1" },
+  ref: {
+    hostGeneration: "loom-dev#1",
+    sessionName: "loom-t1",
+    windowId: "@1",
+    paneId: "%1",
+  },
   cwd,
   startCwd: cwd,
   pid: 4242,
@@ -223,7 +228,12 @@ describe("Codex status table", () => {
     f.observation.pane = {
       ok: true,
       at: now,
-      value: { ...pane(f.run.worktreePath), dead: true, exitCode: 1, cwd: null },
+      value: {
+        ...pane(f.run.worktreePath),
+        dead: true,
+        exitCode: 1,
+        cwd: null,
+      },
     };
     expect(deriveStatus(f.run, f.observation)).toMatchObject({
       status: "ended",

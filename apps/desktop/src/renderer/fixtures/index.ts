@@ -396,6 +396,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
             ? {
                 hostGeneration: HOST_GENERATION,
                 sessionName: `loom-${slug(title).slice(0, 20)}`,
+                windowId: `@${index * 4 + roleIndex}`,
                 paneId: `%${index * 4 + roleIndex}`,
               }
             : null,
@@ -467,6 +468,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
               ? {
                   hostGeneration: HOST_GENERATION,
                   sessionName: `loom-${slug(title)}`,
+                  windowId: `@${index * 4 + round + 2}`,
                   paneId: `%${index * 4 + round + 2}`,
                 }
               : null,
