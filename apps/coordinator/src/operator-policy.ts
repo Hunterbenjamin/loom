@@ -44,13 +44,23 @@ export function allowedOperatorCommand(
       words.length > 2 &&
       words
         .slice(2)
+        .map((word) =>
+          word.startsWith('"') || word.startsWith("'")
+            ? word.slice(1, -1)
+            : word,
+        )
         .every(
           (w) =>
             w === "--" ||
             w === "-A" ||
             w === "--all" ||
             w === "." ||
-            (!w.startsWith("-") && !w.includes("..") && !w.startsWith("/")),
+            (w.length > 0 &&
+              !w.startsWith("-") &&
+              !w.includes("..") &&
+              !w.startsWith("/") &&
+              !w.startsWith("~") &&
+              !w.startsWith(":")),
         )
     );
   if (words[1] === "commit")

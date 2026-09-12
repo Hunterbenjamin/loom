@@ -27,6 +27,7 @@ describe("Operator policy v1", () => {
     "pnpm install --frozen-lockfile",
     "git add .",
     "git add -- src/index.ts",
+    "git add 'src/my file.ts'",
     "git commit -m 'Implement change'",
   ])("allows simple %s", (cmd) =>
     expect(allowedOperatorCommand(cmd, {})).toBe(true),
@@ -40,6 +41,10 @@ describe("Operator policy v1", () => {
     "git add .; id",
     "pnpm install\nid",
     "git add ../outside",
+    "git add '/outside'",
+    "git add '--pathspec-from-file=secrets'",
+    "git add ~/outside",
+    "git add ':!excluded'",
     "git add . | sh",
     "git add . > log",
     "pnpm install lodash",
