@@ -30,6 +30,13 @@ const bind = z
 
 const port = z.number().int().min(1).max(65535);
 
+/**
+ * An ephemeral bind (port 0, as tests use) gets ephemeral neighbours; a fixed bind gets fixed
+ * ones, so a restart keeps the URLs written into every live run's settings valid.
+ */
+const derivedPort = (bindPort: number, offset: number): number =>
+  bindPort === 0 ? 0 : bindPort + offset;
+
 export const configSchema = z
   .object({
     instance,
@@ -74,8 +81,8 @@ export const configSchema = z
   })
   .transform((config) => ({
     ...config,
-    mcpPort: config.mcpPort ?? config.bind.port + 1,
-    hookPort: config.hookPort ?? config.bind.port + 2,
+    mcpPort: config.mcpPort ?? derivedPort(config.bind.port, 1),
+    hookPort: config.hookPort ?? derivedPort(config.bind.port, 2),
   }));
 
 export type CoordinatorConfig = z.output<typeof configSchema>;
@@ -133,8 +140,12 @@ export function configFromEnvironment(
     tmuxExecutable: optional("LOOM_TMUX"),
     codexExecutable: optional("LOOM_CODEX"),
     claudeExecutable: optional("LOOM_CLAUDE"),
-    mcpPort: env.LOOM_MCP_PORT ? Number(env.LOOM_MCP_PORT) : bindPort + 1,
-    hookPort: env.LOOM_HOOK_PORT ? Number(env.LOOM_HOOK_PORT) : bindPort + 2,
+    mcpPort: env.LOOM_MCP_PORT
+      ? Number(env.LOOM_MCP_PORT)
+      : derivedPort(bindPort, 1),
+    hookPort: env.LOOM_HOOK_PORT
+      ? Number(env.LOOM_HOOK_PORT)
+      : derivedPort(bindPort, 2),
   });
 }
 
