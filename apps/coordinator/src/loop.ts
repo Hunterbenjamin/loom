@@ -92,9 +92,11 @@ export class Loop {
             );
           }
         }
-        continue;
       }
-      if (await this.deps.drainExecutor()) continue;
+      // Busy providers may enqueue throughout every observation pass. Give already-committed
+      // actions a turn after each batch instead of waiting for the hint queue to go quiet.
+      const executed = await this.deps.drainExecutor();
+      if (executed || this.pending.size) continue;
       return;
     }
     throw new Error("The reconcile loop did not settle");
