@@ -654,9 +654,54 @@ ul.plain {
   overflow: hidden;
 }
 
-.terminal-tab > .terminal-wrap {
+.terminal-panes,
+.terminal-pane {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.terminal-panes {
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-pane {
+  display: flex;
+}
+
+.terminal-pane[hidden] {
+  display: none;
+}
+
+.terminal-pane > .terminal-wrap {
   height: auto;
+}
+
+.terminal-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.terminal-tabs button {
+  flex: none;
+  padding: 4px 8px;
+  border-bottom: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.terminal-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+.terminal-empty {
+  padding: 12px;
 }
 
 .terminal-bar {
