@@ -91,6 +91,7 @@ export async function createClaudeAdapter(
     hookBaseUrl: receiver.baseUrl,
     mcpServerName,
     mcpServer: config.mcpServer,
+    bashCommandPrefixes: undefined, // Will be set per-run if interactive
   };
 
   const run = (sessionId: ProviderSessionId): HeadlessRun => {
@@ -113,10 +114,12 @@ export async function createClaudeAdapter(
     writeSettings: async (
       settingsPath: string,
       mcpServer?: McpServerEntry,
+      bashCommandPrefixes?: string[],
     ): Promise<void> => {
       await writeSettingsFiles(settingsPath, {
         ...settingsRequest,
         mcpServer: mcpServer ?? config.mcpServer,
+        bashCommandPrefixes,
       });
     },
 

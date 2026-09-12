@@ -13,13 +13,30 @@ import { Hints } from "./providers.js";
 
 export class FakePaneHost implements PaneHost {
   readonly hints = new Hints();
-  readonly writes: { ref: PaneRef; text: string }[] = [];
-  readonly keys: { ref: PaneRef; key: "Escape" }[] = [];
+  readonly writes: { ref: PaneRef; text: string; timestamp: number }[] = [];
+  readonly keys: {
+    ref: PaneRef;
+    key:
+      | "Escape"
+      | "Enter"
+      | "0"
+      | "1"
+      | "2"
+      | "3"
+      | "4"
+      | "5"
+      | "6"
+      | "7"
+      | "8"
+      | "9";
+    timestamp: number;
+  }[] = [];
   readonly launches: Parameters<PaneHost["ensurePane"]>[0][] = [];
   private panes = new Map<string, PaneObservation>();
   private runs = new Map<RunId, PaneRef>();
   private workspaces = new Map<string, WorktreePath>();
   private generation = 1;
+  private now = 0;
   ensureWorkspace: PaneHost["ensureWorkspace"] = async (req) => {
     const workspaceId = `loom-${req.taskId}`;
     const existing = this.workspaces.get(workspaceId);
@@ -65,12 +82,16 @@ export class FakePaneHost implements PaneHost {
     structuredClone([...this.panes.values()]);
   pasteText: PaneHost["pasteText"] = async (ref, text) => {
     this.live(ref);
-    this.writes.push({ ref: structuredClone(ref), text });
+    this.writes.push({
+      ref: structuredClone(ref),
+      text,
+      timestamp: this.now++,
+    });
     return "written";
   };
   sendKey: PaneHost["sendKey"] = async (ref, key) => {
     this.live(ref);
-    this.keys.push({ ref: structuredClone(ref), key });
+    this.keys.push({ ref: structuredClone(ref), key, timestamp: this.now++ });
   };
   attachArgs: PaneHost["attachArgs"] = (ref) => {
     this.live(ref);

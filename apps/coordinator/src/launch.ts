@@ -24,6 +24,7 @@ import {
   type RecipeStore,
   runEnvironment,
 } from "./recipes.js";
+import type { WorkflowReader } from "./workflow.js";
 
 export type StartRunAction = Extract<Action, { kind: "start_run" }>;
 
@@ -35,9 +36,60 @@ export interface LaunchDeps {
   mcpEntry(token: string): McpServerEntry;
   now(): string;
   environment?: NodeJS.ProcessEnv;
+  /** Reads WORKFLOW.md for interactive Claude runs to derive bash command prefixes. */
+  workflowReader?: WorkflowReader;
+  /** Resolves a RepoId to its Repo, for reading WORKFLOW.md from the repo root. */
+  repoById?: (repoId: string) => { root: string } | undefined;
 }
 
 const READ_ONLY: Role[] = ["planner", "reviewer"];
+
+/** Fixed allowlist of bash command prefixes for interactive Claude runs. */
+export const FIXED_BASH_PREFIXES = [
+  "git add",
+  "git commit",
+  "git status",
+  "git diff",
+  "git log",
+  "pnpm install",
+  "pnpm exec vitest",
+  "pnpm exec biome",
+  "pnpm exec tsc",
+];
+
+/**
+ * Derives bash command prefixes for an interactive Claude run.
+ * Combines fixed prefixes with commands derived from WORKFLOW.md.
+ */
+export async function deriveBashPrefixes(
+  state: TaskState,
+  workflowReader?: WorkflowReader,
+  repoById?: (repoId: string) => { root: string } | undefined,
+): Promise<string[]> {
+  const prefixes = [...FIXED_BASH_PREFIXES];
+
+  if (!workflowReader || !repoById) return prefixes;
+
+  try {
+    const repo = repoById(state.task.repoId);
+    if (!repo) return prefixes;
+
+    const commands = await workflowReader.read(repo.root);
+    // Convert WORKFLOW.md command names to bash prefixes
+    // E.g., "test" from `## test` → "pnpm test"
+    for (const name of Object.keys(commands)) {
+      // For now, assume all commands are pnpm-based
+      const prefix = `pnpm ${name}`;
+      if (!prefixes.includes(prefix)) {
+        prefixes.push(prefix);
+      }
+    }
+  } catch {
+    // If reading WORKFLOW.md fails, just use the fixed prefixes
+  }
+
+  return prefixes;
+}
 
 /** The brief a run is launched with. Short on purpose: `get_task_context` holds the rest. */
 export function launchPrompt(state: TaskState, action: StartRunAction): string {
@@ -103,7 +155,20 @@ export async function startRun(
     if (!settingsPath) throw new Error("A Claude run needs a settings path");
     // `--settings` is part of a Claude session's identity: whatever relaunches the run must pass
     // it again. The token goes in the sibling MCP config, never in the settings file.
-    await adapters.claude.writeSettings(settingsPath, deps.mcpEntry(token));
+    // For interactive runs, derive bash command prefixes from WORKFLOW.md.
+    let bashPrefixes: string[] | undefined;
+    if (action.mode === "interactive") {
+      bashPrefixes = await deriveBashPrefixes(
+        state,
+        deps.workflowReader,
+        deps.repoById,
+      );
+    }
+    await adapters.claude.writeSettings(
+      settingsPath,
+      deps.mcpEntry(token),
+      bashPrefixes,
+    );
     const sessionId = action.sessionId;
     if (!sessionId)
       throw new Error("A Claude run must know its session ID before launch");

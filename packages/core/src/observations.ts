@@ -263,6 +263,12 @@ export type HumanCommand =
       decision: "accept" | "decline" | "cancel";
       answers: Record<string, string[]> | null;
     }
+  | {
+      type: "answer_pane_prompt";
+      runId: RunId;
+      choice: number | "enter" | "escape";
+      text?: string;
+    }
   | { type: "send_message"; runId: RunId; text: string }
   | { type: "retry" }
   | { type: "grant_review_round" }

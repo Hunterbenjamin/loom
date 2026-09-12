@@ -210,7 +210,10 @@ export const run = z.strictObject({
   worktreePath,
   round: count,
   attempts: count,
-  model: z.string().min(1),
+  // Empty for a session Loom did not launch (core records `model: ""` for external runs). With
+  // `min(1)` here, one adopted session made every publish of its task fail and hid the task
+  // from every client, CLI included, at the moment it needed attention (2026-09-12).
+  model: z.string(),
   sessionId: providerSessionId.nullable(),
   sessionEpoch: count,
   codexGeneration: count.nullable(),
@@ -533,6 +536,15 @@ export const humanCommand = z.union([
     generation: count.nullable(),
     decision: z.enum(["accept", "decline", "cancel"]),
     answers: z.record(z.string(), z.array(text)).nullable(),
+  }),
+  z.strictObject({
+    type: z.literal("answer_pane_prompt"),
+    runId,
+    choice: z.union([
+      z.number().int().min(0).max(9),
+      z.enum(["enter", "escape"]),
+    ]),
+    text: text.optional(),
   }),
   z.strictObject({ type: z.literal("send_message"), runId, text }),
   z.strictObject({ type: z.literal("retry") }),

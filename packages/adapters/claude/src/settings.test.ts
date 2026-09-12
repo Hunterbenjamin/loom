@@ -68,6 +68,48 @@ describe("per-run settings", () => {
     }
   });
 
+  test("bash command prefixes are emitted as Bash permissions", () => {
+    const settings = buildSettings({
+      ...request,
+      bashCommandPrefixes: ["pnpm test", "git commit"],
+    });
+    expect(settings.permissions.allow).toContain("mcp__loom");
+    expect(settings.permissions.allow).toContain("Bash(pnpm test:*)");
+    expect(settings.permissions.allow).toContain("Bash(git commit:*)");
+  });
+
+  test("multiple bash prefixes create multiple Bash permissions", () => {
+    const settings = buildSettings({
+      ...request,
+      bashCommandPrefixes: [
+        "pnpm test",
+        "pnpm install",
+        "git commit",
+        "git status",
+      ],
+    });
+    expect(settings.permissions.allow).toEqual([
+      "mcp__loom",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm install:*)",
+      "Bash(git commit:*)",
+      "Bash(git status:*)",
+    ]);
+  });
+
+  test("empty bash prefixes list is handled gracefully", () => {
+    const settings = buildSettings({
+      ...request,
+      bashCommandPrefixes: [],
+    });
+    expect(settings.permissions.allow).toEqual(["mcp__loom"]);
+  });
+
+  test("undefined bash prefixes defaults to MCP-only permissions", () => {
+    const settings = buildSettings(request);
+    expect(settings.permissions.allow).toEqual(["mcp__loom"]);
+  });
+
   test("a hook base URL that isn't http is refused", () => {
     expect(() =>
       buildSettings({ ...request, hookBaseUrl: "file:///etc/passwd" }),
