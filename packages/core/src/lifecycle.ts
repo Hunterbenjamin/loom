@@ -5,6 +5,16 @@ import type { RunId, WorktreePath } from "./ids.js";
 import { deriveStatus } from "./status.js";
 
 export function observeRuns(c: Context): void {
+  // Enforce terminal-task invariant: end all external runs on done/canceled tasks
+  if (c.task.stage === "done" || c.task.stage === "canceled") {
+    const endReason =
+      c.task.stage === "done" ? "task_done" : ("canceled" as const);
+    for (const run of c.state.runs) {
+      if (run.origin === "external" && !run.endedAt) {
+        c.end(run, endReason);
+      }
+    }
+  }
   for (const run of c.state.runs) {
     if (run.endedAt || run.origin === "external") continue;
     // A launch result must be committed before old snapshots can describe this attempt.
@@ -116,7 +126,25 @@ export function observeRuns(c: Context): void {
       }
     }
   }
-  for (const session of c.observations.externalSessions) {
+  // End external runs whose sessions have disappeared, but only if read was successful.
+  // On read failure (transient errors), preserve unknown state and don't end runs.
+  if (c.observations.externalSessions.ok) {
+    const sessions = c.observations.externalSessions.value;
+    for (const run of c.state.runs) {
+      if (run.origin !== "external" || run.endedAt) continue;
+      const stillActive = sessions.some(
+        (s) => s.provider === run.provider && s.sessionId === run.sessionId,
+      );
+      if (!stillActive) {
+        c.end(run, "vanished");
+      }
+    }
+  }
+  // Only adopt new external sessions if read was successful
+  const sessionsToAdopt = c.observations.externalSessions.ok
+    ? c.observations.externalSessions.value
+    : [];
+  for (const session of sessionsToAdopt) {
     if (
       session.cwd !== c.task.worktreePath ||
       c.state.runs.some(

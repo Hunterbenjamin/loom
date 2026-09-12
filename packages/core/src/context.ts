@@ -224,40 +224,46 @@ export class Context {
     this.state.desiredRun = { role, round, resume };
   }
   end(run: Run, reason: RunEndReason, interrupt = false): void {
-    if (run.endedAt || run.origin === "external") return;
-    for (const message of this.state.messages)
-      if (
-        message.runId === run.id &&
-        (message.status === "pending" || message.status === "sent")
-      ) {
-        message.status = "failed";
-        message.deliveryAttention = false;
-      }
-    for (const row of this.state.outbox)
-      if (
-        (row.status === "pending" || row.status === "running") &&
-        row.action &&
-        "runId" in row.action &&
-        row.action.runId === run.id &&
-        ["start_run", "send_message", "answer_provider_request"].includes(
-          row.kind,
+    if (run.endedAt) return;
+    // For Loom-launched runs, cancel pending actions and manage capacity.
+    // For external runs, skip those steps (they never counted toward capacity).
+    if (run.origin === "loom") {
+      for (const message of this.state.messages)
+        if (
+          message.runId === run.id &&
+          (message.status === "pending" || message.status === "sent")
+        ) {
+          message.status = "failed";
+          message.deliveryAttention = false;
+        }
+      for (const row of this.state.outbox)
+        if (
+          (row.status === "pending" || row.status === "running") &&
+          row.action &&
+          "runId" in row.action &&
+          row.action.runId === run.id &&
+          ["start_run", "send_message", "answer_provider_request"].includes(
+            row.kind,
+          )
         )
-      )
-        row.status = "canceled";
-    this.result.actions = this.result.actions.filter(
-      (a) =>
-        !this.state.outbox.some(
-          (row) => row.key === a.key && row.status === "canceled",
-        ),
-    );
-    if (["starting", "working", "blocked"].includes(run.status))
-      this.reserved[run.provider]--;
-    if (interrupt && run.status === "working")
-      this.emit(`interrupt_run:${run.id}#${run.attempts}:${reason}`, {
-        kind: "interrupt_run",
-        runId: run.id,
-        reason,
-      });
+          row.status = "canceled";
+      this.result.actions = this.result.actions.filter(
+        (a) =>
+          !this.state.outbox.some(
+            (row) => row.key === a.key && row.status === "canceled",
+          ),
+      );
+      if (["starting", "working", "blocked"].includes(run.status))
+        this.reserved[run.provider]--;
+      if (interrupt && run.status === "working")
+        this.emit(`interrupt_run:${run.id}#${run.attempts}:${reason}`, {
+          kind: "interrupt_run",
+          runId: run.id,
+          reason,
+        });
+    }
+    // Both Loom and external runs: emit stop_run for headless mode (cleanup)
+    // and set end state.
     if (run.mode === "headless")
       this.emit(`stop_run:${run.id}#${run.attempts}`, {
         kind: "stop_run",
@@ -268,7 +274,8 @@ export class Context {
     run.endedAt = this.now;
     run.endReason = reason;
     run.retryAt = null;
-    this.result.capacityVersion = this.observations.capacity.version;
+    if (run.origin === "loom")
+      this.result.capacityVersion = this.observations.capacity.version;
   }
   voidApprovals(reason: ApprovalVoidReason): void {
     for (const row of this.state.outbox)

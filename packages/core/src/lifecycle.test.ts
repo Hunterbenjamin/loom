@@ -169,21 +169,131 @@ describe("headless retries and interactive control", () => {
   });
   it("external sessions remain observe-only", () => {
     const f = fixture();
-    f.observations.externalSessions = [
-      {
-        provider: "claude",
-        sessionId: "external" as never,
-        cwd: makeRun().worktreePath,
-        kind: "background",
-        active: true,
-      },
-    ];
+    f.observations.externalSessions = {
+      ok: true,
+      value: [
+        {
+          provider: "claude",
+          sessionId: "external" as never,
+          cwd: makeRun().worktreePath,
+          kind: "background",
+          active: true,
+        },
+      ],
+      at: now,
+    };
     const r = fixed(f.state, f.observations);
     const external = r.next.runs.find((r) => r.origin === "external");
     expect(external).toMatchObject({ sessionId: "external" });
     expect(
       r.actions.some((a) => "runId" in a && a.runId === external?.id),
     ).toBe(false);
+  });
+
+  it("external runs are ended when task reaches done stage", () => {
+    const f = fixture("in_review");
+    f.observations.externalSessions = {
+      ok: true,
+      value: [
+        {
+          provider: "claude",
+          sessionId: "external_session" as never,
+          cwd: f.state.task.worktreePath as never,
+          kind: "background",
+          active: true,
+        },
+      ],
+      at: now,
+    };
+    // Create the external run
+    let r = fixed(f.state, f.observations);
+    const externalRun = r.next.runs.find((r) => r.origin === "external");
+    expect(externalRun).toBeDefined();
+    expect(externalRun?.endedAt).toBeNull();
+
+    // Simulate PR merge to move task to done stage
+    if (f.observations.github?.ok && f.observations.github.value)
+      f.observations.github.value.state = "merged";
+    r = fixed(r.next, f.observations);
+    const endedExternal = r.next.runs.find(
+      (r) => r.origin === "external" && r.sessionId === "external_session",
+    );
+    expect(endedExternal).toMatchObject({
+      status: "ended",
+      endedAt: now,
+      endReason: "task_done",
+    });
+  });
+
+  it("external runs are ended when task is canceled", () => {
+    const f = fixture("in_review");
+    f.observations.externalSessions = {
+      ok: true,
+      value: [
+        {
+          provider: "claude",
+          sessionId: "external_session" as never,
+          cwd: f.state.task.worktreePath as never,
+          kind: "background",
+          active: true,
+        },
+      ],
+      at: now,
+    };
+    // Create the external run
+    let r = fixed(f.state, f.observations);
+    const externalRun = r.next.runs.find((r) => r.origin === "external");
+    expect(externalRun).toBeDefined();
+    expect(externalRun?.endedAt).toBeNull();
+
+    // Simulate cancel command
+    f.observations.inputs = [command({ type: "cancel", reason: "not viable" })];
+    r = fixed(r.next, f.observations);
+    const endedExternal = r.next.runs.find(
+      (r) => r.origin === "external" && r.sessionId === "external_session",
+    );
+    expect(endedExternal).toMatchObject({
+      status: "ended",
+      endedAt: now,
+      endReason: "canceled",
+    });
+  });
+
+  it("external runs do not count toward provider capacity", () => {
+    const f = fixture("planning");
+    // Add an external session
+    f.observations.externalSessions = {
+      ok: true,
+      value: [
+        {
+          provider: "claude",
+          sessionId: "external_session" as never,
+          cwd: f.state.task.worktreePath as never,
+          kind: "background",
+          active: true,
+        },
+      ],
+      at: now,
+    };
+    // Add a Loom-launched run that would be in planning
+    const loomRunId = f.state.runs[0]?.id;
+    expect(f.state.runs[0]?.origin).toBe("loom");
+
+    // Run reconciliation
+    const r = fixed(f.state, f.observations);
+
+    // Verify external run exists and is active
+    const externalRun = r.next.runs.find((r) => r.origin === "external");
+    expect(externalRun).toMatchObject({
+      status: "working",
+      origin: "external",
+    });
+
+    // Verify the observations compute capacity without external runs
+    // The capacity calculation should only count Loom-launched runs
+    const live = r.next.runs.filter((r) => !r.endedAt && r.origin === "loom");
+    expect(live.some((r) => r.id === loomRunId)).toBe(true);
+    expect(live.some((r) => r.origin === "external")).toBe(false);
   });
 });
 

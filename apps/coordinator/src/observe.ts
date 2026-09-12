@@ -1,8 +1,10 @@
 // Fresh reads from every owner, outside any transaction (design §5.1 step 3). Nothing here
 // decides anything: a failed read is `ok: false`, which core treats as unknown, never as proof.
 
+import { isStaleEntry } from "@loom/adapter-claude";
 import type {
   CapacityObservation,
+  ClaudeAgentsEntry,
   ClaudeSessionObservation,
   CodexThreadObservation,
   ExternalSessionObservation,
@@ -136,28 +138,63 @@ export async function observeRun(
  * `claude agents --json` is the only list a provider offers; a Codex thread Loom doesn't own is
  * not discoverable through the app-server, so it stays invisible until it is.
  */
+/**
+ * Result of observing external sessions. If readFailed is true, the observation is incomplete
+ * and should not be used to end existing runs (preserve unknown state on transient failures).
+ */
+export interface ExternalSessionsResult {
+  sessions: ExternalSessionObservation[];
+  readFailed: boolean;
+}
+
 export async function observeExternal(
   adapters: Adapters,
   state: TaskState,
   /** Every session Loom has ever launched, from the launch recipes. A run that has scrolled out
    * of the loaded snapshot is still Loom's, and must never be adopted as an external session. */
   launched: ReadonlySet<string> = new Set(),
-): Promise<ExternalSessionObservation[]> {
+  now?: string,
+  stallAfterMs?: number,
+): Promise<ExternalSessionsResult> {
   const worktree = state.task.worktreePath;
-  if (!worktree) return [];
+  if (!worktree) return { sessions: [], readFailed: false };
   let canonical: WorktreePath;
   try {
     canonical = await adapters.git.realpath(worktree);
   } catch {
-    return [];
+    // Failure to resolve worktree: unknown state, don't end runs
+    return { sessions: [], readFailed: true };
   }
-  const sessions = await adapters.claude.listSessions().catch(() => []);
-  const known = new Set([
-    ...state.runs.map((r) => `${r.provider} ${r.sessionId}`),
-    ...[...launched].map((id) => `claude ${id}`),
-  ]);
+  let sessions: ClaudeAgentsEntry[];
+  try {
+    sessions = await adapters.claude.listSessions();
+  } catch {
+    // Failure to list sessions: unknown state, don't end runs
+    return { sessions: [], readFailed: true };
+  }
+  // Only exclude Loom-launched sessions, not existing external runs
+  const known = new Set([...[...launched].map((id) => `claude ${id}`)]);
   const external: ExternalSessionObservation[] = [];
   for (const entry of sessions) {
+    // Filter out stale entries (dead process or stale hook activity for null-pid)
+    let hookInfo:
+      | { hookLastEventAt: string | null; stallAfterMs: number; now: string }
+      | undefined;
+    if (now && stallAfterMs) {
+      try {
+        const hooks = await adapters.claude.hookSummary(
+          entry.sessionId as never,
+        );
+        hookInfo = {
+          hookLastEventAt: hooks.lastEventAt,
+          stallAfterMs,
+          now,
+        };
+      } catch {
+        // If we can't get hook info, use conservative assumptions
+      }
+    }
+    if (isStaleEntry(entry, hookInfo)) continue;
     if (known.has(`claude ${entry.sessionId}`)) continue;
     let cwd: WorktreePath;
     try {
@@ -174,7 +211,7 @@ export async function observeExternal(
       active: entry.status === "busy" || entry.status === "waiting",
     });
   }
-  return external;
+  return { sessions: external, readFailed: false };
 }
 
 export interface CapacityReader {
@@ -258,16 +295,24 @@ export async function observe(
     coolingDownUntil:
       deps.coolingDownUntil() as CapacityObservation["coolingDownUntil"],
   };
+  const externalResult = await observeExternal(
+    deps.adapters,
+    state,
+    deps.launchedSessions(),
+    now,
+    state.config.stallAfterMs,
+  );
+  const externalSessions: Reading<ExternalSessionObservation[]> =
+    externalResult.readFailed
+      ? { ok: false, reason: "External sessions read failed", at: now as never }
+      : { ok: true, value: externalResult.sessions, at: now as never };
+
   return {
     now: now as never,
     git,
     github,
     runs,
-    externalSessions: await observeExternal(
-      deps.adapters,
-      state,
-      deps.launchedSessions(),
-    ),
+    externalSessions,
     capacity,
     dependencies: deps.dependencies(),
     inputs,
