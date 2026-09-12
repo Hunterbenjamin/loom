@@ -89,7 +89,8 @@ export class FakeProviders {
               status: "idle",
               rawStatus: "idle",
               kind: mode === "interactive" ? "interactive" : "other",
-              pid: 80000 + ++this.sequence,
+              // The real adapter drops registry entries whose pid is dead; a fake session must look alive.
+              pid: process.pid,
               cwd,
             },
             hooks: {
@@ -274,7 +275,8 @@ export class FakeProviders {
         status: "idle",
         rawStatus: "idle",
         kind: s.value.headless ? "other" : "interactive",
-        pid: 80000 + ++this.sequence,
+        // The real adapter drops registry entries whose pid is dead; a fake session must look alive.
+        pid: process.pid,
         cwd: s.cwd,
       };
       if (s.value.headless)
