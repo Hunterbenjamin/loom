@@ -297,6 +297,13 @@ describe("Codex app-server adapter", () => {
       false,
     );
     fake.handle(() => ({
+      error: {
+        code: -32600,
+        message: `failed to resolve rollout path \`/x/rollout-${threadId}.jsonl\`: No such file`,
+      },
+    }));
+    expect(await adapter.checkResumable(threadId)).toBe(false);
+    fake.handle(() => ({
       error: { code: -32600, message: "permission denied" },
     }));
     expect(await adapter.checkResumable(threadId)).toBeNull();

@@ -492,10 +492,14 @@ class AppServerAdapter implements CodexAdapter {
         return thread.id === threadId ? true : null;
       }
     } catch (error) {
-      // Exact 0.154.0 missing-history error. Other errors, including socket loss, are unknown.
+      // The two 0.154.0 missing-history errors: the thread is not in Codex's state at all, or
+      // it is but its rollout file is gone (the path carries the thread ID). Other errors,
+      // including socket loss, are unknown.
       return error instanceof RpcError &&
         error.code === -32600 &&
-        error.message === `no rollout found for thread id ${threadId}`
+        (error.message === `no rollout found for thread id ${threadId}` ||
+          (error.message.startsWith("failed to resolve rollout path") &&
+            error.message.includes(threadId)))
         ? false
         : null;
     } finally {
