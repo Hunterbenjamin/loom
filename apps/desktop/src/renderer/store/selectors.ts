@@ -47,6 +47,20 @@ const liveStatuses: Run["status"][] = [
   "unknown",
 ];
 
+const isLive = (run: Run): boolean => liveStatuses.includes(run.status);
+
+/**
+ * The run that started last. Loom records `launchedAt` for the runs it starts; an adopted
+ * external session has none, so it counts as older than any launched run. Among equals the later
+ * row wins, so the order runs arrived in breaks the tie the same way every time.
+ */
+function newest(runs: readonly Run[]): Run | null {
+  let best: Run | null = null;
+  for (const run of runs)
+    if (!best || (run.launchedAt ?? "") >= (best.launchedAt ?? "")) best = run;
+  return best;
+}
+
 const computeRows = memo1(
   (snapshot: Snapshot, view: ViewId, repo: string, query: string): Row[] => {
     const byTask = new Map<string, Run[]>();
@@ -74,24 +88,10 @@ const computeRows = memo1(
       if (needle && !`${task.id} ${task.title}`.toLowerCase().includes(needle))
         continue;
       const runs = byTask.get(task.id) ?? [];
-      // Select the most recent live run, or fall back to the last run
-      let live: Run | undefined;
-      for (const run of runs) {
-        if (liveStatuses.includes(run.status)) {
-          if (
-            !live ||
-            (run.launchedAt &&
-              live.launchedAt &&
-              Date.parse(run.launchedAt) > Date.parse(live.launchedAt))
-          ) {
-            live = run;
-          }
-        }
-      }
       rows.push({
         task,
         runs,
-        run: live ?? runs.at(-1) ?? null,
+        run: newest(runs.filter(isLive)) ?? newest(runs),
         openBlocking: blocking.get(task.id) ?? 0,
         ageMinutes: Math.round((now - Date.parse(task.createdAt)) / 60_000),
         stageMinutes: Math.round(

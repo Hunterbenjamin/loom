@@ -161,7 +161,7 @@ export class TrackerClient {
           version: "0.0.0",
         },
         subscriptions: [
-          { kind: "views", views: ["all"], repoIds: null },
+          { kind: "views", views: ["all"], repoIds: null, runs: true },
           ...this.detail,
         ],
       });

@@ -26,6 +26,12 @@ export const subscription = z.union([
     views: z.array(viewName).min(1),
     /** Null means every repo. */
     repoIds: z.array(repoId).min(1).nullable(),
+    /**
+     * Also the runs of every listed task, so the list can show which agent is working on each.
+     * Bounded by the list itself: one task's runs, no more; findings and the rest still need a
+     * task subscription.
+     */
+    runs: z.boolean().optional(),
   }),
   /** One task's detail: runs, messages, questions, findings, approvals, plan, tests, threads. */
   z.strictObject({ kind: z.literal("task"), taskId }),
@@ -69,11 +75,14 @@ export function taskInView(task: Task, view: ViewName): boolean {
 const ALWAYS: CollectionName[] = ["repo", "inbox", "lead"];
 
 export interface Scope {
-  views: { views: ViewName[]; repoIds: Set<string> | null }[];
+  views: { views: ViewName[]; repoIds: Set<string> | null; runs: boolean }[];
   tasks: Set<string>;
   diffs: Set<string>;
   runs: Set<string>;
 }
+
+/** Finds a task by id, so a run change can be judged by the list its task is in. */
+export type TaskLookup = (taskId: string) => Task | null | undefined;
 
 export function scopeOf(subscriptions: readonly Subscription[]): Scope {
   const scope: Scope = {
@@ -87,6 +96,7 @@ export function scopeOf(subscriptions: readonly Subscription[]): Scope {
       scope.views.push({
         views: s.views,
         repoIds: s.repoIds ? new Set<string>(s.repoIds) : null,
+        runs: s.runs === true,
       });
     else if (s.kind === "task") scope.tasks.add(s.taskId);
     else if (s.kind === "diff") scope.diffs.add(`${s.taskId}#${s.mode}`);
@@ -101,10 +111,18 @@ export function scopeOf(subscriptions: readonly Subscription[]): Scope {
  */
 export function taskInScope(scope: Scope, task: Task): boolean {
   if (scope.views.length === 0) return true;
-  return scope.views.some(
-    (v) =>
-      (v.repoIds === null || v.repoIds.has(task.repoId)) &&
-      v.views.some((view) => taskInView(task, view)),
+  return scope.views.some((v) => viewMatches(v, task));
+}
+
+/** Does a list that asked for runs contain this task? */
+export function runsInScope(scope: Scope, task: Task): boolean {
+  return scope.views.some((v) => v.runs && viewMatches(v, task));
+}
+
+function viewMatches(v: Scope["views"][number], task: Task): boolean {
+  return (
+    (v.repoIds === null || v.repoIds.has(task.repoId)) &&
+    v.views.some((view) => taskInView(task, view))
   );
 }
 
@@ -116,8 +134,15 @@ export function ownerTask(change: Change): string | null {
   return change.value.taskId;
 }
 
-/** Does this change belong on this client's stream? */
-export function inScope(scope: Scope, change: Change): boolean {
+/**
+ * Does this change belong on this client's stream? `taskOf` resolves a run's task, so a list that
+ * asked for runs gets them; without it, runs still follow task and run subscriptions only.
+ */
+export function inScope(
+  scope: Scope,
+  change: Change,
+  taskOf?: TaskLookup,
+): boolean {
   if (ALWAYS.includes(change.collection)) return true;
   if (change.collection === "task") {
     if (change.op === "delete") return true;
@@ -130,6 +155,9 @@ export function inScope(scope: Scope, change: Change): boolean {
   if (change.collection === "run") {
     const id = change.op === "delete" ? change.key : change.value.id;
     if (scope.runs.has(id)) return true;
+    const owner = ownerTask(change);
+    const task = owner === null ? null : taskOf?.(owner);
+    if (task && runsInScope(scope, task)) return true;
   }
   if (change.collection === "run_target") {
     const id = change.op === "delete" ? change.key : change.value.runId;
@@ -143,6 +171,7 @@ export function inScope(scope: Scope, change: Change): boolean {
 export function filterChanges(
   scope: Scope,
   changes: readonly Change[],
+  taskOf?: TaskLookup,
 ): Change[] {
-  return changes.filter((c) => inScope(scope, c));
+  return changes.filter((c) => inScope(scope, c, taskOf));
 }

@@ -7,6 +7,7 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type Server as HttpServer } from "node:http";
+import type { Task, TaskId } from "@loom/core";
 import type {
   Change,
   ClientFrame,
@@ -53,6 +54,8 @@ export interface ProtocolServerDeps {
   now(): string;
   /** Everything currently published, used for a snapshot and for a resync. */
   snapshot(scope: readonly Subscription[]): Promise<Row[]>;
+  /** A task as published, so a patch can route runs to the lists that asked for them. */
+  task(taskId: TaskId): Task | null;
   /** Runs one command and answers with its `ackResult` payload or a typed error. */
   command(value: unknown): Promise<ServerCommandResult | ServerCommandError>;
   /** Asked when a client subscribes to something the coordinator has not published yet. */
@@ -148,7 +151,9 @@ export class ProtocolServer {
   publish(changes: readonly Change[]): void {
     if (!changes.length) return;
     for (const connection of this.connections) {
-      const mine = filterChanges(scopeOf(connection.scope), changes);
+      const mine = filterChanges(scopeOf(connection.scope), changes, (taskId) =>
+        this.deps.task(taskId as TaskId),
+      );
       if (!mine.length) continue;
       connection.seq += 1;
       this.send(connection, {
@@ -363,15 +368,25 @@ export class ProtocolServer {
   ): Promise<void> {
     await this.deps.ensure(connection.scope);
     const scope = scopeOf(connection.scope);
-    const rows = (await this.deps.snapshot(connection.scope)).filter((entry) =>
+    const all = await this.deps.snapshot(connection.scope);
+    // Runs are judged by the task rows in this same snapshot, so both agree.
+    const tasks = new Map<string, Task>();
+    for (const entry of all)
+      if (entry.collection === "task")
+        tasks.set((entry.value as Task).id, entry.value as Task);
+    const rows = all.filter((entry) =>
       entry.collection === "task"
         ? taskInScope(scope, entry.value as never) ||
           scope.tasks.has((entry.value as { id: string }).id)
-        : inScope(scope, {
-            op: "upsert",
-            collection: entry.collection,
-            value: entry.value,
-          } as Change),
+        : inScope(
+            scope,
+            {
+              op: "upsert",
+              collection: entry.collection,
+              value: entry.value,
+            } as Change,
+            (taskId) => tasks.get(taskId) ?? null,
+          ),
     );
     this.send(connection, {
       type: "snapshot",

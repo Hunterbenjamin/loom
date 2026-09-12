@@ -90,6 +90,36 @@ describe("scope", () => {
     expect(inScope(scope, upsert("finding", body.findings[0]))).toBe(false);
   });
 
+  it("sends the runs of listed tasks to a list that asked for them", () => {
+    const taskOf = (taskId: string) =>
+      body.tasks.find((task) => task.id === taskId) ?? null;
+    const run = upsert("run", body.runs[0]);
+    const gone: Change = {
+      op: "delete",
+      collection: "run",
+      key: id.run("LOOM-101/implementer/0"),
+      taskId: needsYou.id,
+    };
+    const list = scopeOf([
+      { kind: "views", views: ["all"], repoIds: null, runs: true },
+    ]);
+    expect(inScope(list, run, taskOf)).toBe(true);
+    expect(inScope(list, gone, taskOf)).toBe(true);
+    // Runs follow the list: a view without the task gets none of its runs.
+    const elsewhere = scopeOf([
+      { kind: "views", views: ["done"], repoIds: null, runs: true },
+    ]);
+    expect(inScope(elsewhere, run, taskOf)).toBe(false);
+    // A list that didn't ask still gets task rows only.
+    const plain = scopeOf([{ kind: "views", views: ["all"], repoIds: null }]);
+    expect(inScope(plain, run, taskOf)).toBe(false);
+    // Without a way to find the task, runs still need a task or run subscription.
+    expect(inScope(list, run)).toBe(false);
+    expect(inScope(list, upsert("finding", body.findings[0]), taskOf)).toBe(
+      false,
+    );
+  });
+
   it("matches a diff subscription on the range, not just the task", () => {
     const whole = scopeOf([
       { kind: "diff", taskId: needsYou.id, mode: "whole_branch" },
@@ -128,6 +158,7 @@ describe("the subscription schema", () => {
   it("round-trips each kind", () => {
     const subs = [
       { kind: "views", views: ["needs_you", "done"], repoIds: null },
+      { kind: "views", views: ["all"], repoIds: null, runs: true },
       { kind: "task", taskId: needsYou.id },
       { kind: "diff", taskId: needsYou.id, mode: "since_last_review" },
       { kind: "run", runId: id.run("LOOM-101/implementer/0") },

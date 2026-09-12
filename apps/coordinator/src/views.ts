@@ -282,6 +282,14 @@ export class PublishedRows {
     );
   }
 
+  /** The task row as published, so a run change can be judged by the list its task is in. */
+  task(taskId: TaskId): Task | null {
+    const entry = this.byOwner
+      .get(`task:${taskId}`)
+      ?.get(JSON.stringify(["task", taskId]));
+    return entry ? (entry.value as Task) : null;
+  }
+
   /** Every row currently published, for a snapshot that agrees with the patch stream. */
   rows(): Row[] {
     const all: Row[] = [];

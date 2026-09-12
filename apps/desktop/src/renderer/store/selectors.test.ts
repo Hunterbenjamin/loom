@@ -1,7 +1,7 @@
+import type { Run } from "@loom/core";
 import { describe, expect, test } from "vitest";
-import type { Snapshot } from "../fixtures/index.js";
 import { minutesBefore, runId, taskId } from "../fixtures/ids.js";
-import { buildSnapshot } from "../fixtures/index.js";
+import { buildSnapshot, type Snapshot } from "../fixtures/index.js";
 import { rowsFor } from "./selectors.js";
 
 describe("rowsFor", () => {
@@ -49,24 +49,28 @@ describe("rowsFor", () => {
     };
 
     // Create runs with no live status
-    const idleRun = {
+    const olderEnded = {
       ...fixture.runs[0],
-      id: runId("idle-run"),
-      taskId: testTaskId,
-      status: "idle" as const,
-    };
-    const endedRun = {
-      ...fixture.runs[1],
-      id: runId("ended-run"),
+      id: runId("older-ended"),
       taskId: testTaskId,
       status: "ended" as const,
       endReason: "submitted" as const,
+      launchedAt: minutesBefore(30),
+    };
+    const newerEnded = {
+      ...fixture.runs[1],
+      id: runId("newer-ended"),
+      taskId: testTaskId,
+      status: "ended" as const,
+      endReason: "submitted" as const,
+      launchedAt: minutesBefore(10),
     };
 
+    // Newest first, so the order runs arrived in is not what decides.
     const testSnapshot = {
       ...fixture,
       tasks: [testTask],
-      runs: [idleRun, endedRun],
+      runs: [newerEnded, olderEnded],
     } as Snapshot;
 
     const rows = rowsFor(testSnapshot, "all", "all", "");
@@ -75,12 +79,60 @@ describe("rowsFor", () => {
     expect(taskRow).toBeDefined();
     if (!taskRow) throw new Error("Task row not found");
 
-    // The selector should fall back to runs.at(-1) when no live runs exist
-    // But ensure the test is using the correct assertion based on actual behavior
-    // For now, just verify that the run is one of the task's runs
     expect(taskRow.runs).toHaveLength(2);
-    expect(taskRow.runs.map((r) => r.id)).toContain(idleRun.id);
-    expect(taskRow.runs.map((r) => r.id)).toContain(endedRun.id);
+    expect(taskRow.run?.id).toBe(newerEnded.id);
+  });
+
+  test("a launched managed run outranks an adopted external run with no launch time", () => {
+    const fixture = buildSnapshot();
+    const task = fixture.tasks[0];
+    if (!task) throw new Error("No task in fixture");
+    const external = {
+      ...fixture.runs[0],
+      id: runId("external-idle"),
+      taskId: task.id,
+      origin: "external" as const,
+      status: "idle" as const,
+      launchedAt: null,
+      model: "",
+    };
+    const managed = {
+      ...fixture.runs[1],
+      id: runId("managed-working"),
+      taskId: task.id,
+      origin: "loom" as const,
+      status: "working" as const,
+      launchedAt: minutesBefore(3),
+    };
+    const pick = (runs: Run[]) =>
+      rowsFor({ ...fixture, runs } as Snapshot, "all", "all", "").find(
+        (r) => r.task.id === task.id,
+      )?.run?.id;
+
+    expect(pick([external, managed])).toBe(managed.id);
+    expect(pick([managed, external])).toBe(managed.id);
+  });
+
+  test("with no launch times at all, the run that arrived last wins", () => {
+    const fixture = buildSnapshot();
+    const task = fixture.tasks[0];
+    if (!task) throw new Error("No task in fixture");
+    const first = {
+      ...fixture.runs[0],
+      id: runId("external-first"),
+      taskId: task.id,
+      origin: "external" as const,
+      status: "working" as const,
+      launchedAt: null,
+    };
+    const second = { ...first, id: runId("external-second") };
+    const rows = rowsFor(
+      { ...fixture, runs: [first, second] } as Snapshot,
+      "all",
+      "all",
+      "",
+    );
+    expect(rows.find((r) => r.task.id === task.id)?.run?.id).toBe(second.id);
   });
 
   test("prefers live runs over non-live runs", () => {

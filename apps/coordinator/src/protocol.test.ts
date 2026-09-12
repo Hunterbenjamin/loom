@@ -196,6 +196,48 @@ test("list clients receive plan version and core-derived inbox metadata without 
   expect(client.state?.collections.run.size).toBe(0);
 });
 
+test("a list that asked for runs sees each task's runs in snapshots and patches", async () => {
+  const h = await served();
+  const created = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Agent column",
+    description: "Change the example",
+  });
+  const taskId = created.task.id;
+  const list = await connect(h, "list-with-runs", [
+    { kind: "views", views: ["all"], repoIds: null, runs: true },
+  ] as never);
+  h.coordinator.submitHuman(taskId, { type: "move", to: "todo" });
+  const driver = new ScenarioDriver(
+    h,
+    await loadScenarios(
+      new URL("./fixtures/walking-skeleton.json", import.meta.url),
+    ),
+  );
+  await driver.run({
+    until: () => h.store.loadTaskState(taskId).runs.length > 0,
+    maxSteps: 300,
+  });
+  await h.coordinator.settle();
+  const expected = h.store.loadTaskState(taskId).runs.map((run) => run.id);
+  expect(expected.length).toBeGreaterThan(0);
+  // The patch stream carried the runs, with no task subscription.
+  await vi.waitFor(() => {
+    expect([...(list.state?.collections.run.keys() ?? [])]).toEqual(
+      expect.arrayContaining(expected),
+    );
+  });
+  // A fresh snapshot agrees with the stream.
+  const later = await connect(h, "list-with-runs-later", [
+    { kind: "views", views: ["all"], repoIds: null, runs: true },
+  ] as never);
+  expect([...(later.state?.collections.run.keys() ?? [])]).toEqual(
+    expect.arrayContaining(expected),
+  );
+  // Findings and the rest still need a task subscription.
+  expect(later.state?.collections.finding.size).toBe(0);
+}, 30_000);
+
 test("inbox carries the reviewed SHA and plan version from the completed fake review", async () => {
   const h = await served();
   const created = h.coordinator.createTask({

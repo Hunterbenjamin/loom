@@ -25,6 +25,9 @@ async function setup() {
     bind: { host: "127.0.0.1", port: 0 },
     now: () => task.updatedAt,
     snapshot: async () => rows,
+    task: (taskId: string) =>
+      (rows.find((row) => row.collection === "task" && row.key === taskId)
+        ?.value as typeof task | undefined) ?? null,
     ensure: async () => {},
     onError: (error: Error) => {
       throw error;
@@ -129,14 +132,19 @@ test("reports the coordinator rejection, sends exactly once, and refuses writes 
 
 test("refreshes task subscriptions and drops details on selection changes", async () => {
   const h = await setup();
-  const run = snapshot().runs[0];
-  if (!run) throw new Error("missing fixture");
+  const body = snapshot();
+  const run = body.runs[0];
+  const finding = body.findings[0];
+  if (!run || !finding) throw new Error("missing fixture");
   h.replace([
     { collection: "task", key: h.task.id, value: h.task },
     { collection: "run", key: run.id, value: run },
+    { collection: "finding", key: finding.id, value: finding },
   ]);
-  h.client.setDetail([{ kind: "task", taskId: run.taskId }]);
-  await expect.poll(() => h.states.at(-1)?.collections.run.size).toBe(1);
+  h.client.setDetail([{ kind: "task", taskId: finding.taskId }]);
+  await expect.poll(() => h.states.at(-1)?.collections.finding.size).toBe(1);
   h.client.setDetail([]);
-  await expect.poll(() => h.states.at(-1)?.collections.run.size).toBe(0);
+  await expect.poll(() => h.states.at(-1)?.collections.finding.size).toBe(0);
+  // The list asked for runs, so a listed task's run stays without a detail subscription.
+  expect(h.states.at(-1)?.collections.run.size).toBe(1);
 });

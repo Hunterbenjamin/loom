@@ -170,6 +170,7 @@ export class Coordinator {
         await this.refreshAll(scope);
         return this.published.rows();
       },
+      task: (taskId) => this.published.task(taskId),
       command: (value) => this.command(value),
       ensure: (scope) => this.ensure(scope),
       onError: (error) => this.log(`Protocol error: ${error.message}`),
