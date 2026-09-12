@@ -12,10 +12,10 @@ import { baseEnv, createCli, TmuxError, withUtf8Locale } from "./cli.js";
 import {
   configFile,
   EVENT_OPTION,
+  HOLD_WINDOW,
   hookCommand,
   MONITOR_SESSION,
   RUN_OPTION,
-  TASK_OPTION,
   VIEW_OPTION,
 } from "./config.js";
 import { startMonitor } from "./monitor.js";
@@ -175,7 +175,12 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
     try {
       return dedupe(
         parsePanes(await tmux(["list-panes", "-a", "-F", PANE_FORMAT])),
-      ).filter((row) => !row.isView && row.sessionName !== MONITOR_SESSION);
+      ).filter(
+        (row) =>
+          !row.isView &&
+          row.sessionName !== MONITOR_SESSION &&
+          row.windowName !== HOLD_WINDOW,
+      );
     } catch (error) {
       if (error instanceof TmuxError && error.code === "no_server") {
         generation = null;
@@ -213,28 +218,44 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
     }
   }
 
-  async function ensureSession(
-    taskId: string,
+  /**
+   * A task's session holds only the windows Loom opened in it: it appears with the first and
+   * goes away with the last. tmux cannot create a session without a window, and a pane's
+   * environment is fixed when it is spawned, so a throwaway `sleep` window holds the session
+   * open just long enough for `create` to scrub the environment and open the real window.
+   * `rows()` hides it, and if `create` fails it takes the session down with it.
+   */
+  async function inSession<T>(
+    session: string,
     cwd: WorktreePath,
-  ): Promise<string> {
-    await ensureServer();
-    const session = sessionFor(taskId);
-    if (!(await sessionExists(session))) {
-      // A session needs one window. This one is a plain shell in the worktree, for the human;
-      // Loom never types into it, and it keeps the session alive between runs.
+    create: () => Promise<T>,
+  ): Promise<T> {
+    if (await sessionExists(session)) return create();
+    const hold = (
       await tmux([
         "new-session",
         "-d",
+        "-P",
+        "-F",
+        "#{window_id}",
         "-s",
         session,
         "-n",
-        "shell",
+        HOLD_WINDOW,
         "-c",
         cwd,
-      ]);
-      await tmux(["set-option", "-t", session, TASK_OPTION, taskId]);
+        "--",
+        "sleep",
+        "2147483647",
+      ])
+    ).trim();
+    try {
+      return await create();
+    } finally {
+      await tmux(["kill-window", "-t", `${session}:${hold}`]).catch(
+        () => undefined,
+      );
     }
-    return session;
   }
 
   /**
@@ -281,9 +302,11 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
   return {
     ensureWorkspace(req) {
       return exclusive(async () => {
-        const cwd = (await realpath(req.cwd)) as WorktreePath;
+        await realpath(req.cwd);
         z.string().min(1).parse(req.label);
-        return { workspaceId: await ensureSession(req.taskId, cwd) };
+        await ensureServer();
+        // The session itself is created by the first window opened in it (`inSession`).
+        return { workspaceId: sessionFor(req.taskId) };
       });
     },
 
@@ -302,39 +325,43 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
           };
         // A dead pane is the previous attempt's evidence. The coordinator only re-emits
         // `start_run` once it has decided to retry, so replace it rather than resurrect it.
+        // Killing the session's last window removes the session; `inSession` brings it back.
         if (existing) await tmux(["kill-pane", "-t", existing.paneId]);
-        if (!(await sessionExists(session)))
-          throw new TmuxError("workspace_not_found", session);
-        await scrub(session, req.env);
         const envArgs = Object.entries(req.env).flatMap(([key, value]) => [
           "-e",
           `${key}=${value}`,
         ]);
-        const created = (
-          await tmux(
-            [
-              "new-window",
-              "-d",
-              "-P",
-              "-F",
-              ["#{pane_id}", "#{window_id}"].join(SEP),
-              "-t",
-              `${session}:`,
-              "-n",
-              runId.replaceAll(/[^a-zA-Z0-9_-]/g, "-").slice(0, 32),
-              "-c",
-              cwd,
-              ...envArgs,
-              "--",
-              req.executable,
-              ...req.args,
-            ],
-            // tmux takes the new pane's PATH from the client process, whatever `-e` says.
-            {
-              env: { ...env, ...(req.env.PATH ? { PATH: req.env.PATH } : {}) },
-            },
-          )
-        ).trim();
+        const created = await inSession(session, cwd, async () => {
+          await scrub(session, req.env);
+          return (
+            await tmux(
+              [
+                "new-window",
+                "-d",
+                "-P",
+                "-F",
+                ["#{pane_id}", "#{window_id}"].join(SEP),
+                "-t",
+                `${session}:`,
+                "-n",
+                runId.replaceAll(/[^a-zA-Z0-9_-]/g, "-").slice(0, 32),
+                "-c",
+                cwd,
+                ...envArgs,
+                "--",
+                req.executable,
+                ...req.args,
+              ],
+              // tmux takes the new pane's PATH from the client process, whatever `-e` says.
+              {
+                env: {
+                  ...env,
+                  ...(req.env.PATH ? { PATH: req.env.PATH } : {}),
+                },
+              },
+            )
+          ).trim();
+        });
         const [paneId, windowId] = z
           .tuple([z.string().regex(/^%\d+$/), z.string().regex(/^@\d+$/)])
           .parse(created.split(SEP));
@@ -354,8 +381,6 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
         const key = z.string().uuid().parse(req.key);
         const cwd = (await realpath(req.cwd)) as WorktreePath;
         await ensureServer();
-        if (!(await sessionExists(session)))
-          throw new TmuxError("workspace_not_found", session);
         const windowName = `scratch-${key}`;
         for (const row of (await rows()).filter(
           (r) => r.sessionName === session,
@@ -371,27 +396,34 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
           ]);
           if (recordedKey.trim() === key) return (await observe(row)).ref;
         }
-        await scrub(session, req.env);
-        const output = await tmux(
-          [
-            "new-window",
-            "-d",
-            "-P",
-            "-F",
-            "#{pane_id}",
-            "-t",
-            `${session}:`,
-            "-n",
-            windowName,
-            "-c",
-            cwd,
-            ...Object.entries(req.env).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
-            "--",
-            req.executable,
-            ...req.args,
-          ],
-          { env: { ...env, ...(req.env.PATH ? { PATH: req.env.PATH } : {}) } },
-        );
+        const output = await inSession(session, cwd, async () => {
+          await scrub(session, req.env);
+          return tmux(
+            [
+              "new-window",
+              "-d",
+              "-P",
+              "-F",
+              "#{pane_id}",
+              "-t",
+              `${session}:`,
+              "-n",
+              windowName,
+              "-c",
+              cwd,
+              ...Object.entries(req.env).flatMap(([k, v]) => [
+                "-e",
+                `${k}=${v}`,
+              ]),
+              "--",
+              req.executable,
+              ...req.args,
+            ],
+            {
+              env: { ...env, ...(req.env.PATH ? { PATH: req.env.PATH } : {}) },
+            },
+          );
+        });
         await tmux([
           "set-option",
           "-p",
@@ -580,4 +612,4 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
   };
 }
 
-export { EVENT_OPTION, RUN_OPTION, TASK_OPTION, VIEW_OPTION };
+export { EVENT_OPTION, HOLD_WINDOW, RUN_OPTION, VIEW_OPTION };

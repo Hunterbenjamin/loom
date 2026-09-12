@@ -135,7 +135,10 @@ export interface GitHubAdapter {
  * Every method is idempotent on its key (`taskId`, `runId`, `PaneRef`).
  */
 export interface PaneHost {
-  /** Idempotent: the task's session, created if absent. Returns the session name. */
+  /**
+   * Idempotent: returns the task's session name. The session itself exists exactly while it
+   * holds a pane Loom opened; `ensurePane` and `createScratch` create it on demand.
+   */
   ensureWorkspace(req: {
     taskId: TaskId;
     cwd: WorktreePath;
@@ -154,7 +157,7 @@ export interface PaneHost {
     args: string[];
     env: Record<string, string>;
   }): Promise<PaneRef>;
-  /** Human shell in an existing workspace, idempotent on key within a host generation. */
+  /** Human shell in the task's workspace, idempotent on key within a host generation. */
   createScratch(req: {
     workspaceId: string;
     key: string;
