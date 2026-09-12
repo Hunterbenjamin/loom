@@ -326,7 +326,8 @@ export function submission(
         c.stage(next, "Review has no blocking findings");
         c.notify("Review needs approval", `review:${task.reviewRound}`);
         if (!task.prNumber && state.worktree && task.branch) {
-          const pushKey = `push_branch:${task.id}:${review.reviewedSha}` as ActionKey;
+          const pushKey =
+            `push_branch:${task.id}:${review.reviewedSha}` as ActionKey;
           c.emit(`open_pr:${task.id}:${task.branch}`, {
             kind: "open_pr",
             repoId: task.repoId,
@@ -339,7 +340,11 @@ export function submission(
           const openPrRow = c.state.outbox.find(
             (row) => row.key === `open_pr:${task.id}:${task.branch}`,
           );
-          if (openPrRow && openPrRow.dependsOn && !openPrRow.dependsOn.includes(pushKey)) {
+          if (
+            openPrRow &&
+            openPrRow.dependsOn &&
+            !openPrRow.dependsOn.includes(pushKey)
+          ) {
             openPrRow.dependsOn.push(pushKey);
           }
         }
