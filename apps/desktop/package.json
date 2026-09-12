@@ -1,0 +1,39 @@
+{
+  "name": "@loom/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Loom window. Phase 1: a shell rendered from in-memory fixtures.",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "perf": "node perf/harness.mjs",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "postinstall": "node scripts/fix-spawn-helper.mjs"
+  },
+  "dependencies": {
+    "@loom/core": "workspace:*",
+    "@pierre/diffs": "1.4.2",
+    "@tanstack/react-virtual": "^3.14.12",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-unicode-graphemes": "^0.4.0",
+    "@xterm/addon-webgl": "^0.19.0",
+    "@xterm/xterm": "^6.0.0",
+    "cmdk": "^1.1.1",
+    "node-pty": "^1.1.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.3.0",
+    "electron-vite": "^5.0.0",
+    "playwright": "^1.63.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6"
+  }
+}
