@@ -480,7 +480,15 @@ export class FakeProviders {
         return;
       const exists = !!existing;
       this.create("claude", req.cwd, req.sessionId);
-      if (exists && req.resume) this.recover(req.sessionId);
+      if (exists && req.resume) {
+        if (existing.value.provider === "claude")
+          existing.value.headless = {
+            exited: false,
+            exitCode: null,
+            error: null,
+          };
+        this.recover(req.sessionId);
+      }
       if (req.prompt) this.enqueue(req.sessionId, req.prompt);
     },
     sendHeadless: async (req) => {

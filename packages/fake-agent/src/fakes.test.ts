@@ -184,6 +184,17 @@ test("Claude headless launch is idempotent, a crash does not synthesize SessionE
   expect(await f.claude.headlessState(req.sessionId)).toMatchObject({
     exited: false,
   });
+  await f.claude.closeHeadless(req.sessionId);
+  await f.claude.closeHeadless(req.sessionId);
+  expect(await f.claude.headlessState(req.sessionId)).toBeNull();
+  expect(await f.claude.listSessions()).toEqual([]);
+  await f.claude.startHeadless({ ...req, resume: true });
+  expect(await f.claude.headlessState(req.sessionId)).toMatchObject({
+    exited: false,
+  });
+  expect(await f.claude.listSessions()).toMatchObject([
+    { sessionId: req.sessionId, kind: "other" },
+  ]);
 });
 
 test("pane host is idempotent, records bytes only, and rejects stale generations", async () => {
