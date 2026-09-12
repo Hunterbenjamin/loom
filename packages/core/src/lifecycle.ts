@@ -155,11 +155,9 @@ export function observeRuns(c: Context): void {
 
 function launch(c: Context, run: Run, resume: boolean): void {
   const observation = c.observations.runs.find((o) => o.runId === run.id);
-  if (
-    observation?.provider.ok &&
-    observation.resumable === false &&
-    run.sessionId
-  ) {
+  // `resumable: false` only ever comes from a direct owner read (§5.2), so it rotates the session
+  // even when the transcript read itself failed: a Codex thread without a rollout can't be read.
+  if (observation?.resumable === false && run.sessionId) {
     run.sessionEpoch++;
     run.sessionId =
       run.provider === "claude"
@@ -308,10 +306,9 @@ export function startDesired(c: Context): void {
       !c.capacity(run.role)
     )
       continue;
-    const reading = c.observations.runs.find(
-      (o) => o.runId === run.id,
-    )?.provider;
-    if (!reading?.ok) continue;
+    const observation = c.observations.runs.find((o) => o.runId === run.id);
+    // A retry needs a successful read, or the owner's word that the session is gone.
+    if (!observation?.provider.ok && observation?.resumable !== false) continue;
     if (!c.git?.exists) {
       c.emit(`refresh:retry:${run.id}#${run.attempts}`, {
         kind: "refresh",

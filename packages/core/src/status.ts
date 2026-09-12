@@ -21,7 +21,16 @@ export function deriveStatus(
     value: RunStatus,
     blockedOn: RunBlockedOn | null = null,
   ): StatusReading => ({ status: value, blockedOn });
-  if (!observation?.provider.ok) return status("unknown");
+  if (!observation?.provider.ok) {
+    // A failed read is uncertainty, but `resumable: false` is the owner's own answer that the
+    // session is gone (design §5.2). A Codex thread with no rollout can never be read again, so
+    // without this a run stays `unknown` forever. Found by the first real reviewer run.
+    if (observation?.resumable === false && run.sessionId)
+      return run.mode === "interactive"
+        ? { ...status("ended"), endReason: "vanished" }
+        : { ...status("failed"), endReason: "crashed" };
+    return status("unknown");
+  }
   const provider = observation.provider.value;
   if (!provider) {
     if (!run.seenAt && observation.resumable !== false)
