@@ -182,6 +182,7 @@ export async function recover(
   }
 
   // Rewrite settings files for all non-ended Claude runs so they pick up stable ports on restart.
+  // Skip terminal tasks (done/canceled) as they have no active runs and no app-servers should be started.
   const tasks = deps.store.tasks();
   for (const task of tasks) {
     if (TERMINAL.includes(task.stage)) continue;
@@ -205,6 +206,8 @@ export async function recover(
     }
   }
 
+  // Resume active Codex runs and relaunch panes for non-terminal tasks.
+  // Terminal tasks (done/canceled) are skipped: no app-servers are started for them (design §10).
   for (const task of tasks) {
     if (TERMINAL.includes(task.stage)) continue;
     const state = deps.store.loadTaskState(task.id);
@@ -234,11 +237,13 @@ export async function recover(
       if (pane !== null && !pane.dead) continue;
       if (!recipe || !state.worktree?.paneWorkspaceId) continue;
       try {
-        await relaunchFromRecipe(
+        const newPane = await relaunchFromRecipe(
           deps.launch,
           recipe,
           state.worktree.paneWorkspaceId,
         );
+        // Persist the new pane info before any pane operation targets it.
+        deps.store.updateRunPane(task.id, run.id, newPane);
         report.relaunched.push(run.id);
       } catch (error) {
         deps.log(

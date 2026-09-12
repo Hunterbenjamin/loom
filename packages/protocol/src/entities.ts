@@ -93,6 +93,7 @@ export const attentionReason = z.enum([
   "run_vanished",
   "stalled",
   "status_unknown",
+  "observability_failure",
   "over_budget",
 ]);
 

@@ -11,7 +11,9 @@ export const CONFIG_LINES = [
   "set -g window-size latest",
   "set -g aggressive-resize on",
   "set -s extended-keys always",
-  "set -s extended-keys-format csi-u",
+  // `extended-keys-format` arrived in tmux 3.5; Ubuntu's 3.4 (GitHub's runners) rejects it and
+  // aborts the whole config. `if-shell -F` evaluates the format in tmux itself, no shell.
+  "if-shell -F '#{>=:#{version},3.5}' 'set -s extended-keys-format csi-u'",
   'set -as terminal-features ",xterm*:extkeys"',
   // A dead pane keeps its exit status, which is the only exit fact the host supplies.
   "set -g remain-on-exit on",
