@@ -135,11 +135,16 @@ export function human(
       return null;
     }
     case "request_changes":
-      if (task.stage !== "awaiting_approval") return wrong();
+      if (task.stage !== "awaiting_approval" && task.stage !== "in_review")
+        return wrong();
       if (!cmd.findings.length) return guard("Provide at least one finding");
       c.voidApprovals("stage_left");
       for (const finding of cmd.findings)
         c.finding({ ...finding, source: "human", blocking: true });
+      // In in_review stage, clear the review state to end the current reviewer round
+      if (task.stage === "in_review") {
+        state.review = null;
+      }
       c.stage("in_progress", "Human requested changes");
       c.fix(sequence);
       return null;
