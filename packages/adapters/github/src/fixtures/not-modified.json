@@ -1,0 +1,4 @@
+{
+  "stdout": "HTTP/2.0 304 Not Modified\nEtag: \"d73f3517dc51d6a752722f96a44279b15459b725513e9082f62e952703fbde95\"\n\n",
+  "exitCode": 1
+}

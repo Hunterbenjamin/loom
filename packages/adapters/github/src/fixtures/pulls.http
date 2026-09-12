@@ -1,0 +1,16 @@
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+Etag: W/"240ccddc143fbcc6e86a20616869cabad107f3421668beee7258dca4a500f955"
+
+[
+  {
+    "number": 15477,
+    "html_url": "https://github.com/vuejs/core/pull/15477",
+    "state": "closed",
+    "head": {
+      "ref": "edison/perf/treeshaking",
+      "sha": "05c50f86b5fb9a95f30a4116e3bf4ab4d4bafa64",
+      "label": "vuejs:edison/perf/treeshaking"
+    }
+  }
+]

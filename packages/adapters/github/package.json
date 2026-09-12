@@ -1,0 +1,17 @@
+{
+  "name": "@loom/adapter-github",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "GitHub observations and guarded PR actions through the authenticated gh CLI.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@loom/core": "workspace:*",
+    "zod": "^4.0.0"
+  }
+}
