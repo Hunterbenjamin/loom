@@ -1,0 +1,19 @@
+{
+  "before": {
+    "sessionId": "a5e08614-6ea9-432a-bbd9-2e07ded83119",
+    "pid": 41647,
+    "cwd": "$SPIKE/repo",
+    "status": "busy"
+  },
+  "after": {
+    "sessionId": "a5e08614-6ea9-432a-bbd9-2e07ded83119",
+    "pid": 41647,
+    "cwd": "$SPIKE/repo",
+    "status": "idle"
+  },
+  "idleObservedMs": 133.841064453125,
+  "transcriptInterruptRecords": 1,
+  "eventsAfterEsc": [],
+  "transcriptMarker": "[Request interrupted by user for tool use]",
+  "matcherCorrection": "Original exact string omitted the provider suffix; corrected against transcript after trial."
+}

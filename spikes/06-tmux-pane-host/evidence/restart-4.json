@@ -1,0 +1,110 @@
+{
+  "trial": "4",
+  "faultMs": 1789192704644.4978,
+  "downMs": 10.534423828125,
+  "serverUpMs": 27.76123046875,
+  "panesLaunchedMs": 40.30126953125,
+  "claudeReadyMs": 1199.784423828125,
+  "bothFreshRepliesMs": 30195.375244140625,
+  "oldPaneProcessesAlive": {
+    "claude": false,
+    "codex": false
+  },
+  "externalCodexServerAlive": true,
+  "nativeCommandStarted": {
+    "time": 1789192703957,
+    "method": "item/started",
+    "threadId": "01a0941f-93b1-72b3-8730-4649dd0246b3",
+    "turnId": "01a09432-015c-7492-90c4-58d9546a6db2",
+    "item": {
+      "type": "commandExecution",
+      "id": "exec-c6bf265a-8b50-412b-8bb2-7540b8ac810f",
+      "status": "inProgress"
+    }
+  },
+  "beforeClaude": {
+    "sessionId": "a5e08614-6ea9-432a-bbd9-2e07ded83119",
+    "pid": 65759,
+    "cwd": "$SPIKE/repo",
+    "status": "busy"
+  },
+  "afterClaude": {
+    "sessionId": "a5e08614-6ea9-432a-bbd9-2e07ded83119",
+    "pid": 66556,
+    "cwd": "$SPIKE/repo",
+    "status": "idle"
+  },
+  "claudeSessionStartSource": "resume",
+  "claudeReply": "S06_RECOVERED_CLAUDE_4",
+  "codexMidTurnId": "01a09432-015c-7492-90c4-58d9546a6db2",
+  "codexMidTurnFinal": {
+    "id": "01a09432-015c-7492-90c4-58d9546a6db2",
+    "status": "completed",
+    "items": [
+      {
+        "type": "userMessage"
+      },
+      {
+        "type": "reasoning"
+      },
+      {
+        "type": "agentMessage",
+        "text": "Running `python3 hold.py` and waiting for it to exit."
+      },
+      {
+        "type": "commandExecution",
+        "status": "completed"
+      },
+      {
+        "type": "agentMessage",
+        "text": "S06_RESTART_CODEX_DONE"
+      }
+    ]
+  },
+  "codexFreshReply": {
+    "turnId": "01a09432-8022-78a2-926f-fc4899f273ed",
+    "status": "completed",
+    "reply": [
+      "S06_RECOVERED_CODEX_4"
+    ],
+    "sentVia": "tmux paste + Enter"
+  },
+  "newPanes": [
+    {
+      "pane": "%0",
+      "window": "anchor",
+      "pid": 66554,
+      "command": "cat",
+      "cwd": "$SPIKE/repo",
+      "startPath": "$SPIKE/repo",
+      "dead": false,
+      "exitStatus": ""
+    },
+    {
+      "pane": "%1",
+      "window": "claude",
+      "pid": 66556,
+      "command": "2.1.269",
+      "cwd": "$SPIKE/repo",
+      "startPath": "$SPIKE/repo",
+      "dead": false,
+      "exitStatus": ""
+    },
+    {
+      "pane": "%2",
+      "window": "codex",
+      "pid": 66558,
+      "command": "node",
+      "cwd": "$SPIKE/repo",
+      "startPath": "$SPIKE/repo",
+      "dead": false,
+      "exitStatus": ""
+    }
+  ],
+  "controlExitEvents": [
+    {
+      "ms": 1789192704653.2888,
+      "line": "%exit"
+    }
+  ]
+}
