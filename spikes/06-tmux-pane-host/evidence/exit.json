@@ -1,0 +1,29 @@
+{
+  "pane": {
+    "pane": "%4",
+    "window": "codex",
+    "pid": 42617,
+    "command": "codex",
+    "cwd": "",
+    "startPath": "$SPIKE/repo",
+    "dead": true,
+    "exitStatus": "0"
+  },
+  "deadObservedMs": 344.452880859375,
+  "controlAlive": true,
+  "exitNotifications": [],
+  "controlEvents": [
+    {
+      "ms": 1789192063473.1182,
+      "line": "%begin 1789192063 2155 0"
+    },
+    {
+      "ms": 1789192063473.123,
+      "line": "%end 1789192063 2155 0"
+    },
+    {
+      "ms": 1789192063473.124,
+      "line": "%session-changed $0 s06"
+    }
+  ]
+}
