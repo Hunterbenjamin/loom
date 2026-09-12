@@ -1,3 +1,4 @@
+import { observeRun } from "./observe.js";
 // The executor (brief §2). It claims outbox rows, rechecks the claim immediately before any side
 // effect, maps every `Action` kind to the adapter that owns it, and records the outcome with
 // `store.outbox.finish` as an `action_result` input for the next pass.
@@ -128,6 +129,45 @@ export class Executor {
   private async perform(action: Action): Promise<unknown> {
     const { adapters, store } = this.deps;
     const state = store.loadTaskState(action.taskId);
+    if (
+      (action.kind === "push_branch" && action.key.startsWith("rescue:")) ||
+      (action.kind === "open_pr" && action.rescueHeadSha)
+    ) {
+      const expected =
+        action.kind === "push_branch"
+          ? action.expectedHeadSha
+          : action.rescueHeadSha;
+      const worktree = state.worktree;
+      if (
+        state.task.stage !== "in_progress" ||
+        !worktree ||
+        state.review ||
+        state.runs.some(
+          (r) =>
+            !r.endedAt ||
+            (r.role === "implementer" && r.endReason === "submitted"),
+        ) ||
+        !state.runs.some((r) => r.endReason === "vanished")
+      )
+        throw new PreconditionFailed("Rescue owner state changed");
+      const git = await adapters.git.readWorktree(
+        worktree.path,
+        worktree.baseBranch,
+      );
+      if (
+        !git.exists ||
+        git.path !== worktree.path ||
+        git.branch !== state.task.branch ||
+        git.branch !== action.branch ||
+        git.headSha !== expected ||
+        git.dirty ||
+        git.aheadOfBase < 1 ||
+        (action.kind === "open_pr" && git.remoteHeadSha !== expected)
+      )
+        throw new PreconditionFailed(
+          "Rescue branch or HEAD changed; human inspection required",
+        );
+    }
     switch (action.kind) {
       case "create_worktree": {
         const repo = this.deps.repoById(action.repoId);
@@ -377,6 +417,24 @@ export class Executor {
       throw new PreconditionFailed(`Refusing to answer: ${decision.reason}`);
     if (!run.pane) throw new PreconditionFailed("The run has no pane");
 
+    if (action.expectedDialog) {
+      const observation = await observeRun(adapters, this.deps.now(), run);
+      const p = observation.provider.ok ? observation.provider.value : null;
+      const d = p?.provider === "claude" ? p.hooks.pendingDialog : null;
+      const expected = action.expectedDialog;
+      if (
+        run.sessionEpoch !== expected.sessionEpoch ||
+        p?.provider !== "claude" ||
+        p.agentsEntry?.status !== "waiting" ||
+        d?.kind !== "permission" ||
+        d.requestId !== expected.requestId ||
+        d.at !== expected.at ||
+        d.command !== expected.command
+      )
+        throw new PreconditionFailed(
+          "Operator permission occurrence is no longer current",
+        );
+    }
     // Handle different choice types
     if (typeof action.choice === "number") {
       // Numeric choice: paste digit, wait 300ms, then press Enter

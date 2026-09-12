@@ -48,6 +48,7 @@ export const windowMode = z.enum(["tracker", "workbench"]);
 export type WindowMode = z.output<typeof windowMode>;
 
 export interface HostBridge {
+  notify?(request: { id: string; title: string; body: string }): void;
   mode(): Promise<WindowMode>;
   openWindow(mode: WindowMode): Promise<void>;
   connection(): Promise<ConnectionConfig>;

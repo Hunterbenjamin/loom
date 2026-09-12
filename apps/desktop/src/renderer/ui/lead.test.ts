@@ -119,7 +119,9 @@ for (const live of [false, true])
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     await vi.waitFor(async () => {
-      await act(async () => {});
+      await act(async () => {
+        await Promise.resolve();
+      });
       expect(spawn).toHaveBeenCalledTimes(1);
     });
     expect(spawn.mock.calls[0]).toMatchObject([

@@ -23,6 +23,7 @@ export interface InboxRow {
   since: IsoTime | null;
   runs: Run[];
   reviewedHead: TaskInbox["reviewedHead"];
+  forHuman: TaskInbox["forHuman"];
 }
 export function reasonTab(reason: AttentionReason, run: Run | null): TabId {
   if (reason === "plan_needs_approval") return "plan";
@@ -71,10 +72,12 @@ export function inboxRows(state: State): InboxRow[] {
         since: task.attention.reasonSince[reason] ?? task.attention.since,
         runs: info?.reasonRuns[reason] ?? [],
         reviewedHead: info?.reviewedHead ?? null,
+        forHuman: info?.forHuman ?? null,
       }));
     })
     .sort(
       (a, b) =>
+        Number(!!b.forHuman) - Number(!!a.forHuman) ||
         (a.since ?? "9999").localeCompare(b.since ?? "9999") ||
         a.key.localeCompare(b.key),
     );

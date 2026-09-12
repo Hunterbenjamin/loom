@@ -41,6 +41,7 @@ export * from "./receiver.js";
 export * from "./settings.js";
 
 export interface ClaudeAdapterConfig {
+  onDiagnostic?: (event: import("@loom/core").AdapterDiagnostic) => void;
   /** Loom's MCP server, as Claude should spawn it. One per coordinator, not per run. */
   mcpServer: McpServerEntry;
   /** Tools appear inside Claude as `mcp__<name>__*`. */
@@ -140,7 +141,16 @@ export async function createClaudeAdapter(
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {
-      headlessRuns.get(request.sessionId)?.close();
+      const previous = headlessRuns.get(request.sessionId);
+      if (previous && !previous.state.exited)
+        config.onDiagnostic?.({
+          kind: "stale_process",
+          resource: "claude_headless",
+          sessionId: request.sessionId,
+          message:
+            "Replacing an owned headless child that outlived its launch attempt",
+        });
+      previous?.close();
       // The run's own registration lives beside its settings file, so a headless run carries the
       // same per-run token an interactive one does. The adapter default is only a fallback.
       const servers =
@@ -161,6 +171,10 @@ export async function createClaudeAdapter(
       run(sessionId).send(text);
     },
 
+    stopHeadless: async (id: ProviderSessionId) => {
+      headlessRuns.get(id)?.close();
+      headlessRuns.delete(id);
+    },
     interruptHeadless: async (sessionId: ProviderSessionId): Promise<void> => {
       await run(sessionId).interrupt();
     },

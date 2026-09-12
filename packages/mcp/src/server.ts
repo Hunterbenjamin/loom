@@ -19,6 +19,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { type LeadHost, leadInputSchemas, leadToolNames } from "./lead.js";
+import { operatorInputSchemas } from "./operator.js";
 import {
   anchorSchema,
   errorSchema,
@@ -34,7 +35,8 @@ import {
 
 export type McpIdentity =
   | { runId: RunId; active: boolean; kind?: "run" }
-  | { kind: "lead"; active: boolean };
+  | { kind: "lead"; active: boolean }
+  | { kind: "operator"; active: boolean };
 
 export type McpInput = Extract<Input, { type: "mcp" }>;
 export interface McpHost {
@@ -46,6 +48,7 @@ export interface McpHost {
 export interface McpServerOptions {
   host: McpHost;
   leadHost?: LeadHost;
+  operatorHost?: LeadHost;
   /** Re-read authoritative liveness on every call; null means an unknown token. */
   resolveToken(token: string): McpIdentity | null | Promise<McpIdentity | null>;
   /** Read the exact reviewed blobs, verifying the path and range; never read the working file. */
@@ -97,7 +100,7 @@ async function invoke(
   const identity = token ? await options.resolveToken(token) : null;
   if (!identity)
     return failure("unknown_run", "The token does not identify a run");
-  if (identity.kind === "lead")
+  if (identity.kind === "lead" || identity.kind === "operator")
     return failure("guard_failed", "Lead identity cannot call task-run tools");
   if (!identity.active)
     return failure("stale_run", "The run has ended or was superseded");
@@ -197,6 +200,16 @@ export function createMcpServer(
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const identity = token ? await options.resolveToken(token) : null;
+    if (identity?.kind === "operator")
+      return {
+        tools: Object.entries(operatorInputSchemas).map(([name, schema]) => ({
+          name,
+          description: `Operator v1: ${name}. Coordinator selects and guards the action for eventId.`,
+          inputSchema: z.toJSONSchema(schema, { io: "input" }) as {
+            type: "object";
+          },
+        })),
+      };
     if (identity?.kind === "lead")
       return {
         tools: leadToolNames.map((name) => ({
@@ -235,6 +248,37 @@ export function createMcpServer(
   });
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const name = request.params.name;
+    const caller =
+      !names.includes(name as McpToolName) && token
+        ? await options.resolveToken(token)
+        : null;
+    if (
+      caller?.kind === "operator" ||
+      ["operator_events", "file_task", "append_note"].includes(name)
+    ) {
+      if (caller?.kind !== "operator")
+        return reply(
+          failure("guard_failed", "Only Operator may call this tool"),
+        );
+      if (!caller.active)
+        return reply(failure("stale_run", "Operator stopped"));
+      const parsed = operatorInputSchemas[name]?.safeParse(
+        request.params.arguments ?? {},
+      );
+      if (!parsed?.success)
+        return reply(
+          failure(
+            "guard_failed",
+            "Operator cannot call this tool or input is invalid",
+          ),
+        );
+      if (!options.operatorHost)
+        return reply(failure("guard_failed", "Operator unavailable"));
+      return reply({
+        ok: true,
+        value: await options.operatorHost.invoke(name, parsed.data),
+      });
+    }
     if (leadToolNames.includes(name)) {
       const identity = token ? await options.resolveToken(token) : null;
       if (!identity) return reply(failure("unknown_run", "Unknown identity"));

@@ -94,6 +94,8 @@ const callSchema = z.discriminatedUnion("tool", [
   }),
 ]);
 const commandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("push_branch"), headSha: sha }),
+  z.object({ type: z.literal("open_pr"), headSha: sha }),
   z.object({ type: z.literal("move"), to: z.enum(["backlog", "todo"]) }),
   z.object({ type: z.literal("approve_plan"), planVersion: positive }),
   z.object({ type: z.literal("reject_plan"), feedback: text }),
@@ -125,6 +127,14 @@ const commandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("answer_pane_prompt"),
+    expectedDialog: z
+      .object({
+        requestId: z.string(),
+        at: time,
+        command: z.string(),
+        sessionEpoch: z.number().int().nonnegative(),
+      })
+      .optional(),
     runId: id,
     choice: z.union([
       z.number().int().min(0).max(9),

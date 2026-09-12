@@ -65,6 +65,7 @@ const attentionReason = z.enum([
 
 export const taskSchema = contract<Task>()(
   z.object({
+    signature: z.string().nullable().optional(),
     id,
     repoId: id,
     title: text,
@@ -173,6 +174,16 @@ export const runSchema = contract<Run>()(
         receivedAt: time,
       }),
     ),
+    pendingDialog: z
+      .object({
+        requestId: z.string().optional(),
+        command: z.string().optional(),
+        kind: z.enum(["permission", "input"]),
+        tool: z.string(),
+        at: time,
+      })
+      .nullable()
+      .optional(),
     lastActivityAt: time.nullable(),
     retryAt: time.nullable(),
     launchedAt: time.nullable(),

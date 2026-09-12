@@ -14,7 +14,9 @@ import type {
   AckOutcome,
   ClientState,
   Command,
+  Entities,
   LeadState,
+  OperatorState,
   PaneView,
   PatchFrame,
   RunTarget,
@@ -76,6 +78,8 @@ export interface State {
   panesUnavailable: boolean;
   runTargets: RunTarget[];
   lead: LeadState;
+  operator: OperatorState | null;
+  notes: Entities["note"][];
   instance: string;
 }
 
@@ -152,12 +156,15 @@ export function createStore(
   live = false,
   instance = live ? "unconfigured" : "fixtures",
 ) {
+  const notificationClaims = new Set<string>();
   let state: State = {
     snapshot,
     ui: initialUi,
     live,
     connection: live ? "connecting" : "fixtures",
     inbox: [],
+    operator: null,
+    notes: [],
     panes: [],
     panesUnavailable: false,
     runTargets: [],
@@ -223,6 +230,27 @@ export function createStore(
       emit();
     },
     applyProtocol(client: ClientState, patch?: PatchFrame) {
+      const notices = [...client.collections.inbox.values()].flatMap((i) =>
+        i.forHuman ? [i.forHuman.noteId] : [],
+      );
+      for (const note of client.collections.operator.get("operator")?.actions ??
+        [])
+        if (note.forHuman && !note.taskId) notices.push(note.id);
+      for (const noteId of notices)
+        if (send && !notificationClaims.has(noteId)) {
+          notificationClaims.add(noteId);
+          void send({ kind: "claim_notification", noteId })
+            .then((outcome) => {
+              if (
+                outcome.ok &&
+                outcome.result.kind === "notification" &&
+                outcome.result.notice
+              )
+                globalThis.window?.loomHost?.notify?.(outcome.result.notice);
+              else if (!outcome.ok) notificationClaims.delete(noteId);
+            })
+            .catch(() => notificationClaims.delete(noteId));
+        }
       state = {
         ...state,
         snapshot: projectSnapshot(state.snapshot, client, patch),
@@ -231,6 +259,11 @@ export function createStore(
             ? [...client.collections.inbox.values()]
             : state.inbox,
         lead: client.collections.lead.get("lead") ?? state.lead,
+        operator: client.collections.operator.get("operator") ?? null,
+        notes:
+          !patch || patch.changes.some((c) => c.collection === "note")
+            ? [...client.collections.note.values()]
+            : state.notes,
         panes:
           !patch || patch.changes.some((c) => c.collection === "pane")
             ? [...client.collections.pane.values()]

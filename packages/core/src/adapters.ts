@@ -300,6 +300,7 @@ export interface ClaudeAdapter {
     cwd: WorktreePath;
     model: string;
     settingsPath: string;
+    mcpOnly?: boolean;
     readOnly: boolean;
     prompt: string;
   }): Promise<void>;
@@ -307,6 +308,7 @@ export interface ClaudeAdapter {
     sessionId: ProviderSessionId;
     text: string;
   }): Promise<void>;
+  stopHeadless(sessionId: ProviderSessionId): Promise<void>;
   interruptHeadless(sessionId: ProviderSessionId): Promise<void>;
   /** Closes the headless run and terminates its subprocess; unknown/closed sessions are a no-op. */
   closeHeadless(sessionId: ProviderSessionId): Promise<void>;
@@ -324,4 +326,12 @@ export interface ClaudeAdapter {
   /** `RunObservation.activityAt`: latest hook receipt for the session; null means no evidence. */
   activityAt(sessionId: ProviderSessionId): Promise<IsoTime | null>;
   subscribe(onHint: OnHint): Unsubscribe;
+}
+
+/** Evidence from an adapter's own private resources; never inferred from logs. */
+export interface AdapterDiagnostic {
+  kind: "stale_process";
+  resource: "codex_server" | "claude_headless";
+  sessionId: string | null;
+  message: string;
 }
