@@ -72,6 +72,8 @@ export function PullRequestDetail({
     : pr
       ? mergeDisabledReason(pr)
       : "Waiting for pull request detail.";
+  const displayedReason =
+    reason === "The pull request is not open." ? null : reason;
   const deleteReason = pr
     ? deleteDisabledReason(pr)
     : "Waiting for pull request detail.";
@@ -316,15 +318,9 @@ export function PullRequestDetail({
         aria-labelledby={`pr-tab-${tab}`}
         data-tab-body={tab}
       >
-        {(reason && header?.state !== "closed" && header?.state !== "merged") ||
-        outcome ||
-        busy ? (
+        {displayedReason || outcome || busy ? (
           <div className="pr-feedback">
-            <span className="faint">
-              {header?.state !== "closed" && header?.state !== "merged"
-                ? reason
-                : null}
-            </span>
+            <span className="faint">{displayedReason}</span>
             <div role="status" className="pr-outcome">
               {busy ? "Waiting for coordinator…" : outcome}
             </div>

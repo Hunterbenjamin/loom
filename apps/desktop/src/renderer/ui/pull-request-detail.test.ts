@@ -147,10 +147,12 @@ test("a merged pull request omits redundant merge status and action", () => {
   ).toBe(false);
 });
 
-test("a closed pull request omits the redundant non-open message", () => {
+test("a closed pull request omits the redundant non-open message but preserves connection errors", () => {
   const h = setup({ state: "closed" });
   expect(h.host.textContent).not.toContain("The pull request is not open.");
   expect(h.button("Squash & merge").disabled).toBe(true);
+  act(() => h.store.setConnection("disconnected"));
+  expect(h.host.textContent).toContain("Disconnected from the coordinator.");
 });
 
 test.each(["success", "none"] as const)(
