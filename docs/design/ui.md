@@ -81,7 +81,7 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   command copies the coordinator's shell-quoted attach argv and environment for the first live
   pane in native order. Close panel hides matching viewers in the current Workbench tab only,
   leaving other tabs and all native processes running. It remains available while the host is
-  unavailable. Rename is visibly unavailable until slice 3 supplies native rename support.
+  unavailable. Rename uses the inline editor on space/tab rows (double-click or F2); the menu entry remains unavailable.
 - **Branch:** space rows show the coordinator's `panes.branch`: the linked issue's branch, or Git's
   `rev-parse --abbrev-ref HEAD` at the first native pane's start cwd for an unlinked space.
   Reads are cached per cwd within each serialized inventory refresh, including failures, and
@@ -95,7 +95,7 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   interval. Other glyphs inherit the row's text color. Tabs and spaces roll up needs-you > failed > unknown > working >
   done > idle across all descendants, including ones hidden by filtering. Only published provider
   status and coordinator attention determine indicators; native process exit alone is not agent
-  completion. Branches and rename remain separate Workbench v2 slices.
+  completion. Branch display and inline rename follow their separate Workbench v2 slices.
 - **Sound and flash:** the window store compares consecutive pane observations using the same
   indicators (including recorded completed turns). Entering needs-you or done plays one bundled
   320 ms chime and flashes each visible occurrence of the pane row once for 600 ms. Repeated patches, initial
@@ -273,6 +273,18 @@ a reusable human shell in the issue's worktree. With no surviving worktree, it o
 project root and shows that checkout's actual branch without changing it. Historical run selection
 cannot override this issue-scoped resolution. Run identity changes re-resolve the target; routine
 activity updates do not remount the terminal. Missing host observations surface a retryable error.
+
+### Renaming spaces and tabs
+
+Double-click a space or tab row, or focus it and press F2, to edit its native name inline.
+Enter submits; Escape cancels. Space names cannot contain `.` or `:`; empty names and control
+characters are rejected, with the reason displayed beside the editor. Task spaces retain their
+task title as the label while the editor and row tooltip expose the native session name.
+The coordinator executes `rename_space` / `rename_tab` against generation-scoped native session
+and window IDs. Labels change only with the next `panes` patch. Tab automatic renaming stays off.
+Native pane identity keeps open viewers mounted across renames; reconnect resolves the current
+name. A tmux session option retains its original workspace key, preserving task links and later
+scratch/run creation across coordinator restarts. Main and Operator retain their pinned identities.
 
 ## Pull request protocol (slice 2)
 

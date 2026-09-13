@@ -153,8 +153,7 @@ panes as side-by-side splits in a new Workbench tab, even when filtering hides s
 Right-click or Shift+F10 opens a native row's menu. Open follows the row's click behavior; Open in
 new tab opens its live panes in independent viewers. Copy attach command copies the coordinator's
 shell-quoted argv and environment for the first live pane in native order. Close panel hides the
-row's viewers in the current Workbench tab only and never stops their processes. Rename is disabled
-until Workbench v2 slice 3 supplies native rename support. Menu navigation supports arrows,
+row's viewers in the current Workbench tab only and never stops their processes. Use double-click or F2 on a space/tab row to rename it inline; the menu entry remains disabled. Menu navigation supports arrows,
 Home/End and Escape; clicking outside dismisses it.
 Drag panel headers to panel edges to rearrange splits.
 
@@ -234,6 +233,11 @@ Run it after the desktop build and separately from other performance harnesses t
 Switching modes preserves Tracker selection and Workbench tabs/splits in the same window.
 Inactive terminal viewers detach and reattach when shown; the native panes and agents keep running.
 The app does not create a hidden spare Workbench window.
+
+Space and tab rows support inline rename: double-click or F2, Enter to submit, Escape to cancel.
+Validation and host errors appear in the editor; session names cannot contain `.` or `:`.
+The sidebar waits for native inventory patches to update labels, and renaming keeps terminal
+viewers attached. Task space labels remain the task title; the tooltip shows the session name.
 
 Workbench pane transitions into needs-you or done play a short bundled chime and flash the row
 once. The focused pane in the focused window stays silent. Sound on/off in the bottom bar and

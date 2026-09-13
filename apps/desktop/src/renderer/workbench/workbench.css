@@ -374,3 +374,21 @@
 .wb-row-menu button:disabled {
   opacity: 0.45;
 }
+
+.wb-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wb-rename input {
+  min-width: 0;
+  width: 100%;
+  font: inherit;
+}
+.wb-rename [role="alert"] {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}

@@ -20,6 +20,7 @@ test("renders spaces and agents, independent collapses, filtering and pinned con
     id: JSON.stringify([pane.hostGeneration, "%3"]),
     paneId: "%3",
     sessionName: "loom-t-1",
+    sessionId: "$2",
     windowName: "implementer",
     taskLabel: "t-1 · Fix delivery race",
     branch: "fix/delivery-race",

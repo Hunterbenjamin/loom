@@ -222,6 +222,11 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   its window independently. Workbench also uses tmux's `active-pane` client flag and initializes
   client-local selection before targeting sibling panes; the adapter integration test verifies
   input isolation on tmux 3.7c.
+- Session/window names are mutable tmux metadata. Rename targets use a host generation plus
+  native session/window ID; stored pane references continue to resolve by generation, window ID
+  and pane ID. The native session retains its original workspace key in `@loom_workspace_id`, so
+  task linkage and subsequent launches survive a rename and coordinator restart. No name is
+  persisted in the renderer, and inventory patches do not remount terminal viewers.
 - **The shared pane has one size**, and the latest active client's size wins (`window-size latest`,
   `aggressive-resize on`); a differently sized view is cropped or padded. Give the embedded
   terminal a minimum width (about 100 columns), and resize only when the panel resizes, debounced.

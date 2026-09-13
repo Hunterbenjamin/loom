@@ -184,3 +184,31 @@ test("assembles task branches and caches unlinked cwd reads per refresh, isolati
   expect(git.currentBranch).toHaveBeenCalledTimes(6);
   await inventory.stop();
 });
+
+test("renamed task spaces retain their task label even when only scratch panes remain", () => {
+  const { state } = fixture();
+  if (!state.worktree) throw new Error("Missing worktree fixture");
+  state.worktree.paneWorkspaceId = "original-workspace";
+  state.runs = [];
+  const rows = assemblePanes(
+    [
+      {
+        ...observation,
+        workspaceId: "original-workspace",
+        ref: { ...observation.ref, sessionName: "Renamed space" },
+      },
+    ],
+    [state],
+    new Map(),
+    now,
+    null,
+    false,
+  );
+  expect(rows[0]).toMatchObject({
+    sessionName: "Renamed space",
+    taskId: state.task.id,
+    taskLabel: `${state.task.id} · ${state.task.title}`,
+    branch: state.task.branch,
+    runId: null,
+  });
+});

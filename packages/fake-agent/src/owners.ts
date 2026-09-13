@@ -37,6 +37,7 @@ export class FakePaneHost implements PaneHost {
   private runs = new Map<RunId, PaneRef>();
   private workspaces = new Map<string, WorktreePath>();
   private scratch = new Map<string, PaneRef>();
+  private workspaceNames = new Map<string, string>();
   private generation = 1;
   private nextPane = 0;
   private now = 0;
@@ -57,7 +58,7 @@ export class FakePaneHost implements PaneHost {
     const n = this.nextPane++;
     const ref: PaneRef = {
       hostGeneration: `fake-${this.generation}`,
-      sessionName: req.workspaceId,
+      sessionName: this.workspaceNames.get(req.workspaceId) ?? req.workspaceId,
       windowId: `@${n}`,
       paneId: `%${n}`,
     };
@@ -65,6 +66,8 @@ export class FakePaneHost implements PaneHost {
     this.runs.set(req.runId, ref);
     this.panes.set(this.key(ref), {
       ref,
+      sessionId: this.sessionId(ref.sessionName, n),
+      workspaceId: req.workspaceId,
       cwd: req.cwd,
       startCwd: req.cwd,
       pid: 90000 + n,
@@ -94,13 +97,14 @@ export class FakePaneHost implements PaneHost {
     const n = this.nextPane++;
     const ref: PaneRef = {
       hostGeneration: `fake-${this.generation}`,
-      sessionName: req.workspaceId,
+      sessionName: this.workspaceNames.get(req.workspaceId) ?? req.workspaceId,
       windowId: `@${n}`,
       paneId: `%${n}`,
     };
     this.panes.set(this.key(ref), {
       ref,
-      sessionId: `$${n}`,
+      sessionId: this.sessionId(ref.sessionName, n),
+      workspaceId: req.workspaceId,
       windowName: title,
       title,
       cwd: req.cwd,
@@ -112,6 +116,58 @@ export class FakePaneHost implements PaneHost {
     });
     this.scratch.set(key, ref);
     return structuredClone(ref);
+  };
+  private sessionId(name: string, fallback: number) {
+    return (
+      [...this.panes.values()].find((pane) => pane.ref.sessionName === name)
+        ?.sessionId ?? `$${fallback}`
+    );
+  }
+  renameSession: PaneHost["renameSession"] = async (req) => {
+    if (!req.name.trim() || /[.:\p{Cc}]/u.test(req.name))
+      throw new Error(
+        "Space names cannot contain . or : or control characters",
+      );
+    const panes = [...this.panes.values()];
+    const matches = panes.filter(
+      (pane) =>
+        pane.ref.hostGeneration === req.hostGeneration &&
+        pane.sessionId === req.sessionId,
+    );
+    if (!matches.length) throw new Error("Session is missing or stale");
+    if (
+      panes.some(
+        (pane) =>
+          pane.ref.sessionName === req.name && pane.sessionId !== req.sessionId,
+      )
+    )
+      throw new Error("Duplicate session name");
+    for (const pane of matches) {
+      pane.workspaceId ??= pane.ref.sessionName;
+      this.workspaceNames.set(pane.workspaceId, req.name);
+      pane.ref.sessionName = req.name;
+    }
+    this.hints.emit({
+      source: "pane_host",
+      sessionId: null,
+      worktreePath: null,
+    });
+  };
+  renameWindow: PaneHost["renameWindow"] = async (req) => {
+    if (!req.name.trim() || /[\p{Cc}]/u.test(req.name))
+      throw new Error("Invalid tab name");
+    const matches = [...this.panes.values()].filter(
+      (pane) =>
+        pane.ref.hostGeneration === req.hostGeneration &&
+        pane.ref.windowId === req.windowId,
+    );
+    if (!matches.length) throw new Error("Window is missing or stale");
+    for (const pane of matches) pane.windowName = req.name;
+    this.hints.emit({
+      source: "pane_host",
+      sessionId: null,
+      worktreePath: null,
+    });
   };
   getPane: PaneHost["getPane"] = async (ref) =>
     structuredClone(this.panes.get(this.key(ref)) ?? null);
@@ -182,6 +238,7 @@ export class FakePaneHost implements PaneHost {
     this.panes.clear();
     this.runs.clear();
     this.workspaces.clear();
+    this.workspaceNames.clear();
     this.hints.emit({
       source: "pane_host",
       sessionId: null,
@@ -189,7 +246,7 @@ export class FakePaneHost implements PaneHost {
     });
   }
   private key(ref: PaneRef) {
-    return `${ref.hostGeneration}/${ref.sessionName}/${ref.windowId}/${ref.paneId}`;
+    return `${ref.hostGeneration}/${ref.windowId}/${ref.paneId}`;
   }
   private live(ref: PaneRef) {
     const p = this.panes.get(this.key(ref));

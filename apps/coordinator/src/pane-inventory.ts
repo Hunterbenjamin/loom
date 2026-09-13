@@ -27,7 +27,8 @@ export function assemblePanes(
     );
     const match = matches.length === 1 ? matches[0] : undefined;
     const workspaces = states.filter(
-      (s) => s.worktree?.paneWorkspaceId === p.ref.sessionName,
+      (s) =>
+        s.worktree?.paneWorkspaceId === (p.workspaceId ?? p.ref.sessionName),
     );
     const task =
       match?.state.task ??

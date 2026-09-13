@@ -2,6 +2,7 @@ import type { PaneIdentity, PaneView } from "@loom/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { paneKey } from "../store/pane-transitions.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { RenameRow } from "./rename-row.js";
 import { RowMenu } from "./row-menu.js";
 import { type Indicator, spaceKey, spaces, tabKey } from "./selectors.js";
 import { Status } from "./status.js";
@@ -130,7 +131,10 @@ export function Sidebar({
         a.indicator.priority - b.indicator.priority ||
         a.pane.id.localeCompare(b.pane.id),
     );
-  const selectedPane = typeof selected === "object" ? selected : undefined;
+  const selectedPane =
+    typeof selected === "object"
+      ? panes.find((pane) => paneKey(pane) === paneKey(selected))
+      : undefined;
   const isSelected = (pane: PaneView) =>
     !!selectedPane && paneKey(pane) === paneKey(selectedPane);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -235,30 +239,30 @@ export function Sidebar({
             <div className="wb-terminal-list">
               {tree.map((space) => (
                 <section key={space.key} aria-label={space.label}>
-                  <button
-                    type="button"
-                    className="wb-tree-row wb-space"
-                    aria-current={
-                      selectedPane && spaceKey(selectedPane) === space.key
-                        ? "true"
-                        : undefined
-                    }
-                    aria-expanded={expanded(space.key)}
-                    onClick={() => toggle(space.key)}
-                    {...rowMenu("space", space.key)}
-                    title={space.name}
-                  >
-                    <Status state={space.indicator} />
-                    <span className="wb-row-copy">
-                      <strong className="wb-tree-name">{space.label}</strong>
-                      <small
-                        className="wb-space-branch"
-                        title={space.branch ?? "Branch unavailable"}
-                      >
-                        {space.branch ?? "—"}
-                      </small>
-                    </span>
-                  </button>
+                  <div {...rowMenu("space", space.key)}>
+                    <RenameRow
+                      kind="space"
+                      pane={space.tabs[0]?.panes[0]?.pane}
+                      name={space.name}
+                      className="wb-space"
+                      current={
+                        !!selectedPane && spaceKey(selectedPane) === space.key
+                      }
+                      expanded={expanded(space.key)}
+                      toggle={() => toggle(space.key)}
+                    >
+                      <Status state={space.indicator} />
+                      <span className="wb-row-copy">
+                        <strong className="wb-tree-name">{space.label}</strong>
+                        <small
+                          className="wb-space-branch"
+                          title={space.branch ?? "Branch unavailable"}
+                        >
+                          {space.branch ?? "—"}
+                        </small>
+                      </span>
+                    </RenameRow>
+                  </div>
                   {expanded(space.key) &&
                     space.tabs.map((tab) => (
                       <section
@@ -284,10 +288,11 @@ export function Sidebar({
                           >
                             <Status state={tab.indicator} />
                           </button>
-                          <button
-                            type="button"
-                            className="wb-tree-row"
-                            aria-label={`Open tab ${tab.name}`}
+                          <RenameRow
+                            kind="tab"
+                            pane={tab.panes[0]?.pane}
+                            name={tab.name}
+                            ariaLabel={`Open tab ${tab.name}`}
                             disabled={
                               !rowPanes("tab", tab.key).some(
                                 (pane) =>
@@ -296,12 +301,12 @@ export function Sidebar({
                                   !pane.dead,
                               )
                             }
-                            onClick={() =>
+                            toggle={() =>
                               openGroup(rowPanes("tab", tab.key), tab.name)
                             }
                           >
                             <span className="wb-tree-name">{tab.name}</span>
-                          </button>
+                          </RenameRow>
                         </div>
                         {expanded(tab.key) &&
                           tab.panes.map(({ pane, name, indicator }) => (

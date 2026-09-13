@@ -529,3 +529,36 @@ test("menu tracks unavailable inventory, retains viewer-only close, and reports 
     await h.close();
   }
 });
+
+test("rename patches keep viewers mounted and close uses the current session name", async () => {
+  const h = await harness();
+  try {
+    const count = terminalRenders.mock.calls.length;
+    const viewer = h.element.querySelector("[data-attached-pane]");
+    h.native.set(pane.id, {
+      ...pane,
+      sessionName: "Renamed space",
+      windowName: "Renamed tab",
+    });
+    await act(async () => h.publish());
+    expect(h.element.querySelector("[data-attached-pane]")).toBe(viewer);
+    expect(terminalRenders).toHaveBeenCalledTimes(count);
+    expect(h.element.querySelector('[title="Renamed space"]')).not.toBeNull();
+    const close = h.element.querySelector<HTMLButtonElement>(
+      '[aria-label="Close terminal"]',
+    );
+    if (!close) throw new Error("Missing close terminal");
+    await act(async () => close.click());
+    expect(h.send).toHaveBeenCalledWith({
+      kind: "close_terminal",
+      target: {
+        hostGeneration: pane.hostGeneration,
+        sessionName: "Renamed space",
+        windowId: pane.windowId,
+        paneId: pane.paneId,
+      },
+    });
+  } finally {
+    await h.close();
+  }
+});
