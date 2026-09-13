@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { TaskId } from "@loom/core";
 import { type AckOutcome, stateFromSnapshot } from "@loom/protocol";
 import { act, createElement } from "react";
@@ -464,4 +466,27 @@ test("the project picker has no All option and keeps add/select errors inline", 
     "Cannot start",
   );
   expect(h.store.getState().ui.repo).toBe("repo-loom");
+});
+
+test("the project picker clears the shared titlebar inset and remains interactive", () => {
+  const style = document.createElement("style");
+  style.textContent = readFileSync(
+    join(import.meta.dirname, "../theme.css"),
+    "utf8",
+  ).replaceAll("-webkit-app-region", "--test-app-region");
+  document.head.append(style);
+  try {
+    const h = setup({ open: false });
+    const top = h.get<HTMLElement>(".sidebar-top");
+    const picker = h.get<HTMLSelectElement>('[aria-label="Repository"]');
+    expect(getComputedStyle(top).paddingTop).toBe("calc(30px + 8px)");
+    expect(getComputedStyle(top).getPropertyValue("--test-app-region")).toBe(
+      "drag",
+    );
+    expect(getComputedStyle(picker).getPropertyValue("--test-app-region")).toBe(
+      "no-drag",
+    );
+  } finally {
+    style.remove();
+  }
 });

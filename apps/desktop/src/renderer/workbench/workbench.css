@@ -7,7 +7,7 @@
 }
 /* Keep the hiddenInset title area in flow, above the sidebar and panel layout. */
 .wb-titlebar {
-  height: 30px;
+  height: var(--titlebar-height);
   flex: none;
 }
 .wb-titlebar,
