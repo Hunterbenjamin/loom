@@ -13,6 +13,7 @@ import {
   type WorktreePath,
 } from "@loom/core";
 import { z } from "zod";
+import type { JsonValue } from "./generated/serde_json/JsonValue.js";
 import type { ThreadReadParams } from "./generated/v2/ThreadReadParams.js";
 import type { ThreadResumeParams } from "./generated/v2/ThreadResumeParams.js";
 import type { ThreadStartParams } from "./generated/v2/ThreadStartParams.js";
@@ -78,6 +79,8 @@ class AppServerAdapter implements CodexAdapter {
   private readonly pending = new PendingRequests();
   private readonly paths = new Map<string, WorktreePath>();
   private readonly subscribed = new Set<string>();
+  /** Each thread's own overrides, replayed on every resume (see `CodexAdapter.resumeThread`). */
+  private readonly threadConfigs = new Map<string, Record<string, unknown>>();
   private readonly activity = new Map<string, IsoTime>();
   private readonly errors = new Map<
     string,
@@ -207,7 +210,11 @@ class AppServerAdapter implements CodexAdapter {
   /** Rebuild connection-scoped server subscriptions from durable adapter intent. */
   private async hydrateSubscriptions(connection: RpcConnection): Promise<void> {
     for (const threadId of this.subscribed) {
-      const params: ThreadResumeParams = { threadId, excludeTurns: false };
+      const params: ThreadResumeParams = {
+        threadId,
+        excludeTurns: false,
+        config: this.threadConfig(threadId),
+      };
       const { thread } = await connection.rpc(
         "thread/resume",
         params,
@@ -346,6 +353,7 @@ class AppServerAdapter implements CodexAdapter {
         schemas.metadataResult,
       );
       this.assertCurrent(connection);
+      this.threadConfigs.set(thread.id, req.config);
       this.paths.set(thread.id, (await realpath(thread.cwd)) as WorktreePath);
       this.assertCurrent(connection);
       this.markActivity(thread.id, iso(thread.updatedAt));
@@ -401,12 +409,22 @@ class AppServerAdapter implements CodexAdapter {
     if (connection !== this.connection || !connection.connected)
       throw new Error("Codex connection changed during read");
   }
+  private threadConfig(threadId: string): Record<string, JsonValue> | null {
+    const config = this.threadConfigs.get(threadId);
+    return config ? z.record(z.string(), z.json()).parse(config) : null;
+  }
   async resumeThread(
     threadId: ProviderSessionId,
+    options?: { config?: Record<string, unknown> },
   ): Promise<CodexThreadObservation> {
+    if (options?.config) this.threadConfigs.set(threadId, options.config);
     return this.rpcWithReconnect(async () => {
       const connection = this.rpc();
-      const params: ThreadResumeParams = { threadId, excludeTurns: false };
+      const params: ThreadResumeParams = {
+        threadId,
+        excludeTurns: false,
+        config: this.threadConfig(threadId),
+      };
       const { thread } = await connection.rpc(
         "thread/resume",
         params,

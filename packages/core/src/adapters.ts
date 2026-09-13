@@ -405,8 +405,15 @@ export interface CodexAdapter {
     threadId: ProviderSessionId;
     turnId: string;
   }): Promise<void>;
-  /** `thread/resume`: subscribe and return the hydrated snapshot. */
-  resumeThread(threadId: ProviderSessionId): Promise<CodexThreadObservation>;
+  /**
+   * `thread/resume`: subscribe and return the hydrated snapshot. `config` is the thread's own
+   * overrides (its Loom MCP registration above all): a task's app-server is shared by every run
+   * of the task, so a thread resumed without them falls back to whatever the last launch wrote.
+   */
+  resumeThread(
+    threadId: ProviderSessionId,
+    options?: { config?: Record<string, unknown> },
+  ): Promise<CodexThreadObservation>;
   readThread(threadId: ProviderSessionId): Promise<CodexThreadObservation>;
   unsubscribe(threadId: ProviderSessionId): Promise<void>;
   /** Rejects if `generation` isn't current: request IDs restart with the server. */

@@ -29,7 +29,12 @@ import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
 import { checkPanePromptGate, checkSendGate } from "./gate.js";
-import { type LaunchDeps, relaunchFromRecipe, startRun } from "./launch.js";
+import {
+  codexThreadConfig,
+  type LaunchDeps,
+  relaunchFromRecipe,
+  startRun,
+} from "./launch.js";
 import { indexChanges, mapFindings } from "./mapping.js";
 import type { PullRequestCache } from "./observe.js";
 
@@ -346,7 +351,20 @@ export class Executor {
             // A coordinator that restarted after this run ended has not resumed its thread, and
             // the adapter refuses to read an unresumed thread. Resume first; a thread that is
             // gone falls through to the resumable check below.
-            await codex.resumeThread(sessionId).catch(() => undefined);
+            const recipe = this.deps.launch.recipes.get(run.id);
+            await codex
+              .resumeThread(
+                sessionId,
+                recipe
+                  ? {
+                      config: codexThreadConfig(
+                        this.deps.launch.mcpEntry(recipe.token),
+                        run.reasoningEffort,
+                      ),
+                    }
+                  : undefined,
+              )
+              .catch(() => undefined);
             let observation = await read();
             const turn = observation?.turns.at(-1);
             if (turn?.status === "inProgress") {
