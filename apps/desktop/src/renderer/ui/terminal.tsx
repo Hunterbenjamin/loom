@@ -295,30 +295,43 @@ export const TerminalSession = memo(function TerminalSession({
           hostWantsMouse = enable;
         return true;
       };
+    // The pane's history is replayed into this viewer on attach (main, pane-history.ts), so
+    // the wheel scrolls the viewer's own buffer, and a selection runs up through history as it
+    // does in Herdr. Only a program on the alternate screen (a pager, an editor) gets the
+    // wheel itself, as mouse reports through tmux; the host is asked which it is, briefly
+    // cached, when the wheel moves and after Enter (a command may have just started one).
+    let alternate = false;
+    let askedAt = 0;
+    const refreshFlags = () => {
+      askedAt = Date.now();
+      void window.loomTerminal
+        .paneFlags?.(id)
+        .then((flags) => {
+          alternate = flags.alternate;
+        })
+        .catch(() => {});
+    };
     // Taken in the capture phase: xterm's own viewport otherwise turns a wheel in the alternate
     // screen (which tmux always draws in) into arrow keys before this listener runs.
     const onWheel = (event: WheelEvent) => {
       event.stopPropagation();
       event.preventDefault();
+      if (Date.now() - askedAt > 250) refreshFlags();
       const steps = Math.max(
         1,
         Math.min(10, Math.round(Math.abs(event.deltaY) / 24)),
       );
-      // The viewer owns what has scrolled off since it attached (the host no longer uses the
-      // alternate screen for its client): scroll that locally while there is any, so a
-      // selection can extend through it. At its edges the wheel goes to tmux, which scrolls the
-      // pane's own history exactly as it did before.
       const active = terminal.buffer?.active;
       const up = event.deltaY < 0;
-      if (active && active.type !== "alternate") {
+      if (!alternate || !hostWantsMouse) {
+        if (!active || active.type === "alternate") return;
         const canScrollUp = active.viewportY > 0;
         const canScrollDown = active.viewportY < active.baseY;
-        if ((up && canScrollUp) || (!up && canScrollDown)) {
+        if ((up && canScrollUp) || (!up && canScrollDown))
           terminal.scrollLines?.(up ? -steps : steps);
-          return;
-        }
+        return;
       }
-      if (!hostWantsMouse) return;
+      terminal.scrollToBottom?.();
       const screen = element.querySelector<HTMLElement>(".xterm-screen");
       const box = screen?.getBoundingClientRect();
       if (!box?.width || !box.height) return;
@@ -391,6 +404,8 @@ export const TerminalSession = memo(function TerminalSession({
           cols: wanted.cols,
           rows: wanted.rows,
           label: settings.current.label,
+          // A cropped view shows one slice of a shared screen; history only makes sense whole.
+          history: viewportRef.current ? 0 : terminalHistoryLimit,
           pane,
           shellKey,
           shellName,
@@ -490,7 +505,14 @@ export const TerminalSession = memo(function TerminalSession({
       return false;
     });
 
-    terminal.onData((data) => window.loomTerminal.write(id, data));
+    let enterTimer: number | undefined;
+    terminal.onData((data) => {
+      window.loomTerminal.write(id, data);
+      if (data.includes("\r")) {
+        window.clearTimeout(enterTimer);
+        enterTimer = window.setTimeout(refreshFlags, 400);
+      }
+    });
     terminal.onResize(() => {
       if (viewportRef.current) return; // a cropped view's size is decided by its panel above
       wanted = { cols: terminal.cols, rows: terminal.rows };
@@ -511,6 +533,12 @@ export const TerminalSession = memo(function TerminalSession({
       held = "";
       holding = false;
     };
+    // History lands before any output, then enough newlines to push its last line just above
+    // the screen: the host's first redraw then clears an empty screen and draws below it.
+    window.loomTerminal.onHistory?.(id, (history) => {
+      if (!history || viewportRef.current) return;
+      terminal.write(history + "\r\n".repeat(Math.max(0, terminal.rows - 1)));
+    });
     window.loomTerminal.onData(id, (data) => {
       let input = data;
       while (input) {
@@ -573,6 +601,7 @@ export const TerminalSession = memo(function TerminalSession({
     return () => {
       disposed = true;
       window.clearTimeout(timer);
+      window.clearTimeout(enterTimer);
       observer.disconnect();
       fitViewport.current = null;
       element.removeEventListener("wheel", onWheel, { capture: true });

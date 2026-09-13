@@ -7,9 +7,13 @@ import {
 
 const onData = new Map<string, (data: string) => void>();
 const onExit = new Map<string, (info: PtyExit) => void>();
+const onHistory = new Map<string, (history: string) => void>();
 
 ipcRenderer.on("pty:data", (_event, id: string, data: string) =>
   onData.get(id)?.(data),
+);
+ipcRenderer.on("pty:history", (_event, id: string, history: string) =>
+  onHistory.get(id)?.(history),
 );
 ipcRenderer.on("pty:exit", (_event, id: string, info: PtyExit) =>
   onExit.get(id)?.(info),
@@ -26,11 +30,16 @@ contextBridge.exposeInMainWorld("loomTerminal", {
   onData: (id: string, fn: (data: string) => void) => {
     onData.set(id, fn);
   },
+  onHistory: (id: string, fn: (history: string) => void) => {
+    onHistory.set(id, fn);
+  },
   onExit: (id: string, fn: (info: PtyExit) => void) => {
     onExit.set(id, fn);
   },
+  paneFlags: (id: string) => ipcRenderer.invoke("pty:pane-flags", id),
   off: (id: string) => {
     onData.delete(id);
+    onHistory.delete(id);
     onExit.delete(id);
   },
 });

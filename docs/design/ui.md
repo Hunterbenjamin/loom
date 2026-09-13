@@ -152,6 +152,12 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   kills only that client. The panel's close control kills its pane through the coordinator. Electron keys resources by webContents and panel/client identity,
   including pending spawns and late exit callbacks. Metadata patches update labels without
   rendering or remounting terminal components; theme changes update xterm options in place.
+  Scrollback and selection work as in Herdr: the client attaches without the alternate screen,
+  and on attach the main process reads the pane's history from the host (`capture-pane`, up to
+  the terminal history limit) and replays it into the viewer ahead of the host's first redraw,
+  so the wheel scrolls the viewer's own buffer and a drag can select up through history.
+  Releasing the mouse copies the selection and clears it. Only a pane on the alternate screen
+  (a pager, an editor) receives the wheel itself, as mouse reports through tmux.
 
 ## Pane host
 
