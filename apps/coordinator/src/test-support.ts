@@ -57,7 +57,10 @@ export interface HarnessOptions {
   serveProtocol?: boolean;
   /** Extra files committed into the repository before the branch exists. */
   files?: Record<string, string>;
-  config?: Partial<CoordinatorConfig>;
+  config?: Partial<Omit<CoordinatorConfig, "runModes">> & {
+    /** Raw environment-style value parsed at the same boundary as production configuration. */
+    runModes?: string;
+  };
 }
 
 export interface Harness {
@@ -134,8 +137,6 @@ async function open(
     bind: "127.0.0.1:0",
     token: "test-token-0123456789abcdef",
     models: { codex: "fake-codex-model", claude: "fake-claude-model" },
-    // Tests: keep implementers interactive to match coordinator fixtures; planner/reviewer headless to avoid tmux
-    runModes: "planner=headless,implementer=interactive,reviewer=headless",
     ...options.config,
   });
   const store = await openStore({

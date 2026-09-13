@@ -135,9 +135,7 @@ export async function createClaudeAdapter(
       model,
       // Implementers have full access inside their own worktree. Planners and reviewers omit the
       // override so Claude keeps its read-only/default permission behavior.
-      ...(readOnly
-        ? []
-        : ["--permission-mode", "bypassPermissions"]),
+      ...(readOnly ? [] : ["--permission-mode", "bypassPermissions"]),
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {

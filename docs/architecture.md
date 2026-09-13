@@ -101,7 +101,11 @@ Rules:
 - Choose and record the session ID before launch: `claude --session-id <uuid>`, or the Codex thread ID
   returned by `thread/start`.
 - All roles (planner, implementer, reviewer) run interactively by default for visibility in panes.
-  Override per-role modes via `LOOM_RUN_MODES` env var (e.g., `planner=headless,implementer=interactive,reviewer=headless`).
+  Override per-role modes via `LOOM_RUN_MODES` (for example,
+  `planner=headless,reviewer=headless`). The setting is captured only when a new run row is created;
+  existing runs, retries, resumes, and externally discovered sessions retain their recorded mode.
+  Interactive planners and reviewers remain read-only: Codex uses the role sandbox, and Claude does
+  not receive the implementer's permission bypass.
   Codex clients can share a live thread on the same app-server. Resume to subscribe, hydrate current state, then reconcile
   notifications. Use `turn/steer` with `expectedTurnId` for mid-turn input.
 - Codex approval requests reach all subscribed clients, including a client resuming while a request

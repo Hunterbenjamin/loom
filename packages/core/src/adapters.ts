@@ -299,6 +299,8 @@ export interface ClaudeAdapter {
     resume: boolean;
     model: string;
     settingsPath: string;
+    /** Planners and reviewers must not inherit implementer edit/bypass permissions. */
+    readOnly: boolean;
   }): string[];
   /** Agent SDK. Loom chooses the session ID. */
   startHeadless(req: {

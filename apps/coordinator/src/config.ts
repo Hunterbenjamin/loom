@@ -57,12 +57,16 @@ function parseRunModes(value?: string): Record<Role, RunMode> {
   const validModes: RunMode[] = ["interactive", "headless"];
 
   for (const part of parts) {
-    if (!part) continue; // Skip empty parts
+    if (!part) {
+      throw new Error(
+        'Invalid LOOM_RUN_MODES entry: expected "role=mode" format',
+      );
+    }
 
     const segments = part.split("=");
     if (segments.length !== 2) {
       throw new Error(
-        `Invalid LOOM_RUN_MODES entry "${part}": expected "role=mode" format`
+        `Invalid LOOM_RUN_MODES entry "${part}": expected "role=mode" format`,
       );
     }
 
@@ -70,13 +74,13 @@ function parseRunModes(value?: string): Record<Role, RunMode> {
 
     if (!validRoles.includes(role as Role)) {
       throw new Error(
-        `Invalid role in LOOM_RUN_MODES: "${role}". Valid roles: ${validRoles.join(", ")}`
+        `Invalid role in LOOM_RUN_MODES: "${role}". Valid roles: ${validRoles.join(", ")}`,
       );
     }
 
     if (!validModes.includes(mode as RunMode)) {
       throw new Error(
-        `Invalid mode in LOOM_RUN_MODES: "${mode}". Valid modes: ${validModes.join(", ")}`
+        `Invalid mode in LOOM_RUN_MODES: "${mode}". Valid modes: ${validModes.join(", ")}`,
       );
     }
 

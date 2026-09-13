@@ -47,6 +47,9 @@ test("a task runs Todo to Done through plan, review, a fix round and a merge", a
   expect(stageOf(h, taskId)).toBe("awaiting_approval");
   const state = h.store.loadTaskState(taskId);
   expect(state.task.prNumber).toBe(1);
+  expect(
+    state.runs.every((run) => run.mode === "interactive" && run.pane !== null),
+  ).toBe(true);
   expect(state.findings.map((f) => f.status)).toEqual(["resolved"]);
   expect(state.task.attention.reasons).toContain("needs_approval");
 

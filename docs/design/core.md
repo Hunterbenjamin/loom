@@ -44,7 +44,7 @@ human relaunches an interactive run (§3).
 | Field | Own | Notes |
 |---|---|---|
 | `id` | A | Deterministic: `<taskId>/<role>/<round>`. Stable across attempts. |
-| `taskId`, `role`, `provider`, `mode`, `model` | A | All roles default to `interactive` (visible in panes). Configure per-role modes via `LOOM_RUN_MODES` env var (e.g., `planner=headless,implementer=interactive,reviewer=headless`). |
+| `taskId`, `role`, `provider`, `mode`, `model` | A | All roles default to `interactive` (visible in panes). `LOOM_RUN_MODES` may override individual roles for new rows only; existing runs, retries/resumes, and external sessions retain their recorded mode and identity. |
 | `origin` | A | `loom`, or `external` for a session started by hand in the worktree (observe-only). |
 | `worktreePath`, `round` | A | |
 | `attempts` | A | Launches of this run so far. A retry bumps it and keeps the row. |
@@ -494,7 +494,7 @@ backoff (`<key>#<n>`). `precondition` means the world moved: re-read and decide 
 
 | | Codex headless | Codex interactive | Claude headless | Claude interactive |
 |---|---|---|---|---|
-| start | `thread/start` (read-only sandbox for reviewers) | `thread/start`, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>` |
+| start | `thread/start` (read-only sandbox for planners/reviewers) | `thread/start` with the role sandbox, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>`; planners/reviewers omit implementer edit/bypass permissions |
 | send | `turn/start`, or `turn/steer` with `expectedTurnId` | the same, through the app-server, not the pane | SDK | `pasteText`, gated on provider status |
 | interrupt | `turn/interrupt` | `turn/interrupt` | SDK interrupt | `sendKey Escape` |
 | resume | `thread/resume` | `thread/resume`, then reattach the pane | SDK resume | A pane: `claude --resume <id> --settings <per-run> --mcp-config <per-run>` |
@@ -558,6 +558,9 @@ instead of reusing the old receipt. These guarantees do not undo an external sid
 ### 5.5 When a message counts as delivered
 
 Never on the pane host's `"written"`, and never on a transport response alone.
+The launch prompt is a normal queued message for every role. For an interactive run, it cannot be
+sent until both provider identity and pane identity are recorded and the provider-status gate below
+permits the paste.
 
 | Path | `sent` when | `delivered` when |
 |---|---|---|

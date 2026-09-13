@@ -137,6 +137,15 @@ Codex thread and subsequent turns; the task's private TUI configuration receives
 Older runs without a reasoning field retain provider defaults. These are instance environment
 settings; there is no desktop settings editor yet.
 
+`LOOM_RUN_MODES` is a comma-separated per-role override such as
+`planner=headless,reviewer=headless`. Planner, implementer, and reviewer all default to
+`interactive`, giving every Loom-owned run a pane that can be attached. Partial overrides leave
+unspecified roles interactive; only `interactive` and `headless` are accepted. Like provider and
+model settings, this is captured when a new run row is created. Existing runs, retries/resumes, and
+external sessions keep their recorded mode. Interactive planners and reviewers remain read-only,
+and every interactive role's initial prompt travels through the provider-status send gate only after
+the coordinator has recorded its provider session and pane.
+
 When the coordinator restarts, it uses the same stable ports so that live runs' settings and MCP
 config files remain valid.
 

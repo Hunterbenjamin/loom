@@ -249,6 +249,7 @@ export class LeadSession {
       resume,
       model: recipe.model,
       settingsPath: recipe.settingsPath,
+      readOnly: false,
     });
     args.push(leadBrief());
     await this.save({ ...recipe, args, launched: true });

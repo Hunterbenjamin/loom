@@ -459,6 +459,22 @@ test("runModes can be partially overridden", () => {
   });
 });
 
+test("runModes trims whitespace around entries", () => {
+  const config = configSchema.parse({
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+    runModes: " planner = headless , reviewer = interactive ",
+  });
+  expect(config.runModes).toEqual({
+    planner: "headless",
+    implementer: "interactive",
+    reviewer: "interactive",
+  });
+});
+
 test("configFromEnvironment reads LOOM_RUN_MODES from environment", () => {
   const baseEnv = {
     LOOM_INSTANCE: "dev",
@@ -511,6 +527,12 @@ test("runModes rejects malformed entries in LOOM_RUN_MODES", () => {
     runModes: "planner:headless",
   };
   expect(() => configSchema.parse(base)).toThrow(/expected "role=mode" format/);
+  expect(() =>
+    configSchema.parse({
+      ...base,
+      runModes: "planner=headless,,reviewer=headless",
+    }),
+  ).toThrow(/expected "role=mode" format/);
 });
 
 test("task provider overrides and explicit Codex reasoning are validated", () => {

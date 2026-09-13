@@ -128,6 +128,7 @@ describe("createClaudeAdapter", () => {
         resume: false,
         model: "haiku",
         settingsPath,
+        readOnly: false,
       }),
     ).toEqual([
       "--settings",
@@ -147,8 +148,18 @@ describe("createClaudeAdapter", () => {
         resume: true,
         model: "haiku",
         settingsPath,
+        readOnly: true,
       }),
-    ).toContain("--resume");
+    ).toEqual([
+      "--settings",
+      "/runs/r1/settings.json",
+      "--mcp-config",
+      "/runs/r1/settings.mcp.json",
+      "--resume",
+      SESSION,
+      "--model",
+      "haiku",
+    ]);
   });
 
   test("headlessState is null for a session this coordinator didn't launch", async () => {

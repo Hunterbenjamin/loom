@@ -104,6 +104,7 @@ test("consecutive native Claude permission receipts create distinct attention an
   expect(second.state.task.attention).toEqual(first.state.task.attention);
   expect(await inbox()).toMatchObject({ value: { forHuman: null } });
   expect(
+    // biome-ignore lint/complexity/useLiteralKeys: test-only access to a private command boundary
     await coordinator["command"]({
       kind: "claim_notification",
       noteId: note.id,
@@ -150,12 +151,14 @@ test("consecutive native Claude permission receipts create distinct attention an
     .find((n) => n.eventId === fourth.event.id && n.forHuman);
   expect(nextNote?.id).not.toBe(note.id);
   expect(
+    // biome-ignore lint/complexity/useLiteralKeys: test-only access to a private command boundary
     await coordinator["command"]({
       kind: "claim_notification",
       noteId: nextNote?.id,
     }),
   ).toMatchObject({ result: { notice: { id: nextNote?.id } } });
   expect(
+    // biome-ignore lint/complexity/useLiteralKeys: test-only access to a private command boundary
     await coordinator["command"]({
       kind: "claim_notification",
       noteId: nextNote?.id,
