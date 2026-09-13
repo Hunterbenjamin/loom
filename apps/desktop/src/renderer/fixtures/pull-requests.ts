@@ -67,6 +67,7 @@ export function buildPullRequestDetails(rows: PullRequestRow[]) {
     number: row.number,
     taskId: row.taskId,
     pinned: false,
+    viewedFiles: [],
     behindBy: 0,
     detail: {
       ...(({ repoId: _repo, taskId: _task, ...summary }) => summary)(row),

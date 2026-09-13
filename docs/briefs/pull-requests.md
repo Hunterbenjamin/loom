@@ -133,4 +133,14 @@ deletion option. The agent button opens an existing branch agent; it does not la
 The rail adds same-repository issue linking, GitHub reviewers, branch divergence and grouped
 file counts; file selection opens the existing Diff viewer at that path. Pin and link commands
 persist in the coordinator, while PR comments go through the executor/adapter and owner refresh.
-The Reviews inbox, Diff card redesign/Reviewed state and reviews slice 5 polish remain separate.
+The Reviews inbox and reviews slice 5 polish remain separate; Diff is superseded below.
+
+## Superseded by Reviews slice 4
+
+The Diff tab now uses the referenced Files/Commits bar and per-file Pierre cards, ordered like
+the Overview rail. Unified/split and whitespace settings, expandable unchanged regions, file/hunk
+keyboard navigation, and on-demand first-parent commit diffs replace the old sidebar viewer.
+Reviewed files are coordinator-owned, scoped to repository, PR number and head SHA, using the
+existing `save_review_state` viewed-file contract with a PR target. Marking a file collapses it;
+new heads reset the visible marks. Commit-only views cannot mark the entire PR reviewed.
+Reviews slice 5 remains separate.

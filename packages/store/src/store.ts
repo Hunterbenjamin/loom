@@ -15,6 +15,7 @@ import type {
   TaskState,
   Transition,
 } from "@loom/core";
+import { pullRequestReviewChange, viewedFile } from "@loom/protocol";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { actionSchema } from "./action-schemas.js";
@@ -154,6 +155,43 @@ export class Store {
         "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       )
       .run(`pr:${JSON.stringify([repoId, number])}`, JSON.stringify(value));
+  }
+  pullRequestViewedFiles(repoId: string, number: number, headSha: string) {
+    const raw = this.db
+      .prepare("SELECT value FROM meta WHERE key = ?")
+      .pluck()
+      .get(`pr-viewed:${JSON.stringify([repoId, number])}`);
+    if (raw === undefined) return [];
+    const saved = z
+      .object({ headSha: z.string(), files: z.array(viewedFile) })
+      .parse(JSON.parse(z.string().parse(raw)));
+    return saved.headSha === headSha ? saved.files : [];
+  }
+  savePullRequestReviewState(
+    command: z.output<typeof pullRequestReviewChange>,
+  ): void {
+    const { repoId, number, change } = pullRequestReviewChange.parse(command);
+    if (!this.repos().some((repo) => repo.id === repoId))
+      throw new Error("Unknown registered repository");
+    const files = new Map(
+      this.pullRequestViewedFiles(repoId, number, change.headSha).map(
+        (file) => [file.fileId, file],
+      ),
+    );
+    for (const file of change.viewed ?? []) {
+      if (file.headSha !== change.headSha)
+        throw new Error("Viewed file head must match review head");
+      files.set(file.fileId, file);
+    }
+    for (const id of change.unviewed ?? []) files.delete(id);
+    this.db
+      .prepare(
+        "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run(
+        `pr-viewed:${JSON.stringify([repoId, number])}`,
+        JSON.stringify({ headSha: change.headSha, files: [...files.values()] }),
+      );
   }
   putRepo(repo: Repo): void {
     const value = repoSchema.parse(repo);

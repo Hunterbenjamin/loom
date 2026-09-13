@@ -692,3 +692,123 @@ test("branch comparison never holds back overview or diff, and publishes an hone
     ).toBe(3),
   );
 });
+
+test("PR Reviewed state publishes to two windows, survives reconnect, and rejects stale/foreign files", async () => {
+  const h = await setup();
+  const file = {
+    path: "a.ts",
+    additions: 1,
+    deletions: 1,
+    changeType: "MODIFIED" as const,
+  };
+  h.github.setPullRequest(detail(1, { files: [file] }));
+  const first = await connect(h, [detailScope(h)]);
+  const second = await connect(h, [detailScope(h)]);
+  await vi.waitFor(() =>
+    expect(first.state?.collections.pull_request_detail.size).toBe(1),
+  );
+  const command = {
+    kind: "save_review_state" as const,
+    repoId: h.repo.id,
+    number: 1,
+    change: {
+      headSha: head,
+      viewed: [{ fileId: file.path, path: file.path, headSha: head, at }],
+    },
+  };
+  expect(await first.command(command)).toMatchObject({ ok: true });
+  const read = (client: LoomClient) =>
+    client.state?.collections.pull_request_detail.get(
+      pullRequestKey(h.repo.id, 1),
+    )?.viewedFiles;
+  await vi.waitFor(() => expect(read(second)).toHaveLength(1));
+  expect(await first.command(command)).toMatchObject({ ok: true });
+  expect(read(second)).toHaveLength(1);
+  first.close();
+  const reopened = await connect(h, [detailScope(h)]);
+  await vi.waitFor(() => expect(read(reopened)).toHaveLength(1));
+  expect(
+    await second.command({
+      ...command,
+      change: {
+        headSha: head,
+        viewed: [{ headSha: head, at, fileId: "foreign", path: "foreign" }],
+      },
+    }),
+  ).toMatchObject({ ok: false });
+  h.github.setPullRequest(detail(1, { files: [file], headSha: nextHead }));
+  expect(await second.command(command)).toMatchObject({ ok: false });
+  await second.command({
+    kind: "refresh_pull_requests",
+    repoId: h.repo.id,
+    state: "open",
+  });
+  await vi.waitFor(() => expect(read(second)).toEqual([]));
+});
+
+test("commit/file reads are scoped to the observed PR head and its commit/file membership", async () => {
+  const h = await setup();
+  const file = {
+    path: "a.ts",
+    additions: 1,
+    deletions: 1,
+    changeType: "MODIFIED" as const,
+  };
+  h.github.setPullRequest(
+    detail(1, {
+      files: [file],
+      commits: [
+        {
+          sha: head,
+          message: "A commit",
+          author: "human",
+          committedAt: at,
+          url: "https://example.test/commit",
+        },
+      ],
+    }),
+  );
+  const client = await connect(h, [detailScope(h)]);
+  const command = {
+    kind: "fetch_pull_request_commit" as const,
+    repoId: h.repo.id,
+    number: 1,
+    headSha: head,
+    baseSha: detail().baseSha,
+    commitSha: head,
+  };
+  expect(await client.command(command)).toMatchObject({
+    ok: true,
+    result: { kind: "pull_request_commit", diff: { patch: { headSha: head } } },
+  });
+  expect(
+    await client.command({ ...command, commitSha: nextHead }),
+  ).toMatchObject({ ok: false });
+  expect(
+    await client.command({
+      kind: "fetch_pull_request_file",
+      repoId: h.repo.id,
+      number: 1,
+      headSha: head,
+      baseSha: detail().baseSha,
+      commitSha: null,
+      path: "foreign",
+      ignoreWhitespace: false,
+    }),
+  ).toMatchObject({ ok: false });
+  h.github.setPullRequest(detail(1, { baseSha: nextHead }));
+  expect(
+    await client.command({
+      ...command,
+      kind: "fetch_pull_request_file",
+      commitSha: null,
+      path: file.path,
+      ignoreWhitespace: false,
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: { message: "PR head or base changed; refresh the diff" },
+  });
+  h.github.setPullRequest(detail(1, { headSha: nextHead }));
+  expect(await client.command(command)).toMatchObject({ ok: false });
+});

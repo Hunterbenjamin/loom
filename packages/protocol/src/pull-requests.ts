@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ciCheck, ciState } from "./entities.js";
-import { count, isoTime, repoId, sha, taskId } from "./ids.js";
+import { count, fileId, isoTime, repoId, sha, taskId } from "./ids.js";
+import { viewedFile } from "./views.js";
 
 export const pullRequestState = z.enum(["open", "closed", "merged"]);
 export const pullRequestListKey = (repo: string, state: string): string =>
@@ -115,6 +116,47 @@ export const pullRequestPatch = z.strictObject({
   observedAt: isoTime,
 });
 
+/** PR review state reuses the viewed-file contract, independently of an issue. */
+export const pullRequestReviewChange = z.strictObject({
+  kind: z.literal("save_review_state"),
+  repoId,
+  number: pullRequestNumber,
+  change: z.strictObject({
+    headSha: sha,
+    viewed: z.array(viewedFile).optional(),
+    unviewed: z.array(fileId).optional(),
+  }),
+});
+export const pullRequestDiffRead = z.union([
+  z.strictObject({
+    kind: z.literal("fetch_pull_request_commit"),
+    repoId,
+    number: pullRequestNumber,
+    headSha: sha,
+    baseSha: sha,
+    commitSha: sha,
+  }),
+  z.strictObject({
+    kind: z.literal("fetch_pull_request_file"),
+    repoId,
+    number: pullRequestNumber,
+    headSha: sha,
+    baseSha: sha,
+    commitSha: sha.nullable(),
+    path: z.string().min(1),
+    ignoreWhitespace: z.boolean(),
+  }),
+]);
+export const pullRequestCommitDiff = z.strictObject({
+  patch: pullRequestPatch,
+  files: pullRequestDetail.shape.files,
+});
+export const pullRequestFileContents = z.strictObject({
+  old: z.string(),
+  new: z.string(),
+  patch: z.string(),
+});
+
 const linkage = { repoId, taskId: taskId.nullable() };
 export const pullRequestRow = pullRequestSummary.extend(linkage);
 export const pullRequestDetailRow = z
@@ -122,6 +164,7 @@ export const pullRequestDetailRow = z
     ...linkage,
     number: pullRequestNumber,
     pinned: z.boolean().default(false),
+    viewedFiles: z.array(viewedFile).default([]),
     behindBy: count.nullable().default(null),
     detail: pullRequestDetail,
     patch: pullRequestPatch.nullable(),

@@ -1,4 +1,10 @@
-import { pullRequestCommand } from "./pull-requests.js";
+import {
+  pullRequestCommand,
+  pullRequestCommitDiff,
+  pullRequestDiffRead,
+  pullRequestFileContents,
+  pullRequestReviewChange,
+} from "./pull-requests.js";
 // What a window asks the coordinator to do. Human commands become inputs on the task's inbox and
 // are acknowledged with the input ID; reconcile decides what happens next and the result arrives
 // as patches (principle 3: code moves tasks, and only after validating). UI-only requests answer
@@ -80,6 +86,8 @@ export const command = z.union([
   renameTab,
 
   ...pullRequestCommand.options,
+  pullRequestReviewChange,
+  ...pullRequestDiffRead.options,
   z.strictObject({ kind: z.literal("open_task_terminal"), taskId }),
   z.strictObject({
     kind: z.literal("open_workbench_terminal"),
@@ -178,6 +186,15 @@ export const commandRequest = z.strictObject({
 
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
+  z.strictObject({ kind: z.literal("pull_request_review_state") }),
+  z.strictObject({
+    kind: z.literal("pull_request_commit"),
+    diff: pullRequestCommitDiff,
+  }),
+  z.strictObject({
+    kind: z.literal("pull_request_file"),
+    contents: pullRequestFileContents,
+  }),
   z.strictObject({ kind: z.literal("renamed") }),
   z.strictObject({
     kind: z.literal("pull_request_action"),

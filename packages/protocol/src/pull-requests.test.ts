@@ -122,6 +122,7 @@ test("an 8 MiB capped patch survives JSON escaping and protocol roundtrip", () =
       taskId: null,
       number: summary.number,
       pinned: false,
+      viewedFiles: [],
       behindBy: null,
       detail: {
         ...github,

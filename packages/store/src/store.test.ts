@@ -718,3 +718,40 @@ it("PR pins and explicit issue links survive reopening without changing the task
     taskId,
   });
 });
+
+it("PR viewed files survive store reopen, merge per file, and reset for another head", async () => {
+  const store = await seeded();
+  const { pullRequestReviewChange } = await import("@loom/protocol");
+  const headSha = "a".repeat(40);
+  const save = (path: string) =>
+    pullRequestReviewChange.parse({
+      kind: "save_review_state",
+      repoId: repo.id,
+      number: 42,
+      change: { headSha, viewed: [{ fileId: path, path, headSha, at: now }] },
+    });
+  store.savePullRequestReviewState(save("one.ts"));
+  store.savePullRequestReviewState(save("two.ts"));
+  store.savePullRequestReviewState(save("one.ts"));
+  expect(
+    store.pullRequestViewedFiles(repo.id, 42, headSha).map((f) => f.path),
+  ).toEqual(["one.ts", "two.ts"]);
+  store.close();
+  const reopened = await open();
+  expect(reopened.pullRequestViewedFiles(repo.id, 42, headSha)).toHaveLength(2);
+  expect(reopened.pullRequestViewedFiles(repo.id, 43, headSha)).toEqual([]);
+  expect(reopened.pullRequestViewedFiles(repo.id, 42, "b".repeat(40))).toEqual(
+    [],
+  );
+  reopened.savePullRequestReviewState(
+    pullRequestReviewChange.parse({
+      kind: "save_review_state",
+      repoId: repo.id,
+      number: 42,
+      change: { headSha, unviewed: ["one.ts"] },
+    }),
+  );
+  expect(
+    reopened.pullRequestViewedFiles(repo.id, 42, headSha).map((f) => f.path),
+  ).toEqual(["two.ts"]);
+});
