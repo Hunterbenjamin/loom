@@ -160,7 +160,9 @@ Append-only; one row per committed stage change or flag change.
 Delivery metadata follows the original `Message` fields. Core writes it and the store must retain it:
 `via` identifies the transport path (absent before send), `expectedTurnId` identifies a steered turn,
 `baselineTurnId` identifies the last observed turn before sending (absent/null means none), and
-`deliveryAttention` defaults to false. `transportAttempt` records executor start/completion times
+`deliveryAttention` defaults to false. `pendingSince` records the start of the current pending
+interval; legacy pending records initialize it on their first reconciliation and persist it.
+`transportAttempt` records executor start/completion times
 and session/run identity (§5.5), and is absent on legacy records. These fields are never
 reconstructed from a terminal.
 
@@ -591,7 +593,14 @@ Never on the pane host's `"written"`, and never on a transport response alone.
 | Claude (interactive or headless) | `pasteText` returns `"written"`, or the SDK accepts it | `UserPromptSubmit` for the session whose normalized `prompt` hash matches (tabs → 4 spaces, CRLF → LF) |
 
 Several prompts can join one Claude turn and share a `prompt_id`; each is still matched by its own
-`UserPromptSubmit`. If a message is still not delivered after `deliveryTimeoutMs`: when the provider is
+`UserPromptSubmit`. A pending message schedules a check at `pendingSince + deliveryTimeoutMs`,
+including messages waiting for capacity, another message, provider readiness, an expected Codex
+turn, or an outbox transport result. At that deadline it raises `provider_input` on its run and
+notifies once per message with the current blocker. Reconciliation and restarts do not reset the
+interval. Attention remains until delivery is confirmed or the message/run is retired; timeout
+does not authorize replay of an outbox-owned send. An allowed resend starts a new pending interval.
+
+If a sent message is still not delivered after `deliveryTimeoutMs`: when the provider is
 idle and shows no new turn, resend once under the same message ID; otherwise add attention. **A paste is
 gated on the provider's status**: in spike 06 a paste into a pending permission dialog approved the
 command instead of delivering a prompt, so `pasteText` is only called for a run the provider reports as

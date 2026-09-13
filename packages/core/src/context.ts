@@ -385,6 +385,7 @@ export class Context {
       text: safe,
       textHash: this.state.config.sha256(safe),
       status: "pending",
+      pendingSince: this.now,
       attempts: 0,
       transportRef: null,
       sentAt: null,
