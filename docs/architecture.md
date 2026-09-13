@@ -211,6 +211,10 @@ Rules:
   pane to a run, and records it before launch (principle 7).
 - Run one Codex app-server per issue as a Loom child process, never in a pane. Outside the pane host a
   mid-flight turn completes through a host restart; in a pane it ends interrupted (spike 05).
+  The server is shared by every run of the issue, so its `config.toml` names no Loom MCP server:
+  each thread carries its own registration (its run's token) as a config override on
+  `thread/start` and again on every `thread/resume`. A token in the shared config would be the
+  last launch's, and every other thread would present it and be answered `stale_run`.
   On coordinator recovery, reconnect to the issue's private socket and verify the reported
   `CODEX_HOME`. Persist its PID and process birth time in the private issue directory; verify both
   birth time and the exact issue socket in its command before signaling a recovered process.
