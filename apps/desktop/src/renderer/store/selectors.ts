@@ -262,6 +262,9 @@ export const viewCounts = memo1(
       "in-progress": 0,
       "awaiting-approval": 0,
       done: 0,
+      "pull-requests": snapshot.pullRequests.filter(
+        (pr) => pr.state === "open" && pr.repoId === repo,
+      ).length,
     };
     for (const task of snapshot.tasks) {
       if (task.repoId !== repo) continue;

@@ -6,6 +6,7 @@ export function emptySnapshot(): Snapshot {
     now: new Date().toISOString() as Snapshot["now"],
     repos: [],
     tasks: [],
+    pullRequests: [],
     worktrees: [],
     runs: [],
     questions: [],
@@ -34,6 +35,7 @@ export function projectSnapshot(
   const next = { ...previous, now: state.now };
   const c = state.collections;
   if (has("repo")) next.repos = [...c.repo.values()];
+  if (has("pull_request")) next.pullRequests = [...c.pull_request.values()];
   if (has("task")) next.tasks = [...c.task.values()];
   if (has("worktree")) next.worktrees = [...c.worktree.values()];
   if (has("run")) next.runs = [...c.run.values()];
