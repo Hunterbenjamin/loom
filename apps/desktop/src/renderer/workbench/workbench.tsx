@@ -344,6 +344,11 @@ export function Workbench() {
   const focus = useCallback((id: string) => {
     setFocused(id);
   }, []);
+  // Focusing a panel counts as looking at its pane: a finished dot clears.
+  useEffect(() => {
+    const panel = tabs.flatMap((t) => t.panels).find((p) => p.id === focused);
+    if (panel?.target) store.markPanesRead([panel.target]);
+  }, [focused, tabs, store]);
   const keyboardFocus = useCallback((id: string) => {
     setFocused(id);
     requestAnimationFrame(() =>
@@ -420,6 +425,7 @@ export function Workbench() {
     hiddenPanes.current.clear();
     const key = spaceKey(rows[0]);
     const inventory = store.getState().panes.filter((p) => spaceKey(p) === key);
+    store.markPanesRead(rows);
     const next = spaceTabs(inventory, openSpace === key ? tabs : []);
     const selected =
       next.find((t) => t.id === tabKey(rows[0] as PaneView)) ?? next[0];
@@ -576,6 +582,41 @@ export function Workbench() {
         else window.alert(outcome.error.message);
       });
   };
+  /** Closing a space kills its whole tmux session; the right panel empties once the host confirms. */
+  const closeSpace = () => {
+    if (!openSpace) return;
+    const rows = store
+      .getState()
+      .panes.filter(
+        (p) => spaceKey(p) === openSpace && !p.dead && !p.unavailable,
+      );
+    const target = rows[0];
+    if (!target) return;
+    const count = rows.length;
+    if (
+      !window.confirm(
+        `Close space "${target.sessionName}" and kill ${count} process${count === 1 ? "" : "es"}?`,
+      )
+    )
+      return;
+    void store
+      .command({
+        kind: "close_terminal",
+        target: {
+          hostGeneration: target.hostGeneration,
+          sessionName: target.sessionName,
+          windowId: target.windowId,
+          paneId: target.paneId,
+        },
+        scope: "session",
+      })
+      .then((outcome) => {
+        if (!outcome.ok) return window.alert(outcome.error.message);
+        setZoom(null);
+        setOpenSpace(null);
+        setTabs([]);
+      });
+  };
   const dispatch = (action: Action) => {
     const tab = tabs.find((t) => t.id === active);
     if (action === "commands") {
@@ -603,6 +644,7 @@ export function Workbench() {
       return;
     }
     if (action === "close") return killPanel(focused);
+    if (action === "close-space") return closeSpace();
     if (action === "zoom") {
       setZoom((z) => (z ? null : focused));
       return;

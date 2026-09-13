@@ -5,7 +5,7 @@ import type { PaneView } from "@loom/protocol";
 export function agentState(run: Run, questions: readonly Question[] = []) {
   if (run.status === "ended") {
     if (run.endReason === "submitted")
-      return { tone: "finished", icon: "✓", label: "Finished", priority: 4 };
+      return { tone: "finished", icon: "●", label: "Finished", priority: 4 };
     if (run.endReason === "crashed")
       return { tone: "failed", icon: "!", label: "Failed", priority: 1 };
     return {
@@ -22,7 +22,7 @@ export function agentState(run: Run, questions: readonly Question[] = []) {
   )
     return {
       tone: "waiting",
-      icon: "!",
+      icon: "●",
       label:
         run.blockedOn === "permission"
           ? "Awaiting permission"
@@ -53,7 +53,7 @@ export function agentState(run: Run, questions: readonly Question[] = []) {
       priority: 3,
     };
   if (run.lastTurn?.outcome === "completed")
-    return { tone: "finished", icon: "✓", label: "Finished turn", priority: 4 };
+    return { tone: "finished", icon: "●", label: "Finished turn", priority: 4 };
   return { tone: "idle", icon: "○", label: "Idle", priority: 4 };
 }
 

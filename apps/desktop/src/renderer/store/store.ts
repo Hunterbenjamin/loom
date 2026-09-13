@@ -36,6 +36,7 @@ import {
 } from "../fixtures/index.js";
 import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
 import { projectSnapshot } from "../live/snapshot.js";
+import { paneIndicator } from "../workbench/selectors.js";
 import { createPaneTransitionDetector } from "./pane-transitions.js";
 import { selectedPullRequests } from "./pull-requests.js";
 import { cursorRows } from "./selectors.js";
@@ -105,6 +106,8 @@ export interface State {
   inbox: TaskInbox[];
   panes: PaneView[];
   panesUnavailable: boolean;
+  /** Pane keys whose latest finish the human has looked at; in memory, per window. */
+  readFinished: ReadonlySet<string>;
   runTargets: RunTarget[];
   lead: LeadState;
   operator: OperatorState | null;
@@ -221,6 +224,7 @@ export function createStore(
     notes: [],
     panes: [],
     panesUnavailable: false,
+    readFinished: new Set<string>(),
     runTargets: [],
     instance,
     lead: {
@@ -333,6 +337,20 @@ export function createStore(
     },
     toggleChimeMuted() {
       setUi({ chimeMuted: !state.ui.chimeMuted });
+    },
+    /** The human opened or focused these panes: their finished dots clear. */
+    markPanesRead(
+      panes: readonly Pick<PaneView, "hostGeneration" | "paneId">[],
+    ) {
+      const keys = panes
+        .map((pane) => JSON.stringify([pane.hostGeneration, pane.paneId]))
+        .filter((key) => !state.readFinished.has(key));
+      if (!keys.length) return;
+      state = {
+        ...state,
+        readFinished: new Set([...state.readFinished, ...keys]),
+      };
+      emit();
     },
     setConnection(connection: string) {
       if (connection !== "connected") paneTransitions.reset();
@@ -471,6 +489,19 @@ export function createStore(
               state.panesUnavailable,
             )
           : [];
+      if (transitions.length) {
+        // A fresh finish is unread until the human looks at that pane again.
+        const byRun = new Map(state.snapshot.runs.map((run) => [run.id, run]));
+        const read = new Set(state.readFinished);
+        for (const pane of transitions)
+          if (
+            paneIndicator(pane, pane.runId ? byRun.get(pane.runId) : undefined)
+              .tone === "finished"
+          )
+            read.delete(JSON.stringify([pane.hostGeneration, pane.paneId]));
+        if (read.size !== state.readFinished.size)
+          state = { ...state, readFinished: read };
+      }
       emit();
       for (const pane of transitions)
         for (const listener of transitionListeners) listener(pane);

@@ -117,9 +117,10 @@ export function Sidebar({
   const panes = useStore((s) => s.panes);
   const unavailable = useStore((s) => s.panesUnavailable);
   const runs = useStore((s) => s.snapshot.runs);
+  const read = useStore((s) => s.readFinished);
   const tree = useMemo(
-    () => spaces(panes, filter, runs),
-    [panes, filter, runs],
+    () => spaces(panes, filter, runs, false, read),
+    [panes, filter, runs, read],
   );
   const lead = useStore((s) => s.lead);
   const repo = useStore((s) => s.ui.repo);

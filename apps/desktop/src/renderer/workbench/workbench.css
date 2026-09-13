@@ -271,7 +271,7 @@
   font: inherit;
 }
 .wb-status.waiting {
-  color: var(--warn);
+  color: var(--danger);
 }
 .wb-status.failed {
   color: var(--danger);
@@ -395,10 +395,10 @@
   flex: 1;
 }
 .wb-status.working {
-  color: var(--accent);
+  color: var(--good);
 }
 .wb-status.finished {
-  color: var(--good);
+  color: var(--accent);
 }
 .wb-status.unknown {
   color: var(--violet);

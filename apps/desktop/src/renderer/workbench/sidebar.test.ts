@@ -254,7 +254,7 @@ test("grouping changes agent order without hiding dead agents or altering the tr
     ];
     expect(
       rows().map((row) => row.querySelector(".wb-status")?.textContent),
-    ).toEqual(["○", "✓", expect.stringMatching(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/)]);
+    ).toEqual(["○", "●", expect.stringMatching(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/)]);
     const dead = rows()[1];
     expect(dead?.disabled).toBe(true);
     expect(dead?.classList.contains("dead")).toBe(true);

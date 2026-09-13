@@ -58,7 +58,7 @@ test("groups by generation, session and window identity with deterministic nativ
 
 test("rolls up needs-you > failed > unknown > working > done > idle at both levels", () => {
   const statuses = ["blocked", "failed", "unknown", "working", "ended", "idle"];
-  const icons = ["◐", "!", "?", "◌", "✓", "○"];
+  const icons = ["●", "!", "?", "◌", "●", "○"];
   for (let i = 0; i < statuses.length; i++) {
     const panes = statuses.slice(i).map((status, n) => ({
       ...pane,
@@ -73,7 +73,7 @@ test("rolls up needs-you > failed > unknown > working > done > idle at both leve
   }
   expect(
     paneIndicator({ ...pane, status: "failed", attention: true }).icon,
-  ).toBe("◐");
+  ).toBe("●");
   expect(paneIndicator({ ...pane, unavailable: true }).icon).toBe("?");
   expect(paneIndicator({ ...pane, status: "new-provider-status" }).icon).toBe(
     "?",
@@ -112,8 +112,8 @@ test("fuzzy filter retains ancestors, matches task and native names, and keeps f
   const blocked = { ...pane, paneId: "%4", command: "codex", attention: true };
   const tree = spaces([agent, blocked], "cld impl");
   expect(rows(tree)).toEqual([agent]);
-  expect(tree[0]?.indicator.icon).toBe("◐");
-  expect(tree[0]?.tabs[0]?.indicator.icon).toBe("◐");
+  expect(tree[0]?.indicator.icon).toBe("●");
+  expect(tree[0]?.tabs[0]?.indicator.icon).toBe("●");
   expect(rows(spaces([agent, blocked], "bld"))).toEqual([agent, blocked]);
   expect(rows(spaces([agent, blocked], "rsc shl"))).toEqual([agent, blocked]);
   expect(spaces([agent], "missing")).toEqual([]);
