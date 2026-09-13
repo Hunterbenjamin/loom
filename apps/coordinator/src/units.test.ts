@@ -59,6 +59,8 @@ test("the pane environment is an allowlist", () => {
     PATH: "/usr/bin",
     HOME: "/home/loom",
     LOOM_MCP_TOKEN: "t",
+    // Claude Code's classic renderer, so the transcript lands in the pane's scrollback.
+    CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "1",
   });
   // Inheriting this one turns off transcript saving, which breaks resuming (principle 7).
   expect(ENVIRONMENT_ALLOWLIST).not.toContain("CLAUDE_CODE_CHILD_SESSION");

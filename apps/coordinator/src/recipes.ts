@@ -76,6 +76,16 @@ export interface LaunchRecipe extends StoredRecipe {
 const slug = (runId: string): string =>
   Buffer.from(runId, "utf8").toString("base64url");
 
+/**
+ * What every pane Loom starts gets besides the allowlist. Claude Code's fullscreen renderer
+ * draws on the alternate screen, which leaves the pane host no scrollback for the transcript
+ * and gives a viewer two scroll positions; its classic renderer prints the transcript into the
+ * pane, where the Workbench replays it (docs/design/ui.md, "Terminals").
+ */
+const PANE_ENVIRONMENT: Record<string, string> = {
+  CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "1",
+};
+
 /** Builds the child environment from the allowlist plus the names Loom adds itself. */
 export function runEnvironment(
   base: NodeJS.ProcessEnv,
@@ -86,7 +96,7 @@ export function runEnvironment(
     const value = base[name];
     if (value !== undefined) env[name] = value;
   }
-  return { ...env, ...extra };
+  return { ...env, ...PANE_ENVIRONMENT, ...extra };
 }
 
 export class RecipeStore {

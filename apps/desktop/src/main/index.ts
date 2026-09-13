@@ -55,6 +55,12 @@ const pty = require("node-pty") as typeof import("node-pty");
 
 // A window Chromium thinks is covered stops requestAnimationFrame, which stalls both the
 // terminal and the Playwright harness (spike 03).
+// A DevTools port for driving the dev app from a script (Playwright over CDP); dev only.
+if (process.env.LOOM_DEBUG_PORT)
+  app.commandLine.appendSwitch(
+    "remote-debugging-port",
+    process.env.LOOM_DEBUG_PORT,
+  );
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
@@ -273,7 +279,10 @@ function wire(): void {
           capturing = true;
           const timer = setTimeout(() => release(""), 2_000);
           void readPaneHistory(pane, history)
-            .catch(() => "")
+            .catch((error: unknown) => {
+              console.warn(`pane history for ${pane.paneId}: ${String(error)}`);
+              return "";
+            })
             .then((history) => {
               clearTimeout(timer);
               release(history);

@@ -65,7 +65,7 @@ start_app() {
   if app_running; then echo "app: already running"; return; fi
   tm kill-session -t "=loom-desktop" 2>/dev/null || true
   tm new-session -d -s loom-desktop -n dev -c "$repo" \
-    "set -a; . '$env_file'; set +a; exec pnpm --filter @loom/desktop dev 2>&1 | tee -a '$app_log'"
+    "set -a; . '$env_file'; set +a; export LOOM_DEBUG_PORT='${LOOM_DEBUG_PORT:-}'; exec pnpm --filter @loom/desktop dev 2>&1 | tee -a '$app_log'"
   local i=0
   until pgrep -f 'Electron.app/Contents/MacOS/Electron' >/dev/null 2>&1 || [ $i -ge 60 ]; do sleep 1; i=$((i+1)); done
   echo "app: up after ${i}s (log: $app_log)"
