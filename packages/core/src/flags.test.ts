@@ -13,6 +13,38 @@ import type { AttentionReason, Run, RunObservation, Stage } from "./index.js";
 import { deriveAttention, reconcile } from "./index.js";
 
 describe("flags derive and clear from authoritative evidence", () => {
+  it("does not duplicate failed-action attention as provider input for stale delivery", () => {
+    const f = fixture("in_review");
+    const reviewer = f.state.runs.find((run) => run.role === "reviewer");
+    if (!reviewer) throw new Error("Missing reviewer");
+    f.state.task.failed = {
+      reason: "action_failed",
+      since: now,
+      detail: "Push failed",
+      runId: null,
+    };
+    f.state.messages = [
+      {
+        id: "review-initial" as never,
+        runId: reviewer.id,
+        purpose: "initial",
+        text: "Review this change",
+        textHash: "sha256:review",
+        status: "failed",
+        attempts: 0,
+        transportRef: null,
+        sentAt: null,
+        delivered: null,
+        deliveryAttention: true,
+      },
+    ];
+
+    const result = fixed(f.state, f.observations);
+
+    expect(result.next.task.attention.reasons).toContain("failed");
+    expect(result.next.task.attention.reasons).not.toContain("provider_input");
+  });
+
   it("dependencies clear when every blocker merges", () => {
     const f = fixture("todo");
     f.state.task.blockedBy = ["dependency" as never];

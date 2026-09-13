@@ -26,41 +26,41 @@ export const count = z.coerce
   .nonnegative()
   .max(Number.MAX_SAFE_INTEGER);
 
-/**
- * Errors deliberately omit command arguments and stderr (remote URLs may contain credentials).
- * `hint` is one phrase from a fixed vocabulary, recognised in stderr, so "push failed" says why.
- */
+const MAX_ERROR_OUTPUT = 8 * 1024;
+
+function operation(args: readonly string[]): string {
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-c") {
+      i++;
+      continue;
+    }
+    if (!args[i]?.startsWith("-")) return args[i] ?? "command";
+  }
+  return "command";
+}
+
+function safeErrorOutput(stderr: Buffer): string | null {
+  const output = stderr
+    .subarray(Math.max(0, stderr.length - MAX_ERROR_OUTPUT))
+    .toString("utf8")
+    // Git may repeat a credential-bearing HTTP remote in an error. Keep the useful
+    // host/path while removing userinfo before this reaches task state or logs.
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, "$1[redacted]@")
+    .trim();
+  return output || null;
+}
+
 export class GitError extends Error {
   constructor(
     public readonly operation: string,
     public readonly exitCode: number | null,
-    public readonly hint: string | null = null,
+    public readonly stderr: string | null = null,
   ) {
     super(
-      `Git ${operation} failed (exit ${exitCode ?? "unknown"})${hint ? `: ${hint}` : ""}`,
+      `Git ${operation} failed (exit ${exitCode ?? "unknown"})${stderr ? `: ${stderr}` : ""}`,
     );
     this.name = "GitError";
   }
-}
-const HINTS: [RegExp, string][] = [
-  [
-    /stale info/i,
-    "the remote branch moved since Loom last saw it (lease refused)",
-  ],
-  [/non-fast-forward|fetch first/i, "rejected as non-fast-forward"],
-  [
-    /could not read from remote|could not resolve host|connection (timed out|refused)/i,
-    "the remote could not be reached",
-  ],
-  [
-    /authentication failed|permission denied|403/i,
-    "the remote refused the credentials",
-  ],
-  [/protected branch/i, "the remote protects the branch"],
-  [/timed out/i, "the command timed out"],
-];
-export function hintFrom(stderr: string): string | null {
-  return HINTS.find(([pattern]) => pattern.test(stderr))?.[1] ?? null;
 }
 
 export async function git(
@@ -69,10 +69,6 @@ export async function git(
   allowed = [0],
   input?: string,
 ) {
-  // The subcommand, skipping `-c key=value` pairs: "push", not "-c".
-  const operation =
-    args.find((a, i) => !a.startsWith("-") && args[i - 1] !== "-c") ??
-    "command";
   return new Promise<{ output: Buffer; code: number }>((resolve, reject) => {
     // Inherited Git routing variables must not redirect commands away from this worktree.
     const env = Object.fromEntries(
@@ -93,6 +89,8 @@ export async function git(
       },
     );
     const chunks: Buffer[] = [];
+    const errorChunks: Buffer[] = [];
+    let errorSize = 0;
     let size = 0;
     let overflow = false;
     const timer = setTimeout(() => {
@@ -106,31 +104,35 @@ export async function git(
         child.kill();
       } else chunks.push(chunk);
     });
-    const stderr: Buffer[] = [];
-    let stderrSize = 0;
     child.stderr.on("data", (chunk: Buffer) => {
-      if (stderrSize > 64 * 1024) return;
-      stderrSize += chunk.length;
-      stderr.push(chunk);
+      errorChunks.push(chunk);
+      errorSize += chunk.length;
+      while (errorSize > MAX_ERROR_OUTPUT) {
+        const first = errorChunks[0];
+        if (!first) break;
+        const excess = errorSize - MAX_ERROR_OUTPUT;
+        if (first.length <= excess) {
+          errorChunks.shift();
+          errorSize -= first.length;
+        } else {
+          errorChunks[0] = first.subarray(excess);
+          errorSize -= excess;
+        }
+      }
     });
     child.stdin.on("error", () => {});
     child.on("error", () => {
       clearTimeout(timer);
-      reject(new GitError(operation, null));
+      reject(new GitError(operation(args), null));
     });
     child.on("close", (code) => {
       clearTimeout(timer);
       if (overflow || code === null || !allowed.includes(code))
         reject(
           new GitError(
-            operation,
+            operation(args),
             code,
-            overflow
-              ? "the command timed out or produced too much output"
-              : // `push --porcelain` reports a rejection on stdout, the rest on stderr.
-                hintFrom(
-                  `${Buffer.concat(stderr).toString("utf8")}\n${Buffer.concat(chunks).toString("utf8")}`,
-                ),
+            safeErrorOutput(Buffer.concat(errorChunks)),
           ),
         );
       else resolve({ output: Buffer.concat(chunks), code });

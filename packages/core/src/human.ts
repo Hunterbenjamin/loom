@@ -418,16 +418,21 @@ export function human(
           !row.retryAt &&
           !row.retriedBy,
       );
-      if (!run && !failedActions.length)
+      // Failed task actions have their own retry budget. Retrying one must not retire or
+      // replace whichever stage run happens to be current (for example an idle implementer
+      // alongside a reviewer whose launch is still pending after push_branch failed).
+      const retryRun = failedActions.length ? undefined : run;
+      if (!retryRun && !failedActions.length)
         return guard(
           pendingReplacement
             ? "A run replacement or retry is already pending"
             : "There is no failed action or run to retry",
         );
-      const fresh = run && !run.endedAt && run.status !== "failed";
+      const fresh =
+        retryRun && !retryRun.endedAt && retryRun.status !== "failed";
       if (task.blocked)
         return guard("Resolve the task's blocked reason before retrying");
-      if (fresh && run) {
+      if (fresh && retryRun) {
         if (
           !state.worktree ||
           !c.git?.exists ||
@@ -435,7 +440,7 @@ export function human(
           c.git.branch !== task.branch
         )
           return guard("Read the recorded worktree and branch before retrying");
-        if (state.runs.some((r) => r.id !== run.id && !r.endedAt))
+        if (state.runs.some((r) => r.id !== retryRun.id && !r.endedAt))
           return guard("Another run is still active in this worktree");
         if (
           state.outbox.some(
@@ -443,7 +448,7 @@ export function human(
               row.status === "running" &&
               row.action &&
               "runId" in row.action &&
-              row.action.runId === run.id,
+              row.action.runId === retryRun.id,
           )
         )
           return guard(
@@ -453,28 +458,34 @@ export function human(
       c.change("Human reset retry budget", () => {
         task.failed = null;
       });
-      if (run) {
+      if (failedActions.length)
+        for (const message of state.messages)
+          if (message.status === "pending" && message.attempts === 0) {
+            message.pendingSince = c.now;
+            message.deliveryAttention = false;
+          }
+      if (retryRun) {
         if (fresh) {
           const pending = state.messages.filter(
-            (m) => m.runId === run.id && m.status === "pending",
+            (m) => m.runId === retryRun.id && m.status === "pending",
           );
-          c.end(run, "failed", false, true);
+          c.end(retryRun, "failed", false, true);
           // Explicit human retry authorizes redelivery. New message IDs keep old transport
           // receipts/outbox rows from confirming or blocking this session's messages.
           for (const message of pending)
             c.message(
-              run,
+              retryRun,
               message.purpose,
               `${sequence}:${message.id}`,
               message.text,
             );
         }
-        run.retryBaseAttempt = run.attempts;
-        run.retryAt = null;
-        run.endedAt = c.now;
-        run.endReason = "failed";
-        run.observedAttempt = undefined;
-        c.requestRun(run.role, run.round);
+        retryRun.retryBaseAttempt = retryRun.attempts;
+        retryRun.retryAt = null;
+        retryRun.endedAt = c.now;
+        retryRun.endReason = "failed";
+        retryRun.observedAttempt = undefined;
+        c.requestRun(retryRun.role, retryRun.round);
         if (fresh && state.desiredRun) state.desiredRun.fresh = true;
       }
       for (const row of state.outbox)

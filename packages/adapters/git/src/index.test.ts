@@ -244,17 +244,18 @@ describe("worktree actions", () => {
       adapter.createWorktree({ ...req, branch: "--evil" }),
     ).rejects.toThrow();
   });
-  it("refuses a stale SHA or wrong branch, pushes exactly the expected SHA and rejects non-fast-forward", async () => {
+  it("pushes a rebased issue branch with a lease and rejects a stale remote", async () => {
     const remote = join(directory, "remote.git");
     await command(directory, "init", "--bare", remote);
     await git("remote", "add", "origin", remote);
     const old = (await git("rev-parse", "HEAD")) as Sha;
+    await git("checkout", "-b", "feat/issue");
     await save("new", "new");
     const head = await commitAll();
     await expect(
       adapter.push({
         worktreePath: repo,
-        branch: "main",
+        branch: "feat/issue",
         expectedHeadSha: old,
       }),
     ).rejects.toThrow("Refusing push");
@@ -268,48 +269,46 @@ describe("worktree actions", () => {
     expect(
       await adapter.push({
         worktreePath: repo,
-        branch: "main",
+        branch: "feat/issue",
         expectedHeadSha: head,
       }),
     ).toEqual({ remoteHeadSha: head });
-    expect(await command(remote, "rev-parse", "main")).toBe(head);
+    expect(await command(remote, "rev-parse", "feat/issue")).toBe(head);
+
+    await git("checkout", "main");
+    await save("base-update", "base");
+    await commitAll("advance main");
+    await git("checkout", "feat/issue");
+    await git("rebase", "main");
+    const rebased = (await git("rev-parse", "HEAD")) as Sha;
     expect(
       await adapter.push({
         worktreePath: repo,
-        branch: "main",
-        expectedHeadSha: head,
+        branch: "feat/issue",
+        expectedHeadSha: rebased,
       }),
-    ).toEqual({ remoteHeadSha: head });
-    await git("reset", "--hard", old);
+    ).toEqual({ remoteHeadSha: rebased });
+    expect(await command(remote, "rev-parse", "feat/issue")).toBe(rebased);
+
+    await save("remote-change", "remote");
+    const remoteChange = await commitAll("remote change");
+    await command(
+      repo,
+      "push",
+      remote,
+      `${remoteChange}:refs/heads/feat/issue`,
+    );
+    await git("reset", "--hard", rebased);
     await save("diverged", "diverged");
     const diverged = await commitAll();
     await expect(
       adapter.push({
         worktreePath: repo,
-        branch: "main",
+        branch: "feat/issue",
         expectedHeadSha: diverged,
       }),
-    ).rejects.toThrow(/non-fast-forward/);
-    expect(await command(remote, "rev-parse", "main")).toBe(head);
-    // A rebased branch replaces exactly the remote head Loom observed, and nothing newer.
-    await expect(
-      adapter.push({
-        worktreePath: repo,
-        branch: "main",
-        expectedHeadSha: diverged,
-        leaseSha: old,
-      }),
-    ).rejects.toThrow(/lease refused/);
-    expect(await command(remote, "rev-parse", "main")).toBe(head);
-    expect(
-      await adapter.push({
-        worktreePath: repo,
-        branch: "main",
-        expectedHeadSha: diverged,
-        leaseSha: head,
-      }),
-    ).toEqual({ remoteHeadSha: diverged });
-    expect(await command(remote, "rev-parse", "main")).toBe(diverged);
+    ).rejects.toThrow(/Git push failed.*failed to push some refs/s);
+    expect(await command(remote, "rev-parse", "feat/issue")).toBe(remoteChange);
   });
   it("writes task files repeatedly and excludes them in the shared Git directory", async () => {
     const work = await adapter.createWorktree({
