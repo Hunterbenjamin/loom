@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { AckOutcome, PaneIdentity, PaneView } from "@loom/protocol";
 import { emptySnapshotBody, stateFromSnapshot } from "@loom/protocol";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
 import { pane } from "../../../../../packages/protocol/src/pane-fixture.js";
-import { meta } from "../../../../../packages/protocol/src/test-support.js";
+import { meta as protocolMeta } from "../../../../../packages/protocol/src/test-support.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
 import { Workbench } from "./workbench.js";
@@ -28,7 +30,7 @@ async function harness(initial: PaneView[] = [pane]) {
   const native = new Map(initial.map((p) => [p.id, p]));
   const publish = () =>
     store.applyProtocol(
-      stateFromSnapshot(meta, {
+      stateFromSnapshot(protocolMeta, {
         ...emptySnapshotBody(),
         panes: [...native.values()],
       }),
@@ -103,6 +105,44 @@ async function harness(initial: PaneView[] = [pane]) {
     },
   };
 }
+
+test("Workbench reserves a draggable title area and keeps tab controls interactive", async () => {
+  const style = document.createElement("style");
+  // happy-dom drops Electron's vendor property; retain its selectors for this
+  // markup check. Native hit testing must also be verified in the running app.
+  style.textContent = readFileSync(
+    join(import.meta.dirname, "workbench.css"),
+    "utf8",
+  ).replaceAll("-webkit-app-region", "--test-app-region");
+  document.head.append(style);
+  const h = await harness();
+  try {
+    const titlebar = h.element.querySelector(".wb-titlebar");
+    const tabs = h.element.querySelector(".wb-tabs");
+    expect(titlebar).not.toBeNull();
+    expect(tabs).not.toBeNull();
+    if (!titlebar || !tabs) throw new Error("Missing window title area");
+    expect(titlebar.nextElementSibling?.className).toBe("wb-body");
+    expect(getComputedStyle(titlebar).height).toBe("30px");
+    for (const region of [titlebar, tabs]) {
+      expect(
+        getComputedStyle(region).getPropertyValue("--test-app-region"),
+      ).toBe("drag");
+    }
+    const controls = tabs.querySelectorAll("button");
+    expect(controls.length).toBeGreaterThan(1);
+    for (const control of controls) {
+      expect(
+        getComputedStyle(control).getPropertyValue("--test-app-region"),
+      ).toBe("no-drag");
+    }
+    await act(async () => h.button("＋").click());
+    expect(h.element.querySelector("dialog")).not.toBeNull();
+  } finally {
+    await h.close();
+    style.remove();
+  }
+});
 
 test("close ends the host terminal and removes its row; selecting from an empty Workbench only attaches", async () => {
   const h = await harness();
