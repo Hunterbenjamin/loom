@@ -73,13 +73,7 @@ export function Sidebar({
     const animations = new Set<Animation>();
     const stop = store.subscribePaneTransitions((pane) => {
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      const pinned =
-        pane.sessionName === `loom-lead-${store.getState().ui.repo}` ||
-        ["loom-lead", "loom-main"].includes(pane.sessionName)
-          ? "main"
-          : pane.sessionName === "loom-operator"
-            ? "operator"
-            : null;
+      const pinned = pane.sessionName === "loom-operator" ? "operator" : null;
       const row = [
         ...(sidebar.current?.querySelectorAll<HTMLElement>(
           "[data-pane-key], [data-pinned]",
@@ -371,12 +365,10 @@ export function Sidebar({
                   target === "main"
                     ? lead.status
                     : (operator?.status ?? "unknown");
-                const native = panes.find((pane) =>
-                  (target === "main"
-                    ? [`loom-lead-${repo}`, "loom-lead", "loom-main"]
-                    : ["loom-operator"]
-                  ).includes(pane.sessionName),
-                );
+                const native =
+                  target === "operator"
+                    ? panes.find((pane) => pane.sessionName === "loom-operator")
+                    : undefined;
                 return (
                   <button
                     key={target}
