@@ -58,8 +58,15 @@ unloaded rows. Task summaries, model labels and progress indicators remain visib
   panes remain dimmed and disabled. Run linkage is only by a unique recorded generation + pane ID,
   never cwd, title, command or native run tags. Clicking a pane replaces the focused viewer; Enter
   opens an independent Workbench tab. Pinned agent tabs retain their identity, so selecting another
-  pane from one opens a regular tab. Space and tab rows toggle expansion in this slice; tab-row
-  split opening and context menus are deferred to Workbench v2 slice 5.
+  pane from one opens a regular tab. Space rows toggle expansion; tab disclosure arrows independently toggle their pane lists.
+  Clicking a tab row opens all its live, available panes as side-by-side splits in a new Workbench
+  tab, including siblings hidden by filtering. No native panes are created.
+  Right-click or Shift+F10 on a native space, tab or pane row opens its menu: Open follows the
+  row's click behavior; Open in new tab opens its live panes as independent viewers; Copy attach
+  command copies the coordinator's shell-quoted attach argv and environment for the first live
+  pane in native order. Close panel hides matching viewers in the current Workbench tab only,
+  leaving other tabs and all native processes running. It remains available while the host is
+  unavailable. Rename is visibly unavailable until slice 3 supplies native rename support.
 - **Branch:** space rows show the coordinator's `panes.branch`: the linked task's branch, or Git's
   `rev-parse --abbrev-ref HEAD` at the first native pane's start cwd for an unlinked space.
   Reads are cached per cwd within each serialized inventory refresh, including failures, and
