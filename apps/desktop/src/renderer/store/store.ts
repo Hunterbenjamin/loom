@@ -17,6 +17,7 @@ import type {
   Entities,
   LeadState,
   OperatorState,
+  PaneIdentity,
   PaneView,
   PatchFrame,
   RunTarget,
@@ -30,6 +31,8 @@ import {
   type Snapshot,
 } from "../fixtures/index.js";
 import { projectSnapshot } from "../live/snapshot.js";
+import { createPaneTransitionDetector } from "./pane-transitions.js";
+import { cursorRows } from "./selectors.js";
 
 export type ViewId =
   | "all"
@@ -70,7 +73,11 @@ export interface UiState {
   searching: boolean;
   theme: Theme;
   palette: boolean;
+  chimeMuted: boolean;
   stagePicker: boolean;
+  createIssue: boolean;
+  /** Explicit selection should scroll even when it also reveals a collapsed section. */
+  selectionVersion: number;
   toast: string | null;
   openRun: RunId | null;
   openReason: AttentionReason | null;
@@ -145,7 +152,10 @@ const initialUi: UiState = {
   searching: false,
   theme: "dark",
   palette: false,
+  chimeMuted: false,
   stagePicker: false,
+  createIssue: false,
+  selectionVersion: 0,
   toast: null,
   openRun: null,
   openReason: null,
@@ -166,6 +176,12 @@ export function createStore(
   instance = live ? "unconfigured" : "fixtures",
 ) {
   const notificationClaims = new Set<string>();
+  let pendingSelection: TaskId | null = null;
+  const paneTransitions = createPaneTransitionDetector();
+  const transitionListeners = new Set<(pane: PaneView) => void>();
+  let paneFocus:
+    | (() => PaneIdentity | "main" | "operator" | undefined)
+    | undefined;
   let state: State = {
     snapshot,
     ui: initialUi,
@@ -183,7 +199,40 @@ export function createStore(
   let send: ((command: Command) => Promise<AckOutcome>) | null = null;
   const listeners = new Set<() => void>();
 
+  const revealStage = (id: TaskId) => {
+    const stage = state.snapshot.tasks.find((task) => task.id === id)?.stage;
+    if (stage && state.ui.listSections[stage]?.collapsed) {
+      state = {
+        ...state,
+        ui: {
+          ...state.ui,
+          listSections: {
+            ...state.ui.listSections,
+            [stage]: { ...state.ui.listSections[stage], collapsed: false },
+          },
+        },
+      };
+    }
+  };
+
   const emit = () => {
+    if (pendingSelection) {
+      revealStage(pendingSelection);
+      const cursor = cursorRows(state).findIndex(
+        (row) => row.task.id === pendingSelection,
+      );
+      if (cursor >= 0) {
+        state = {
+          ...state,
+          ui: {
+            ...state.ui,
+            cursor,
+            selectionVersion: state.ui.selectionVersion + 1,
+          },
+        };
+        pendingSelection = null;
+      }
+    }
     for (const listener of listeners) listener();
   };
 
@@ -234,11 +283,38 @@ export function createStore(
       });
       return outcome;
     },
+    subscribePaneTransitions(listener: (pane: PaneView) => void) {
+      transitionListeners.add(listener);
+      return () => {
+        transitionListeners.delete(listener);
+      };
+    },
+    registerPaneFocus(reader: NonNullable<typeof paneFocus>) {
+      paneFocus = reader;
+      return () => {
+        if (paneFocus === reader) paneFocus = undefined;
+      };
+    },
+    focusedPane() {
+      return paneFocus?.();
+    },
+    toggleChimeMuted() {
+      setUi({ chimeMuted: !state.ui.chimeMuted });
+    },
     setConnection(connection: string) {
+      if (connection !== "connected") paneTransitions.reset();
       state = { ...state, connection };
       emit();
     },
     applyProtocol(client: ClientState, patch?: PatchFrame) {
+      const selectedTask =
+        state.ui.view === "needs-you"
+          ? undefined
+          : cursorRows(state)[state.ui.cursor]?.task.id;
+      const selectedStage = state.snapshot.tasks.find(
+        (task) => task.id === selectedTask,
+      )?.stage;
+      const previous = state;
       const notices = [...client.collections.inbox.values()].flatMap((i) =>
         i.forHuman ? [i.forHuman.noteId] : [],
       );
@@ -284,7 +360,39 @@ export function createStore(
             ? [...client.collections.run_target.values()]
             : state.runTargets,
       };
+      // Preserve the selected issue when a stage patch changes its sorted position.
+      if (selectedTask) {
+        const stageChanged =
+          state.snapshot.tasks.find((task) => task.id === selectedTask)
+            ?.stage !== selectedStage;
+        if (stageChanged) revealStage(selectedTask);
+        const cursor = cursorRows(state).findIndex(
+          (row) => row.task.id === selectedTask,
+        );
+        if (cursor >= 0)
+          state = {
+            ...state,
+            ui: {
+              ...state.ui,
+              cursor,
+              selectionVersion:
+                state.ui.selectionVersion + (stageChanged ? 1 : 0),
+            },
+          };
+      }
+      const transitions =
+        previous.panes !== state.panes ||
+        previous.snapshot.runs !== state.snapshot.runs ||
+        previous.panesUnavailable !== state.panesUnavailable
+          ? paneTransitions.observe(
+              state.panes,
+              state.snapshot.runs,
+              state.panesUnavailable,
+            )
+          : [];
       emit();
+      for (const pane of transitions)
+        for (const listener of transitionListeners) listener(pane);
     },
     openAttention(
       task: TaskId,
@@ -374,6 +482,25 @@ export function createStore(
     },
     setPalette(palette: boolean) {
       setUi({ palette });
+    },
+    setCreateIssue(createIssue: boolean) {
+      setUi({ createIssue, palette: false, stagePicker: false });
+    },
+    selectCreatedTask(id: TaskId, repo: string, todo: boolean) {
+      pendingSelection = id;
+      setUi({
+        createIssue: false,
+        view: "all",
+        pane: "list",
+        repo,
+        query: "",
+        searching: false,
+        openTask: null,
+        openRun: null,
+        openReason: null,
+        cursor: 0,
+        toast: `Created ${id}${todo ? " · workflow start queued" : ""}`,
+      });
     },
     setStagePicker(stagePicker: boolean) {
       setUi({ stagePicker });
@@ -485,7 +612,15 @@ export function createStore(
       });
     },
 
-    createTask(title: string, repo: string) {
+    createTask(
+      title: string,
+      repo: string,
+      options: {
+        description?: string;
+        size?: Task["size"];
+        requirePlanApproval?: boolean;
+      } = {},
+    ) {
       if (live) {
         api.toast("This action is not available in the live Tracker yet.");
         return;
@@ -498,14 +633,14 @@ export function createStore(
         id,
         repoId: repoId as Task["repoId"],
         title,
-        description: "",
+        description: options.description ?? "",
         summary: null,
         stage: "backlog",
         stageEnteredAt: at,
         version: 1,
         blocked: null,
         failed: null,
-        requirePlanApproval: true,
+        requirePlanApproval: options.requirePlanApproval ?? true,
         reviewRound: 0,
         reviewRoundCap: 3,
         providers: state.snapshot.repos.find((r) => r.id === repoId)
@@ -516,7 +651,7 @@ export function createStore(
         },
         blockedBy: [],
         budgetMinutes: null,
-        size: "normal",
+        size: options.size ?? "normal",
         createdAt: at,
         updatedAt: at,
         worktreePath: null,
@@ -529,6 +664,7 @@ export function createStore(
         tasks: [task, ...state.snapshot.tasks],
       });
       setUi({ cursor: 0, openTask: id });
+      return id;
     },
   };
 

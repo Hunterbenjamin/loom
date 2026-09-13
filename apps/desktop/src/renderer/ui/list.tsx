@@ -28,6 +28,8 @@ function ListViewComponent() {
   const cursor = useStore((s) => s.ui.cursor);
   const sections = useStore((s) => s.ui.listSections);
   const previousSections = useRef(sections);
+  const selectionVersion = useStore((s) => s.ui.selectionVersion);
+  const previousSelection = useRef(selectionVersion);
   const sort = useStore((s) => s.ui.sort);
   const descending = useStore((s) => s.ui.descending);
   const scroller = useRef<HTMLDivElement>(null);
@@ -59,9 +61,11 @@ function ListViewComponent() {
     // Toggling a section must not scroll back to the reset task cursor.
     const sectionsChanged = previousSections.current !== sections;
     previousSections.current = sections;
-    if (!sectionsChanged && cursorItem >= 0)
+    const selectionChanged = previousSelection.current !== selectionVersion;
+    previousSelection.current = selectionVersion;
+    if ((!sectionsChanged || selectionChanged) && cursorItem >= 0)
       virtual.scrollToIndex(cursorItem, { align: "auto" });
-  }, [cursorItem, virtual, sections]);
+  }, [cursorItem, virtual, sections, selectionVersion]);
 
   return (
     <>

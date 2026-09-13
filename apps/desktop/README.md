@@ -64,6 +64,16 @@ are not attachable terminals; the existing isolated terminal harness covers PTY 
 | `LOOM_WIDTH`, `LOOM_HEIGHT` | Window size at launch. |
 | `LOOM_ATTACH_PANE`, `LOOM_TMUX_BIN` | Fixture-only terminal target and executable. |
 
+Tracker creates issues with `C`, the palette's **Create issue** command, or **+** beside the
+repository picker. The dialog defaults to the selected repository (the first for All), Backlog,
+Normal size and plan approval required. Description accepts Markdown and grows as you type;
+Command+Enter submits. Todo is labelled as starting the workflow; Small skips planning for
+one-file fixes. Escape or Cancel asks before discarding an edited draft.
+
+Live creation waits for `task_created`, then queues the human move for Todo. Rejections appear
+inline; if creation succeeded, retry sends only the move. Success selects the issue in All tasks
+and shows its key. Fixture mode uses the same form with the existing local creation path.
+
 ## Keyboard
 
 Every action is reachable from the keyboard.
@@ -76,7 +86,7 @@ Every action is reachable from the keyboard.
 | `j` / `k` | Move the cursor |
 | `enter` | Open the task under the cursor |
 | `esc` | Close the palette, the search field, then the issue |
-| `c` | Create a task |
+| `c` | Open Create issue |
 | `/` | Search |
 | `e` | Change stage |
 | `cmd+k`, then "Review changes and findings" | Open Review for the current task |
@@ -132,14 +142,72 @@ The sidebar groups native spaces → tabs → panes, including dimmed dead panes
 Task spaces show their task key/title; every row rolls up provider status and coordinator attention.
 Main and Operator stay pinned at the bottom. Expansion and fuzzy filtering live in window memory.
 A pane click replaces the focused viewer; Enter opens a new tab. Space and tab rows toggle expansion.
-Branches, rename, sound/flash and opening a tab row as splits belong to later Workbench v2 slices. Ctrl+A then `| - h j k l c n p x z g ?` controls
-splits, focus, tabs, close, zoom, search and help. Ctrl+A Ctrl+A sends the literal prefix; Escape or
-1.5 seconds cancels it. Drag headers to panel edges to rearrange splits. Every prefix action has a
-Command+K palette entry. Command+J and the Main toggle/restart are shared with Tracker.
+Branches, rename, sound/flash and opening a tab row as splits belong to later Workbench v2 slices.
+Drag panel headers to panel edges to rearrange splits.
 
-Scratch shell creates a native shell in the selected task's recorded worktree/session. Closing a
-panel or window only detaches. Plan, diff, activity and code panels are deferred in this slice.
+### Workbench keybindings
+
+The Electron main process writes the full default configuration to
+`<LOOM_DATA_ROOT>/<LOOM_INSTANCE>/keybindings.json` on first launch, without overwriting an existing
+file. Edit this file in any text editor; saves (including atomic file replacements) reload in all
+open windows. No restart is needed. Invalid JSON or configuration activates the defaults and shows
+an error in the Workbench bottom bar; saving a valid file clears it. The shortcut map and command
+palette always show the bindings actually in force. This is configuration, not persisted UI state.
+Both environment variables must be set, including for a configurable fixture preview.
+
+| Action ID | Direct Mac default | After Ctrl+A |
+| --- | --- | --- |
+| `split-right` | Cmd+D | `\|` |
+| `split-down` | Cmd+Shift+D | `-` |
+| `left`, `down`, `up`, `right` | Cmd+Alt+ArrowLeft/Down/Up/Right | `h`, `j`, `k`, `l` |
+| `new` | Cmd+T | `c` |
+| `next` | Cmd+Shift+] | `n` |
+| `previous` | Cmd+Shift+[ | `p` |
+| `close` | Cmd+W | `x` |
+| `zoom` | Cmd+Shift+Enter | `z` |
+| `jump` | Cmd+P | `g` |
+| `help` | — | `?` |
+| `commands` | Cmd+K | — |
+| `literal` | — | Ctrl+A |
+
+The file has `version: 1`, `prefix: "Ctrl+A"`, `prefixTimeoutMs: 3000`, and a `bindings` object
+containing **all** the action IDs above. Each action takes an array of strings, for example
+`"split-right": ["Cmd+D", "Prefix |"]`. Replace that array to rebind an action; use `[]` to disable it.
+`Prefix ` means the configured prefix followed by one chord. Change `prefixTimeoutMs` to an integer
+from 100 to 60000. Set `prefix` to `null` and remove all `Prefix ` bindings to disable prefix handling.
+For example, with the prefix disabled, `"literal": ["Ctrl+A"]` explicitly sends Ctrl+A to the terminal.
+
+Chord modifiers are `Cmd`, `Ctrl`, `Alt`, and `Shift`, joined by `+`, followed by a printable key or
+`ArrowLeft`, `ArrowRight`, `ArrowUp`, `ArrowDown`, `Enter`, `Escape`, `Tab`, `Backspace`, `Delete`,
+`Home`, `End`, `PageUp`, `PageDown`, `Space`, `Plus`, or `F1`–`F24`. `Cmd` means the Meta/Command key;
+other platforms can use Ctrl-based alternatives. Letters are case-insensitive; use `Shift` explicitly
+for shifted letters. Symbols such as `|` and `?` imply Shift. Modifier combinations match exactly.
+Duplicate bindings, a direct chord that conflicts with the prefix, and reserved app shortcuts
+Cmd+J (Main) / Cmd+Shift+W (window mode) are rejected. Escape is reserved for canceling an armed prefix.
+The JSON file is limited to 64 KiB.
+
+The bottom bar indicates when the prefix is armed and clears after its timeout, Escape, a completed
+command, an unknown suffix, window blur, or a configuration reload. Pressing Shift/Control/Alt/Command
+alone preserves it, so Ctrl+A then Shift+\ reliably splits right. Ctrl+A Ctrl+A sends one literal
+Ctrl+A to the focused terminal. Unknown suffixes pass through normally. Chords and prefix commands
+work from terminal input, the sidebar filter, tab buttons, and panel headers. Naming dialogs and the
+command palette retain their own input handling. Key repeat does not repeat Workbench actions.
+
+Workbench handles keys in window capture before xterm and its kitty encoder. Main selectively skips
+Electron menu accelerators for configured keys, so Cmd+W closes the panel instead of the window and
+Cmd+Shift+Enter zooms instead of sending Shift+Enter to the terminal. Unbound native edit shortcuts
+remain available. The [Electron menu arbitration API](https://www.electronjs.org/docs/latest/api/web-contents#event-before-input-event)
+keeps the DOM event intact. Closing a human terminal ends its session; closing a supervised agent panel
+hides that view. Cmd+J and the Main toggle/restart are shared with Tracker.
+
+Scratch shell creates a native shell in the selected task's recorded worktree/session. Closing its
+terminal panel ends the shell; closing the window only detaches viewers. Plan, diff, activity and code
+panels are deferred in this slice.
 Client counts mean session-group attachments, not exact pane viewers.
+
+`pnpm --filter @loom/desktop build` then `node apps/desktop/scripts/keybindings-smoke.mjs` verifies
+all default chords against native menu conflicts with real xterm and owned fixture shells, plus
+prefix handling on four focus surfaces and configuration reload in two windows.
 
 `pnpm --filter @loom/desktop test:workbench` runs the built Workbench smoke/performance fixture with
 30 native panes, fake provider metadata, and real attach clients on its own `loom-test-<pid>` server.
@@ -155,3 +223,9 @@ Space and tab rows support inline rename: double-click or F2, Enter to submit, E
 Validation and host errors appear in the editor; session names cannot contain `.` or `:`.
 The sidebar waits for native inventory patches to update labels, and renaming keeps terminal
 viewers attached. Task space labels remain the task title; the tooltip shows the session name.
+
+Workbench pane transitions into needs-you or done play a short bundled chime and flash the row
+once. The focused pane in the focused window stays silent. Sound on/off in the bottom bar and
+Mute/Unmute transition sounds in either palette control a per-window mute, retained across mode
+switches until the window closes. System output mute/volume applies; reduced motion disables
+flashes. Initial snapshots and reconnect recovery do not announce existing states.

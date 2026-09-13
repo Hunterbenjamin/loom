@@ -1,3 +1,4 @@
+import { pullRequestCommand } from "./pull-requests.js";
 // What a window asks the coordinator to do. Human commands become inputs on the task's inbox and
 // are acknowledged with the input ID; reconcile decides what happens next and the result arrives
 // as patches (principle 3: code moves tasks, and only after validating). UI-only requests answer
@@ -78,6 +79,8 @@ export const renameTab = z.strictObject({
 export const command = z.union([
   renameSpace,
   renameTab,
+
+  ...pullRequestCommand.options,
   z.strictObject({
     kind: z.literal("claim_notification"),
     noteId: z.string().min(1).max(300),
@@ -176,6 +179,17 @@ export const commandRequest = z.strictObject({
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
   z.strictObject({ kind: z.literal("renamed") }),
+  z.strictObject({
+    kind: z.literal("pull_request_action"),
+    command: z.enum([
+      "merge_pull_request",
+      "close_pull_request",
+      "delete_branch",
+      "refresh_pull_requests",
+    ]),
+    repoId,
+    number: z.number().int().positive().nullable(),
+  }),
   z.strictObject({
     kind: z.literal("notification"),
     notice: z
