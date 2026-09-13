@@ -87,7 +87,7 @@ worktree="$(cd "$worktree" && pwd -P)"
 conf="${LOOM_TMUX_CONF:-$HOME/.loom/$instance/tmux.conf}"
 mkdir -p "$(dirname "$conf")"
 cat > "$conf" <<'CONF'
-set -g mouse off
+set -g mouse on
 set -g status off
 set -g window-size latest
 set -g aggressive-resize on

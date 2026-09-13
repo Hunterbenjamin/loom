@@ -250,7 +250,8 @@ export const TerminalSession = memo(function TerminalSession({
       fontSize: 12,
       lineHeight: 1.2,
       allowProposedApi: true,
-      // Option+drag selects locally; a plain drag is a mouse event for the pane host (spike 03).
+      // A plain drag selects locally: the pane host's mouse tracking is intercepted below and
+      // only wheel events are forwarded to it.
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
       theme: THEMES[settings.current.theme],
@@ -262,17 +263,49 @@ export const TerminalSession = memo(function TerminalSession({
     terminal.loadAddon(new UnicodeGraphemesAddon());
     terminal.unicode.activeVersion = "15-graphemes";
     terminal.open(element);
-    // Copy on select, as Ghostty and Herdr do: releasing the mouse with a selection puts it on
-    // the clipboard. The selection stays visible; Cmd+V pastes as usual.
-    const copySelection = () => {
-      const selected =
-        typeof terminal.hasSelection === "function" &&
-        terminal.hasSelection() &&
-        terminal.getSelection();
-      if (selected)
-        void navigator.clipboard?.writeText(selected).catch(() => {});
+    // Copy on select, as Ghostty and Herdr do: once the selection settles it is on the
+    // clipboard. The selection stays visible; Cmd+V pastes as usual.
+    let copyTimer: number | undefined;
+    const copyDisposable = terminal.onSelectionChange?.(() => {
+      window.clearTimeout(copyTimer);
+      copyTimer = window.setTimeout(() => {
+        const selected = terminal.getSelection?.();
+        if (selected)
+          void navigator.clipboard?.writeText(selected).catch(() => {});
+      }, 120);
+    });
+    // Mouse tracking requested by the pane host (tmux `mouse on`) is intercepted: xterm never
+    // enters tracking mode, so a plain drag selects locally, and only wheel events are forwarded
+    // to tmux as SGR mouse reports, so scrolling inside panes keeps working.
+    let hostWantsMouse = false;
+    const MOUSE_MODES = new Set([1000, 1002, 1003, 1005, 1006, 1015]);
+    const mouseModeHandler =
+      (enable: boolean) => (params: (number | number[])[]) => {
+        const flat = params.map((p) => Number(Array.isArray(p) ? p[0] : p));
+        if (!flat.every((p) => MOUSE_MODES.has(p))) return false;
+        if (flat.some((p) => p === 1000 || p === 1002 || p === 1003))
+          hostWantsMouse = enable;
+        return true;
+      };
+    const onWheel = (event: WheelEvent) => {
+      if (!hostWantsMouse) return;
+      const screen = element.querySelector<HTMLElement>(".xterm-screen");
+      const box = screen?.getBoundingClientRect();
+      if (!box?.width || !box.height) return;
+      const cell = (fraction: number, count: number) =>
+        Math.min(count, Math.max(1, Math.floor(fraction * count) + 1));
+      const col = cell((event.clientX - box.left) / box.width, terminal.cols);
+      const row = cell((event.clientY - box.top) / box.height, terminal.rows);
+      const button = event.deltaY < 0 ? 64 : 65;
+      const lines = Math.max(
+        1,
+        Math.min(10, Math.round(Math.abs(event.deltaY) / 24)),
+      );
+      event.preventDefault();
+      for (let i = 0; i < lines; i++)
+        window.loomTerminal.write(id, `\x1b[<${button};${col};${row}M`);
     };
-    element.addEventListener("mouseup", copySelection);
+    element.addEventListener("wheel", onWheel, { passive: false });
     // A TUI may ask for a blinking cursor (DECSCUSR 1/3/5, or DECSET 12). Keep its cursor
     // shape but never blink: a blinking cursor over a fast-redrawing TUI reads as flicker.
     // (Test doubles of xterm carry no parser.)
@@ -284,13 +317,17 @@ export const TerminalSession = memo(function TerminalSession({
       terminal.options.cursorBlink = false;
       return true;
     });
+    const swallowBlink = (params: (number | number[])[]) =>
+      params.length === 1 && params[0] === 12;
+    const enableMouse = mouseModeHandler(true);
+    const disableMouse = mouseModeHandler(false);
     parser?.registerCsiHandler(
       { prefix: "?", final: "h" },
-      (params) => params.length === 1 && params[0] === 12,
+      (params) => swallowBlink(params) || enableMouse(params),
     );
     parser?.registerCsiHandler(
       { prefix: "?", final: "l" },
-      (params) => params.length === 1 && params[0] === 12,
+      (params) => swallowBlink(params) || disableMouse(params),
     );
     try {
       terminal.loadAddon(new WebglAddon());
@@ -510,7 +547,9 @@ export const TerminalSession = memo(function TerminalSession({
       window.clearTimeout(timer);
       observer.disconnect();
       fitViewport.current = null;
-      element.removeEventListener("mouseup", copySelection);
+      element.removeEventListener("wheel", onWheel);
+      window.clearTimeout(copyTimer);
+      copyDisposable?.dispose();
       if (window.loom.term === terminal) window.loom.term = null;
       delete window.loom.terms?.[panelId ?? id];
       instance.current = null;
