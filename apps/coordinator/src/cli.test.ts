@@ -228,6 +228,10 @@ test("task inspect prints a complete fixture without a coordinator", async () =>
   const before = store.loadTaskState(taskId);
   await main(["task", "inspect", taskId]);
   expect(output).toMatchSnapshot();
+  const legacyOutput = output;
+  output = "";
+  await main(["issue", "inspect", taskId]);
+  expect(output).toBe(legacyOutput);
   expect(store.loadTaskState(taskId)).toEqual(before);
 });
 
@@ -301,7 +305,7 @@ test("unknown and missing task IDs report errors without output", async () => {
   expect(stderr).toHaveBeenCalledWith("unknown_task: missing\n");
   expect(process.exitCode).toBe(1);
   expect(output).toBe("");
-  await expect(main(["task", "inspect"])).rejects.toThrow("loom task inspect");
+  await expect(main(["task", "inspect"])).rejects.toThrow("loom issue inspect");
 });
 
 test.each(["plan_approval", "awaiting_approval"] as const)(
@@ -326,10 +330,20 @@ test("answer-request CLI command requires correct arguments", async () => {
     .mockImplementation(() => true);
 
   await expect(main(["task", "answer-request", taskId])).rejects.toThrow(
-    /loom task answer-request/,
+    /loom issue answer-request/,
   );
 
   await expect(
     main(["task", "answer-request", taskId, "run-id", "request-id", "invalid"]),
   ).rejects.toThrow("decision must be accept, decline, or cancel");
+});
+
+test("help advertises issue commands and keeps the legacy alias hidden", async () => {
+  await main(["--help"]);
+  expect(output).toContain("loom issue create");
+  expect(output).toContain("loom issue inspect <issue>");
+  expect(output).not.toMatch(/\btasks?\b/i);
+  expect(
+    taskCreateCommand(["issue", "create", "example-repo", "Title"]),
+  ).toEqual(taskCreateCommand(["task", "create", "example-repo", "Title"]));
 });

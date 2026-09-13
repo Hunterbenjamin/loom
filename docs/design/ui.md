@@ -1,5 +1,7 @@
 # UI design
 
+Terminology: an “issue” in the UI is a “task” in the code; internal identifiers and MCP tool names retain `task`.
+
 Each window switches between Tracker and Workbench on the same coordinator.
 This note describes the first terminal Workbench slice.
 
@@ -7,8 +9,8 @@ This note describes the first terminal Workbench slice.
 
 | Mode | Use | Input | Status |
 |---|---|---|---|
-| **Tracker** | Tasks, the Needs-you inbox, git and PR state, plan approval, diff review | Mouse-friendly, Linear-like density; keyboard for everything too | Live and fixture shell |
-| **Workbench** | Where the human talks to agents: a keyboard-first multiplexer with a task-aware sidebar, tabs and split panes | Keyboard first, tmux-style prefix bindings | Terminal slice |
+| **Tracker** | Issues, the Needs-you inbox, git and PR state, plan approval, diff review | Mouse-friendly, Linear-like density; keyboard for everything too | Live and fixture shell |
+| **Workbench** | Where the human talks to agents: a keyboard-first multiplexer with an issue-aware sidebar, tabs and split panes | Keyboard first, tmux-style prefix bindings | Terminal slice |
 
 A **Code** panel (file tree plus a read-only viewer) lives inside the Workbench as a panel type, not a
 third mode. Agents write; the human reads and reviews. Editing is out of v1.
@@ -19,10 +21,10 @@ Every window has its own coordinator connection. Command+Shift+W and the bottom-
 switch that same window between Tracker and Workbench; the button names the destination mode.
 The palette provides the same switch and explicit New Window commands remain separate.
 
-Both modes share the window's task store. Tracker selection and Workbench tabs/splits survive a
+Both modes share the window's issue store. Tracker selection and Workbench tabs/splits survive a
 round trip. Inactive mode effects are suspended: terminal viewers detach while hidden and attach
 again when shown, without stopping their native panes or agents. No hidden spare window is created.
-Closing a window closes only its viewers; the coordinator owns durable task state.
+Closing a window closes only its viewers; the coordinator owns durable issue state.
 
 ## Tracker
 
@@ -41,17 +43,17 @@ Only fixture mode edits the local snapshot.
 ## Tracker list
 
 Stage headers are buttons: click or press Enter/Space to collapse or expand them. Each header
-always shows the total matching task count. Done and Canceled start with the 20 most recently
-transitioned tasks, ordered by `stageEnteredAt` descending; Load N more reveals the next 20 (or
+always shows the total matching issue count. Done and Canceled start with the 20 most recently
+transitioned issues, ordered by `stageEnteredAt` descending; Load N more reveals the next 20 (or
 the remaining count). Other stages remain unlimited and follow the selected column sort.
 Collapse and loaded-page settings stay in each window's memory, including across view switches;
-new windows start expanded with the initial limit. Keyboard task navigation skips collapsed and
-unloaded rows. Task summaries, model labels and progress indicators remain visible per row.
+new windows start expanded with the initial limit. Keyboard issue navigation skips collapsed and
+unloaded rows. Issue summaries, model labels and progress indicators remain visible per row.
 
 ## Workbench
 
 - **Sidebar:** a native space → tab → pane tree, grouped by host generation/session and window
-  identity. Task spaces show the recorded task key/title; unlinked spaces show the session name.
+  identity. Issue spaces show the recorded issue key/title; unlinked spaces show the session name.
   Tabs show native window names; panes show their command or recorded role · provider and state.
   Main and Operator are pinned at the bottom. Expansion is per-window memory; fuzzy filtering
   reveals matching descendants and their ancestors without changing saved expansion. Native dead
@@ -60,7 +62,7 @@ unloaded rows. Task summaries, model labels and progress indicators remain visib
   opens an independent Workbench tab. Pinned agent tabs retain their identity, so selecting another
   pane from one opens a regular tab. Space and tab rows toggle expansion in this slice; tab-row
   split opening and context menus are deferred to Workbench v2 slice 5.
-- **Branch:** space rows show the coordinator's `panes.branch`: the linked task's branch, or Git's
+- **Branch:** space rows show the coordinator's `panes.branch`: the linked issue's branch, or Git's
   `rev-parse --abbrev-ref HEAD` at the first native pane's start cwd for an unlinked space.
   Reads are cached per cwd within each serialized inventory refresh, including failures, and
   refreshed on the same hints and poll as the view. Detached checkouts show `HEAD`; unreadable
@@ -85,7 +87,7 @@ unloaded rows. Task summaries, model labels and progress indicators remain visib
   panel header to an edge of another panel in the same tab to move it. Terminal mounts live as
   stable siblings over the library's cells, so moving cells, switching tabs and zooming do not
   dispose attach clients. Layout never leaves the window.
-- **Panel types in this slice:** terminal and task scratch shell. Scratch resolves the stored
+- **Panel types in this slice:** terminal and issue scratch shell. Scratch resolves the stored
   worktree and existing workspace in the coordinator and creates an idempotent native shell pane.
   It is not a provider run. Close terminal ends its native session and removes it from the list. Plan, diff, activity and
   code panels are deferred; Tracker retains its existing review surface.
@@ -94,7 +96,7 @@ unloaded rows. Task summaries, model labels and progress indicators remain visib
   unknown/missing actions, invalid chords, duplicate bindings or an invalid timeout activate
   defaults and show an error in the Workbench bottom bar. Saving a valid file updates every
   open window, including its shortcut map and palette. This file is user configuration;
-  it stores no layout or task state.
+  it stores no layout or issue state.
   Ctrl+A then `|` / `-` splits right/down; `h j k l` focuses left/down/up/right;
   `c` names and creates a terminal; `n` / `p` switches tabs; `x` closes a terminal
   (or hides a supervised agent view); `z` toggles zoom; `g` focuses the fuzzy agent filter;
@@ -147,12 +149,12 @@ in the latency numbers.
 `packages/protocol` is designed for several windows at once. Beyond the entities in
 `docs/design/core.md`:
 
-- a snapshot plus patches to N clients, with per-client subscriptions so a window showing one task
-  isn't sent every diff of every task;
+- a snapshot plus patches to N clients, with per-client subscriptions so a window showing one issue
+  isn't sent every diff of every issue;
 - attention with a `since` **per reason**, so the inbox and the sidebar can sort by how long each
   thing has waited (the fixture shell found the single `since` ambiguous);
 - for every run, its attach target and its pane-host state (attached clients, exited);
-- a changed-files model per task: path, previous path, status, binary, counts, stable file ID and a
+- a changed-files model per issue: path, previous path, status, binary, counts, stable file ID and a
   monotonic version, taken from Git metadata, since Pierre ignores a file whose version didn't change;
 - comment threads on findings, review-shell state (viewed files, drafts, current file), and the
   review range (whole branch versus since the last round), all coordinator-owned so they survive a
@@ -167,7 +169,7 @@ in its terminal. The panel overlays the lower third of the window. Its top edge 
 and arrow-key resizing; height and visibility live only in that window's memory. Closing detaches
 that terminal client and leaves the session running. Reopening attaches again and, if native status is idle with no pending dialog, requests a short
 Needs-you summary. The palette command **Open Main** opens the same panel. Toggle and resize
-state belong to the bar component, so neither updates the task store nor re-renders the task list.
+state belong to the bar component, so neither updates the issue store nor re-renders the issue list.
 The terminal module loads only when first opened, preserving the cold-start path.
 
 The header shows working, idle or waiting from the coordinator's `claude agents --json` observation.
@@ -175,7 +177,7 @@ An absent or unavailable provider observation is unknown, never inferred from te
 Restart stops the session, revokes its token and opens a fresh session through the same attach flow.
 Fixture mode previews the bar and terminal without contacting a coordinator or launching an agent.
 
-Main is one interactive Claude session per instance, not a task run. The coordinator persists its
+Main is one interactive Claude session per instance, not an issue run. The coordinator persists its
 session ID, private token, launch recipe and per-session settings under `<instance data>/lead/`
 before launching in the instance data directory. Its fixed pane workspace is `lead` (`loom-lead`
 on the instance's private tmux server). `LOOM_MODEL_LEAD` overrides the configured Claude model.
@@ -190,13 +192,13 @@ endpoint. A conflicting listener causes startup to fail rather than silently cha
 Main's token selects a separate MCP tool set on the coordinator's existing host: `list_tasks`,
 `inspect_task`, `create_task`, `move_task`, `approve_plan`, `reject_plan`, `approve_merge`,
 `request_changes`, `answer_question`, `answer_provider_request`, `retry_task`, `cancel_task`, and
-`list_repos`, plus `set_note` for its bounded instance memory. Inspection uses the same view as `loom task inspect --json`. Mutations use the CLI's
+`list_repos`, plus `set_note` for its bounded instance memory. Inspection uses the same view as `loom issue inspect --json`. Mutations use the CLI's
 human-command path and keep every core guard; an input acknowledgement means queued, not approved.
-Task-run tokens cannot call these tools, and Main cannot call task-run result tools. Its first
+Issue-run tokens cannot call these tools, and Main cannot call issue-run result tools. Its first
 message includes `main-notes` as context and requires a two-sentence introduction followed by waiting.
-Work longer than a few seconds becomes a task. The launch denies shell, editing, web and subagent
+Work longer than a few seconds becomes an issue. The launch denies shell, editing, web and subagent
 tools, exposes only Loom MCP plus read-only file tools in the instance directory, and grants no
-terminal attach capability to Main. The human can still attach to Main through this panel. The task model, core stages and reconciler are unchanged.
+terminal attach capability to Main. The human can still attach to Main through this panel. The issue model, core stages and reconciler are unchanged.
 
 ## Performance
 
@@ -215,11 +217,11 @@ creates a shell during mounting or navigation. New Terminal and Split name and c
 shell before mounting a viewer with its exact identity. Closing a terminal ends that pane; native
 exit and close updates remove all its views. Dead panes retained by the host remain dimmed in the tree.
 Closing the last terminal leaves an empty Workbench with a New terminal action. Selecting an existing row never opens a naming modal.
-The standalone `loom-workbench` session has no task or provider run; tmux owns it, and no spare
+The standalone `loom-workbench` session has no issue or provider run; tmux owns it, and no spare
 shell is launched to hold the session open.
 
 The sidebar uses the space → tab → pane tree described above. Recorded agent status appears on
-its pane row and rolls up to its ancestors, with no duplicate agent list. Headless runs and task
+its pane row and rolls up to its ancestors, with no duplicate agent list. Headless runs and issue
 history without native panes are excluded. A quiet or disconnected terminal is never proof of
 completion. Clicking a pane attaches in Workbench without switching to Tracker.
 
@@ -234,25 +236,25 @@ finished-turn icon while the agent terminal stays open. Idle and unknown status 
 Main and Operator stay pinned below the scrollable space tree. Main attaches the existing `lead`
 identity; Operator attaches its interactive session, with the same durable queue and policy
 checks as before. Both reuse their pinned tabs. Their Hide agent view button only detaches the viewer;
-stopping an agent uses its existing agent/task controls. Opening a workspace reserves its tmux
+stopping an agent uses its existing agent/issue controls. Opening a workspace reserves its tmux
 session name without creating a shell; a session is created only when a real agent or explicitly
 requested human terminal needs a pane. The brief bootstrap process used while setting its environment
 is removed before launch returns, leaving no spare terminal.
 
-### Automatic task terminal
+### Automatic issue terminal
 
-Task detail's Terminal tab has no run dropdown. It opens a live recorded agent terminal immediately;
+Issue detail's Terminal tab has no run dropdown. It opens a live recorded agent terminal immediately;
 multiple live runs retain their own tabs and attached clients. With no live terminal, it opens
-a reusable human shell in the task's worktree. With no surviving worktree, it opens at the
+a reusable human shell in the issue's worktree. With no surviving worktree, it opens at the
 project root and shows that checkout's actual branch without changing it. Historical run selection
-cannot override this task-scoped resolution. Run identity changes re-resolve the target; routine
+cannot override this issue-scoped resolution. Run identity changes re-resolve the target; routine
 activity updates do not remount the terminal. Missing host observations surface a retryable error.
 
 ## Pull request protocol (slice 2)
 
 The coordinator now exposes `pullRequests` in snapshots and `pull_request` collection patches.
 Rows contain GitHub's list fields and read time, the registered `repoId`, and a nullable `taskId`
-when exactly one task in that repository has the head branch. Off-pipeline PRs need no task.
+when exactly one issue in that repository has the head branch. Off-pipeline PRs need no issue.
 Keys are `JSON.stringify([repoId, number])`.
 
 A window subscribes to `{kind: "pull_requests", repoId, state}` to load and poll a repository
@@ -264,7 +266,7 @@ its truncation flag. Detail and patches only reach windows with that exact subsc
 Closing or changing a view removes its subscription. The last window leaving cancels its poll;
 reopening refreshes the owner. Lists poll every 60 seconds and detail every 30 seconds, shared
 across windows with the same scope. These projections are disposable; reconnects rebuild them
-from GitHub and task links from the coordinator store.
+from GitHub and issue links from the coordinator store.
 
 Commands name a registered `repoId`: `merge_pull_request` also carries `number`, `matchHeadSha`
 and `deleteBranch`; `close_pull_request` and `delete_branch` carry `number`; and
@@ -274,7 +276,7 @@ projections on success and a typed error on refusal. The executor checks the fre
 non-draft state, mergeability and CI before a squash merge, without auto-merge or an override.
 No checks is allowed; pending or failed checks are refused. Already merged and already absent
 branches are idempotent. Actions and failures both trigger owner refreshes; uncertain writes
-are never replayed automatically. Linked tasks only change stage through normal reconciliation.
+are never replayed automatically. Linked issues only change stage through normal reconciliation.
 
 This slice adds no sidebar, list/detail components, confirmations, shortcuts or notifications.
 The existing desktop fixture merely supplies empty collections for the extended protocol.

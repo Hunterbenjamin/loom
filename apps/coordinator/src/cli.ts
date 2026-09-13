@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `loom`. Everything except `serve`, `repo add` and `task inspect` is a protocol client: it connects, takes a
+// `loom`. Everything except `serve`, `repo add` and `issue inspect` is a protocol client: it connects, takes a
 // snapshot, sends a command and prints the acknowledgement. It holds no state of its own.
 
 import { spawn } from "node:child_process";
@@ -28,24 +28,24 @@ const USAGE = `loom — Loom's coordinator and its client
 
   loom serve                            run the coordinator for this instance
   loom operator status [--json]         Operator session, queue, actions and quota
-  loom status                           what every task is doing
+  loom status                           what every issue is doing
   loom repo add <root> <owner/name>     register a repository with this instance
-  loom task create <repo> <title> [description] [--summary <text>] [--small]
-  loom task list [--view needs_you]
-  loom task show <task>
-  loom task inspect <task> [--json]     read persisted diagnostics without a coordinator
-  loom task move <task> backlog|todo
-  loom task approve-plan <task> <planVersion>
-  loom task reject-plan <task> <feedback>
-  loom task approve <task> <headSha>
-  loom task request-changes <task> <title> <body>
-  loom task answer <task> <questionId> <answer>
-  loom task answer-request <task> <runId> <requestId> accept|decline|cancel
-  loom task restart <task> <runId>     fresh session using current agent settings
-  loom task retry <task>
-  loom task cancel <task> <reason>
-  loom task timings <task>               show per-stage durations from transitions
-  loom attach <task> [role] [--exec]    print, or run, the pane host's attach command
+  loom issue create <repo> <title> [description] [--summary <text>] [--small]
+  loom issue list [--view needs_you]
+  loom issue show <issue>
+  loom issue inspect <issue> [--json]     read persisted diagnostics without a coordinator
+  loom issue move <issue> backlog|todo
+  loom issue approve-plan <issue> <planVersion>
+  loom issue reject-plan <issue> <feedback>
+  loom issue approve <issue> <headSha>
+  loom issue request-changes <issue> <title> <body>
+  loom issue answer <issue> <questionId> <answer>
+  loom issue answer-request <issue> <runId> <requestId> accept|decline|cancel
+  loom issue restart <issue> <runId>     fresh session using current agent settings
+  loom issue retry <issue>
+  loom issue cancel <issue> <reason>
+  loom issue timings <issue>               show per-stage durations from transitions
+  loom attach <issue> [role] [--exec]    print, or run, the pane host's attach command
 
 Environment: LOOM_INSTANCE, LOOM_DATA_ROOT, LOOM_TOKEN, LOOM_BIND, LOOM_WORKTREE_ROOT.`;
 
@@ -95,8 +95,13 @@ export function taskCreateCommand(
   argv: string[],
 ): Extract<Command, { kind: "create_task" }> {
   const [group, action, repoId, title, description] = rest(argv);
-  if (group !== "task" || action !== "create" || !repoId || !title)
-    throw new Error("loom task create <repo> <title>");
+  if (
+    (group !== "issue" && group !== "task") ||
+    action !== "create" ||
+    !repoId ||
+    !title
+  )
+    throw new Error("loom issue create <repo> <title>");
   return {
     kind: "create_task",
     repoId: repoId as RepoId,
@@ -161,7 +166,7 @@ async function status(
   try {
     const tasks = [...(client.state?.collections.task.values() ?? [])];
     if (!tasks.length) {
-      process.stdout.write("No tasks.\n");
+      process.stdout.write("No issues.\n");
       return;
     }
     for (const task of tasks.sort((a, b) => (a.id < b.id ? -1 : 1)))
@@ -361,7 +366,7 @@ export async function main(argv: string[]): Promise<void> {
   if (group === "status") return status(config, flag(argv, "view"));
   if (group === "attach") {
     const [taskId, role] = args;
-    if (!taskId) throw new Error("loom attach needs a task");
+    if (!taskId) throw new Error("loom attach needs an issue");
     return attach(
       config,
       taskId as TaskId,
@@ -380,7 +385,9 @@ export async function main(argv: string[]): Promise<void> {
       flag(argv, "base") ?? config.baseBranch,
     );
   }
-  if (group !== "task") throw new Error(`Unknown command ${group}\n\n${USAGE}`);
+  // Keep the legacy command group as an unadvertised alias.
+  if (group !== "issue" && group !== "task")
+    throw new Error(`Unknown command ${group}\n\n${USAGE}`);
   const [action, ...values] = args;
   const taskId = values[0] as TaskId;
   switch (action) {
@@ -390,7 +397,7 @@ export async function main(argv: string[]): Promise<void> {
     case "list":
       return status(config, flag(argv, "view"));
     case "inspect": {
-      if (!taskId) throw new Error("loom task inspect <task> [--json]");
+      if (!taskId) throw new Error("loom issue inspect <issue> [--json]");
       const store = openReadOnlyStore({
         dataRoot: config.dataRoot,
         instance: config.instance,
@@ -414,7 +421,7 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
     case "timings": {
-      if (!taskId) throw new Error("loom task timings <task>");
+      if (!taskId) throw new Error("loom issue timings <issue>");
       const store = openReadOnlyStore({
         dataRoot: config.dataRoot,
         instance: config.instance,
@@ -433,7 +440,7 @@ export async function main(argv: string[]): Promise<void> {
         }
 
         const lines: string[] = [];
-        lines.push(`Task: ${taskId}`);
+        lines.push(`Issue: ${taskId}`);
         if (timings.totalDuration !== null) {
           lines.push(
             `Total duration: ${(timings.totalDuration / 1000 / 60).toFixed(2)} minutes`,
@@ -501,7 +508,7 @@ export async function main(argv: string[]): Promise<void> {
       const [runId, requestId, decision] = values.slice(1);
       if (!runId || !requestId || !decision)
         throw new Error(
-          "loom task answer-request <task> <runId> <requestId> accept|decline|cancel",
+          "loom issue answer-request <issue> <runId> <requestId> accept|decline|cancel",
         );
       if (!["accept", "decline", "cancel"].includes(decision)) {
         throw new Error("decision must be accept, decline, or cancel");
@@ -535,7 +542,7 @@ export async function main(argv: string[]): Promise<void> {
     }
     case "restart": {
       const id = values[1];
-      if (!id) throw new Error("loom task restart <task> <runId>");
+      if (!id) throw new Error("loom issue restart <issue> <runId>");
       return humanCommand(config, taskId, {
         type: "restart_run",
         runId: runId.parse(id),
@@ -549,7 +556,7 @@ export async function main(argv: string[]): Promise<void> {
         reason: values.slice(1).join(" ") || "cancelled from the CLI",
       });
     default:
-      throw new Error(`Unknown task command ${action}\n\n${USAGE}`);
+      throw new Error(`Unknown issue command ${action}\n\n${USAGE}`);
   }
 }
 

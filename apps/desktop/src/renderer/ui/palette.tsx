@@ -36,7 +36,7 @@ export function Palette() {
           autoFocus
           value={value}
           onValueChange={setValue}
-          placeholder="Type a command, or a task to open…"
+          placeholder="Type a command, or an issue to open…"
         />
         <Command.List>
           <Command.Empty>Nothing matches.</Command.Empty>
@@ -59,7 +59,7 @@ export function Palette() {
             </Command.Item>
           </Command.Group>
 
-          <Command.Group heading="Task">
+          <Command.Group heading="Issue">
             {current ? (
               <>
                 <Command.Item onSelect={() => run(() => store.open(current))}>
@@ -116,11 +116,11 @@ export function Palette() {
               Toggle theme
             </Command.Item>
             <Command.Item onSelect={() => run(() => store.setSearching(true))}>
-              Search tasks
+              Search issues
             </Command.Item>
           </Command.Group>
 
-          <Command.Group heading="Tasks">
+          <Command.Group heading="Issues">
             {rows.slice(0, 60).map((row) => (
               <Command.Item
                 key={row.task.id}
@@ -153,7 +153,7 @@ export function StagePicker() {
       <Command label="Change stage" loop>
         <Command.Input
           autoFocus
-          placeholder={target ? `Move ${target} to…` : "No task selected"}
+          placeholder={target ? `Move ${target} to…` : "No issue selected"}
         />
         <Command.List>
           <Command.Empty>No such stage.</Command.Empty>

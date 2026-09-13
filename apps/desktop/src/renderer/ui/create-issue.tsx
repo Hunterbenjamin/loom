@@ -114,7 +114,7 @@ function CreateIssueDialog() {
             }),
           );
           if (result.kind !== "task_created")
-            throw new Error("Expected a task creation acknowledgement.");
+            throw new Error("Expected an issue creation acknowledgement.");
           id = result.taskId;
         } else {
           id =
