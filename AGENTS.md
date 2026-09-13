@@ -89,7 +89,8 @@ Agents working on this repo run on the same machine as the user's real work.
   Use per-process flags instead: `claude --settings`, `codex -c`, `tmux -L … -f …`, environment variables.
 - Once the coordinator exists, development instances will run with `LOOM_INSTANCE=dev` and their own data directory and
   ports. Only reach the stable instance through the MCP tools you were given.
-- No force-pushes, no pushes to `main`, no merging. Open a PR and let a human merge it.
+- No force-pushes, no pushes to `main`. Open a PR. Merge it yourself only when the human has
+  told you to merge in this session, and only after CI is green; otherwise leave it for them.
 - Keep secrets, tokens and email addresses out of commits, logs and findings.
 
 ## Git
