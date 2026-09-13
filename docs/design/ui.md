@@ -46,6 +46,11 @@ unloaded rows. Task summaries, model labels and progress indicators remain visib
   opens an independent Workbench tab. Pinned agent tabs retain their identity, so selecting another
   pane from one opens a regular tab. Space and tab rows toggle expansion in this slice; tab-row
   split opening and context menus are deferred to Workbench v2 slice 5.
+- **Branch:** space rows show the coordinator's `panes.branch`: the linked task's branch, or Git's
+  `rev-parse --abbrev-ref HEAD` at the first native pane's start cwd for an unlinked space.
+  Reads are cached per cwd within each serialized inventory refresh, including failures, and
+  refreshed on the same hints and poll as the view. Detached checkouts show `HEAD`; unreadable
+  paths show `—`. Branch patches update sidebar metadata without remounting terminal viewers.
 - **Indicators:** every tree row uses ◌ working, ◐ blocked/needs you, ✓ finished turn/ended,
   ○ idle, ! failed, or ? unknown. Tabs and spaces roll up needs-you > failed > unknown > working >
   done > idle across all descendants, including ones hidden by filtering. Only published provider

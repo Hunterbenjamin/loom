@@ -108,6 +108,7 @@ export type TreeSpace = {
   key: string;
   name: string;
   label: string;
+  branch: string | null;
   tabs: TreeTab[];
   indicator: Indicator;
 };
@@ -140,12 +141,16 @@ export function spaces(
         key,
         name: pane.sessionName,
         label: pane.taskLabel ?? pane.sessionName,
+        branch: pane.branch,
         tabs: [],
         indicator: indicators.idle,
       };
       groups.set(key, space);
     }
-    if (pane.taskLabel) space.label = pane.taskLabel;
+    if (pane.taskLabel) {
+      space.label = pane.taskLabel;
+      space.branch = pane.branch;
+    }
     const windowKey = tabKey(pane);
     let tab = tabs.get(windowKey);
     if (!tab) {

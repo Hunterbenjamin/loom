@@ -65,6 +65,21 @@ afterEach(async () => {
 });
 
 describe("worktree observations", () => {
+  it("reads branches from nested pane start directories and preserves detached HEAD semantics", async () => {
+    const nested = join(repo, "nested") as WorktreePath;
+    await mkdir(nested);
+    expect(await adapter.currentBranch(nested)).toBe("main");
+    await git("checkout", "-b", "feat/pane");
+    expect(await adapter.currentBranch(nested)).toBe("feat/pane");
+    await git("checkout", "--detach");
+    expect(await adapter.currentBranch(nested)).toBeNull();
+    await expect(
+      adapter.currentBranch(directory as WorktreePath),
+    ).rejects.toThrow();
+    await expect(
+      adapter.currentBranch(join(directory, "missing") as WorktreePath),
+    ).rejects.toThrow();
+  });
   it("canonicalizes symlinks and macOS /var aliases", async () => {
     const alias = join(directory, "alias");
     await symlink(repo, alias);
