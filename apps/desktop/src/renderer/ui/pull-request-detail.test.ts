@@ -126,8 +126,6 @@ test.each([
   [{ mergeable: "unknown" }, "Mergeability is not yet known."],
   [{ mergeable: "conflicting" }, "Resolve merge conflicts first."],
   [{ draft: true }, "The pull request is a draft."],
-  [{ state: "closed" }, "The pull request is not open."],
-  [{ state: "merged" }, "The pull request is not open."],
 ] as const)(
   "merge remains visible and explains refusal %j",
   (change, reason) => {
@@ -137,6 +135,25 @@ test.each([
     expect(h.sender).not.toHaveBeenCalled();
   },
 );
+
+test("a merged pull request omits redundant merge status and action", () => {
+  const h = setup({ state: "merged" });
+  expect(h.host.textContent).not.toContain("The pull request is not open.");
+  expect(h.host.textContent).not.toContain("Merged at");
+  expect(
+    [...h.host.querySelectorAll("button")].some(
+      (button) => button.textContent === "Squash & merge",
+    ),
+  ).toBe(false);
+});
+
+test("a closed pull request omits the redundant non-open message but preserves connection errors", () => {
+  const h = setup({ state: "closed" });
+  expect(h.host.textContent).not.toContain("The pull request is not open.");
+  expect(h.button("Squash & merge").disabled).toBe(true);
+  act(() => h.store.setConnection("disconnected"));
+  expect(h.host.textContent).toContain("Disconnected from the coordinator.");
+});
 
 test.each(["success", "none"] as const)(
   "confirms exact head and base, default deletion, and refreshed outcomes with %s checks",
@@ -177,7 +194,12 @@ test.each(["success", "none"] as const)(
       matchHeadSha: h.row.detail.headSha,
       deleteBranch: true,
     });
-    expect(h.host.textContent).toContain(`Merged at ${h.row.detail.mergedAt}`);
+    expect(h.host.textContent).not.toContain("Merged at");
+    expect(
+      [...h.host.querySelectorAll("button")].some(
+        (button) => button.textContent === "Squash & merge",
+      ),
+    ).toBe(false);
     expect(h.host.textContent).toContain("Branch deleted.");
     expect(h.button("Delete branch").disabled).toBe(true);
   },
