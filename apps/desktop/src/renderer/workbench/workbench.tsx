@@ -20,7 +20,9 @@ import {
 import {
   defaultKeybindingsState,
   formatBindings,
+  isPrefixBinding,
   type KeybindingsState,
+  matchesChord,
 } from "../../shared/keybindings.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { LeadBar } from "../ui/lead.js";
@@ -735,6 +737,20 @@ export function Workbench() {
       setPrefixArmed,
     );
     const key = (e: KeyboardEvent) => {
+      // The palette chord is never gated: it opens the palette from anywhere and closes it too.
+      if (
+        e.type === "keydown" &&
+        !e.repeat &&
+        (bindings.config.bindings.commands ?? [])
+          .filter((binding) => !isPrefixBinding(binding))
+          .some((binding) => matchesChord(binding, e))
+      ) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        matcher.cancel();
+        setPalette((v) => !v);
+        return;
+      }
       if (
         document.querySelector(
           'dialog[open], [aria-modal="true"], [role="menu"]',

@@ -405,7 +405,46 @@ export const TerminalSession = memo(function TerminalSession({
       wanted = { cols: terminal.cols, rows: terminal.rows };
       sendSize();
     });
-    window.loomTerminal.onData(id, (data) => terminal.write(data));
+    // Synchronized updates (DECSET 2026): the pane host marks where a redraw begins and ends.
+    // Everything between is held and written as one frame, so the cursor never appears at the
+    // intermediate positions a redraw passes through. A missing end marker flushes after 50 ms.
+    const SYNC_BEGIN = "\x1b[?2026h";
+    const SYNC_END = "\x1b[?2026l";
+    let held = "";
+    let holding = false;
+    let holdTimer: number | undefined;
+    const flushHeld = () => {
+      window.clearTimeout(holdTimer);
+      holdTimer = undefined;
+      if (held) terminal.write(held);
+      held = "";
+      holding = false;
+    };
+    window.loomTerminal.onData(id, (data) => {
+      let input = data;
+      while (input) {
+        if (!holding) {
+          const begin = input.indexOf(SYNC_BEGIN);
+          if (begin < 0) {
+            terminal.write(input);
+            return;
+          }
+          if (begin > 0) terminal.write(input.slice(0, begin));
+          input = input.slice(begin + SYNC_BEGIN.length);
+          holding = true;
+          holdTimer = window.setTimeout(flushHeld, 50);
+        } else {
+          const end = input.indexOf(SYNC_END);
+          if (end < 0) {
+            held += input;
+            return;
+          }
+          held += input.slice(0, end);
+          input = input.slice(end + SYNC_END.length);
+          flushHeld();
+        }
+      }
+    });
     window.loomTerminal.onExit(id, ({ exitCode }) => {
       // Exit 1 from an attach means "already attached" or "taken over"; both are states the
       // human resolves, never something Loom retries on its own (spike 03).
