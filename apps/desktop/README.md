@@ -149,8 +149,7 @@ panes as side-by-side splits in a new Workbench tab, even when filtering hides s
 Right-click or Shift+F10 opens a native row's menu. Open follows the row's click behavior; Open in
 new tab opens its live panes in independent viewers. Copy attach command copies the coordinator's
 shell-quoted argv and environment for the first live pane in native order. Close panel hides the
-row's viewers in the current Workbench tab only and never stops their processes. Rename is disabled
-until Workbench v2 slice 3 supplies native rename support. Menu navigation supports arrows,
+row's viewers in the current Workbench tab only and never stops their processes. Use double-click or F2 on a space/tab row to rename it inline; the menu entry remains disabled. Menu navigation supports arrows,
 Home/End and Escape; clicking outside dismisses it.
 Drag panel headers to panel edges to rearrange splits.
 

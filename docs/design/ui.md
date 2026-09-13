@@ -68,7 +68,7 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   command copies the coordinator's shell-quoted attach argv and environment for the first live
   pane in native order. Close panel hides matching viewers in the current Workbench tab only,
   leaving other tabs and all native processes running. It remains available while the host is
-  unavailable. Rename is visibly unavailable until slice 3 supplies native rename support.
+  unavailable. Rename uses the inline editor on space/tab rows (double-click or F2); the menu entry remains unavailable.
 - **Branch:** space rows show the coordinator's `panes.branch`: the linked issue's branch, or Git's
   `rev-parse --abbrev-ref HEAD` at the first native pane's start cwd for an unlinked space.
   Reads are cached per cwd within each serialized inventory refresh, including failures, and
@@ -78,7 +78,7 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   ○ idle, ! failed, or ? unknown. Tabs and spaces roll up needs-you > failed > unknown > working >
   done > idle across all descendants, including ones hidden by filtering. Only published provider
   status and coordinator attention determine indicators; native process exit alone is not agent
-  completion. Branches and rename remain separate Workbench v2 slices.
+  completion. Branch display and inline rename follow their separate Workbench v2 slices.
 - **Sound and flash:** the window store compares consecutive pane observations using the same
   indicators (including recorded completed turns). Entering needs-you or done plays one bundled
   320 ms chime and flashes the visible pane row once for 600 ms. Repeated patches, initial
