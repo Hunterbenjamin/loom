@@ -450,7 +450,7 @@ export class Executor {
           worktreePath: action.worktreePath,
           branch: action.branch,
           expectedHeadSha: action.expectedHeadSha,
-          leaseSha: observation.remoteHeadSha,
+          expectedRemoteHeadSha: observation.remoteHeadSha,
         });
       }
       case "open_pr": {

@@ -257,6 +257,7 @@ describe("worktree actions", () => {
         worktreePath: repo,
         branch: "feat/issue",
         expectedHeadSha: old,
+        expectedRemoteHeadSha: null,
       }),
     ).rejects.toThrow("Refusing push");
     await expect(
@@ -264,6 +265,7 @@ describe("worktree actions", () => {
         worktreePath: repo,
         branch: "other",
         expectedHeadSha: head,
+        expectedRemoteHeadSha: null,
       }),
     ).rejects.toThrow("Refusing push");
     expect(
@@ -271,6 +273,7 @@ describe("worktree actions", () => {
         worktreePath: repo,
         branch: "feat/issue",
         expectedHeadSha: head,
+        expectedRemoteHeadSha: null,
       }),
     ).toEqual({ remoteHeadSha: head });
     expect(await command(remote, "rev-parse", "feat/issue")).toBe(head);
@@ -286,6 +289,7 @@ describe("worktree actions", () => {
         worktreePath: repo,
         branch: "feat/issue",
         expectedHeadSha: rebased,
+        expectedRemoteHeadSha: head,
       }),
     ).toEqual({ remoteHeadSha: rebased });
     expect(await command(remote, "rev-parse", "feat/issue")).toBe(rebased);
@@ -298,6 +302,7 @@ describe("worktree actions", () => {
       remote,
       `${remoteChange}:refs/heads/feat/issue`,
     );
+    await git("fetch", "origin");
     await git("reset", "--hard", rebased);
     await save("diverged", "diverged");
     const diverged = await commitAll();
@@ -306,6 +311,7 @@ describe("worktree actions", () => {
         worktreePath: repo,
         branch: "feat/issue",
         expectedHeadSha: diverged,
+        expectedRemoteHeadSha: rebased,
       }),
     ).rejects.toThrow(/Git push failed.*failed to push some refs/s);
     expect(await command(remote, "rev-parse", "feat/issue")).toBe(remoteChange);

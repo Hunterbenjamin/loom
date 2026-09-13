@@ -300,18 +300,16 @@ export function createGitAdapter(
         throw new Error(
           "Refusing push: local branch head differs from expectedHeadSha",
         );
-      const remoteRef = `refs/remotes/${remote}/${req.branch}`;
-      const remoteHead = await optionalRef(path, remoteRef);
       // Push the immutable checked commit, so a concurrent local commit cannot slip into the push.
       // The explicit lease permits rebased issue branches while refusing to overwrite remote work
-      // that appeared since our last owner observation. An empty expected value requires the
+      // that appeared since the caller's owner observation. An empty expected value requires the
       // remote branch not to exist.
       await git(path, [
         "-c",
         "push.followTags=false",
         "push",
         "--porcelain",
-        `--force-with-lease=refs/heads/${req.branch}:${remoteHead ?? ""}`,
+        `--force-with-lease=refs/heads/${req.branch}:${req.expectedRemoteHeadSha ?? ""}`,
         "--recurse-submodules=no",
         remote,
         `${expected}:refs/heads/${req.branch}`,
