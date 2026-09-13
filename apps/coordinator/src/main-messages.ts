@@ -74,7 +74,7 @@ export async function messageAgent(
     .update(JSON.stringify([repoId, input.idempotencyKey ?? randomUUID()]))
     .digest("hex")}`;
   const prior = () => {
-    const saved = deps.store.operator.get(id, receiptSchema);
+    const saved = deps.store.mainMessages.get(id, receiptSchema);
     return saved
       ? saved.request === request
         ? saved.result
@@ -112,7 +112,7 @@ export async function messageAgent(
       if (!gate.ok) result = refused(gate.reason);
     }
   }
-  return deps.store.operator.atomic(() => {
+  return deps.store.mainMessages.atomic(() => {
     const replay = prior();
     if (replay) return replay;
     if (task && run && result.delivered === "queued") {
@@ -147,8 +147,8 @@ export async function messageAgent(
           },
         });
     }
-    if (task || input.to.kind === "operator")
-      deps.store.operator.note({
+    if (task)
+      deps.store.mainMessages.note({
         id,
         taskId: task?.id ?? null,
         repoId,
@@ -161,19 +161,7 @@ export async function messageAgent(
         forHuman: false,
         occurrence: request,
       });
-    if (input.to.kind === "operator")
-      deps.store.operator.enqueue({
-        id,
-        kind: "main_message",
-        at: deps.now(),
-        repoId,
-        taskId: null,
-        runId: null,
-        message: input.text,
-        occurrence: id,
-        count: 1,
-      });
-    deps.store.operator.set(id, { request, result });
+    deps.store.mainMessages.set(id, { request, result });
     if (task) deps.enqueue(task.id);
     return result;
   });

@@ -183,14 +183,13 @@ the agent has no terminal attach capability. Human viewers still attach to its p
 The coordinator persists the per-instance last-opened repository in SQLite and publishes selection
 to windows. Selecting another repository retargets a viewer without stopping either session.
 Startup recovers every per-repository recipe and idempotently migrates the legacy single recipe
-to the first registered repository, keeping its session ID and token. Operator remains instance-wide.
+to the first registered repository, keeping its session ID and token.
 This conversation-only policy is separate from issue planners' and reviewers' edit restrictions,
 so those issue roles retain the tools needed to inspect the repository and run tests.
 Main may also send short questions or heads-ups through `message_agent`, fire-and-forget. Every
 message is recorded, task-run delivery uses the core send gate and native receipt path, and
-Operator messages/replies reuse its durable events and notes. Repository-scoped unread replies
-appear in Main's introduction and panel summaries; Main never waits for an answer or assigns work
-through messages. The human-command tools enqueue the same guarded inputs as the CLI; they do not
+Main message notes and idempotency receipts use dedicated SQLite tables. Destinations are exact
+task/run or task/role identities; Main never waits for an answer or assigns work through messages. The human-command tools enqueue the same guarded inputs as the CLI; they do not
 change stage ownership. Issue-run tools and Main tools reject each other's identities. See
 [Main](design/ui.md#main) for its lifecycle, recovery and bottom-bar UI.
 
@@ -481,32 +480,28 @@ guarantees that a command did not run. The broader restart matrix remains spike 
 - **05 completed:** nothing in a pane survives a host restart; Loom relaunches from stored state, and
   the Codex app-server lives outside the pane host. See the findings.
 
-### Operator integration
+### Coordinator automation
 
-One coordinator-owned interactive Claude Operator consumes durable structured hints outside the
-per-issue run/capacity model. SQLite owns its queue, decisions, notes, processing receipts, retry
-ledger and bug-filing accounting. A private recipe under the instance's `operator` directory owns
-its launch identity and recorded pane. Its terminal lives on the private tmux server and survives
-coordinator and viewer restarts. MCP-only capability
-configuration (`--tools ""`, strict MCP config and per-process settings) and a separate authenticated
-identity prevent the Operator agent from using issue-run, shell and attach tools. Humans can attach
-its terminal through the pinned Workbench entry. Native Claude status gates queued input: busy,
-waiting and unknown sessions receive no paste. A durable prompt hash is recorded before paste;
-UserPromptSubmit confirms delivery. On startup and every pump, an unconfirmed attempt also
-checks the session's native transcript for a submitted user message with the same normalized hash
-between the attempt start and the observation time. A matching Stop or native idle finishes a
-confirmed turn. After 30 seconds without a receipt, an idle session with no pending dialog may
-retry through the same send gate; busy sessions retain the attempt for further receipt checks.
-Delivery errors never prevent observation. Genuine native turn failures stay visible until Retry.
-Main messages have a separate durable chat receipt: each is pasted as `Message from Main: <text>`
-even if a tool already completed its `main_message` event. Provider confirmation retires the chat
-item; the idempotent event and `append_note` reply remain the durable record. The desktop shows
-Operator errors on hover and offers Retry without replacing the session or its terminal.
-Every mutation is checked against policy v1 using fresh observations. Rescue commands reuse the
-core/outbox/executor path, without a submission or stage transition; automatic bug planning uses
-the existing `todo` input. Runtime bug repository routing is explicit. Desktop status and authored
-notes are projections, and notification dedupe is coordinator-owned. See the
-[Operator contract](design/agents.md#operator-implementation-contract).
+The Operator was removed by user decision on 2026-09-13. Two narrow behaviours remain in
+plain core code, using fresh provider/git observations and the existing guarded outbox:
+
+- A Loom-launched implementer's native permission request is accepted for an exact command
+  from its registered repository's validated `WORKFLOW.md`, or a conservative simple `git add`,
+  `git commit -m` or `pnpm install` command. Extra install flags require an exact workflow entry.
+  Claude requires a waiting native Bash PermissionRequest with an occurrence ID; Codex requires
+  a command approval on the current connection generation. Questions, trust dialogs and all
+  other commands retain `provider_input` attention for the human. Actions are deduplicated by
+  request identity and revalidated immediately before execution.
+- A vanished Loom-launched interactive implementation with no accepted submission, review,
+  replacement or live run can have its clean committed branch pushed through `push_branch`.
+  The exact recorded HEAD must be ahead of base and its remote (or the remote branch absent);
+  git proves remote ancestry and the executor rechecks worktree, branch and HEAD. Push is never
+  forced. The coordinator retains `run_vanished` attention, never opens a PR automatically and
+  never fabricates a submission or changes the stage. Reconciliation and recovery reuse the
+  same commit-keyed outbox intent.
+
+Existing headless retry limits and human plan/merge approvals remain unchanged. Runtime failures
+are logged for the human; no agent files bugs or resets retry budgets automatically.
 
 ### Repository review preferences and Overview actions
 

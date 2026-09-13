@@ -104,17 +104,6 @@ export const configSchema = z
     hookPort: port.optional(),
     /** Compared in constant time on every `hello`. Absence is an error, not an open socket. */
     token: z.string().min(16),
-    operatorModel: z.string().min(1).optional(),
-    operator: z
-      .object({
-        policy: z.literal("v1").default("v1"),
-        autoFix: z
-          .array(z.enum(["pass_failed", "publish_failed", "stale_process"]))
-          .default([]),
-        maxFiledPerHour: z.number().int().positive().default(5),
-        repoId: z.string().min(1).optional(),
-      })
-      .prefault({}),
     leadModel: z.string().min(1).optional(),
     models: z.object({ codex: z.string().min(1), claude: z.string().min(1) }),
     providerOverrides: z
@@ -230,14 +219,6 @@ export function configFromEnvironment(
       reviewer: optional("LOOM_PROVIDER_REVIEWER"),
     },
     codexReasoningEffort: optional("LOOM_CODEX_REASONING_EFFORT"),
-    operatorModel: optional("LOOM_MODEL_OPERATOR"),
-    operator: {
-      repoId: optional("LOOM_OPERATOR_REPO"),
-      autoFix: optional("LOOM_OPERATOR_AUTO_FIX")?.split(",").filter(Boolean),
-      maxFiledPerHour: env.LOOM_OPERATOR_MAX_FILED_PER_HOUR
-        ? Number(env.LOOM_OPERATOR_MAX_FILED_PER_HOUR)
-        : undefined,
-    },
     leadModel: optional("LOOM_MODEL_LEAD"),
     excludedAuthors: optional("LOOM_EXCLUDED_AUTHORS")
       ?.split(",")

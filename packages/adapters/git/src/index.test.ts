@@ -192,9 +192,10 @@ describe("worktree observations", () => {
     await command(remote, "update-ref", "refs/heads/main", local);
     expect(await command(remote, "rev-parse", "main")).toBe(local);
     await rename(remote, `${remote}-offline`);
-    expect((await adapter.readWorktree(repo, "main")).remoteHeadSha).toBe(
-      fetched,
-    );
+    expect(await adapter.readWorktree(repo, "main")).toMatchObject({
+      remoteHeadSha: fetched,
+      reachableCommits: [fetched],
+    });
   });
 });
 

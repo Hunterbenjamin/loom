@@ -319,7 +319,7 @@ export function Workbench() {
   const hiddenPanes = useRef(new Set<string>());
   const pinnedRequest = useRef(0);
   const mainSelected = useRef(false);
-  const openPinnedRef = useRef<(system: "main" | "operator") => void>(() => {});
+  const openPinnedRef = useRef<(system: "main") => void>(() => {});
   const [mainTarget, setMainTarget] = useState<{
     repo: string;
     sessionId: string;
@@ -422,58 +422,40 @@ export function Workbench() {
     openGroup([created], created.sessionName);
     setPendingTab(null);
   };
-  const openPinned = (system: "main" | "operator") => {
+  const openPinned = (system: "main") => {
     const state = store.getState();
-    if (system === "operator") {
-      const existing = state.panes.find(
-        (pane) => pane.sessionName === "loom-operator",
-      );
-      if (existing && !existing.dead) return openGroup([existing], system);
-    }
     const requestedRepo = state.ui.repo;
     const request = ++pinnedRequest.current;
     void store
-      .command(
-        system === "main"
-          ? { kind: "open_lead_session", repoId: requestedRepo as RepoId }
-          : { kind: "open_operator_terminal" },
-      )
+      .command({ kind: "open_lead_session", repoId: requestedRepo as RepoId })
       .then(async (result) => {
         if (!result.ok) throw new Error(result.error.message);
-        if (system === "main") {
-          if (
-            result.result.kind !== "attach_session" ||
-            !("identity" in result.result.target) ||
-            result.result.target.identity !== "lead" ||
-            result.result.target.repoId !== requestedRepo ||
-            !result.result.target.pane ||
-            result.result.target.pane.dead
-          )
-            throw new Error("Coordinator returned an invalid Main target");
-          const target = result.result.target;
-          const sessionId = target.sessionId;
-          if (!sessionId)
-            throw new Error("Coordinator returned a Main without a session");
-          const pane = await waitForCanonicalPane(store, target);
-          if (
-            request !== pinnedRequest.current ||
-            store.getState().ui.repo !== requestedRepo
-          )
-            return;
-          if (!pane || pane.dead || pane.unavailable)
-            throw new Error("Main terminal is not available yet");
-          setMainTarget({
-            repo: requestedRepo,
-            sessionId,
-            pane: identity(pane),
-          });
-          openGroup([pane], system);
+        if (
+          result.result.kind !== "attach_session" ||
+          !("identity" in result.result.target) ||
+          result.result.target.identity !== "lead" ||
+          result.result.target.repoId !== requestedRepo ||
+          !result.result.target.pane ||
+          result.result.target.pane.dead
+        )
+          throw new Error("Coordinator returned an invalid Main target");
+        const target = result.result.target;
+        const sessionId = target.sessionId;
+        if (!sessionId)
+          throw new Error("Coordinator returned a Main without a session");
+        const pane = await waitForCanonicalPane(store, target);
+        if (
+          request !== pinnedRequest.current ||
+          store.getState().ui.repo !== requestedRepo
+        )
           return;
-        }
-        const pane = store
-          .getState()
-          .panes.find((candidate) => candidate.sessionName === "loom-operator");
-        if (!pane) throw new Error("Agent terminal is not available yet");
+        if (!pane || pane.dead || pane.unavailable)
+          throw new Error("Main terminal is not available yet");
+        setMainTarget({
+          repo: requestedRepo,
+          sessionId,
+          pane: identity(pane),
+        });
         openGroup([pane], system);
       })
       .catch((error) => setError(String(error)));

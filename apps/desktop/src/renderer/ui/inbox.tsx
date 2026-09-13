@@ -7,10 +7,7 @@ import { age } from "./format.js";
 /** A clock confined to inbox rows: waiting-time updates do not invalidate the task list. */
 export const InboxView = memo(function InboxView() {
   const store = useStoreApi();
-  const allRows = useStore(inboxRows);
-  const [humanOnly, setHumanOnly] = useState(false);
-  const rows = humanOnly ? allRows.filter((r) => r.forHuman) : allRows;
-  const operator = useStore((s) => s.operator);
+  const rows = useStore(inboxRows);
   const cursor = useStore((s) => s.ui.cursor);
   const connection = useStore((s) => s.connection);
   const parent = useRef<HTMLDivElement>(null);
@@ -31,27 +28,6 @@ export const InboxView = memo(function InboxView() {
   }, [cursor, list]);
   return (
     <section className="inbox" ref={parent} aria-label="Needs you inbox">
-      <section className="pad" aria-label="Operator status">
-        <strong>Operator</strong> · {operator?.status ?? "idle"} ·{" "}
-        {operator?.queueLength ?? 0} queued
-        {operator?.lastAction ? (
-          <span>
-            {" "}
-            · {operator.lastAction} · {operator.lastActionAt}
-          </span>
-        ) : null}
-        {operator?.escalation || operator?.error ? (
-          <p>{operator.escalation ?? operator.error}</p>
-        ) : null}
-      </section>
-      <label className="pad">
-        <input
-          type="checkbox"
-          checked={humanOnly}
-          onChange={(e) => setHumanOnly(e.target.checked)}
-        />{" "}
-        For human only
-      </label>
       {rows.length === 0 ? (
         <div className="pad faint">
           {connection === "connected" || connection === "fixtures"

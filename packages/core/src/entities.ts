@@ -629,7 +629,7 @@ export interface Transition {
 export interface TaskNote {
   id: string;
   taskId: string | null;
-  author: "operator" | "lead" | "human";
+  author: "main" | "lead" | "human";
   at: string;
   eventId: string;
   row: string;

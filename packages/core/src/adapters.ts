@@ -458,7 +458,6 @@ export interface ClaudeAdapter {
     cwd: WorktreePath;
     model: string;
     settingsPath: string;
-    mcpOnly?: boolean;
     readOnly: boolean;
     prompt: string;
   }): Promise<void>;

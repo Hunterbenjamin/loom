@@ -26,7 +26,7 @@ export {
   transitionId,
   worktreePath,
 } from "./ids.js";
-export * from "./operator.js";
+export * from "./notes.js";
 export * from "./patch.js";
 export * from "./pull-requests.js";
 export * from "./snapshot.js";

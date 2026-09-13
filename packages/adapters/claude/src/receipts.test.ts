@@ -9,7 +9,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 const request: Parameters<ClaudeAdapter["promptReceipt"]>[0] = {
   sessionId: "test-session" as never,
-  cwd: "/test/operator" as never,
+  cwd: "/test/headless" as never,
   textHash: textHash("Message from Main: hello\n    world"),
   after: "2026-09-13T07:59:00.000Z" as never,
   before: "2026-09-13T08:00:00.000Z" as never,

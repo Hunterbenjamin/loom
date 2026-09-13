@@ -43,7 +43,7 @@ import {
   transitionId,
   worktreePath,
 } from "./ids.js";
-import { operatorState, taskNote } from "./operator.js";
+import { taskNote } from "./notes.js";
 import {
   commentThread,
   leadState,
@@ -90,11 +90,6 @@ export const collections = {
     key: z.string().min(1),
     keyOf: (v: z.output<typeof pullRequestDetailRow>) =>
       pullRequestKey(v.repoId, v.number),
-  },
-  operator: {
-    value: operatorState,
-    key: z.literal("operator"),
-    keyOf: (v: z.output<typeof operatorState>) => v.id,
   },
   note: {
     value: taskNote,
@@ -197,7 +192,6 @@ export const snapshotBody = z.strictObject({
   pullRequestLists: z.array(pullRequestListState).default([]),
   pullRequests: z.array(pullRequestRow).default([]),
   pullRequestDetails: z.array(pullRequestDetailRow).default([]),
-  operators: z.array(operatorState).default([]),
   notes: z.array(taskNote).default([]),
   paneInventory: z.array(paneInventoryState).default([]),
   panes: z.array(paneView).default([]),
@@ -226,7 +220,6 @@ export const COLLECTION_FIELDS = {
   pull_requests: "pullRequestLists",
   pull_request: "pullRequests",
   pull_request_detail: "pullRequestDetails",
-  operator: "operators",
   note: "notes",
   pane_inventory: "paneInventory",
   pane: "panes",
@@ -256,7 +249,6 @@ export const emptySnapshotBody = (): SnapshotBody => ({
   pullRequestLists: [],
   pullRequests: [],
   pullRequestDetails: [],
-  operators: [],
   notes: [],
   paneInventory: [],
   panes: [],

@@ -12,7 +12,7 @@ test("installed SDK preserves submission timestamp from an owned transcript with
     await mkdtemp(join(tmpdir(), "loom-transcript-")),
   );
   const config = join(root, "claude");
-  const cwd = join(root, "operator") as WorktreePath;
+  const cwd = join(root, "headless") as WorktreePath;
   const id = randomUUID() as ProviderSessionId;
   const promptId = randomUUID();
   const at = "2026-09-13T07:59:00.000Z" as IsoTime;

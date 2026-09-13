@@ -64,7 +64,6 @@ export function snapshot(): SnapshotBody {
     pullRequestLists: [],
     pullRequests: [],
     pullRequestDetails: [],
-    operators: [],
     notes: [],
     panes: [],
     paneInventory: [],

@@ -27,10 +27,7 @@ const statusEntrySchema = z.looseObject({
   pid: z.number().int().nullish(),
 });
 
-// Native background records (the Operator is one) carry `state` instead of `status`. Accept
-// that shape explicitly; an interactive record without `status` must still fail rather than
-// pass as idle. Found by the Lead session on 2026-09-13 when the Operator's own record broke
-// every observation of the agents list.
+// Native background records may carry `state` instead of `status`; validate both.
 export const agentsEntrySchema = z.union([
   statusEntrySchema,
   z

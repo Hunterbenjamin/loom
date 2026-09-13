@@ -127,7 +127,7 @@ test("human terminal close confirms native removal and publishes deletion to con
   expect(
     await client.command({
       kind: "close_terminal",
-      target: { ...ref, sessionName: "loom-operator" },
+      target: { ...ref, sessionName: "loom-main" },
     }),
   ).toMatchObject({ ok: false });
   expect(close).not.toHaveBeenCalled();

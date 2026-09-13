@@ -34,7 +34,6 @@ import { leadCommand, serveHttp } from "@loom/mcp";
 import type { Change, Subscription } from "@loom/protocol";
 import { command as commandSchema } from "@loom/protocol";
 import type { Store } from "@loom/store";
-import { z } from "zod";
 import type { Adapters } from "./adapters.js";
 import {
   COORDINATOR_VERSION,
@@ -49,8 +48,6 @@ import { Loop } from "./loop.js";
 import { messageAgent } from "./main-messages.js";
 import { createMcpHost } from "./mcp-host.js";
 import { observe as observeOwners, PullRequestCache } from "./observe.js";
-import { OperatorSession } from "./operator.js";
-import { attentionOccurrence } from "./operator-policy.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
 import { registerRepo } from "./repos.js";
@@ -86,7 +83,6 @@ export interface CoordinatorOptions {
 }
 
 export interface CreateTaskInput {
-  signature?: string;
   repoId: RepoId;
   title: string;
   description: string;
@@ -114,7 +110,6 @@ export class Coordinator {
         config: this.config,
         dataDirectory: this.store.dataDirectory,
         repo,
-        unreadReplies: () => this.store.operator.unreadReplies(repo.id),
         mcpEntry: (token) => this.launchDeps().mcpEntry(token),
         now: () => this.now(),
       });
@@ -152,7 +147,6 @@ export class Coordinator {
       ...this.published.replace("project", null, this.projectRows()),
     ]);
   }
-  readonly operator: OperatorSession;
   private leadPoll: NodeJS.Timeout | null = null;
   private pollingLead = false;
   readonly loop: Loop;
@@ -199,42 +193,6 @@ export class Coordinator {
     this.epoch = epochOf(this.startedAt);
     this.recipes = new RecipeStore(this.store.dataDirectory);
 
-    this.operator = new OperatorSession({
-      store: this.store,
-      adapters: this.adapters,
-      config: this.config,
-      mcpEntry: (token) => this.launchDeps().mcpEntry(token),
-      now: () => this.now(),
-      observe: (state) => this.observe(state, []),
-      workflow: (state) => this.workflow.read(this.repo(state.task.id).root),
-      reconcile: (taskId) => this.loop.pass(taskId),
-      enqueue: (taskId) => this.loop.enqueue(taskId),
-      changed: async (taskId) => {
-        await this.publishOperator();
-        if (taskId) this.protocol.publish(await this.refreshTask(taskId));
-      },
-      createBug: (title, summary, description, signature) =>
-        this.createTask({
-          repoId: this.config.operator.repoId as RepoId,
-          title,
-          summary,
-          description,
-          signature,
-        }),
-    });
-    const diagnosticSubscription = this.adapters.subscribeDiagnostics?.(
-      (event) => {
-        if (event.sessionId && event.sessionId === this.operator.sessionId)
-          return;
-        this.operator.failure(
-          "stale_process",
-          event.taskId,
-          event.message,
-          event.sessionId,
-        );
-      },
-    );
-    if (diagnosticSubscription) this.timers.add(diagnosticSubscription);
     this.loop = new Loop({
       store: this.store,
       drainExecutor: () => this.executor.drain(),
@@ -242,7 +200,6 @@ export class Coordinator {
       onCommit: ({ taskId, result }) => this.onCommit(taskId, result),
       onError: (error, taskId) => {
         this.log(`Pass for ${taskId} failed: ${error.message}`);
-        this.operator.failure("pass_failed", taskId, error.message);
       },
     });
     this.executor = new Executor({
@@ -359,12 +316,10 @@ export class Coordinator {
     for (const repo of this.store.repos()) await this.leadFor(repo.id).load();
     const selected = this.store.selectedRepo();
     if (selected) this.store.selectRepo(selected);
-    await this.operator.load();
     // Stable instance configuration wins; only ephemeral instances reuse the Main recipe's port.
     const mcpPort =
       this.config.mcpPort ||
       [...this.leads.values()].find((lead) => lead.mcpPort)?.mcpPort ||
-      this.operator.mcpPort ||
       (await legacyLeadPort(this.store.dataDirectory));
     try {
       this.mcp = await serveHttp(this.mcpOptions(), mcpPort);
@@ -392,9 +347,6 @@ export class Coordinator {
       this.store.outbox.runningAtStartup(),
     );
     for (const taskId of report.reconciled) this.loop.enqueue(taskId);
-    for (const task of this.store.tasks())
-      this.operator.capture(this.store.loadTaskState(task.id));
-    await this.operator.recover();
     await this.refreshAll([]);
     await this.inventory.refresh();
     this.panePoll = setInterval(() => void this.inventory.refresh(), 2000);
@@ -408,10 +360,6 @@ export class Coordinator {
   run(): void {
     this.leadPoll = setInterval(() => {
       void this.publishLead();
-      void this.operator
-        .pump()
-        .then(() => this.publishOperator())
-        .catch(() => {});
     }, 1500);
     this.leadPoll.unref?.();
     this.pump = setInterval(() => {
@@ -435,7 +383,6 @@ export class Coordinator {
     for (const cancel of this.timers) cancel();
     this.timers.clear();
     this.publishFailures.clear();
-    await this.operator.close();
     await this.protocol.stop();
     await this.mcp?.close();
     this.mcp = null;
@@ -491,7 +438,6 @@ export class Coordinator {
       branch: null,
       prNumber: null,
       attention: EMPTY_ATTENTION,
-      ...(input.signature ? { signature: input.signature } : {}),
     };
     const state = this.store.createTask(task);
     this.loop.enqueue(id);
@@ -557,15 +503,9 @@ export class Coordinator {
       host,
       buildAnchor,
       resolveToken: (token: string) =>
-        this.operator.resolve(token) ??
         [...this.leads.values()]
           .map((lead) => lead.resolve(token))
-          .find(Boolean) ??
-        resolveToken(token),
-      operatorHost: {
-        invoke: (name: string, input: Record<string, unknown>) =>
-          this.operator.invoke(name, input),
-      },
+          .find(Boolean) ?? resolveToken(token),
       leadHost: {
         invoke: async (
           name: string,
@@ -585,16 +525,6 @@ export class Coordinator {
               repoId,
               input,
             );
-          if (name === "read_agent_replies")
-            return this.store.operator.atomic(() => {
-              const replies = this.store.operator.unreadReplies(repoId);
-              for (const reply of replies)
-                this.store.operator.updateNote({
-                  ...reply,
-                  readAt: this.now(),
-                });
-              return replies;
-            });
           if (name === "set_note") return lead.setNote(input.note as string);
           if (name === "list_tasks")
             return this.store.tasks().filter((task) => task.repoId === repoId);
@@ -638,10 +568,6 @@ export class Coordinator {
     const onHint = (hint: { worktreePath: string | null }) => {
       if (hint.worktreePath === this.store.dataDirectory) {
         void this.publishLead();
-        void this.operator
-          .pump()
-          .then(() => this.publishOperator())
-          .catch(() => {});
         return;
       }
       if (!hint.worktreePath) {
@@ -689,7 +615,6 @@ export class Coordinator {
               .concat(
                 [...this.leads.values()]
                   .map((lead) => lead.sessionId)
-                  .concat(this.operator.sessionId)
                   .filter(Boolean) as never[],
               ),
           ),
@@ -718,11 +643,13 @@ export class Coordinator {
         limits && limits.usageAllowed === false ? limits.resetsAt : null,
       );
     }
+    observations.workflowCommands = await this.workflow.read(
+      this.repo(state.task.id).root,
+    );
     return observations;
   }
 
   private onCommit(taskId: TaskId, result: ReconcileResult): void {
-    this.operator.capture(result.next);
     // Stop the app-server if the task just transitioned to a terminal stage.
     const state = this.store.loadTaskState(taskId);
     if (TERMINAL.includes(state.task.stage)) {
@@ -744,7 +671,6 @@ export class Coordinator {
           `Could not publish ${taskId}: ${errorMessage} (further failures for this task/cause suppressed)`,
         );
       }
-      this.operator.failure("publish_failed", taskId, errorMessage);
     });
   }
 
@@ -788,17 +714,6 @@ export class Coordinator {
     return changes;
   }
 
-  private async publishOperator(): Promise<void> {
-    this.protocol.publish(
-      this.published.replace("operator", null, [
-        {
-          collection: "operator",
-          key: "operator",
-          value: this.operator.state(),
-        },
-      ]),
-    );
-  }
   private async publishLead(): Promise<void> {
     if (this.pollingLead) return;
     this.pollingLead = true;
@@ -819,9 +734,6 @@ export class Coordinator {
 
   private async refreshAll(scope: readonly Subscription[]): Promise<void> {
     await this.ensure(scope);
-    this.published.replace("operator", null, [
-      { collection: "operator", key: "operator", value: this.operator.state() },
-    ]);
     this.published.replace("lead", null, await this.leadRows());
     this.published.replace("project", null, this.projectRows());
     this.published.replace(
@@ -935,50 +847,6 @@ export class Coordinator {
           await this.inventory.refresh();
           return { ok: true, result: { kind: "renamed" } };
         }
-        case "claim_notification": {
-          const note = this.store.operator.noteById(String(command.noteId));
-          const notice = this.store.operator.atomic(() => {
-            if (
-              !note?.forHuman ||
-              (note.taskId !== null &&
-                note.occurrence !==
-                  attentionOccurrence(
-                    this.store.loadTaskState(note.taskId as TaskId),
-                  )) ||
-              this.store.operator.get(`notified:${note.id}`, z.boolean())
-            )
-              return null;
-            this.store.operator.set(`notified:${note.id}`, true);
-            return { id: note.id, title: "Loom needs you", body: note.body };
-          });
-          return { ok: true, result: { kind: "notification", notice } };
-        }
-        case "retry_operator_session":
-          await this.operator.retry();
-          await this.publishOperator();
-          return {
-            ok: true,
-            result: { kind: "operator_state", state: this.operator.state() },
-          };
-        case "open_operator_session":
-          await this.operator.open();
-          await this.publishOperator();
-          return {
-            ok: true,
-            result: { kind: "operator_state", state: this.operator.state() },
-          };
-        case "stop_operator_session":
-          await this.operator.stop();
-          await this.publishOperator();
-          return {
-            ok: true,
-            result: { kind: "operator_state", state: this.operator.state() },
-          };
-        case "operator_status":
-          return {
-            ok: true,
-            result: { kind: "operator_state", state: this.operator.state() },
-          };
         case "open_task_terminal": {
           const taskId = command.taskId as TaskId;
           const state = this.store.loadTaskState(taskId);
@@ -993,13 +861,8 @@ export class Coordinator {
             result: { kind: "task_terminal", taskId, ...terminal },
           };
         }
-        case "open_operator_terminal":
         case "open_workbench_terminal":
         case "open_pane_session": {
-          if (command.kind === "open_operator_terminal") {
-            await this.operator.open();
-            await this.publishOperator();
-          }
           const scratchTarget =
             command.kind === "open_workbench_terminal" && command.target
               ? paneIdentity.parse(command.target)
@@ -1028,22 +891,20 @@ export class Coordinator {
           )
             throw new Error("Split requires a target pane");
           const ref =
-            command.kind === "open_operator_terminal"
-              ? paneIdentity.parse(this.operator.paneRef)
-              : command.kind === "open_workbench_terminal"
-                ? await this.adapters.paneHost.createScratch({
-                    workspaceId: scratchPane?.workspaceId ?? "loom-workbench",
-                    target: scratchTarget,
-                    split: command.split as "right" | "below" | undefined,
-                    createWorkspace: true,
-                    key: command.key as string,
-                    label: (command.label as string | undefined) ?? "Terminal",
-                    cwd: scratchPane?.startCwd ?? (homedir() as WorktreePath),
-                    executable: process.env.SHELL || "/bin/sh",
-                    args: ["-l"],
-                    env: runEnvironment(process.env, {}),
-                  })
-                : paneIdentity.parse(command.target);
+            command.kind === "open_workbench_terminal"
+              ? await this.adapters.paneHost.createScratch({
+                  workspaceId: scratchPane?.workspaceId ?? "loom-workbench",
+                  target: scratchTarget,
+                  split: command.split as "right" | "below" | undefined,
+                  createWorkspace: true,
+                  key: command.key as string,
+                  label: (command.label as string | undefined) ?? "Terminal",
+                  cwd: scratchPane?.startCwd ?? (homedir() as WorktreePath),
+                  executable: process.env.SHELL || "/bin/sh",
+                  args: ["-l"],
+                  env: runEnvironment(process.env, {}),
+                })
+              : paneIdentity.parse(command.target);
           if (command.kind !== "open_pane_session")
             await this.inventory.refresh();
           if (!ref.hostGeneration.startsWith(`loom-${this.config.instance}#`))
@@ -1082,9 +943,7 @@ export class Coordinator {
             throw new Error("Pane belongs to another instance");
           if (
             ref.sessionName.startsWith("loom-lead-") ||
-            ["loom-lead", "loom-main", "loom-operator"].includes(
-              ref.sessionName,
-            )
+            ["loom-lead", "loom-main"].includes(ref.sessionName)
           )
             throw new Error(
               "Pinned agents are stopped through their agent controls",

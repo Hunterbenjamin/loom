@@ -83,9 +83,7 @@ export const tabKey = (pane: PaneView) =>
     pane.sessionId ?? pane.sessionName,
     pane.windowId,
   ]);
-const pinned = (pane: PaneView) =>
-  pane.sessionName.startsWith("loom-lead-") ||
-  pane.sessionName === "loom-operator";
+const pinned = (pane: PaneView) => pane.sessionName.startsWith("loom-lead-");
 const rollup = (states: Indicator[]) =>
   states.reduce(
     (worst, state) => (state.priority < worst.priority ? state : worst),

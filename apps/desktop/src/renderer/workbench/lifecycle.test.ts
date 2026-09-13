@@ -630,39 +630,6 @@ test("new tab targets the selected space and split targets the active native win
   }
 });
 
-test("pinned agents open only their native space and its windows", async () => {
-  const operator = {
-    ...pane,
-    id: JSON.stringify([pane.hostGeneration, "%50"]),
-    paneId: "%50",
-    sessionName: "loom-operator",
-    sessionId: "$50",
-    windowName: "Operator native",
-  };
-  const h = await harness([pane, operator]);
-  try {
-    await act(async () =>
-      h.element
-        .querySelector<HTMLButtonElement>('[data-pinned="operator"]')
-        ?.click(),
-    );
-    expect(
-      [...h.element.querySelectorAll(".wb-tabs button")].map(
-        (b) => b.textContent,
-      ),
-    ).toEqual(["Operator native", "＋"]);
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
-    expect(
-      h.element
-        .querySelector('[data-pinned="operator"]')
-        ?.getAttribute("aria-current"),
-    ).toBe("true");
-    expect(h.send).not.toHaveBeenCalled();
-  } finally {
-    await h.close();
-  }
-});
-
 test("pinned Main resolves its repository target and ignores legacy-name decoys", async () => {
   const legacy = ["loom-main", "loom-lead"].map((sessionName, index) => ({
     ...pane,

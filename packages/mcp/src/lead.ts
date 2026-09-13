@@ -33,7 +33,6 @@ if (!create) throw new Error("Missing create_task command");
 export const mainNoteSchema = z.string().max(2000);
 export const messageAgentSchema = z.strictObject({
   to: z.discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("operator") }),
     z.strictObject({ kind: z.literal("run"), taskId, runId }),
     z.strictObject({
       kind: z.literal("task"),
@@ -50,7 +49,6 @@ export const messageAgentResultSchema = z.strictObject({
 });
 export const leadInputSchemas = {
   message_agent: messageAgentSchema,
-  read_agent_replies: z.strictObject({}),
   set_note: z.strictObject({ note: mainNoteSchema }),
   list_tasks: z.strictObject({}),
   inspect_task: z.strictObject({ taskId }),

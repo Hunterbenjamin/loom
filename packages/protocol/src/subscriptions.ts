@@ -85,13 +85,7 @@ export function taskInView(task: Task, view: ViewName): boolean {
 }
 
 /** Collections that reach every client, whatever it subscribed to. */
-const ALWAYS: CollectionName[] = [
-  "repo",
-  "inbox",
-  "lead",
-  "operator",
-  "project",
-];
+const ALWAYS: CollectionName[] = ["repo", "inbox", "lead", "project"];
 
 export interface Scope {
   pullRequestRepos: Set<string>;
@@ -156,7 +150,6 @@ export function ownerTask(change: Change): string | null {
     change.collection === "repo" ||
     change.collection === "project" ||
     change.collection === "lead" ||
-    change.collection === "operator" ||
     change.collection === "pane_inventory"
   )
     return null;
