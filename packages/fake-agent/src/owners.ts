@@ -392,6 +392,7 @@ export class FakeGitHub implements GitHubAdapter {
     for (const pr of prs) {
       if (pr.state !== state) continue;
       const {
+        requestedReviewers: _requestedReviewers,
         files: _fileDetails,
         reviews: _reviews,
         comments: _comments,
@@ -505,6 +506,30 @@ export class FakeGitHub implements GitHubAdapter {
       truncated: bytes.length > limit,
       observedAt: this.clock.now(),
     };
+  };
+  readPullRequestBehind: GitHubAdapter["readPullRequestBehind"] = async (
+    repo,
+  ) => {
+    this.scope(repo);
+    return 0;
+  };
+  commentPullRequest: GitHubAdapter["commentPullRequest"] = async (
+    repo,
+    number,
+    body,
+    requestId,
+  ) => {
+    this.scope(repo);
+    const detail = this.pullRequestDetail(number);
+    if (detail.comments.some((comment) => comment.id === requestId)) return;
+    detail.comments.push({
+      id: requestId,
+      author: "human",
+      body,
+      createdAt: this.clock.now(),
+      url: detail.url,
+    });
+    this.setPullRequest(detail);
   };
   closePullRequest: GitHubAdapter["closePullRequest"] = async (
     repo,

@@ -66,6 +66,8 @@ export function buildPullRequestDetails(rows: PullRequestRow[]) {
     repoId: row.repoId,
     number: row.number,
     taskId: row.taskId,
+    pinned: false,
+    behindBy: 0,
     detail: {
       ...(({ repoId: _repo, taskId: _task, ...summary }) => summary)(row),
       branchExists: row.state !== "closed",
@@ -98,7 +100,15 @@ export function buildPullRequestDetails(rows: PullRequestRow[]) {
       additions: 1,
       deletions: 1,
       changedFiles: 1,
-      files: [],
+      requestedReviewers: [],
+      files: [
+        {
+          path: "example.ts",
+          additions: 1,
+          deletions: 1,
+          changeType: "MODIFIED",
+        },
+      ],
       reviews: [],
       comments: [],
     },

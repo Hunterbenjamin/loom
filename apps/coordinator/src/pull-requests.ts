@@ -33,6 +33,10 @@ export interface PullRequestViewsDeps {
   github: GitHubAdapter;
   repo(id: RepoId): Repo;
   tasks(): Task[];
+  preferences?(
+    repo: RepoId,
+    number: number,
+  ): { pinned: boolean; taskId: Task["id"] | null };
   replace(owner: string, rows: Row[]): void;
   after(ms: number, callback: () => void): () => void;
   action(command: PullRequestCommand): Promise<void>;
@@ -144,6 +148,14 @@ export class PullRequestViews {
         } catch (error) {
           actionError = error;
         }
+        if (
+          command.kind === "pin_pull_request" ||
+          command.kind === "link_pull_request"
+        ) {
+          this.relink();
+          if (actionError) throw actionError;
+          return;
+        }
         // Also refresh refusals and uncertain writes. Never automatically replay a command.
         this.deps.changed(repo);
         const scopes = new Map<string, PrScope>();
@@ -187,7 +199,15 @@ export class PullRequestViews {
     return result;
   }
 
-  private taskId(repoId: RepoId, head: string) {
+  private taskId(repoId: RepoId, head: string, number: number) {
+    const linked = this.deps.preferences?.(repoId, number)?.taskId;
+    if (
+      linked &&
+      this.deps
+        .tasks()
+        .some((task) => task.repoId === repoId && task.id === linked)
+    )
+      return linked;
     const matches = this.deps
       .tasks()
       .filter((task) => task.repoId === repoId && task.branch === head);
@@ -197,10 +217,18 @@ export class PullRequestViews {
   /** Task creation/branch changes update links without manufacturing a GitHub observation. */
   relink(): void {
     for (const [key, previous] of this.details) {
-      const taskId = this.taskId(previous.repoId, previous.detail.head);
-      if (taskId === previous.taskId) continue;
+      const taskId = this.taskId(
+        previous.repoId,
+        previous.detail.head,
+        previous.number,
+      );
+      const pinned =
+        this.deps.preferences?.(previous.repoId, previous.number)?.pinned ??
+        false;
+      if (taskId === previous.taskId && pinned === previous.pinned) continue;
       const value = {
         ...previous,
+        pinned,
         taskId,
       };
       this.details.set(key, value);
@@ -211,7 +239,7 @@ export class PullRequestViews {
     for (const [repoId, rows] of this.lists) {
       let changed = false;
       for (const [number, row] of rows) {
-        const taskId = this.taskId(repoId, row.head);
+        const taskId = this.taskId(repoId, row.head, row.number);
         if (taskId === row.taskId) continue;
         rows.set(number, { ...row, taskId });
         changed = true;
@@ -245,7 +273,7 @@ export class PullRequestViews {
         pullRequestRow.parse({
           ...pr,
           repoId: repo.id,
-          taskId: this.taskId(repo.id, pr.head),
+          taskId: this.taskId(repo.id, pr.head, pr.number),
         }),
       );
       const rows = this.lists.get(repo.id) ?? new Map<number, PullRequestRow>();
@@ -314,21 +342,36 @@ export class PullRequestViews {
       const value = pullRequestDetailRow.parse({
         repoId: repo.id,
         number: scope.number,
-        taskId: this.taskId(repo.id, after.head),
+        taskId: this.taskId(repo.id, after.head, after.number),
         detail: after,
         patch: matches(previous?.patch) ? previous?.patch : null,
         patchLoading: !matches(previous?.patch),
         patchError: null,
+        behindBy:
+          previous?.detail.headSha === after.headSha &&
+          previous.detail.baseSha === after.baseSha
+            ? previous.behindBy
+            : null,
       });
       const publish = () => {
-        value.taskId = this.taskId(repo.id, after.head);
+        value.pinned =
+          this.deps.preferences?.(repo.id, after.number)?.pinned ?? false;
+        value.taskId = this.taskId(repo.id, after.head, after.number);
         this.details.set(key, { ...value });
         this.deps.replace(`pull_request:${key}`, [
           { collection: "pull_request_detail", key, value: { ...value } },
         ]);
       };
       publish();
+      const branchRead = this.deps.github
+        .readPullRequestBehind(repo.github, after)
+        .then((behindBy) => {
+          value.behindBy = behindBy;
+          publish();
+        })
+        .catch(this.deps.onError);
       const {
+        requestedReviewers: _requestedReviewers,
         files: _fileDetails,
         reviews: _reviews,
         comments: _comments,
@@ -377,6 +420,8 @@ export class PullRequestViews {
         value.patchError = "Could not load the diff. Refresh to retry.";
         publish();
         throw error;
+      } finally {
+        await branchRead;
       }
     }
     this.publishList(repo.id);

@@ -120,3 +120,17 @@ existing merge action guards and bottom-bar semantics are unchanged. The Reviews
 count includes ready PRs, viewer review requests, and the viewer's PRs with failing checks,
 conflicts or requested changes. Reviews subscribes to open, merged and closed lists while
 visible; history uses the existing shared list reads, with 20-row presentation pages.
+
+## Superseded by Reviews slice 3
+
+`docs/briefs/reviews.md` slice 3 replaces the four-tab detail and action bar with the referenced
+Overview / Diff page. Description, activity/commits and expandable checks now live in the
+Overview's reading column and property rail. The header provides a durable pinned star, overflow
+Close/Delete branch/Refresh actions, GitHub chip and fullscreen. Squash & merge retains all
+existing guards and its exact-head confirmation, with a split menu for the default-on branch
+deletion option. The agent button opens an existing branch agent; it does not launch one.
+
+The rail adds same-repository issue linking, GitHub reviewers, branch divergence and grouped
+file counts; file selection opens the existing Diff viewer at that path. Pin and link commands
+persist in the coordinator, while PR comments go through the executor/adapter and owner refresh.
+The Reviews inbox, Diff card redesign/Reviewed state and reviews slice 5 polish remain separate.

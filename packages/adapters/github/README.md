@@ -141,3 +141,11 @@ tests are intentionally absent; all action tests use the stub.
 References: [GitHub conditional requests and pagination](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api),
 [PR mergeability and test merge commits](https://docs.github.com/en/rest/guides/using-the-rest-api-to-interact-with-your-git-database),
 [`gh pr merge` guards and merge queues](https://cli.github.com/manual/gh_pr_merge).
+
+Reviews Overview adds requested reviewers (including team requests) to the rich GraphQL content.
+`readPullRequestBehind(repo, {baseSha, headSha})` validates an immutable REST comparison's
+`behind_by`, caches by both SHAs, and never substitutes a failed comparison with zero.
+`commentPullRequest(repo, number, body, requestId)` sends text through stdin and confirms the
+unique hidden submission marker through paginated comment readback. Repeating that submission
+or losing its write response cannot post another copy. This marker is for command idempotence;
+it does not change the task observation's author filtering.

@@ -95,6 +95,13 @@ const content = {
       url: z.url(),
     }),
   ),
+  reviewRequests: connection(
+    z.object({
+      requestedReviewer: z
+        .object({ login: z.string().optional(), name: z.string().optional() })
+        .nullable(),
+    }),
+  ),
   comments: connection(
     z.object({
       id: z.string(),
@@ -130,6 +137,7 @@ export const DETAIL_QUERY = `query($owner: String!, $name: String!, $number: Int
     databaseId name status conclusion detailsUrl startedAt completedAt
    } } pageInfo { hasNextPage endCursor } }
   } } } }
+  reviewRequests(first: 100) @include(if: $content) { nodes { requestedReviewer { ... on User { login } ... on Team { name } ... on EnterpriseTeam { name } ... on Mannequin { login } ... on Bot { login } } } pageInfo { hasNextPage endCursor } }
   body @include(if: $content)
   commits(first: 100) @include(if: $content) { nodes { commit {
    oid message author { user { login } } committedDate url
@@ -218,6 +226,12 @@ export async function readDetail(
             content.reviews.shape.nodes.element,
             "reviews",
             `reviews(first: 100, after: $cursor) { nodes { id author { login } body state submittedAt url } pageInfo { hasNextPage endCursor } }`,
+          ),
+          complete(
+            data.reviewRequests,
+            content.reviewRequests.shape.nodes.element,
+            "reviewRequests",
+            `reviewRequests(first: 100, after: $cursor) { nodes { requestedReviewer { ... on User { login } ... on Team { name } ... on EnterpriseTeam { name } ... on Mannequin { login } ... on Bot { login } } } pageInfo { hasNextPage endCursor } }`,
           ),
           complete(
             data.comments,
@@ -406,6 +420,9 @@ export async function readDetail(
 
 function mapContent(data: z.infer<typeof full>) {
   return {
+    requestedReviewers: data.reviewRequests.nodes.flatMap(
+      (r) => r.requestedReviewer?.login ?? r.requestedReviewer?.name ?? [],
+    ),
     body: data.body,
     commits: data.commits.nodes.map(({ commit: c }) => ({
       sha: c.oid,

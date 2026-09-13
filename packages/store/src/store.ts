@@ -110,6 +110,51 @@ export class Store {
       )
       .run(id);
   }
+  /** PR preferences are Loom facts; GitHub content remains a disposable projection. */
+  pullRequestPreferences(
+    repoId: string,
+    number: number,
+  ): { pinned: boolean; taskId: TaskId | null } {
+    const raw = this.db
+      .prepare("SELECT value FROM meta WHERE key = ?")
+      .pluck()
+      .get(`pr:${JSON.stringify([repoId, number])}`);
+    return raw === undefined
+      ? { pinned: false, taskId: null }
+      : z
+          .object({
+            pinned: z.boolean(),
+            taskId: z
+              .string()
+              .min(1)
+              .transform((value) => value as TaskId)
+              .nullable(),
+          })
+          .parse(JSON.parse(z.string().parse(raw)));
+  }
+  setPullRequestPreferences(
+    repoId: string,
+    number: number,
+    update: { pinned?: boolean; taskId?: TaskId },
+  ): void {
+    if (!this.repos().some((repo) => repo.id === repoId))
+      throw new Error("Unknown registered repository");
+    if (!Number.isSafeInteger(number) || number < 1)
+      throw new Error("Invalid pull request number");
+    if (
+      update.taskId &&
+      !this.tasks().some(
+        (task) => task.id === update.taskId && task.repoId === repoId,
+      )
+    )
+      throw new Error("Issue must belong to the pull request repository");
+    const value = { ...this.pullRequestPreferences(repoId, number), ...update };
+    this.db
+      .prepare(
+        "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run(`pr:${JSON.stringify([repoId, number])}`, JSON.stringify(value));
+  }
   putRepo(repo: Repo): void {
     const value = repoSchema.parse(repo);
     this.db

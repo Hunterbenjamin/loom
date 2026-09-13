@@ -131,6 +131,7 @@ export interface PullRequestSummary {
 }
 
 export interface PullRequestDetail extends PullRequestSummary {
+  requestedReviewers?: string[];
   files: {
     path: string;
     additions: number;
@@ -195,6 +196,16 @@ export interface PullRequestPatch {
 }
 
 export interface GitHubAdapter {
+  readPullRequestBehind(
+    repo: string,
+    range: { baseSha: Sha; headSha: Sha },
+  ): Promise<number>;
+  commentPullRequest(
+    repo: string,
+    number: number,
+    body: string,
+    requestId: string,
+  ): Promise<void>;
   /** All pages, newest first. Closed excludes merged. Reads use disposable native ETags. */
   listPullRequests(
     repo: string,

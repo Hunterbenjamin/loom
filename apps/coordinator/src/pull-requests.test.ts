@@ -603,3 +603,92 @@ test("cached list SHAs start detail and diff together; a pushed head gets its ow
     gate.release();
   }
 });
+
+test("overview commands publish durable pins and manual links, and reread comments once per intent", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail());
+  const issue = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Manually linked",
+    description: "",
+  }).task;
+  const client = await connect(h, [listScope(h), detailScope(h)]);
+  const key = pullRequestKey(h.repo.id, 1);
+  await vi.waitFor(() =>
+    expect(
+      client.state?.collections.pull_request_detail.get(key)?.patchLoading,
+    ).toBe(false),
+  );
+  const selection = { repoId: h.repo.id, number: 1 };
+  const read = () => client.state?.collections.pull_request_detail.get(key);
+  expect(
+    await client.command({
+      kind: "pin_pull_request",
+      ...selection,
+      pinned: true,
+    }),
+  ).toMatchObject({ ok: true });
+  expect(read()?.pinned).toBe(true);
+  expect(
+    await client.command({
+      kind: "link_pull_request",
+      ...selection,
+      taskKey: "missing",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "guard_failed" } });
+  expect(read()?.taskId).toBeNull();
+  expect(
+    await client.command({
+      kind: "link_pull_request",
+      ...selection,
+      taskKey: issue.id.toUpperCase(),
+    }),
+  ).toMatchObject({ ok: true });
+  expect(read()?.taskId).toBe(issue.id);
+  expect(client.state?.collections.pull_request.get(key)?.taskId).toBe(
+    issue.id,
+  );
+  expect(h.store.pullRequestPreferences(h.repo.id, 1)).toEqual({
+    pinned: true,
+    taskId: issue.id,
+  });
+  const comment = {
+    kind: "comment_pull_request" as const,
+    ...selection,
+    body: "Looks ready",
+    requestId: "b5e9155b-4c50-49b7-876b-c6cf884cc789",
+  };
+  expect(await client.command(comment)).toMatchObject({ ok: true });
+  expect(await client.command(comment)).toMatchObject({ ok: true });
+  expect(read()?.detail.comments.map((c) => c.body)).toEqual(["Looks ready"]);
+  expect(h.store.loadTaskState(issue.id).task.stage).toBe("backlog");
+});
+
+test("branch comparison never holds back overview or diff, and publishes an honest count", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail());
+  let release!: (count: number) => void;
+  h.adapters.github.readPullRequestBehind = () =>
+    new Promise((resolve) => {
+      release = resolve;
+    });
+  const client = await connect(h, [detailScope(h)]);
+  const key = pullRequestKey(h.repo.id, 1);
+  try {
+    await vi.waitFor(() =>
+      expect(
+        client.state?.collections.pull_request_detail.get(key)?.patchLoading,
+      ).toBe(false),
+    );
+    expect(
+      client.state?.collections.pull_request_detail.get(key)?.behindBy,
+    ).toBeNull();
+  } finally {
+    release(3);
+  }
+  await vi.waitFor(() =>
+    expect(
+      client.state?.collections.pull_request_detail.get(key)?.behindBy,
+    ).toBe(3),
+  );
+});

@@ -192,6 +192,9 @@ export const ackResult = z.union([
   z.strictObject({
     kind: z.literal("pull_request_action"),
     command: z.enum([
+      "pin_pull_request",
+      "link_pull_request",
+      "comment_pull_request",
       "merge_pull_request",
       "close_pull_request",
       "delete_branch",

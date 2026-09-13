@@ -507,3 +507,17 @@ core/outbox/executor path, without a submission or stage transition; automatic b
 the existing `todo` input. Runtime bug repository routing is explicit. Desktop status and authored
 notes are projections, and notification dedupe is coordinator-owned. See the
 [Operator contract](design/agents.md#operator-implementation-contract).
+
+### Repository review preferences and Overview actions
+
+Loom owns pinned PR stars and explicit issue links in SQLite metadata, keyed by repository and
+PR number; GitHub remains the owner of PR content. PR projections prefer a valid same-repository
+manual issue link over branch matching. These preferences do not rewrite branches, workflow
+state or approvals. Pin/link commands re-read local ownership before publishing; comment commands
+run through the executor and GitHub adapter, then refresh GitHub through the existing PR path.
+A hidden per-submission marker in the posted comment lets the adapter recover an uncertain write
+or repeated command by reading all comment pages. Comment text travels through stdin, never shell
+interpolation. The renderer retains only the active draft and submission identity.
+Requested reviewers come from GraphQL. Branch divergence is read from an immutable REST comparison
+and cached by both SHAs; it publishes after detail so it cannot delay Overview or diff rendering.
+No branch status is inferred from mergeability alone, except GitHub's explicit conflict state.
