@@ -31,27 +31,31 @@ async function serve() {
   return { h, env };
 }
 
-test("pnpm loom task create stores a long quoted description without alteration", async () => {
-  const { h, env } = await serve();
-  const description = `${"  Preserve `printf fixture`, \"double quotes\", 'single quotes' (parentheses) and --flags. ".padEnd(
-    1455,
-    "x",
-  )}  `;
-  expect(description).toHaveLength(1457);
-  // Pass an argv array: shell quoting is already resolved before the CLI receives it.
-  const { stdout, stderr } = await promisify(execFile)(
-    "pnpm",
-    ["loom", "task", "create", h.repo.id, "Long description", description],
-    { env: { ...process.env, ...env }, timeout: 20_000 },
-  );
-  expect(stderr).toBe("");
-  const created = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
-    taskId: TaskId;
-  };
-  expect(h.store.loadTaskState(created.taskId).task.description).toBe(
-    description,
-  );
-}, 30_000);
+test.each(["issue", "task"])(
+  "pnpm loom task create stores a long quoted description without alteration",
+  async (group) => {
+    const { h, env } = await serve();
+    const description = `${"  Preserve `printf fixture`, \"double quotes\", 'single quotes' (parentheses) and --flags. ".padEnd(
+      1455,
+      "x",
+    )}  `;
+    expect(description).toHaveLength(1457);
+    // Pass an argv array: shell quoting is already resolved before the CLI receives it.
+    const { stdout, stderr } = await promisify(execFile)(
+      "pnpm",
+      ["loom", group, "create", h.repo.id, "Long description", description],
+      { env: { ...process.env, ...env }, timeout: 20_000 },
+    );
+    expect(stderr).toBe("");
+    const created = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
+      taskId: TaskId;
+    };
+    expect(h.store.loadTaskState(created.taskId).task.description).toBe(
+      description,
+    );
+  },
+  30_000,
+);
 
 test("task create honors -- through the CLI entry point", async () => {
   const { h } = await serve();
@@ -124,4 +128,31 @@ test("CLI prints frame validator paths for rejected input and creates no task", 
   );
   expect(process.exitCode).toBe(1);
   expect(h.store.tasks()).toHaveLength(0);
+}, 30_000);
+
+test("issue list, show and human commands use the existing protocol", async () => {
+  const { h } = await serve();
+  let output = "";
+  vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    output += String(chunk);
+    return true;
+  });
+  await main(["issue", "list"]);
+  expect(output).toBe("No issues.\n");
+  const created = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Issue vocabulary",
+    description: "",
+  });
+  await h.coordinator.settle();
+  output = "";
+  await main(["issue", "show", created.task.id]);
+  expect(output).toContain(`${created.task.id}  Issue vocabulary`);
+  const command = vi.spyOn(LoomClient.prototype, "command");
+  await main(["issue", "cancel", created.task.id, "Finished"]);
+  expect(command).toHaveBeenCalledWith({
+    kind: "human",
+    taskId: created.task.id,
+    command: { type: "cancel", reason: "Finished" },
+  });
 }, 30_000);

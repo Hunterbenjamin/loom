@@ -56,7 +56,7 @@ export const InboxView = memo(function InboxView() {
         <div className="pad faint">
           {connection === "connected" || connection === "fixtures"
             ? "Nothing needs you right now."
-            : "Waiting for the coordinator. Tasks will appear after connection."}
+            : "Waiting for the coordinator. Issues will appear after connection."}
         </div>
       ) : null}
       <div style={{ height: list.getTotalSize(), position: "relative" }}>

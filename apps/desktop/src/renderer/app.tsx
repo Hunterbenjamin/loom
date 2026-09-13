@@ -74,7 +74,7 @@ export function App() {
             <input
               ref={search}
               className="search"
-              placeholder="Search tasks"
+              placeholder="Search issues"
               value={query}
               onChange={(event) => store.setQuery(event.target.value)}
               onBlur={() => {

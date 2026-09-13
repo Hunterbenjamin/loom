@@ -44,7 +44,7 @@ export function TerminalTab({
   return (
     <div className="terminal-tab">
       {runs.length > 1 ? (
-        <div className="terminal-tabs" role="tablist" aria-label="Task runs">
+        <div className="terminal-tabs" role="tablist" aria-label="Issue runs">
           {runs.map((run) => (
             <button
               key={run.id}
@@ -126,7 +126,7 @@ function TaskShellTerminal({
           outcome.result.kind !== "task_terminal" ||
           outcome.result.taskId !== task.id
         )
-          throw new Error("Task terminal was not confirmed");
+          throw new Error("Issue terminal was not confirmed");
         const next = outcome.result;
         setTerminal((previous) =>
           JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
@@ -150,14 +150,14 @@ function TaskShellTerminal({
           </button>
         </div>
       ) : live && !selected ? (
-        <p role="status">Opening task terminal…</p>
+        <p role="status">Opening issue terminal…</p>
       ) : null}
       {selected && (
         <div className="terminal-bar" role="status">
           {selected.source === "agent"
             ? "Agent terminal"
             : selected.source === "worktree"
-              ? "Task worktree"
+              ? "Issue worktree"
               : "Project root"}
           {" · "}
           {selected.branch ?? "detached HEAD"}

@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`empty task diagnostics omit questions and approvals in text 1`] = `
-"Task
+"Issue
   signature:              -
   id:                     t1
   title:                  Implement core
@@ -30,7 +30,7 @@ Findings
 `;
 
 exports[`task inspect prints a complete fixture without a coordinator 1`] = `
-"Task
+"Issue
   signature:              -
   id:                     t1
   title:                  Implement core

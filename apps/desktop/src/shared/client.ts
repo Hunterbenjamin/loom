@@ -75,7 +75,7 @@ export class TrackerClient {
       clearTimeout(timer);
       resolve(
         unavailable(
-          "Connection lost; outcome unknown. Check task activity before retrying.",
+          "Connection lost; outcome unknown. Check issue activity before retrying.",
         ),
       );
     }
@@ -102,7 +102,7 @@ export class TrackerClient {
         this.pending.delete(requestId);
         resolve(
           unavailable(
-            "No acknowledgement; outcome unknown. Check task activity before retrying.",
+            "No acknowledgement; outcome unknown. Check issue activity before retrying.",
           ),
         );
       }, 15_000);

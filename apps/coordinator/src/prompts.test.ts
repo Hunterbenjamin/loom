@@ -12,9 +12,9 @@ test("Main introduces itself in two sentences, waits and delegates longer work",
   expect(prompt).toContain("Never start work on your own");
   expect(prompt).toContain("restart drills");
   expect(prompt).toContain(
-    "Anything longer than a few seconds must become a Loom task via create_task",
+    "Anything longer than a few seconds must become a Loom issue via create_task",
   );
-  expect(prompt).toContain("Operator and task agents will handle");
+  expect(prompt).toContain("Operator and issue agents will handle");
   expect(prompt).toContain("Never poll");
   expect(prompt).toContain("No shell, terminal attach");
 });
@@ -28,7 +28,7 @@ test("Main reads its bounded memory as context, and panel summaries do not start
   expect(leadBrief(note)).toContain("context, not a request to act");
   expect(mainPanelBrief()).toContain("Needs-you");
   expect(mainPanelBrief()).toContain(
-    "do not investigate, mutate tasks or resolve anything",
+    "do not investigate, mutate issues or resolve anything",
   );
   expect(mainPanelBrief()).toContain("end your turn and wait");
 });

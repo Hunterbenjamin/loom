@@ -142,7 +142,7 @@ try {
   await h.git("switch", "-c", "feat/terminal-branch-check");
   const task = h.coordinator.createTask({
     repoId: h.repo.id,
-    title: "Task terminal fixture",
+    title: "Issue terminal fixture",
     description: "No agent or worktree",
   });
   h.coordinator.submitHuman(task.task.id, {
@@ -198,7 +198,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: terminal lifecycle, automatic task terminal, project root fallback, actual branch preserved, task shell reuse",
+    "PASS: terminal lifecycle, automatic issue terminal, project root fallback, actual branch preserved, issue shell reuse",
   );
 } finally {
   await app?.close();
