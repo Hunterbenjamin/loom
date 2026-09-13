@@ -75,3 +75,67 @@ test("reattach accepts a native rename but rejects a different physical pane or 
     );
   }
 });
+
+function leadAnswer(
+  overrides: Partial<{
+    repoId: string;
+    sessionId: string | null;
+    hostGeneration: string;
+    dead: boolean;
+  }> = {},
+): AckOutcome {
+  const target = renamed;
+  return {
+    ok: true,
+    result: {
+      kind: "attach_session",
+      target: {
+        identity: "lead",
+        repoId: (overrides.repoId ?? "repo") as never,
+        sessionId: (overrides.sessionId === undefined
+          ? "00000000-0000-4000-8000-000000000001"
+          : overrides.sessionId) as never,
+        attach: {
+          kind: "pane_host",
+          argv: ["tmux"],
+          cwd: "/tmp" as WorktreePath,
+          env: {},
+        },
+        pane: {
+          ...target,
+          hostGeneration: overrides.hostGeneration ?? target.hostGeneration,
+          dead: overrides.dead ?? false,
+          exitStatus: null,
+          attachedClients: 0,
+          size: null,
+          observedAt: "2026-09-13T00:00:00.000Z" as IsoTime,
+        },
+      },
+    },
+  };
+}
+
+test("Main attach accepts only the requested repository's live persisted target", async () => {
+  reply.mockResolvedValue(leadAnswer());
+  await expect(resolveAttach(config, { lead: "repo" })).resolves.toMatchObject({
+    identity: "lead",
+    repoId: "repo",
+    sessionId: "00000000-0000-4000-8000-000000000001",
+    pane: { paneId: "%1" },
+  });
+  for (const answer of [
+    leadAnswer({ repoId: "other" }),
+    leadAnswer({ sessionId: null }),
+    leadAnswer({ dead: true }),
+    leadAnswer({ hostGeneration: "loom-other#1" }),
+  ]) {
+    reply.mockResolvedValue(answer);
+    await expect(resolveAttach(config, { lead: "repo" })).rejects.toThrow(
+      "no live pane",
+    );
+  }
+  expect(reply).toHaveBeenCalledWith({
+    kind: "open_lead_session",
+    repoId: "repo",
+  });
+});
