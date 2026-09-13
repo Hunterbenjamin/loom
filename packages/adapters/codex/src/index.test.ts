@@ -8,7 +8,11 @@ import type {
 } from "@loom/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeServer } from "./fake-server.js";
-import { codexMcpServer, createCodexAdapter } from "./index.js";
+import {
+  codexMcpServer,
+  createCodexAdapter,
+  StaleCodexRequestError,
+} from "./index.js";
 
 describe("codexMcpServer", () => {
   it("translates an HTTP registration to Codex's http_headers key", () => {
@@ -185,7 +189,7 @@ describe("Codex app-server adapter", () => {
       expect((await adapter.readThread(threadId)).pendingRequests).toEqual([]),
     );
     await expect(adapter.answerRequest(answer(1))).rejects.toThrow(
-      "No matching",
+      StaleCodexRequestError,
     );
   });
   it("increments generation on reconnect, rejects old approval IDs, and requires rehydration", async () => {

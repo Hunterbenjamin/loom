@@ -60,6 +60,33 @@ export function observeRuns(c: Context): void {
           summary: r.summary,
           receivedAt: r.receivedAt,
         }));
+        // Only a fresh, hydrated reading can retire requests. IDs are opaque and may
+        // coexist: a newer ID does not supersede an older one that is still pending.
+        for (const row of c.state.outbox) {
+          const action = row.action;
+          if (
+            action?.kind !== "answer_provider_request" ||
+            action.runId !== run.id
+          )
+            continue;
+          // Repair answers persisted before each request became independent.
+          if (row.status === "pending") row.dependsOn = [];
+          if (
+            !(
+              row.status === "pending" ||
+              row.status === "running" ||
+              (row.status === "failed" && row.retryAt)
+            ) ||
+            (action.generation === provider.generation &&
+              provider.pendingRequests.some(
+                (r) => r.requestId === action.requestId,
+              ))
+          )
+            continue;
+          row.status = "canceled";
+          row.finishedAt ??= c.now;
+          row.retryAt = undefined;
+        }
         const turn = provider.turns.at(-1);
         if (turn)
           run.lastTurn = {

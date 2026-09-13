@@ -21,11 +21,11 @@ import type { TurnInterruptParams } from "./generated/v2/TurnInterruptParams.js"
 import type { TurnStartParams } from "./generated/v2/TurnStartParams.js";
 import type { TurnSteerParams } from "./generated/v2/TurnSteerParams.js";
 import { type Incoming, RpcConnection, RpcError, redact } from "./protocol.js";
-import { PendingRequests } from "./requests.js";
+import { PendingRequests, StaleCodexRequestError } from "./requests.js";
 import * as schemas from "./schemas.js";
 import { CODEX_VERSION, TaskServer } from "./server.js";
 
-export { CODEX_VERSION, RpcError };
+export { CODEX_VERSION, RpcError, StaleCodexRequestError };
 export interface CodexAdapterOptions {
   onDiagnostic?: (event: import("@loom/core").AdapterDiagnostic) => void;
   /** Dedicated per-task state directory. Keep it short enough for a Unix socket. */
@@ -499,7 +499,7 @@ class AppServerAdapter implements CodexAdapter {
     return this.rpcWithReconnect(async () => {
       const connection = this.rpc();
       if (req.generation !== this.currentGeneration)
-        throw new Error("Stale Codex request generation");
+        throw new StaleCodexRequestError("Stale Codex request generation");
       this.pending.answer(req, connection);
     });
   }
