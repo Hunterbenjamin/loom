@@ -2,10 +2,12 @@
 # Start an agent on a brief: a git worktree on <branch>, a window on Loom's private tmux server,
 # and an agent told to follow the brief. Run it from anywhere; it needs no terminal of its own.
 #
-# Usage: scripts/agent.sh <name> <claude|codex> <branch> <brief> [--model <model>] [--base <branch>] [--auto]
+# Usage: scripts/agent.sh <name> <claude|codex> <branch> <brief|-> [--task <text>] [--model <model>] [--base <branch>] [--auto]
 #   e.g. scripts/agent.sh core-design claude feat/core-design docs/briefs/phase-1a-core-design.md
 #        scripts/agent.sh ui-shell claude feat/ui-shell docs/briefs/ui-shell.md --model opus
+#        scripts/agent.sh fix-timings codex fix/timings - --task "loom task timings prints 0 for the last stage; fix it and add a test"
 # <brief> is relative to the repo root and must be committed: the worktree only has committed files.
+# Pass `-` and --task <text> instead for a job too small for a brief; the text is the whole job.
 # Without --model the agent uses its own default. --auto reduces approval prompts: Codex runs
 # --full-auto (writes sandboxed to the worktree; it asks only when a sandboxed command fails) and
 # Claude runs --permission-mode acceptEdits. Use it for Loom's own agents in isolated worktrees.
@@ -19,7 +21,7 @@ die() {
   exit 1
 }
 
-[ $# -ge 4 ] || die "usage: scripts/agent.sh <name> <claude|codex> <branch> <brief> [--model <model>] [--base <branch>] [--auto]"
+[ $# -ge 4 ] || die "usage: scripts/agent.sh <name> <claude|codex> <branch> <brief|-> [--task <text>] [--model <model>] [--base <branch>] [--auto]"
 name="$1"
 kind="$2"
 branch="$3"
@@ -29,8 +31,10 @@ shift 4
 model=""
 base="main"
 auto=0
+task=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --task) [ $# -ge 2 ] || die "--task needs a value"; task="$2"; shift 2 ;;
     --model) [ $# -ge 2 ] || die "--model needs a value"; model="$2"; shift 2 ;;
     --base) [ $# -ge 2 ] || die "--base needs a value"; base="$2"; shift 2 ;;
     --auto) auto=1; shift ;;
@@ -53,8 +57,13 @@ session="loom-$name"
 tm() { "$tmux_bin" -L "$socket" "$@"; }
 
 repo="$(git rev-parse --show-toplevel)"
-git -C "$repo" cat-file -e "HEAD:$brief_path" 2>/dev/null ||
-  die "$brief_path is not committed on HEAD, so the new worktree won't have it"
+if [ "$brief_path" = - ]; then
+  [ -n "$task" ] || die "a brief of - needs --task <text>"
+else
+  [ -z "$task" ] || die "give a brief or --task, not both"
+  git -C "$repo" cat-file -e "HEAD:$brief_path" 2>/dev/null ||
+    die "$brief_path is not committed on HEAD, so the new worktree won't have it"
+fi
 
 # Git owns worktrees and branches (principle 1); the pane host only opens a session on the path.
 root="${LOOM_WORKTREE_ROOT:-$HOME/.loom/worktrees/$(basename "$repo")}"
@@ -128,7 +137,11 @@ pane="$(tm new-window -d -P -F '#{pane_id}' -t "$session:" -n agent -c "$worktre
 # agent rather than the idle shell window created first. Grouped views keep their own selection.
 tm select-window -t "$session:agent"
 
-prompt="Read AGENTS.md and $brief_path, then carry out the work it describes within its rules. Stop and report once the pull request the brief asks for is open."
+if [ -n "$task" ]; then
+  prompt="Read AGENTS.md, then do this within its rules: $task. Work on branch $branch, run pnpm test, pnpm lint and pnpm typecheck, and open a pull request against $base. Stop and report once it is open."
+else
+  prompt="Read AGENTS.md and $brief_path, then carry out the work it describes within its rules. Stop and report once the pull request the brief asks for is open."
+fi
 
 # Wait for the TUI to be ready for input before pasting: a cold-started Codex or Claude drops a
 # prompt typed too early. The pane being alive is the only thing the host can tell us; the

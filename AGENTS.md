@@ -11,6 +11,11 @@ the process that runs them, and its README says how. Your brief is the file name
 launched, under `docs/briefs/`; Phase 2 briefs share `docs/briefs/phase-2-common.md`. The spikes in
 `spikes/` are finished reference material, never imported.
 
+**How Loom is built right now:** mostly off its own pipeline. Loom work is done by agents launched
+directly into worktrees (`scripts/agent.sh`, or a session opened by hand) and reviewed by a human.
+Only tasks the human explicitly files go through Loom's coordinator; see "Until then: two tracks"
+in `docs/build-plan.md`.
+
 Read `docs/architecture.md` before any change to how Loom talks to external tools, stores state,
 or moves tasks between stages.
 
@@ -84,7 +89,8 @@ Agents working on this repo run on the same machine as the user's real work.
   Use per-process flags instead: `claude --settings`, `codex -c`, `tmux -L … -f …`, environment variables.
 - Once the coordinator exists, development instances will run with `LOOM_INSTANCE=dev` and their own data directory and
   ports. Only reach the stable instance through the MCP tools you were given.
-- No force-pushes, no pushes to `main`, no merging. Open a PR and let a human merge it.
+- No force-pushes, no pushes to `main`. Open a PR. Merge it yourself only when the human has
+  told you to merge in this session, and only after CI is green; otherwise leave it for them.
 - Keep secrets, tokens and email addresses out of commits, logs and findings.
 
 ## Git
