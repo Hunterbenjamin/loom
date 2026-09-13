@@ -40,9 +40,11 @@ test("all roles use configured Codex settings through store, recipes, turns, and
     for (const run of state.runs) {
       expect(run).toMatchObject({
         provider: "codex",
+        mode: "interactive",
         model: "gpt-5.6-sol",
         reasoningEffort: "medium",
       });
+      expect(run.pane).not.toBeNull();
       expect(h.coordinator.recipes.get(run.id)).toMatchObject({
         model: "gpt-5.6-sol",
         reasoningEffort: "medium",
@@ -54,6 +56,12 @@ test("all roles use configured Codex settings through store, recipes, turns, and
         model: "gpt-5.6-sol",
         config: { model_reasoning_effort: "medium" },
       });
+    expect(startThread.mock.calls.map(([request]) => request.sandbox)).toEqual([
+      "read-only", // planner
+      "danger-full-access", // implementer
+      "read-only", // first review
+      "read-only", // review after the fix round
+    ]);
     expect(startTurn).toHaveBeenCalled();
     for (const [request] of startTurn.mock.calls)
       expect(request).toMatchObject({ model: "gpt-5.6-sol", effort: "medium" });
@@ -103,7 +111,10 @@ test("restart replaces Claude with Sol on the same dirty worktree and retires fi
     const file = join(before.worktree.path, "unfinished.txt");
     await writeFile(file, "keep this work\n");
     h.config.providerOverrides.planner = "codex";
-    const closed = vi.spyOn(h.providers.claude, "closeHeadless");
+    expect(old.mode).toBe("interactive");
+    expect(old.pane).not.toBeNull();
+    const closed = vi.spyOn(h.paneHost, "closePane");
+    const closeHeadless = vi.spyOn(h.providers.claude, "closeHeadless");
     const start = vi.spyOn(h.providers.codex, "startThread");
     h.coordinator.submitHuman(created.task.id, {
       type: "restart_run",
@@ -123,7 +134,8 @@ test("restart replaces Claude with Sol on the same dirty worktree and retires fi
     expect(replacement?.sessionId).not.toBe(old.sessionId);
     expect(state.task.stage).toBe("planning");
     expect(await readFile(file, "utf8")).toBe("keep this work\n");
-    expect(closed).toHaveBeenCalledWith(old.sessionId);
+    expect(closed).toHaveBeenCalledWith(old.pane);
+    expect(closeHeadless).not.toHaveBeenCalled();
     expect(closed.mock.invocationCallOrder[0]).toBeLessThan(
       start.mock.invocationCallOrder[0] ?? 0,
     );

@@ -2,7 +2,7 @@
 // default: a development coordinator must never open the stable instance's database.
 
 import { hostname } from "node:os";
-import type { Provider, ReconcileConfig } from "@loom/core";
+import type { Provider, ReconcileConfig, Role, RunMode } from "@loom/core";
 import { z } from "zod";
 import { deriveClaudeSessionId, sha256 } from "./derive.js";
 
@@ -36,6 +36,59 @@ const port = z.number().int().min(1).max(65535);
  */
 const derivedPort = (bindPort: number, offset: number): number =>
   bindPort === 0 ? 0 : bindPort + offset;
+
+/**
+ * Parse LOOM_RUN_MODES format: "role1=mode1,role2=mode2,..."
+ * Defaults all roles to "interactive" if not specified.
+ * Validates format and rejects invalid roles or modes.
+ */
+function parseRunModes(value?: string): Record<Role, RunMode> {
+  const defaults: Record<Role, RunMode> = {
+    planner: "interactive",
+    implementer: "interactive",
+    reviewer: "interactive",
+  };
+
+  if (!value) return defaults;
+
+  const parsed: Partial<Record<Role, RunMode>> = {};
+  const parts = value.split(",").map((p) => p.trim());
+  const validRoles: Role[] = ["planner", "implementer", "reviewer"];
+  const validModes: RunMode[] = ["interactive", "headless"];
+
+  for (const part of parts) {
+    if (!part) {
+      throw new Error(
+        'Invalid LOOM_RUN_MODES entry: expected "role=mode" format',
+      );
+    }
+
+    const segments = part.split("=");
+    if (segments.length !== 2) {
+      throw new Error(
+        `Invalid LOOM_RUN_MODES entry "${part}": expected "role=mode" format`,
+      );
+    }
+
+    const [role, mode] = segments.map((s) => s.trim());
+
+    if (!validRoles.includes(role as Role)) {
+      throw new Error(
+        `Invalid role in LOOM_RUN_MODES: "${role}". Valid roles: ${validRoles.join(", ")}`,
+      );
+    }
+
+    if (!validModes.includes(mode as RunMode)) {
+      throw new Error(
+        `Invalid mode in LOOM_RUN_MODES: "${mode}". Valid modes: ${validModes.join(", ")}`,
+      );
+    }
+
+    parsed[role as Role] = mode as RunMode;
+  }
+
+  return { ...defaults, ...parsed };
+}
 
 export const configSchema = z
   .object({
@@ -109,6 +162,10 @@ export const configSchema = z
     tmuxExecutable: z.string().min(1).default("tmux"),
     codexExecutable: z.string().min(1).default("codex"),
     claudeExecutable: z.string().min(1).default("claude"),
+    runModes: z
+      .string()
+      .optional()
+      .transform((value) => parseRunModes(value)),
   })
   .transform((config) => ({
     ...config,
@@ -132,6 +189,7 @@ export const reconcileConfig = (
   worktreeRoot: config.worktreeRoot,
   baseBranch: config.baseBranch,
   models: config.models as Record<Provider, string>,
+  runModes: config.runModes,
   providerOverrides: config.providerOverrides,
   codexReasoningEffort: config.codexReasoningEffort,
 });
@@ -198,6 +256,7 @@ export function configFromEnvironment(
     tmuxExecutable: optional("LOOM_TMUX"),
     codexExecutable: optional("LOOM_CODEX"),
     claudeExecutable: optional("LOOM_CLAUDE"),
+    runModes: optional("LOOM_RUN_MODES"),
     mcpPort: env.LOOM_MCP_PORT
       ? Number(env.LOOM_MCP_PORT)
       : derivedPort(bindPort, 1),

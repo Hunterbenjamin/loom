@@ -1,7 +1,7 @@
 [
   {
     "name": "planner",
-    "agent": { "provider": "claude", "role": "planner", "mode": "headless" },
+    "agent": { "provider": "claude", "role": "planner", "mode": "interactive" },
     "steps": [
       { "expect": "message" },
       {

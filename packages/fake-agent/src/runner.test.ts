@@ -217,6 +217,10 @@ test("CI failing after approval disarms auto merge and creates one finding by na
 
 test("interactive Claude vanishes without automatic relaunch", async () => {
   const env = await environment("vanished-interactive");
+  env.state.config.runModes = {
+    ...env.state.config.runModes,
+    implementer: "interactive",
+  };
   env.state.task.providers.implementer = "claude";
   const result = await runScenario({
     ...env.options,
@@ -232,6 +236,10 @@ test("interactive Claude vanishes without automatic relaunch", async () => {
 
 test("leftover steps fail immediately when a run ends", async () => {
   const env = await environment("vanished-interactive");
+  env.state.config.runModes = {
+    ...env.state.config.runModes,
+    implementer: "interactive",
+  };
   env.state.task.providers.implementer = "claude";
   env.scenarios[0]?.steps.push({ status: "idle" });
   await expect(

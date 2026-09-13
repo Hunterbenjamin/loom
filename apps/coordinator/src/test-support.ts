@@ -57,7 +57,10 @@ export interface HarnessOptions {
   serveProtocol?: boolean;
   /** Extra files committed into the repository before the branch exists. */
   files?: Record<string, string>;
-  config?: Partial<CoordinatorConfig>;
+  config?: Partial<Omit<CoordinatorConfig, "runModes">> & {
+    /** Raw environment-style value parsed at the same boundary as production configuration. */
+    runModes?: string;
+  };
 }
 
 export interface Harness {

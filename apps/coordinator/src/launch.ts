@@ -232,6 +232,7 @@ export async function startRun(
       resume: action.resume,
       model: action.model,
       settingsPath,
+      readOnly: READ_ONLY.includes(action.role),
     });
     const pane = await openPane(deps, state, action, {
       ...recipe,

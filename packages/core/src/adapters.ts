@@ -298,11 +298,13 @@ export interface ClaudeAdapter {
    */
   interactiveArgs(req: {
     /** Conversation sessions: only Loom MCP and read-only file tools, confined to cwd. */
-    readOnly?: boolean;
+    conversationOnly?: boolean;
     sessionId: ProviderSessionId;
     resume: boolean;
     model: string;
     settingsPath: string;
+    /** Planners and reviewers must not inherit implementer edit/bypass permissions. */
+    readOnly: boolean;
   }): string[];
   /** Agent SDK. Loom chooses the session ID. */
   startHeadless(req: {

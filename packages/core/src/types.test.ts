@@ -115,6 +115,11 @@ const state: TaskState = {
     unknownGraceMs: 60_000,
     deliveryTimeoutMs: 10_000,
     githubPollMs: 60_000,
+    runModes: {
+      planner: "interactive",
+      implementer: "interactive",
+      reviewer: "interactive",
+    },
   },
 };
 

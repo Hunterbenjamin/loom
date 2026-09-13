@@ -405,6 +405,136 @@ test("deriveBashPrefixes returns fixed prefixes when repoById is not provided", 
   expect(prefixes).toEqual(FIXED_BASH_PREFIXES);
 });
 
+test("runModes defaults to interactive for all roles when not specified", () => {
+  const base = {
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+  };
+  const config = configSchema.parse(base);
+  expect(config.runModes).toEqual({
+    planner: "interactive",
+    implementer: "interactive",
+    reviewer: "interactive",
+  });
+});
+
+test("runModes can be overridden via configSchema", () => {
+  const base = {
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+  };
+  const config = configSchema.parse({
+    ...base,
+    runModes: "planner=headless,implementer=interactive,reviewer=headless",
+  });
+  expect(config.runModes).toEqual({
+    planner: "headless",
+    implementer: "interactive",
+    reviewer: "headless",
+  });
+});
+
+test("runModes can be partially overridden", () => {
+  const base = {
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+  };
+  const config = configSchema.parse({
+    ...base,
+    runModes: "planner=headless",
+  });
+  expect(config.runModes).toEqual({
+    planner: "headless",
+    implementer: "interactive",
+    reviewer: "interactive",
+  });
+});
+
+test("runModes trims whitespace around entries", () => {
+  const config = configSchema.parse({
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+    runModes: " planner = headless , reviewer = interactive ",
+  });
+  expect(config.runModes).toEqual({
+    planner: "headless",
+    implementer: "interactive",
+    reviewer: "interactive",
+  });
+});
+
+test("configFromEnvironment reads LOOM_RUN_MODES from environment", () => {
+  const baseEnv = {
+    LOOM_INSTANCE: "dev",
+    LOOM_DATA_ROOT: "/tmp/loom",
+    LOOM_TOKEN: "0123456789abcdef0123",
+  };
+  const env = {
+    ...baseEnv,
+    LOOM_RUN_MODES: "planner=headless,reviewer=headless",
+  };
+  const config = configFromEnvironment(env);
+  expect(config.runModes).toEqual({
+    planner: "headless",
+    implementer: "interactive",
+    reviewer: "headless",
+  });
+});
+
+test("runModes rejects invalid role in LOOM_RUN_MODES", () => {
+  const base = {
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+    runModes: "invalid=headless",
+  };
+  expect(() => configSchema.parse(base)).toThrow(/Invalid role/);
+});
+
+test("runModes rejects invalid mode in LOOM_RUN_MODES", () => {
+  const base = {
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+    runModes: "planner=invalid",
+  };
+  expect(() => configSchema.parse(base)).toThrow(/Invalid mode/);
+});
+
+test("runModes rejects malformed entries in LOOM_RUN_MODES", () => {
+  const base = {
+    instance: "dev",
+    dataRoot: "/tmp/loom",
+    worktreeRoot: "/tmp/loom/worktrees",
+    token: "0123456789abcdef0123",
+    models: { codex: "a", claude: "b" },
+    runModes: "planner:headless",
+  };
+  expect(() => configSchema.parse(base)).toThrow(/expected "role=mode" format/);
+  expect(() =>
+    configSchema.parse({
+      ...base,
+      runModes: "planner=headless,,reviewer=headless",
+    }),
+  ).toThrow(/expected "role=mode" format/);
+});
+
 test("task provider overrides and explicit Codex reasoning are validated", () => {
   const env = {
     LOOM_INSTANCE: "dev",
