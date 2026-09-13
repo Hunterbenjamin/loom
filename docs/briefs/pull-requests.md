@@ -23,7 +23,9 @@ opened by hand or by off-pipeline agents.
 - **Polling uses one GraphQL request per list** through `gh api graphql`, including checks,
   review decision and mergeability (100 rows per page; cursor pagination up to the existing
   1,000-page cap). GraphQL has no ETag: compare mapped rows per repo/state and publish no patch
-  when unchanged. REST detail/patch reads retain their conditional ETags. List every 60 s while
+  when unchanged. Reviews slice 1 supersedes the detail transport: one GraphQL content read and an immutable
+  REST compare diff, published independently. Warm polls refresh metadata/checks and reuse content
+  and diff by head/base; an edited PR or explicit refresh invalidates content. List every 60 s while
   a window shows the PR view; detail every 30 s while it is open; refresh after any command.
   First snapshots and subscription acknowledgments use the cached projection immediately,
   with `loading: true` for an initial list read; rows arrive in patches. Different scopes read
@@ -98,3 +100,14 @@ the browser.
 - `pnpm test`, `pnpm lint`, `pnpm typecheck` and the desktop build green. Update
   `docs/architecture.md` (ownership table, polling) and `docs/design/ui.md` where this changes
   them, in the same PR as the slice that changes them.
+
+## Superseded by Reviews slice 1
+
+`docs/briefs/reviews.md` slice 1 changes loading only; the current sidebar, tabs and actions stay.
+GraphQL detail includes file metadata, reviews and comments for future slices. Detail publishes
+before its diff. The Files tab shows Loading diff until the matching patch arrives, or a retryable
+error while Description remains readable. List rows now include `baseSha`; diff payloads carry
+both requested SHAs and may be null while loading. GitHub diff responses contain no commit SHA,
+so the REST diff uses an immutable base/head compare endpoint. Cached list SHAs allow parallel
+reads; a direct open without cached metadata fetches detail before the diff. An outdated list
+range is never attached to a new head. Coordinator logs record read durations.

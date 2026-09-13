@@ -290,7 +290,18 @@ export function PullRequestDetail({
               <Suspense
                 fallback={<div className="pad faint">Loading files…</div>}
               >
-                <Files row={row} />
+                {row.patchError ? (
+                  <div className="pad" role="alert">
+                    {row.patchError}
+                  </div>
+                ) : null}
+                {row.patch ? (
+                  <Files row={{ ...row, patch: row.patch }} />
+                ) : row.patchLoading ? (
+                  <div className="pad faint" role="status">
+                    Loading diff…
+                  </div>
+                ) : null}
               </Suspense>
             ) : null}
             {tab === "Commits" ? (
