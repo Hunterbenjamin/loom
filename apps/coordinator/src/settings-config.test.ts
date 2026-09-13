@@ -22,7 +22,11 @@ test("Main settings keep their environment override while Operator environment i
   expect(config.settingsEnvironment?.main).toEqual({ model: "claude-opus-5" });
   const settings = settingsDefaultsForConfig(config);
   expect(settings.main.model).toBe("claude-opus-5");
-  settings.main.model = "claude-opus-4-6";
-  applyStoredSettingsToConfig(config, settings, false);
+  applyStoredSettingsToConfig(
+    config,
+    { ...config, settingsEnvironment: {} },
+    { main: { model: "claude-opus-4-6" } },
+    false,
+  );
   expect(config.leadModel).toBe("claude-opus-4-6");
 });

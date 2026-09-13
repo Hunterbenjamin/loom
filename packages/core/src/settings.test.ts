@@ -47,7 +47,6 @@ describe("settings resolution", () => {
       },
       null,
       DEFAULT_SETTINGS,
-      SETTINGS_CATALOG,
       {
         models: { codex: "gpt-5.6-sol" },
         codexReasoningEffort: "high",
