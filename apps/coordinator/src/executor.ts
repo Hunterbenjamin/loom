@@ -312,6 +312,10 @@ export class Executor {
                 throw error;
               }
             };
+            // A coordinator that restarted after this run ended has not resumed its thread, and
+            // the adapter refuses to read an unresumed thread. Resume first; a thread that is
+            // gone falls through to the resumable check below.
+            await codex.resumeThread(sessionId).catch(() => undefined);
             let observation = await read();
             const turn = observation?.turns.at(-1);
             if (turn?.status === "inProgress") {
