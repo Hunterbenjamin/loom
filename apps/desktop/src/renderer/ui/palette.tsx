@@ -25,10 +25,12 @@ export function Palette() {
   }, [open]);
 
   if (!open) return null;
-  const current =
-    openPr || view === "pull-requests"
-      ? null
-      : (openTask ?? visibleRows[cursor]?.task.id ?? null);
+  const current = openPr
+    ? null
+    : (openTask ??
+      (view === "pull-requests"
+        ? null
+        : (visibleRows[cursor]?.task.id ?? null)));
   const close = () => store.setPalette(false);
   const run = (action: () => void) => {
     close();

@@ -459,3 +459,20 @@ test("a pending command cannot be submitted again through shortcuts or the palet
     }),
   );
 });
+
+test("opening a linked issue retains issue palette commands over the PR list", () => {
+  const h = setup();
+  const task = h.fixture.tasks[0];
+  if (!task) throw new Error("Missing issue");
+  act(() => {
+    h.store.setView("pull-requests");
+    h.store.open(task.id);
+    h.store.setPalette(true);
+  });
+  expect(h.host.querySelector("[cmdk-root]")?.textContent).toContain(
+    "Review changes and findings",
+  );
+  expect(
+    h.host.querySelector('[data-value^="pull-request-merge "]'),
+  ).toBeNull();
+});
