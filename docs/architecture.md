@@ -521,3 +521,19 @@ interpolation. The renderer retains only the active draft and submission identit
 Requested reviewers come from GraphQL. Branch divergence is read from an immutable REST comparison
 and cached by both SHAs; it publishes after detail so it cannot delay Overview or diff rendering.
 No branch status is inferred from mergeability alone, except GitHub's explicit conflict state.
+
+### PR Diff review state and immutable content
+
+`save_review_state` also accepts a repository/PR target, independent of an issue. SQLite metadata
+owns its viewed-file records at one head SHA; per-file updates preserve other windows' marks and
+publish through the existing PR detail projection. The coordinator checks the current GitHub head
+and file membership before saving. A different head projects an empty viewed set. Renderer state
+contains only transient selection/settings and disposable content read results.
+
+Commit and full-file requests travel through validated coordinator commands and the GitHub adapter.
+Commit membership is checked against the observed PR head; the REST commit's first parent supplies
+its immutable comparison range. Full file reads resolve rename paths and the merge base from GitHub
+comparison metadata, never patch guesses. Missing comparison metadata, binary data, oversized files
+and parse failures are explicit errors. Contents are bounded at 2 MiB per side; whitespace-filtered
+patches are computed in the adapter with a one-second computation limit. No local checkout or
+provider session is involved. The UI continues to use Pierre CodeView and its bounded worker pool.

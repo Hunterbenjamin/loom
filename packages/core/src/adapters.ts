@@ -196,6 +196,21 @@ export interface PullRequestPatch {
 }
 
 export interface GitHubAdapter {
+  readPullRequestCommit(
+    repo: string,
+    number: number,
+    commitSha: Sha,
+  ): Promise<{
+    patch: PullRequestPatch;
+    files: PullRequestDetail["files"];
+  }>;
+  readPullRequestFile(
+    repo: string,
+    range: { baseSha: Sha; headSha: Sha },
+    path: string,
+    ignoreWhitespace: boolean,
+  ): Promise<{ old: string; new: string; patch: string }>;
+
   readPullRequestBehind(
     repo: string,
     range: { baseSha: Sha; headSha: Sha },

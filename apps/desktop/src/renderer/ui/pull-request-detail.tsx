@@ -15,7 +15,9 @@ import { PullRequestGlyph as PrGlyph } from "./pull-request-glyph.js";
 import { ChangeCounts, PullRequestOverview } from "./pull-request-overview.js";
 
 const Files = lazy(() =>
-  import("./diff.js").then((m) => ({ default: m.PullRequestFiles })),
+  import("./pull-request-diff.js").then((m) => ({
+    default: m.PullRequestDiff,
+  })),
 );
 type Detail = PullRequestDetailRow["detail"];
 type Confirmation =
@@ -338,18 +340,7 @@ export function PullRequestDetail({
             <Suspense
               fallback={<div className="pad faint">Loading files…</div>}
             >
-              {row.patchError ? (
-                <div className="pad" role="alert">
-                  {row.patchError}
-                </div>
-              ) : null}
-              {row.patch ? (
-                <Files row={{ ...row, patch: row.patch }} selectedFile={file} />
-              ) : row.patchLoading ? (
-                <div className="pad faint" role="status">
-                  Loading diff…
-                </div>
-              ) : null}
+              <Files row={row} selectedFile={file} />
             </Suspense>
           )
         ) : (

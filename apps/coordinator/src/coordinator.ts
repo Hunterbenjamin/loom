@@ -2,6 +2,8 @@ import {
   type ProtocolError,
   paneIdentity,
   pullRequestCommand,
+  pullRequestDiffRead,
+  pullRequestReviewChange,
 } from "@loom/protocol";
 import { PaneInventory, paneKey } from "./pane-inventory.js";
 import { PullRequestViews } from "./pull-requests.js";
@@ -260,6 +262,10 @@ export class Coordinator {
       onResult: (taskId) => this.loop.enqueue(taskId),
     });
     this.prViews = new PullRequestViews({
+      viewedFiles: (repo, number, head) =>
+        this.store.pullRequestViewedFiles(repo, number, head),
+      saveReviewState: (command) =>
+        this.store.savePullRequestReviewState(command),
       preferences: (repo, number) =>
         this.store.pullRequestPreferences(repo, number),
       log: (message) => this.log(message),
@@ -865,6 +871,33 @@ export class Coordinator {
   ): Promise<
     { ok: true; result: unknown } | { ok: false; error: ProtocolError }
   > {
+    const review = pullRequestReviewChange.safeParse(value);
+    const diffRead = pullRequestDiffRead.safeParse(value);
+    if (review.success || diffRead.success) {
+      try {
+        if (review.success) {
+          await this.prViews.saveReview(review.data);
+          return { ok: true, result: { kind: "pull_request_review_state" } };
+        }
+        if (diffRead.success)
+          return {
+            ok: true,
+            result: await this.prViews.readDiff(diffRead.data),
+          };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "guard_failed",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Could not read review state",
+            details: [],
+          },
+        };
+      }
+    }
     const pr = pullRequestCommand.safeParse(value);
     if (pr.success) {
       if (!this.store.repos().some((repo) => repo.id === pr.data.repoId))

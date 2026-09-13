@@ -3,6 +3,7 @@ import type { GitHubAdapter, PullRequestObservation } from "@loom/core";
 import { z } from "zod";
 import { Api, type Pages } from "./api.js";
 import { branchActions } from "./branches.js";
+import { diffReads } from "./diff.js";
 import { failure, type GhRunner, GitHubError, runGh } from "./gh.js";
 import { observe } from "./observation.js";
 import { pullRequestReads } from "./pull-requests.js";
@@ -58,8 +59,12 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
     if (result.exitCode !== 0) throw failure(result);
   };
 
+  const reads = pullRequestReads(run, () =>
+    s.time.parse((options.now?.() ?? new Date()).toISOString()),
+  );
   const comparisons = new Map<string, number>();
   return {
+    ...diffReads(run, reads.readPullRequestPatch),
     async readPullRequestBehind(repo, range) {
       s.repo.parse(repo);
       s.sha.parse(range.baseSha);
@@ -116,9 +121,7 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
         "Comment outcome is unconfirmed; refresh before retrying",
       );
     },
-    ...pullRequestReads(run, () =>
-      s.time.parse((options.now?.() ?? new Date()).toISOString()),
-    ),
+    ...reads,
     deleteBranch,
     async closePullRequest(repo, number) {
       s.repo.parse(repo);

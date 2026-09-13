@@ -485,6 +485,25 @@ export class FakeGitHub implements GitHubAdapter {
       },
     };
   }
+  readPullRequestCommit: GitHubAdapter["readPullRequestCommit"] = async (
+    repo,
+    number,
+    commitSha,
+  ) => {
+    const detail = await this.readPullRequest(repo, number);
+    return {
+      files: detail.files,
+      patch: await this.readPullRequestPatch(repo, number, {
+        baseSha: detail.baseSha,
+        headSha: commitSha,
+      }),
+    };
+  };
+  readPullRequestFile: GitHubAdapter["readPullRequestFile"] = async () => ({
+    old: "before\n",
+    new: "after\n",
+    patch: "--- a/example.ts\n+++ b/example.ts\n@@ -1 +1 @@\n-before\n+after\n",
+  });
   readPullRequestPatch: GitHubAdapter["readPullRequestPatch"] = async (
     repo,
     number,
