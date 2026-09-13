@@ -355,6 +355,22 @@ describe("Codex app-server adapter", () => {
       ),
     ).toHaveLength(1);
   });
+  it("reconnects observation without replaying an ambiguously delivered turn", async () => {
+    let attempts = 0;
+    fake.handle((method, _params, socket) => {
+      if (method !== "turn/start")
+        throw new Error(`Unexpected fake method ${method}`);
+      attempts += 1;
+      socket.terminate();
+      return undefined;
+    });
+
+    await expect(
+      adapter.startTurn({ threadId, text: "send exactly once" }),
+    ).rejects.toThrow("closed");
+    expect(attempts).toBe(1);
+    expect(adapter.generation()).toBe(2);
+  });
   it("reconnects by resuming subscribed threads before retrying their reads", async () => {
     await adapter.resumeThread(threadId);
     fake.disconnect();

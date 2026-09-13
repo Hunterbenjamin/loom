@@ -237,8 +237,11 @@ class AppServerAdapter implements CodexAdapter {
       await this.connect();
     }
   }
-  /** Wraps an RPC action to automatically reconnect if the connection is lost. */
-  private async rpcWithReconnect<T>(action: () => Promise<T>): Promise<T> {
+  /** Reconnects lost observation, replaying only reads or actions that never reached transport. */
+  private async rpcWithReconnect<T>(
+    action: () => Promise<T>,
+    replaySafe = false,
+  ): Promise<T> {
     let originalError: Error | null = null;
     try {
       return await action();
@@ -255,12 +258,16 @@ class AppServerAdapter implements CodexAdapter {
         // Not a disconnection error; re-throw as-is
         throw error;
       }
-      // Connection lost; attempt reconnection once
+      const failedBeforeTransport =
+        message ===
+        "Codex disconnected; reconnect and resume the recorded thread";
+      // Restore observation after any connection loss. A mutation whose request may have reached
+      // Codex remains failed: its durable executor receipt and a fresh snapshot decide what follows.
       originalError = error;
       try {
         await this.reconnectAfterDisconnection();
-        // Reconnection successful; retry the action once
-        return await action();
+        if (failedBeforeTransport || replaySafe) return await action();
+        throw originalError;
       } catch (reconnectError) {
         // Reconnection failed; prefer to throw the original error if it's more informative
         const reconnectMessage =
@@ -407,7 +414,7 @@ class AppServerAdapter implements CodexAdapter {
       this.assertCurrent(connection);
       this.subscribed.add(threadId);
       return observation;
-    });
+    }, true);
   }
   async readThread(
     threadId: ProviderSessionId,
@@ -449,7 +456,7 @@ class AppServerAdapter implements CodexAdapter {
         throw error;
       }
       return this.observe(connection, threadId, thread);
-    });
+    }, true);
   }
   private async observe(
     connection: RpcConnection,
@@ -546,7 +553,7 @@ class AppServerAdapter implements CodexAdapter {
         usageAllowed: limits.ordinaryUsageAllowed,
         resetsAt: resets.length ? iso(Math.max(...resets)) : null,
       };
-    });
+    }, true);
   }
   async checkResumable(threadId: ProviderSessionId): Promise<boolean | null> {
     let probe: RpcConnection | undefined;
