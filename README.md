@@ -1,6 +1,8 @@
 # Loom
 
-A local, Linear-style control surface for coding agents. Loom moves tasks through
+Terminology: an “issue” in the UI is a “task” in the code; internal identifiers and MCP tool names retain `task`.
+
+A local, Linear-style control surface for coding agents. Loom moves issues through
 Backlog → Todo → In progress → In review → Awaiting approval → Done, and runs Codex and
 Claude Code agents at each stage. It sits on top of GitHub, tmux, the Codex app-server and
 Claude Code, and every one of those keeps working on its own.
@@ -16,7 +18,7 @@ Claude Code, and every one of those keeps working on its own.
 ## Main
 
 Main is the conversation agent behind the bottom-bar toggle (⌘J) and **Open Main** in the
-command palette. It introduces itself and waits for you, turns longer work into Loom tasks,
+command palette. It introduces itself and waits for you, turns longer work into Loom issues,
 and summarizes Needs-you escalations. It has only Loom MCP tools and read-only file tools in
 its instance directory, with no shell or terminal attach capability. Its `set_note` tool keeps
 up to 2,000 characters in the instance's `main-notes` document across session restarts and rotation.

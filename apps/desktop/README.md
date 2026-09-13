@@ -1,10 +1,12 @@
 # @loom/desktop
 
-The Loom window: a Linear-style view of tasks, runs, plans, findings and diffs.
+Terminology: an “issue” in the UI is a “task” in the code; internal identifiers and MCP tool names retain `task`.
+
+The Loom window: a Linear-style view of issues, runs, plans, findings and diffs.
 
 The Tracker connects to the coordinator over `@loom/protocol`: authenticated hello, snapshot,
 then ordered patches. It retains the last snapshot while disconnected and reconnects with capped
-exponential backoff. Selection and open tabs are in memory; the coordinator owns task state.
+exponential backoff. Selection and open tabs are in memory; the coordinator owns issue state.
 
 ## Running it
 
@@ -25,7 +27,7 @@ local database. `--fixtures` bypasses this connection entirely. For a built fixt
 `pnpm --filter @loom/desktop exec electron . --fixtures`.
 
 Needs you lists one row per coordinator-derived attention reason, oldest first. Its sidebar badge
-and each window's title count reasons, across all tasks (the sidebar respects its repo filter).
+and each window's title count reasons, across all issues (the sidebar respects its repo filter).
 `g` then `n` opens the inbox; Enter opens the selected reason's resolving tab. Run-scoped reasons
 show role/provider/mode; if several runs share a reason, the detail offers a run selector.
 
@@ -60,7 +62,7 @@ are not attachable terminals; the existing isolated terminal harness covers PTY 
 |---|---|
 | `LOOM_INSTANCE`, `LOOM_DATA_ROOT` | Explicit coordinator identity and data root, matching the CLI. |
 | `LOOM_BIND`, `LOOM_TOKEN` | Coordinator host:port and authentication token; token is never in a URL. |
-| `LOOM_TASKS` | Fixture task count; the performance harness uses 500. |
+| `LOOM_TASKS` | Fixture issue count; the performance harness uses 500. |
 | `LOOM_WIDTH`, `LOOM_HEIGHT` | Window size at launch. |
 | `LOOM_ATTACH_PANE`, `LOOM_TMUX_BIN` | Fixture-only terminal target and executable. |
 
@@ -71,7 +73,7 @@ Command+Enter submits. Todo is labelled as starting the workflow; Small skips pl
 one-file fixes. Escape or Cancel asks before discarding an edited draft.
 
 Live creation waits for `task_created`, then queues the human move for Todo. Rejections appear
-inline; if creation succeeded, retry sends only the move. Success selects the issue in All tasks
+inline; if creation succeeded, retry sends only the move. Success selects the issue in All issues
 and shows its key. Fixture mode uses the same form with the existing local creation path.
 
 ## Keyboard
@@ -80,16 +82,16 @@ Every action is reachable from the keyboard.
 
 | Key | Action |
 |---|---|
-| `cmd+k` | Command palette (also creates tasks and jumps to one) |
+| `cmd+k` | Command palette (also creates issues and jumps to one) |
 | `g` then `i` / `b` | List / board |
 | `g` then `n` | The "Needs you" view |
 | `j` / `k` | Move the cursor |
-| `enter` | Open the task under the cursor |
+| `enter` | Open the issue under the cursor |
 | `esc` | Close the palette, the search field, then the issue |
 | `c` | Open Create issue |
 | `/` | Search |
 | `e` | Change stage |
-| `cmd+k`, then "Review changes and findings" | Open Review for the current task |
+| `cmd+k`, then "Review changes and findings" | Open Review for the current issue |
 | `alt+↑` / `alt+↓` | Previous / next file, with focus inside Review |
 
 Review contains the file list, diff and findings together. Its range control shows **Whole branch**;
@@ -139,7 +141,7 @@ New Tracker is also available in the Tracker palette. `LOOM_WINDOW_MODE=workbenc
 window mode independently of live/fixture connection settings. Layouts are memory-only.
 
 The sidebar groups native spaces → tabs → panes, including dimmed dead panes and unlinked spaces.
-Task spaces show their task key/title; every row rolls up provider status and coordinator attention.
+Issue spaces show their issue key/title; every row rolls up provider status and coordinator attention.
 The dark monospace sidebar has a `spaces` tree above an independently scrolling `agents` list.
 Spaces take their content height up to half the sidebar; Main and Operator are pinned at the top
 of agents. Branches and providers appear on second lines; status uses one-character text glyphs
@@ -214,7 +216,7 @@ remain available. The [Electron menu arbitration API](https://www.electronjs.org
 keeps the DOM event intact. Closing a human terminal ends its session; closing a supervised agent panel
 hides that view. Cmd+J and the Main toggle/restart are shared with Tracker.
 
-Scratch shell creates a native shell in the selected task's recorded worktree/session. Closing its
+Scratch shell creates a native shell in the selected issue's recorded worktree/session. Closing its
 terminal panel ends the shell; closing the window only detaches viewers. Plan, diff, activity and code
 panels are deferred in this slice.
 Client counts mean session-group attachments, not exact pane viewers.

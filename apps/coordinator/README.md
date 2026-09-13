@@ -1,5 +1,7 @@
 # @loom/coordinator
 
+Terminology: an “issue” in the UI is a “task” in the code; internal identifiers and MCP tool names retain `task`.
+
 The process that runs everything else. One per instance (`LOOM_INSTANCE`, `LOOM_DATA_ROOT`): it
 loads state, reads the owners, runs `reconcile`, commits, executes the actions, hosts the MCP
 server agents call, and serves windows over the protocol. It makes no workflow decisions of its
@@ -9,15 +11,15 @@ own — `@loom/core` does — and it owns no facts any other tool owns.
 export LOOM_INSTANCE=dev LOOM_DATA_ROOT=~/.loom LOOM_TOKEN=$(openssl rand -hex 24)
 loom repo add ~/src/example example/repo   # see "The CLI" for how to run `loom` today
 loom serve &
-loom task create example-repo "Rename the widget" "Rename Widget to Gadget everywhere."
-loom task move <task> todo
+loom issue create example-repo "Rename the widget" "Rename Widget to Gadget everywhere."
+loom issue move <issue> todo
 loom status
-loom attach <task> implementer          # prints the pane host's argv; --exec runs it
+loom attach <issue> implementer          # prints the pane host's argv; --exec runs it
 ```
 
 ## The loop
 
-One pass per task at a time; enqueues during a pass coalesce into one more pass. A pass is
+One pass per issue at a time; enqueues during a pass coalesce into one more pass. A pass is
 `store.loadTaskState` → fresh observations → `reconcile` → `store.commit(taskId, result, version)`.
 A compare-and-set conflict reloads and retries up to three times, then re-enqueues. Passes are
 asked for by adapter hints, new inputs, `schedule` actions, and a full resync about every 60 s. The
@@ -45,7 +47,7 @@ The whole recipe is persisted before anything starts, in `<data>/runs/<run>/reci
 unguessable per-run MCP token, the per-run settings and MCP config paths, the environment
 allowlist, the cwd, the executable and its arguments. The token rides in `LOOM_MCP_TOKEN` and in
 the run's MCP config, never in `--settings` and never in argv. Then `ensurePane` for an interactive
-run, the Agent SDK for a headless one, and one Codex app-server per task, outside the pane host.
+run, the Agent SDK for a headless one, and one Codex app-server per issue, outside the pane host.
 
 A repeated `start_run` adopts the session the recipe already names instead of opening a second one,
 and a pane that died while the coordinator was down is recreated from the recipe — never from the
@@ -60,7 +62,7 @@ only by the provider; the resend rule is core's.
 
 ## The MCP host
 
-`serveHttp` from `@loom/mcp` on loopback. `submit` persists the input and runs passes for its task
+`serveHttp` from `@loom/mcp` on loopback. `submit` persists the input and runs passes for its issue
 until that input is consumed, then answers with its disposition. `context` is read-only, is
 role-filtered, and includes the repo's `WORKFLOW.md` commands. `resolveToken` consults current run
 state on every call, so an ended or superseded run reads `stale_run` rather than `unknown_run`.
@@ -81,7 +83,7 @@ It is read only for `get_task_context`. No guard and no transition depends on it
 
 ## Prompts
 
-The planner, implementer and reviewer briefs are templates here, filled from the task. They are
+The planner, implementer and reviewer briefs are templates here, filled from the issue. They are
 short on purpose and point the agent at `get_task_context`, which is the only view that stays
 current. They are what a run is *launched* with — Codex's developer instructions and Claude's first
 headless prompt. The messages a running agent receives, including the fix round's findings
@@ -92,7 +94,7 @@ projection, are core's.
 On startup: load the store, ask `store.outbox.startupRunning` what was uncertain and, for each row,
 check the owner and either record the recovered result or `requeue` it; `thread/resume` every live
 Codex run; poll `claude agents --json`; recreate an interactive run's pane from its recipe when the
-host reports it dead; and reconcile every non-terminal task. Nothing is replayed on the strength of
+host reports it dead; and reconcile every non-terminal issue. Nothing is replayed on the strength of
 a guess.
 
 ## Configuration
@@ -100,7 +102,7 @@ a guess.
 Environment variables configure the coordinator:
 
 - `LOOM_INSTANCE` — unique name for this coordinator instance (required).
-- `LOOM_DATA_ROOT` — directory where task state is stored (required).
+- `LOOM_DATA_ROOT` — directory where issue state is stored (required).
 - `LOOM_TOKEN` — bearer token for the protocol server (required, min 16 bytes).
 - `LOOM_BIND` — the protocol server's loopback address, `host:port` format. Defaults to
   `127.0.0.1:47800`.
@@ -113,12 +115,12 @@ Environment variables configure the coordinator:
 - Other variables: `LOOM_WORKTREE_ROOT`, `LOOM_BASE_BRANCH`, `LOOM_MODEL_CODEX`, `LOOM_MODEL_CLAUDE`,
   `LOOM_TMUX`, `LOOM_CODEX`, `LOOM_CLAUDE`.
 
-### Task agent settings
+### Issue agent settings
 
 Set `LOOM_PROVIDER_PLANNER`, `LOOM_PROVIDER_IMPLEMENTER`, and `LOOM_PROVIDER_REVIEWER` to
-`codex` or `claude` to override repository/task routing for new runs in this instance.
+`codex` or `claude` to override repository/issue routing for new runs in this instance.
 Unset roles retain their existing routing. `LOOM_MODEL_CODEX` and `LOOM_MODEL_CLAUDE` select
-each provider's task model; `LOOM_CODEX_REASONING_EFFORT` explicitly selects Codex reasoning.
+each provider's issue model; `LOOM_CODEX_REASONING_EFFORT` explicitly selects Codex reasoning.
 For example, to run all three roles on Sol with medium reasoning:
 
 ```sh
@@ -130,15 +132,15 @@ LOOM_CODEX_REASONING_EFFORT=medium
 ```
 
 Restart the coordinator after changing its environment. These settings apply to newly created
-runs, including future roles on existing tasks. Existing runs and retries keep their recorded
+runs, including future roles on existing issues. Existing runs and retries keep their recorded
 provider, model, and reasoning level. To explicitly replace a current planning, implementation,
 or review run, use **Agents → Restart with current agent settings**, or
-`pnpm loom task restart <task> <runId>`. This retires the selected agent and creates a fresh
-session on the same task/worktree, preserving its plan, findings and review round. It does not
-transfer the old provider's conversation. Use `loom task show <task>` to find the current run ID.
+`pnpm loom issue restart <issue> <runId>`. This retires the selected agent and creates a fresh
+session on the same issue/worktree, preserving its plan, findings and review round. It does not
+transfer the old provider's conversation. Use `loom issue show <issue>` to find the current run ID.
 The replacement waits for confirmed retirement; a stale run ID is rejected. Main and Operator retain their separate model settings.
 Reasoning is persisted with the run, outbox action, and launch recipe and passed to both the
-Codex thread and subsequent turns; the task's private TUI configuration receives it too.
+Codex thread and subsequent turns; the issue's private TUI configuration receives it too.
 Older runs without a reasoning field retain provider defaults. These are instance environment
 settings; there is no desktop settings editor yet.
 
@@ -169,23 +171,25 @@ Phase 4, and the git adapter has no raw-patch reader yet.
 ## The CLI
 
 `loom` is a protocol client and holds no state. `loom serve` and `loom repo add` are
-instance-local admin commands that open the store directly. `loom task inspect` also reads the
+instance-local admin commands that open the store directly. `loom issue inspect` also reads the
 store directly, using a read-only connection without migrations or startup recovery.
 
+`loom issue` is the primary command group. `loom task` remains a hidden compatibility alias for existing scripts.
+
 ```sh
-loom task list [--view needs_you]
-loom task show <task>
-loom task inspect <task> [--json]
-loom task answer <task> <questionId> <answer>
-loom task answer-request <task> <runId> <requestId> accept|decline|cancel
+loom issue list [--view needs_you]
+loom issue show <issue>
+loom issue inspect <issue> [--json]
+loom issue answer <issue> <questionId> <answer>
+loom issue answer-request <issue> <runId> <requestId> accept|decline|cancel
 ```
 
-`task create <repo> <title> [description]` preserves the description exactly; quote it as
+`issue create <repo> <title> [description]` preserves the description exactly; quote it as
 one shell argument. Use `--` before positional text that starts with `--`. The repository's
 pnpm shell emulator keeps literal backticks and quotes intact when forwarding script arguments.
 CLI errors include the error code, message, and each validator or guard detail on its own line.
 
-`inspect` prints persisted task flags, all runs (newest last), message delivery history with
+`inspect` prints persisted issue flags, all runs (newest last), message delivery history with
 80-character text previews, open questions, pending plan/merge/provider approvals, the last ten
 outbox rows with executor timestamps and results, and finding counts and open locations. Text
 uses aligned columns without colour; `--json` returns the same data as one object. It works with
@@ -198,7 +202,7 @@ test run). The decision is one of: `accept` (approve the operation), `decline` (
 `cancel` (cancel the operation). The `generation` field (for Codex threading) is read from the
 run's current state in the snapshot.
 
-Each per-task Codex app-server appends stderr to `<taskDirectory>/app-server.log` (created with
+Each per-issue Codex app-server appends stderr to `<taskDirectory>/app-server.log` (created with
 mode 0600). Startup logs the path; the file is preserved across restarts without rotation.
 
 **Running it today:** no package in this repository emits JavaScript yet — everything is consumed
@@ -211,31 +215,31 @@ pnpm loom serve          # a root script over tsx, which is a workspace dev depe
 
 `main(argv)` is exported from `src/cli.ts`, so the command table is callable directly as well.
 
-### Small task fast path
+### Small issue fast path
 
-Small tasks (docs, typos, one-file fixes) skip the planning stage and reach `done` in ≤5 minutes when idle:
+Small issues (docs, typos, one-file fixes) skip the planning stage and reach `done` in ≤5 minutes when idle:
 
 ```sh
-loom task create <repo> <title> [description] --small
+loom issue create <repo> <title> [description] --small
 ```
 
-Small tasks auto-generate a plan from the title (goal) and description (steps), then route directly from `todo` to `in_progress`, skipping the planning and plan_approval stages. The plan is marked as accepted, so no human approval is needed.
+Small issues auto-generate a plan from the title (goal) and description (steps), then route directly from `todo` to `in_progress`, skipping the planning and plan_approval stages. The plan is marked as accepted, so no human approval is needed.
 
 **Qualifying scope:** ~200 lines or fewer, single file, no architectural decisions. Docs, typos, comments, config updates, simple refactors.
 
 **How it works:**
-1. Task created with `--small` flag or `size: 'small'` via Main/Operator tools.
-2. On first reconcile, a plan is auto-generated from task title (goal) and description (steps split by newlines).
-3. Task transitions directly: `todo` → `in_progress` (no planning stage).
+1. Issue created with `--small` flag or `size: 'small'` via Main/Operator tools.
+2. On first reconcile, a plan is auto-generated from issue title (goal) and description (steps split by newlines).
+3. Issue transitions directly: `todo` → `in_progress` (no planning stage).
 4. Implementer fixes it; reviewer runs only tests for affected packages.
 5. Targets ≤5 minutes wall-clock from `todo` to `done` when idle.
 
 ### Timing measurements
 
-Measure small task stage durations:
+Measure small issue stage durations:
 
 ```sh
-loom task timings <task>
+loom issue timings <issue>
 ```
 
 Prints per-stage transition times from the audit log. Useful for verifying the ≤5-minute target and understanding latency bottlenecks.
@@ -270,13 +274,13 @@ Codex registrations.
 **Resolution:** Fixed; the coordinator now rotates the session when `resumable=false`, ensuring
 proper state transitions on resumable runs.
 
-### Codex per-task home missing auth
+### Codex per-issue home missing auth
 
-**Symptom:** Codex cannot authenticate within the per-task home directory.
+**Symptom:** Codex cannot authenticate within the per-issue home directory.
 
-**Cause:** The `auth.json` file was not accessible in the per-task home.
+**Cause:** The `auth.json` file was not accessible in the per-issue home.
 
-**Resolution:** Fixed; the coordinator now links `auth.json` from `~/.codex` into each task's
+**Resolution:** Fixed; the coordinator now links `auth.json` from `~/.codex` into each issue's
 home directory on startup.
 
 ### Run stalls on provider usage limit
@@ -316,12 +320,12 @@ look for:
    process is progressing.
 
 **Cause:** The pane was relaunched but (a) its info was not persisted, causing pane operations to target
-the dead pane, or (b) a Codex app-server socket issue prevented thread resume. See task t-d5033ac7 for
+the dead pane, or (b) a Codex app-server socket issue prevented thread resume. See issue t-d5033ac7 for
 Codex socket probing and adoption behavior.
 
 ### Debugging pane persistence
 
-Run `loom task inspect <taskId> --json` and check:
+Run `loom issue inspect <taskId> --json` and check:
 - `runs[].pane.windowId` and `runs[].pane.paneId` — should match the live pane (e.g., `@63`, `%63`).
 - `runs[].status` — should be `working` or another live status if the pane is active and working.
 - `runs[].unknownSince` — if this is set and holds for longer than `unknownGraceMs` (default 30s),
@@ -344,7 +348,7 @@ server and protocol server are used throughout; no agent, terminal or daemon is 
 - `restart.test.ts` — the coordinator killed between a push and its receipt.
 - `gate.test.ts` — a run at a permission dialog receives no paste.
 - `protocol.test.ts` — a fake client's snapshot, command ack, patches and a forced sequence gap.
-- `cli.test.ts` — inspect text snapshots and JSON from a temporary fixture database, including history and missing tasks.
+- `cli.test.ts` — inspect text snapshots and JSON from a temporary fixture database, including history and missing issues.
 - `units.test.ts` — derived IDs, the environment allowlist, the config, `WORKFLOW.md`, the mapper.
 - `real.test.ts` — opt-in (`LOOM_REAL_PROVIDERS=1`), one real headless Claude planner on `haiku`.
   GitHub stays faked: the merge half needs a throwaway GitHub repository this test cannot create.
@@ -411,7 +415,7 @@ continues without error. See [WORKFLOW.md policy](./README.md#workflowmd-design-
 
 `open_lead_session` opens the instance's interactive Claude Main; `stop_lead_session` stops it and
 revokes its token. `LOOM_MODEL_LEAD` defaults to `LOOM_MODEL_CLAUDE`. Its private recipe and settings
-are in `<instance data>/lead/`, with cwd at the instance data directory. No task or run is created.
+are in `<instance data>/lead/`, with cwd at the instance data directory. No issue or run is created.
 The configured stable MCP port takes precedence over the recipe; ephemeral instances reuse the
 saved Main port across coordinator restarts. Recovery rewrites Main settings to the current
 endpoint and relaunches only confirmed dead Main panes; absence requires an explicit open.
@@ -429,7 +433,7 @@ See [the UI design](../../docs/design/ui.md#main) for controls and tool scope.
 
 ### Operator
 
-The coordinator owns one event-driven Claude Operator, separate from task capacity and Main.
+The coordinator owns one event-driven Claude Operator, separate from issue capacity and Main.
 It starts lazily when attention, terminal run failures, pass/publish failures, or owned adapter
 stale-process diagnostics arrive. It has only Loom MCP tools: no built-in tools or terminal.
 `loom operator status [--json]` shows its session, queue, last ten decisions and rolling-hour count.
@@ -443,7 +447,7 @@ Configuration accepts `operatorModel` (environment `LOOM_MODEL_OPERATOR`), defau
 `operator.maxFiledPerHour` defaults to 5 (`LOOM_OPERATOR_MAX_FILED_PER_HOUR`).
 
 Set `operator.repoId` / `LOOM_OPERATOR_REPO` to the registered repository where runtime bugs belong.
-No destination is inferred from the affected task. Without an explicit registered destination,
+No destination is inferred from the affected issue. Without an explicit registered destination,
 incidents remain queued and visible in Operator status until routing is configured. Bugs default
 to backlog. Matching autoFix kinds receive a durable `todo` input in the same transaction as
 creation; ordinary reconciliation starts their planners.
@@ -459,7 +463,7 @@ Policy v1 never approves plans or merges. It only accepts freshly observed imple
 for exact validated repository WORKFLOW commands or conservative simple `git add`, `git commit -m`
 and `pnpm install` forms. Claude requires native permission command/request evidence; trust,
 questions and unknown prompts escalate. A headless failure waits for core's retries, then permits
-one `retry` command per task/role/round. That command resets the existing attempt budget; it does
+one `retry` command per issue/role/round. That command resets the existing attempt budget; it does
 not mean exactly one additional provider attempt.
 
 Vanished clean committed implementation work can be rescued through guarded `push_branch` then

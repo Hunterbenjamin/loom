@@ -113,7 +113,7 @@ try {
       () => window.loom.store.getState().snapshot.tasks.length,
     )) !== before
   )
-    throw new Error("Disconnect discarded the task list");
+    throw new Error("Disconnect discarded the issue list");
   if (errors.length) throw new Error(errors.join("\n"));
   await page.screenshot({ path: join(tmpdir(), "loom-tracker-live.png") });
   process.stdout.write(

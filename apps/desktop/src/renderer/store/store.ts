@@ -99,7 +99,7 @@ export interface State {
 }
 
 export const VIEWS: { id: ViewId; label: string; hint: string }[] = [
-  { id: "all", label: "All tasks", hint: "Everything in the selected repos" },
+  { id: "all", label: "All issues", hint: "Everything in the selected repos" },
   {
     id: "needs-you",
     label: "Needs you",
