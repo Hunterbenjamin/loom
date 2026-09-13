@@ -118,7 +118,10 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   and zoom. Layout is a disposable projection of tmux metadata; no layout is stored in the UI.
 - **Panel types in this slice:** native terminal panes, including agents and issue scratch shells.
   Plan, diff, activity and code panels are deferred; Tracker retains its existing review surface.
-- **Bindings:** Main reads and watches `<LOOM_DATA_ROOT>/<instance>/keybindings.json`.
+- **Bindings:** coordinator Settings owns the full binding map, prefix and timeout. On upgrade the
+  renderer imports `<LOOM_DATA_ROOT>/<instance>/keybindings.json` once only when no stored binding
+  fields exist. Main receives validated updates over IPC for native shortcut suppression and keeps
+  a private derived startup cache; editing the legacy file after import has no effect.
   First launch writes the complete defaults. Zod validates the whole file; invalid JSON,
   unknown/missing actions, invalid chords, duplicate bindings or an invalid timeout activate
   defaults and show an error in the Workbench bottom bar. Saving a valid file updates every

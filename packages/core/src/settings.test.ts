@@ -66,4 +66,18 @@ describe("settings validation", () => {
       ]),
     );
   });
+
+  it("rejects incomplete or invalid native keybindings before persistence", () => {
+    const invalid = copy();
+    invalid.appearance.keyPrefix = "not+a+chord";
+    delete invalid.appearance.keybindings.help;
+    invalid.appearance.keybindings.close = ["Prefix not+a+chord"];
+    expect(validateSettings(invalid)).toEqual(
+      expect.arrayContaining([
+        "Key prefix must be a valid chord",
+        "Key bindings must define every supported action exactly once",
+        "Invalid key binding: Prefix not+a+chord",
+      ]),
+    );
+  });
 });

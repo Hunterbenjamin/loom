@@ -42,7 +42,12 @@ export interface SettingsValues {
     reviewRoundCap: number;
     mergePolicy: MergePolicy;
   };
+  repository: {
+    baseBranch: string;
+    serialTests: boolean;
+  };
   operator: {
+    policy: "v1";
     model: string | null;
     leadModel: string | null;
     repoId: string | null;
@@ -73,14 +78,16 @@ export interface SettingsValues {
     chime: boolean;
     windowMode: "tracker" | "workbench";
     terminalHistoryLimit: number;
-    keyPrefix: string;
+    keyPrefix: string | null;
     keyTimeoutMs: number;
+    keybindings: Record<string, string[]>;
   };
 }
 
 export type SettingsPatch = {
   roles?: Partial<Record<Role, Partial<RoleProfile>>>;
   workflow?: Partial<SettingsValues["workflow"]>;
+  repository?: Partial<SettingsValues["repository"]>;
   operator?: Partial<SettingsValues["operator"]>;
   runtime?: Partial<SettingsValues["runtime"]>;
   appearance?: Partial<SettingsValues["appearance"]>;
@@ -91,6 +98,7 @@ export interface SettingDefinition {
   section:
     | "Agents & models"
     | "Workflow & approvals"
+    | "Repositories"
     | "Access & safety"
     | "Operator & Main"
     | "Terminals & keybindings"
@@ -100,6 +108,8 @@ export interface SettingDefinition {
   label: string;
   timing: ApplyTiming;
   environment?: string;
+  scopes: ("global" | "repository")[];
+  readOnly?: boolean;
 }
 
 const codexModels = [
@@ -160,7 +170,9 @@ export const DEFAULT_SETTINGS: SettingsValues = {
     reviewRoundCap: 3,
     mergePolicy: "require-human",
   },
+  repository: { baseBranch: "main", serialTests: false },
   operator: {
+    policy: "v1",
     model: null,
     leadModel: null,
     repoId: null,
@@ -191,9 +203,75 @@ export const DEFAULT_SETTINGS: SettingsValues = {
     chime: true,
     windowMode: "tracker",
     terminalHistoryLimit: 10_000,
-    keyPrefix: "Ctrl-b",
-    keyTimeoutMs: 500,
+    keyPrefix: "Ctrl+A",
+    keyTimeoutMs: 3000,
+    keybindings: {
+      "split-right": ["Cmd+D", "Prefix |"],
+      "split-down": ["Cmd+Shift+D", "Prefix -"],
+      left: ["Cmd+Alt+ArrowLeft", "Prefix h"],
+      down: ["Cmd+Alt+ArrowDown", "Prefix j"],
+      up: ["Cmd+Alt+ArrowUp", "Prefix k"],
+      right: ["Cmd+Alt+ArrowRight", "Prefix l"],
+      new: ["Cmd+T", "Prefix c"],
+      next: ["Cmd+Shift+]", "Prefix n"],
+      previous: ["Cmd+Shift+[", "Prefix p"],
+      close: ["Cmd+W", "Prefix x"],
+      zoom: ["Cmd+Shift+Enter", "Prefix z"],
+      jump: ["Cmd+P", "Prefix g"],
+      help: ["Prefix ?"],
+      commands: ["Cmd+K"],
+      literal: ["Prefix Ctrl+A"],
+    },
   },
+};
+
+const BOTH = ["global", "repository"] as const;
+const GLOBAL = ["global"] as const;
+const KEYBINDING_ACTIONS = [
+  "split-right",
+  "split-down",
+  "left",
+  "down",
+  "up",
+  "right",
+  "new",
+  "next",
+  "previous",
+  "close",
+  "zoom",
+  "jump",
+  "help",
+  "commands",
+  "literal",
+] as const;
+const KEY_MODIFIERS = new Set(["Ctrl", "Cmd", "Alt", "Shift"]);
+const NAMED_KEYS = new Set([
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Enter",
+  "Escape",
+  "Tab",
+  "Backspace",
+  "Delete",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+  "Space",
+  "Plus",
+  ...Array.from({ length: 24 }, (_, index) => `F${index + 1}`),
+]);
+const validChord = (value: string) => {
+  const parts = value.split("+");
+  const key = parts.pop();
+  return (
+    !!key &&
+    parts.every((part) => KEY_MODIFIERS.has(part)) &&
+    new Set(parts).size === parts.length &&
+    (/^[\x21-\x7e]$/.test(key) || NAMED_KEYS.has(key))
+  );
 };
 
 export const SETTINGS_CATALOG: SettingDefinition[] = [
@@ -204,6 +282,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
       label: `${name} provider`,
       timing: "next-run" as const,
       environment: `LOOM_PROVIDER_${name.toUpperCase()}`,
+      scopes: [...BOTH],
     },
     {
       key: `roles.${name}.model`,
@@ -211,6 +290,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
       label: `${name} model`,
       timing: "next-run" as const,
       environment: "LOOM_MODEL_CODEX / LOOM_MODEL_CLAUDE",
+      scopes: [...BOTH],
     },
     {
       key: `roles.${name}.reasoningEffort`,
@@ -218,6 +298,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
       label: `${name} reasoning`,
       timing: "next-run" as const,
       environment: "LOOM_CODEX_REASONING_EFFORT",
+      scopes: [...BOTH],
     },
     {
       key: `roles.${name}.runMode`,
@@ -225,6 +306,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
       label: `${name} run mode`,
       timing: "next-run" as const,
       environment: "LOOM_RUN_MODES",
+      scopes: [...BOTH],
     },
     {
       key: `roles.${name}.access`,
@@ -232,6 +314,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
       label: `${name} access`,
       timing: "next-run" as const,
       environment: "LOOM_AGENT_ACCESS",
+      scopes: [...BOTH],
     },
   ]),
   {
@@ -239,30 +322,58 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
     section: "Workflow & approvals",
     label: "Require plan approval",
     timing: "next-task",
+    scopes: [...BOTH],
   },
   {
     key: "workflow.size",
     section: "Workflow & approvals",
     label: "Default task size",
     timing: "next-task",
+    scopes: [...BOTH],
   },
   {
     key: "workflow.budgetMinutes",
     section: "Workflow & approvals",
     label: "Default budget",
     timing: "next-task",
+    scopes: [...BOTH],
   },
   {
     key: "workflow.reviewRoundCap",
     section: "Workflow & approvals",
     label: "Review round cap",
     timing: "next-task",
+    scopes: [...BOTH],
   },
   {
     key: "workflow.mergePolicy",
     section: "Workflow & approvals",
     label: "Merge mode",
     timing: "next-task",
+    scopes: [...BOTH],
+  },
+  {
+    key: "repository.baseBranch",
+    section: "Repositories",
+    label: "Base branch",
+    timing: "next-task",
+    scopes: [...BOTH],
+    environment: "LOOM_BASE_BRANCH",
+  },
+  {
+    key: "repository.serialTests",
+    section: "Repositories",
+    label: "Serialize tests",
+    timing: "next-task",
+    scopes: [...BOTH],
+  },
+  {
+    key: "operator.policy",
+    section: "Operator & Main",
+    label: "Operator policy",
+    timing: "restart-required",
+    scopes: [...GLOBAL],
+    readOnly: true,
   },
   {
     key: "operator.model",
@@ -270,6 +381,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
     label: "Operator model",
     timing: "next-run",
     environment: "LOOM_MODEL_OPERATOR",
+    scopes: [...GLOBAL],
   },
   {
     key: "operator.leadModel",
@@ -277,6 +389,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
     label: "Main model",
     timing: "next-run",
     environment: "LOOM_MODEL_LEAD",
+    scopes: [...GLOBAL],
   },
   {
     key: "operator.repoId",
@@ -284,6 +397,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
     label: "Operator repository",
     timing: "next-run",
     environment: "LOOM_OPERATOR_REPO",
+    scopes: [...GLOBAL],
   },
   {
     key: "operator.autoFix",
@@ -291,6 +405,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
     label: "Automatic fixes",
     timing: "immediate",
     environment: "LOOM_OPERATOR_AUTO_FIX",
+    scopes: [...GLOBAL],
   },
   {
     key: "operator.maxFiledPerHour",
@@ -298,6 +413,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
     label: "Maximum filed per hour",
     timing: "immediate",
     environment: "LOOM_OPERATOR_MAX_FILED_PER_HOUR",
+    scopes: [...GLOBAL],
   },
   {
     key: "runtime.excludedAuthors",
@@ -305,18 +421,21 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
     label: "Excluded authors",
     timing: "immediate",
     environment: "LOOM_EXCLUDED_AUTHORS",
+    scopes: [...GLOBAL],
   },
   {
     key: "appearance.theme",
     section: "Appearance",
     label: "Theme",
     timing: "immediate",
+    scopes: [...GLOBAL],
   },
   {
     key: "appearance.chime",
     section: "Appearance",
     label: "Completion chime",
     timing: "immediate",
+    scopes: [...GLOBAL],
   },
   {
     key: "appearance.windowMode",
@@ -324,24 +443,35 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
     label: "Default window",
     timing: "restart-required",
     environment: "LOOM_WINDOW_MODE",
+    scopes: [...GLOBAL],
   },
   {
     key: "appearance.terminalHistoryLimit",
     section: "Terminals & keybindings",
     label: "Terminal history",
     timing: "next-run",
+    scopes: [...GLOBAL],
   },
   {
     key: "appearance.keyPrefix",
     section: "Terminals & keybindings",
     label: "Key prefix",
     timing: "immediate",
+    scopes: [...GLOBAL],
   },
   {
     key: "appearance.keyTimeoutMs",
     section: "Terminals & keybindings",
     label: "Key timeout",
     timing: "immediate",
+    scopes: [...GLOBAL],
+  },
+  {
+    key: "appearance.keybindings",
+    section: "Terminals & keybindings",
+    label: "Key bindings",
+    timing: "immediate",
+    scopes: [...GLOBAL],
   },
   ...(
     [
@@ -388,6 +518,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
         ? "restart-required"
         : "immediate") as ApplyTiming,
       ...(environment ? { environment } : {}),
+      scopes: [...GLOBAL],
     };
   }),
 ];
@@ -409,6 +540,7 @@ const merge = (
       ),
     } as SettingsValues["roles"],
     workflow: { ...base.workflow, ...patch.workflow },
+    repository: { ...base.repository, ...patch.repository },
     operator: { ...base.operator, ...patch.operator },
     runtime: { ...base.runtime, ...patch.runtime },
     appearance: { ...base.appearance, ...patch.appearance },
@@ -457,6 +589,47 @@ export function validateSettings(values: SettingsValues): string[] {
     values.operator.maxFiledPerHour < 1
   )
     errors.push("Maximum filed per hour must be positive");
+  if (!values.repository.baseBranch.trim())
+    errors.push("Base branch is required");
+  if (values.operator.policy !== "v1") errors.push("Unknown Operator policy");
+  if (
+    values.appearance.keyPrefix !== null &&
+    !values.appearance.keyPrefix.trim()
+  )
+    errors.push("Key prefix must be null or non-empty");
+  if (
+    values.appearance.keyPrefix !== null &&
+    !validChord(values.appearance.keyPrefix)
+  )
+    errors.push("Key prefix must be a valid chord");
+  const actions = Object.keys(values.appearance.keybindings);
+  if (
+    actions.length !== KEYBINDING_ACTIONS.length ||
+    KEYBINDING_ACTIONS.some((action) => !actions.includes(action))
+  )
+    errors.push("Key bindings must define every supported action exactly once");
+  const seenBindings = new Set<string>();
+  for (const [action, bindings] of Object.entries(
+    values.appearance.keybindings,
+  )) {
+    if (
+      !action ||
+      !Array.isArray(bindings) ||
+      bindings.some((item) => !item.trim())
+    )
+      errors.push(`Invalid key bindings for ${action}`);
+    for (const binding of bindings) {
+      const prefixed = binding.startsWith("Prefix ");
+      const chord = prefixed ? binding.slice(7) : binding;
+      if (!validChord(chord)) errors.push(`Invalid key binding: ${binding}`);
+      if (prefixed && values.appearance.keyPrefix === null)
+        errors.push(`Prefix binding needs a prefix: ${binding}`);
+      const identity = `${prefixed}:${chord}`;
+      if (seenBindings.has(identity))
+        errors.push(`Duplicate key binding: ${binding}`);
+      seenBindings.add(identity);
+    }
+  }
   if (
     !Number.isInteger(values.appearance.terminalHistoryLimit) ||
     values.appearance.terminalHistoryLimit < 1 ||
@@ -471,22 +644,15 @@ export function resolveSettings(
   global: SettingsPatch | null,
   repository: SettingsPatch | null,
   environment: SettingsPatch | null,
+  defaults: SettingsValues = DEFAULT_SETTINGS,
 ) {
-  const globalValues = merge(DEFAULT_SETTINGS, global);
+  const globalValues = merge(defaults, global);
   const repositoryValues = merge(globalValues, repository);
   const effective = merge(repositoryValues, environment);
   const sources: Record<string, SettingsSource> = {};
   for (const item of SETTINGS_CATALOG) {
-    const [group = "", key = "", nested] = item.key.split(".");
-    const has = (p: SettingsPatch | null) => {
-      const section = (p as Record<string, unknown> | null)?.[group];
-      if (!section || typeof section !== "object") return false;
-      if (!nested) return Object.hasOwn(section, key);
-      const child = (section as Record<string, unknown>)[key];
-      return (
-        !!child && typeof child === "object" && Object.hasOwn(child, nested)
-      );
-    };
+    const has = (p: SettingsPatch | null) =>
+      settingValue(p ?? {}, item.key) !== undefined;
     sources[item.key] = has(environment)
       ? "environment"
       : has(repository)

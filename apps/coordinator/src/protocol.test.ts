@@ -68,6 +68,115 @@ test("a client connects, takes a snapshot and sees its repo", async () => {
   expect(client.state?.epoch).toBe(h.coordinator.epoch);
 }, 30_000);
 
+test("settings updates publish atomically, reject stale/global-only writes, and capture repository defaults", async () => {
+  const h = await served();
+  const first = await connect(h, "settings-first");
+  const second = await connect(h, "settings-second");
+  const scope = { kind: "repository" as const, repoId: h.repo.id };
+  const before = first.state?.collections.settings.get(`repo:${h.repo.id}`);
+  expect(before?.effective.roles.implementer.provider).toBe(
+    h.repo.defaultProviders.implementer,
+  );
+  const saved = await first.command({
+    kind: "update_settings",
+    scope,
+    expectedVersion: before?.version ?? 0,
+    patch: {
+      roles: { planner: { model: "claude-opus-4-6" } },
+      workflow: { size: "small", requirePlanApproval: true },
+      repository: { baseBranch: "develop", serialTests: true },
+    },
+  });
+  if (!saved.ok) throw new Error(JSON.stringify(saved.error));
+  expect(saved).toMatchObject({
+    ok: true,
+    result: { kind: "settings_updated", version: 1 },
+  });
+  await vi.waitFor(() =>
+    expect(
+      second.state?.collections.settings.get(`repo:${h.repo.id}`)?.version,
+    ).toBe(1),
+  );
+  const effective = second.state?.collections.settings.get(
+    `repo:${h.repo.id}`,
+  )?.effective;
+  expect(effective).toMatchObject({
+    roles: {
+      planner: { model: "claude-opus-4-6" },
+      implementer: { provider: h.repo.defaultProviders.implementer },
+      reviewer: { provider: h.repo.defaultProviders.reviewer },
+    },
+    workflow: { size: "small", requirePlanApproval: true },
+    repository: { baseBranch: "develop", serialTests: true },
+  });
+  expect(
+    await second.command({
+      kind: "update_settings",
+      scope,
+      expectedVersion: 0,
+      patch: { workflow: { size: "normal" } },
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: { message: expect.stringContaining("another window") },
+  });
+  expect(
+    await second.command({
+      kind: "update_settings",
+      scope,
+      expectedVersion: 1,
+      patch: { runtime: { capTotal: 8 } },
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: { message: "Setting is not editable in this scope" },
+  });
+  const created = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Uses repository settings",
+    description: "",
+  }).task;
+  expect(created).toMatchObject({
+    size: "small",
+    requirePlanApproval: true,
+    roleProfiles: {
+      implementer: { provider: h.repo.defaultProviders.implementer },
+      reviewer: { provider: h.repo.defaultProviders.reviewer },
+    },
+  });
+  expect(h.store.repos()[0]).toMatchObject({
+    baseBranch: "develop",
+    serialTests: true,
+  });
+  expect(
+    await first.command({
+      kind: "reset_settings",
+      scope,
+      expectedVersion: 1,
+      keys: ["workflow.size", "repository.baseBranch"],
+    }),
+  ).toMatchObject({
+    ok: true,
+    result: { kind: "settings_updated", version: 2 },
+  });
+  await vi.waitFor(() =>
+    expect(
+      second.state?.collections.settings.get(`repo:${h.repo.id}`)?.effective,
+    ).toMatchObject({
+      workflow: { size: "normal" },
+      repository: { baseBranch: "main" },
+    }),
+  );
+  expect(
+    second.state?.collections.settings.get(`repo:${h.repo.id}`)?.audit,
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ settingKey: "workflow.size" }),
+      expect.objectContaining({ settingKey: "repository.baseBranch" }),
+    ]),
+  );
+}, 30_000);
+
 test("human terminal close confirms native removal and publishes deletion to connected clients", async () => {
   const h = await served();
   const ref = {

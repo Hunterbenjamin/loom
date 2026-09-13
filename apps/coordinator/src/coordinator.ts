@@ -33,6 +33,7 @@ import type {
 import {
   DEFAULT_SETTINGS,
   MODEL_CATALOG,
+  mergeSettings,
   resolveSettings,
   SETTINGS_CATALOG,
   type SettingsPatch,
@@ -137,6 +138,9 @@ const mergeStored = (
   ...(patch.workflow
     ? { workflow: { ...current.workflow, ...patch.workflow } }
     : {}),
+  ...(patch.repository
+    ? { repository: { ...current.repository, ...patch.repository } }
+    : {}),
   ...(patch.operator
     ? { operator: { ...current.operator, ...patch.operator } }
     : {}),
@@ -218,42 +222,49 @@ export class Coordinator {
       },
     ];
   }
+  private compatibilitySettings(repoId?: string): SettingsValues {
+    const repo = repoId
+      ? this.store.repos().find((item) => item.id === repoId)
+      : undefined;
+    let compatibility = mergeSettings(DEFAULT_SETTINGS, {
+      repository: {
+        baseBranch: repo?.baseBranch ?? this.config.baseBranch,
+        serialTests: repo?.serialTests ?? false,
+      },
+    });
+    for (const role of ["planner", "implementer", "reviewer"] as const) {
+      const provider =
+        this.config.providerOverrides[role] ??
+        repo?.defaultProviders[role] ??
+        compatibility.roles[role].provider;
+      compatibility = mergeSettings(compatibility, {
+        roles: {
+          [role]: {
+            provider,
+            model: this.config.models[provider],
+            reasoningEffort:
+              provider === "codex"
+                ? ((this.config.codexReasoningEffort as never) ?? "medium")
+                : null,
+            runMode: this.config.runModes[role] ?? "interactive",
+            access: this.config.agentAccess,
+          },
+        },
+      });
+    }
+    return compatibility;
+  }
   private effectiveSettings(repoId?: string): SettingsValues {
     const global = this.store.settings.read({ kind: "global" }).data;
     const repository = repoId
       ? this.store.settings.read({ kind: "repository", repoId }).data
       : null;
-    const resolved = resolveSettings(
+    return resolveSettings(
       global,
       repository,
       this.config.settingsEnvironment,
+      this.compatibilitySettings(repoId),
     ).effective;
-    if (
-      !global.roles &&
-      !repository?.roles &&
-      !this.config.settingsEnvironment.roles
-    ) {
-      const repo = repoId
-        ? this.store.repos().find((item) => item.id === repoId)
-        : undefined;
-      for (const role of ["planner", "implementer", "reviewer"] as const) {
-        const provider =
-          this.config.providerOverrides[role] ??
-          repo?.defaultProviders[role] ??
-          resolved.roles[role].provider;
-        resolved.roles[role] = {
-          provider,
-          model: this.config.models[provider],
-          reasoningEffort:
-            provider === "codex"
-              ? ((this.config.codexReasoningEffort as never) ?? "medium")
-              : null,
-          runMode: this.config.runModes[role] ?? "interactive",
-          access: this.config.agentAccess,
-        };
-      }
-    }
-    return resolved;
   }
   private settingsRows(): Row[] {
     const global = this.store.settings.read({ kind: "global" });
@@ -275,6 +286,33 @@ export class Coordinator {
       const effective = this.effectiveSettings(
         scope.kind === "repository" ? scope.repoId : undefined,
       );
+      if (scope.kind === "repository") {
+        const repo = this.store
+          .repos()
+          .find((item) => item.id === scope.repoId);
+        for (const role of ["planner", "implementer", "reviewer"] as const)
+          if (
+            repo?.defaultProviders[role] &&
+            settingValue(global.data, `roles.${role}.provider`) === undefined &&
+            settingValue(stored.data, `roles.${role}.provider`) === undefined &&
+            settingValue(
+              this.config.settingsEnvironment,
+              `roles.${role}.provider`,
+            ) === undefined
+          )
+            resolution.sources[`roles.${role}.provider`] = "repository";
+        for (const key of ["baseBranch", "serialTests"] as const)
+          if (
+            repo &&
+            settingValue(global.data, `repository.${key}`) === undefined &&
+            settingValue(stored.data, `repository.${key}`) === undefined &&
+            settingValue(
+              this.config.settingsEnvironment,
+              `repository.${key}`,
+            ) === undefined
+          )
+            resolution.sources[`repository.${key}`] = "repository";
+      }
       return {
         collection: "settings" as const,
         key: settingsId(scope),
@@ -382,6 +420,16 @@ export class Coordinator {
       throw Object.assign(new Error("No settings changed"), {
         code: "invalid_input",
       });
+    const unavailable = changes
+      .map((change) => SETTINGS_CATALOG.find((item) => item.key === change.key))
+      .filter(
+        (item) => !item || item.readOnly || !item.scopes.includes(scope.kind),
+      );
+    if (unavailable.length)
+      throw Object.assign(new Error("Setting is not editable in this scope"), {
+        code: "invalid_input",
+        details: unavailable.map((item) => item?.key ?? "unknown setting"),
+      });
     const global =
       scope.kind === "global"
         ? next
@@ -396,20 +444,46 @@ export class Coordinator {
               repoId: repo.id,
             }).data,
           }));
+    const validateResolved = (
+      repositoryId: string | undefined,
+      repositoryData: SettingsPatch | null,
+      environment: SettingsPatch | null,
+    ) => {
+      const compatibility = this.compatibilitySettings(repositoryId);
+      const effective = resolveSettings(
+        global,
+        repositoryData,
+        environment,
+        compatibility,
+      ).effective;
+      return validateSettings(effective).filter((message) => {
+        const match =
+          /^Unknown (?:codex|claude) model for (planner|implementer|reviewer):/.exec(
+            message,
+          );
+        if (!match) return true;
+        const role = match[1] as "planner" | "implementer" | "reviewer";
+        const path = `roles.${role}.model`;
+        const explicitlyConfigured =
+          settingValue(global, path) !== undefined ||
+          settingValue(repositoryData ?? {}, path) !== undefined ||
+          settingValue(environment ?? {}, path) !== undefined;
+        return (
+          explicitlyConfigured ||
+          effective.roles[role].model !== compatibility.roles[role].model
+        );
+      });
+    };
     const errors = [
-      ...validateSettings(resolveSettings(global, null, null).effective),
-      ...validateSettings(
-        resolveSettings(global, null, this.config.settingsEnvironment)
-          .effective,
-      ),
+      ...validateResolved(undefined, null, null),
+      ...validateResolved(undefined, null, this.config.settingsEnvironment),
       ...repositories.flatMap((repo) =>
         [
-          ...validateSettings(
-            resolveSettings(global, repo.data, null).effective,
-          ),
-          ...validateSettings(
-            resolveSettings(global, repo.data, this.config.settingsEnvironment)
-              .effective,
+          ...validateResolved(repo.id, repo.data, null),
+          ...validateResolved(
+            repo.id,
+            repo.data,
+            this.config.settingsEnvironment,
           ),
         ].map((message) => `${repo.id}: ${message}`),
       ),
@@ -438,6 +512,43 @@ export class Coordinator {
       changes,
     });
     if (scope.kind === "global") this.applyStoredRuntime(false);
+    if (
+      scope.kind === "repository" &&
+      changes.some((change) => change.key.startsWith("repository."))
+    ) {
+      const repo = this.store.repos().find((item) => item.id === scope.repoId);
+      if (repo) {
+        const effective = resolveSettings(
+          global,
+          next,
+          this.config.settingsEnvironment,
+        ).effective;
+        this.store.putRepo({
+          ...repo,
+          baseBranch: effective.repository.baseBranch,
+          serialTests: effective.repository.serialTests,
+        });
+        this.publishRepos();
+      }
+    }
+    if (
+      scope.kind === "global" &&
+      changes.some((change) => change.key.startsWith("repository."))
+    ) {
+      for (const repo of this.store.repos()) {
+        const repository = this.store.settings.read({
+          kind: "repository",
+          repoId: repo.id,
+        }).data;
+        const effective = resolveSettings(
+          next,
+          repository,
+          this.config.settingsEnvironment,
+        ).effective.repository;
+        this.store.putRepo({ ...repo, ...effective });
+      }
+      this.publishRepos();
+    }
     this.publishSettings();
     return saved.version;
   }

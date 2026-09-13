@@ -11,6 +11,7 @@ import { useStore, useStoreApi } from "../store/react.js";
 const sections: SettingDefinition["section"][] = [
   "Agents & models",
   "Workflow & approvals",
+  "Repositories",
   "Access & safety",
   "Operator & Main",
   "Terminals & keybindings",
@@ -66,6 +67,39 @@ const accessHelp = (key: string, value: unknown) => {
     : "Codex danger-full-access/never; Claude bypass permissions.";
 };
 
+function JsonInput({
+  id,
+  value,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  value: object;
+  disabled: boolean;
+  onChange(value: unknown): void;
+}) {
+  const serialized = JSON.stringify(value, null, 2);
+  const [text, setText] = useState(serialized);
+  useEffect(() => setText(serialized), [serialized]);
+  return (
+    <textarea
+      id={id}
+      rows={10}
+      value={text}
+      disabled={disabled}
+      onChange={(event) => {
+        const next = event.target.value;
+        setText(next);
+        try {
+          onChange(JSON.parse(next));
+        } catch {
+          // Saving remains disabled until the JSON is valid again.
+        }
+      }}
+    />
+  );
+}
+
 function Control({
   definition,
   document,
@@ -83,7 +117,9 @@ function Control({
   const value = settingValue(draft, key);
   const defaultValue = settingValue(document.defaults, key);
   const source = document.sources[key] ?? "default";
-  const disabled = source === "environment";
+  const unavailable = !definition.scopes.includes(document.scope.kind);
+  const disabled =
+    source === "environment" || unavailable || definition.readOnly === true;
   const tail = key.split(".").at(-1) ?? key;
   const role = key.startsWith("roles.")
     ? (key.split(".")[1] as keyof SettingsValues["roles"])
@@ -98,7 +134,14 @@ function Control({
     draft.roles[role].provider === "claude";
   const inputId = `setting-${key.replaceAll(".", "-")}`;
   const input =
-    typeof value === "boolean" ? (
+    value && typeof value === "object" && !Array.isArray(value) ? (
+      <JsonInput
+        id={inputId}
+        value={value}
+        disabled={disabled}
+        onChange={onChange}
+      />
+    ) : typeof value === "boolean" ? (
       <input
         id={inputId}
         type="checkbox"
@@ -167,7 +210,13 @@ function Control({
         <span>Applies: {definition.timing.replaceAll("-", " ")}</span>
         <span>Built-in: {display(defaultValue)}</span>
         {disabled ? (
-          <span>Overridden by {definition.environment ?? "environment"}</span>
+          <span>
+            {source === "environment"
+              ? `Overridden by ${definition.environment ?? "environment"}`
+              : unavailable
+                ? "Instance-wide; edit Global defaults"
+                : "Read-only Loom policy"}
+          </span>
         ) : null}
       </div>
       {accessHelp(key, value) ? (
@@ -258,7 +307,7 @@ export function SettingsView() {
     setBusy(false);
     setStatus(
       outcome.ok
-        ? `${section} saved.${fields.some((item) => item.timing === "restart-required") ? " Restart the coordinator for labeled changes." : ""}`
+        ? `${section} saved.${fields.some((item) => item.timing === "restart-required") ? " Restart Loom for labeled changes." : ""}`
         : `${outcome.error.message}${outcome.error.details.length ? `: ${outcome.error.details.join("; ")}` : ""}`,
     );
   };

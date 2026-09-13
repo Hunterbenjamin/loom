@@ -334,6 +334,9 @@ export function configFromEnvironment(
           },
         }
       : {}),
+    ...(env.LOOM_BASE_BRANCH
+      ? { repository: { baseBranch: parsed.baseBranch } }
+      : {}),
   };
   return { ...parsed, settingsEnvironment };
 }

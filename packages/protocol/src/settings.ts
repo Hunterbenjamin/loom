@@ -36,7 +36,12 @@ export const settingsValues = z.strictObject({
     reviewRoundCap: z.number().int().positive(),
     mergePolicy: z.enum(["require-human", "auto-small", "auto-all"]),
   }),
+  repository: z.strictObject({
+    baseBranch: z.string().min(1),
+    serialTests: z.boolean(),
+  }),
   operator: z.strictObject({
+    policy: z.literal("v1"),
     model: z.string().min(1).nullable(),
     leadModel: z.string().min(1).nullable(),
     repoId: z.string().min(1).nullable(),
@@ -69,8 +74,9 @@ export const settingsValues = z.strictObject({
     chime: z.boolean(),
     windowMode: z.enum(["tracker", "workbench"]),
     terminalHistoryLimit: z.number().int().positive(),
-    keyPrefix: z.string().min(1),
+    keyPrefix: z.string().min(1).nullable(),
     keyTimeoutMs: z.number().int().positive(),
+    keybindings: z.record(z.string().min(1), z.array(z.string().min(1))),
   }),
 });
 
@@ -82,6 +88,7 @@ export const settingsPatch = z.strictObject({
     )
     .optional(),
   workflow: settingsValues.shape.workflow.partial().optional(),
+  repository: settingsValues.shape.repository.partial().optional(),
   operator: settingsValues.shape.operator.partial().optional(),
   runtime: settingsValues.shape.runtime.partial().optional(),
   appearance: settingsValues.shape.appearance.partial().optional(),
@@ -92,6 +99,7 @@ export const settingDefinition = z.strictObject({
   section: z.enum([
     "Agents & models",
     "Workflow & approvals",
+    "Repositories",
     "Access & safety",
     "Operator & Main",
     "Terminals & keybindings",
@@ -102,6 +110,8 @@ export const settingDefinition = z.strictObject({
   label: z.string().min(1),
   timing: z.enum(["immediate", "next-task", "next-run", "restart-required"]),
   environment: z.string().min(1).optional(),
+  scopes: z.array(z.enum(["global", "repository"])).min(1),
+  readOnly: z.boolean().optional(),
 });
 
 export const settingsAudit = z.strictObject({

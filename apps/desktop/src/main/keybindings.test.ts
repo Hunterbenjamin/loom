@@ -75,3 +75,23 @@ test("unconfigured / path-traversing instances do not write a file", () => {
     watcher.close();
   }
 });
+
+test("coordinator settings override the compatibility file without rewriting it", () => {
+  const root = mkdtempSync(join(tmpdir(), "loom-keybindings-owned-"));
+  const env = { LOOM_DATA_ROOT: root, LOOM_INSTANCE: "dev" };
+  const changed = vi.fn();
+  const watcher = watchKeybindings(env, changed);
+  try {
+    const configured = structuredClone(defaultKeybindings);
+    configured.bindings.help = ["Ctrl+Shift+H"];
+    watcher.set(configured);
+    expect(watcher.get()).toMatchObject({ config: configured, error: null });
+    expect(changed).toHaveBeenLastCalledWith(watcher.get());
+    expect(
+      JSON.parse(readFileSync(join(root, "dev", "keybindings.json"), "utf8")),
+    ).toEqual(defaultKeybindings);
+  } finally {
+    watcher.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

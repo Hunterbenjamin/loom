@@ -72,16 +72,23 @@ This is the reviewed production configuration inventory. “Exposed” means it 
 typed catalog and Settings page; environment-backed rows are visible but disabled while the variable
 is present.
 
+Repository scope is intentionally limited to role profiles, task/workflow defaults, base branch and
+serialized tests. Capacity, retry/polling, executable paths, Operator/Main, GitHub observation and
+desktop presentation are single-supervisor or single-instance facts and are editable only at Global
+defaults; repository documents show them as inherited and disabled. Existing `Repo.defaultProviders`
+remain the per-role compatibility baseline until that exact role field is overridden, so one sparse
+edit cannot reroute the other roles.
+
 | Configuration | Current code owner/location | Classification |
 |---|---|---|
 | Planner, implementer and reviewer provider (`LOOM_PROVIDER_*`), provider model (`LOOM_MODEL_CODEX`, `LOOM_MODEL_CLAUDE`), Codex reasoning (`LOOM_CODEX_REASONING_EFFORT`), `LOOM_RUN_MODES`, semantic `LOOM_AGENT_ACCESS` | `apps/coordinator/src/config.ts`, `packages/core/src/settings.ts`, run recipe and provider launch adapters | Exposed; next run. Planner read-only remains a fixed floor. |
 | Plan approval, size, budget, review-round cap, merge policy | create-task protocol/CLI and `packages/core` task policy | Exposed; captured on the next task. Explicit creation values win. |
-| Repository base branch, default providers and serialized-test flag | `packages/core` `Repo`, `apps/coordinator/src/repos.ts` | Exposed through repository registration plus role/workflow repository overrides; repository identity/root remains registration-owned. |
+| Repository base branch, default providers and serialized-test flag | `packages/core` `Repo`, `apps/coordinator/src/repos.ts` | Exposed in the Repositories and role sections at global/repository scope; repository identity/root remains registration-owned. |
 | Operator/Main models and Operator repository, policy v1, auto-fix set and filing rate (`LOOM_MODEL_OPERATOR`, `LOOM_MODEL_LEAD`, `LOOM_OPERATOR_*`) | `apps/coordinator/src/operator*.ts`, `lead.ts`, `config.ts` | Exposed. Policy v1 is informational until another policy exists. |
 | Capacity, retry base/cap/attempts, stall/unknown/delivery timeouts, GitHub task poll, resync and heartbeat | `apps/coordinator/src/config.ts`, loop/executor/observation | Exposed in Advanced runtime; immediate except heartbeat, which needs restart. |
 | Worktree root and tmux/Codex/Claude executables (`LOOM_WORKTREE_ROOT`, `LOOM_TMUX`, `LOOM_CODEX`, `LOOM_CLAUDE`) | coordinator config and launch adapters | Exposed; restart required. |
 | GitHub excluded authors (`LOOM_EXCLUDED_AUTHORS`) | coordinator observation/config | Exposed; immediate. |
-| Theme, chime, startup window (`LOOM_WINDOW_MODE`), terminal history, key prefix/timeout and bindings | desktop renderer/main and instance `keybindings.json` | Exposed as instance-wide appearance/terminal defaults. Native keybinding file import remains compatibility input during migration. |
+| Theme, chime, startup window (`LOOM_WINDOW_MODE`), terminal history, key prefix/timeout and bindings | desktop renderer/main and coordinator settings | Exposed as instance-wide appearance/terminal defaults. The renderer imports `keybindings.json` only when those stored fields are absent, then main uses coordinator updates and keeps a derived private startup cache for the next Electron launch. |
 | `LOOM_INSTANCE`, `LOOM_DATA_ROOT` | process bootstrap before SQLite opens | Deliberately not exposed: instance identity/storage cannot move from a connected client. |
 | `LOOM_BIND`, `LOOM_MCP_PORT`, `LOOM_HOOK_PORT` | protocol/MCP/hook bootstrap | Deliberately not exposed: live edits would strand clients and runs. |
 | `LOOM_TOKEN`, `LOOM_MCP_TOKEN`, provider/GitHub credentials | protocol auth and private per-run recipes | Deliberately not exposed. Only configured/not-configured readiness leaves the coordinator. |

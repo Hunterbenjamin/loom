@@ -27,6 +27,7 @@ export function watchKeybindings(
   };
   let watcher: FSWatcher | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let coordinatorConfig: KeybindingsState["config"] | null = null;
   const fail = (message: string) => {
     state = {
       ...state,
@@ -81,7 +82,8 @@ export function watchKeybindings(
         timer = setTimeout(() => {
           const previous = JSON.stringify(state);
           reload();
-          if (JSON.stringify(state) !== previous) changed(state);
+          if (!coordinatorConfig && JSON.stringify(state) !== previous)
+            changed(state);
         }, 75);
       });
       watcher.on("error", () => {
@@ -94,7 +96,18 @@ export function watchKeybindings(
     }
   }
   return {
-    get: () => state,
+    get: () =>
+      coordinatorConfig
+        ? { config: coordinatorConfig, path: state.path, error: null }
+        : state,
+    set: (raw: unknown) => {
+      coordinatorConfig = raw === null ? null : keybindingsConfig.parse(raw);
+      changed(
+        coordinatorConfig
+          ? { config: coordinatorConfig, path: state.path, error: null }
+          : state,
+      );
+    },
     close: () => {
       clearTimeout(timer);
       watcher?.close();
