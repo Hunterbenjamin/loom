@@ -262,6 +262,17 @@ export const TerminalSession = memo(function TerminalSession({
     terminal.loadAddon(new UnicodeGraphemesAddon());
     terminal.unicode.activeVersion = "15-graphemes";
     terminal.open(element);
+    // Copy on select, as Ghostty and Herdr do: releasing the mouse with a selection puts it on
+    // the clipboard. The selection stays visible; Cmd+V pastes as usual.
+    const copySelection = () => {
+      const selected =
+        typeof terminal.hasSelection === "function" &&
+        terminal.hasSelection() &&
+        terminal.getSelection();
+      if (selected)
+        void navigator.clipboard?.writeText(selected).catch(() => {});
+    };
+    element.addEventListener("mouseup", copySelection);
     // A TUI may ask for a blinking cursor (DECSCUSR 1/3/5, or DECSET 12). Keep its cursor
     // shape but never blink: a blinking cursor over a fast-redrawing TUI reads as flicker.
     // (Test doubles of xterm carry no parser.)
@@ -499,6 +510,7 @@ export const TerminalSession = memo(function TerminalSession({
       window.clearTimeout(timer);
       observer.disconnect();
       fitViewport.current = null;
+      element.removeEventListener("mouseup", copySelection);
       if (window.loom.term === terminal) window.loom.term = null;
       delete window.loom.terms?.[panelId ?? id];
       instance.current = null;
