@@ -26,10 +26,15 @@ const terminalRenders = vi.hoisted(() => vi.fn());
 vi.mock("../ui/terminal.js", async () => {
   const { memo } = await import("react");
   return {
-    TerminalSession: memo(({ pane }: { pane?: PaneIdentity }) => {
-      terminalRenders();
-      return createElement("div", { "data-attached-pane": pane?.paneId });
-    }),
+    TerminalSession: memo(
+      ({ pane, viewport }: { pane?: PaneIdentity; viewport?: unknown }) => {
+        terminalRenders();
+        return createElement("div", {
+          "data-attached-pane": pane?.paneId,
+          "data-viewport": JSON.stringify(viewport),
+        });
+      },
+    ),
   };
 });
 (
@@ -67,12 +72,17 @@ async function harness(initial: PaneView[] = [pane]) {
       };
     }
     if (command.kind === "open_workbench_terminal") {
+      const source = command.target
+        ? ([...native.values()].find(
+            (p) => p.paneId === command.target.paneId,
+          ) ?? pane)
+        : pane;
       const created = {
-        ...pane,
+        ...source,
         id: JSON.stringify([pane.hostGeneration, "%99"]),
         paneId: "%99",
-        windowId: "@99",
-        windowName: command.label,
+        windowId: command.split ? source.windowId : "@99",
+        windowName: command.split ? source.windowName : command.label,
       };
       native.set(created.id, created);
       publish();
@@ -158,75 +168,26 @@ test("Workbench reserves a draggable title area and keeps tab controls interacti
   }
 });
 
-test("close ends the host terminal and removes its row; selecting from an empty Workbench only attaches", async () => {
+test("panel close only detaches, stays hidden on patches, and reopens from its tab", async () => {
   const h = await harness();
   try {
+    await act(async () => h.button("Close panel").click());
     expect(h.send).not.toHaveBeenCalled();
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
-    await act(async () => h.button("Close terminal").click());
-    expect(h.send).toHaveBeenCalledExactlyOnceWith({
-      kind: "close_terminal",
-      target: {
-        hostGeneration: pane.hostGeneration,
-        sessionName: pane.sessionName,
-        windowId: pane.windowId,
-        paneId: pane.paneId,
-      },
-    });
-    expect(
-      h.element.querySelector(".wb-terminal-list")?.textContent,
-    ).not.toContain("shell");
+    expect(h.native.size).toBe(1);
     expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(0);
-    await h.remount();
-    expect(h.send).toHaveBeenCalledTimes(1);
-    const next = {
-      ...pane,
-      paneId: "%8",
-      id: JSON.stringify([pane.hostGeneration, "%8"]),
-      windowName: "Existing terminal",
-    };
     await act(async () => {
-      h.native.set(next.id, next);
-      h.publish();
-    });
-    await act(async () => h.button("Open Existing terminal sh %8").click());
-    await act(async () => h.button("Open Existing terminal sh %8").click());
-    expect(h.element.querySelector("dialog")).toBeNull();
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
-    expect(h.send).toHaveBeenCalledTimes(1);
-    // A native shell exit disappears even when tmux keeps a dead pane for diagnostics.
-    await act(async () => {
-      h.native.set(next.id, { ...next, dead: true });
+      h.native.set(pane.id, { ...pane, branch: "changed" });
       h.publish();
     });
     expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(0);
-    expect(h.element.querySelector(".wb-terminal-list")?.textContent).toContain(
-      "Existing terminal",
-    );
-    expect(h.button("Open Existing terminal sh %8").disabled).toBe(true);
-  } finally {
-    await h.close();
-  }
-});
-
-test("failed close retains the terminal and explains failure; unavailable inventory does not delete it", async () => {
-  const h = await harness();
-  try {
-    h.send.mockResolvedValueOnce({
-      ok: false,
-      error: { code: "unavailable", message: "Host unavailable", details: [] },
-    });
-    await act(async () => h.button("Close terminal").click());
-    expect(h.element.querySelector("[role=alert]")?.textContent).toContain(
-      "Host unavailable",
-    );
+    await act(async () => h.button("Open tab shell").click());
     expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
     await act(async () => {
-      h.native.set(pane.id, { ...pane, unavailable: true });
+      h.native.set(pane.id, { ...pane, dead: true });
       h.publish();
     });
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
-    expect(h.button("Open shell sh %2").disabled).toBe(true);
+    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(0);
+    expect(h.button("Open tab shell").disabled).toBe(true);
   } finally {
     await h.close();
   }
@@ -268,52 +229,100 @@ test("New terminal creates once before attachment and remount never recreates it
   }
 });
 
-test("pane clicks replace the focused viewer, Enter opens an independent tab, and patches preserve terminals", async () => {
-  const next = {
+test("tab selection opens exactly its space, native windows in order and panes as splits", async () => {
+  const build = {
     ...pane,
     id: JSON.stringify([pane.hostGeneration, "%8"]),
     paneId: "%8",
     windowId: "@8",
+    windowIndex: 0,
     windowName: "Build",
+    windowLayout: "abcd,120x40,0,0[120x20,0,0,8,120x19,0,21,9]",
+    provider: "codex",
   };
-  const h = await harness([pane, next]);
+  const sibling = {
+    ...build,
+    id: JSON.stringify([pane.hostGeneration, "%9"]),
+    paneId: "%9",
+    provider: null,
+  };
+  const other = {
+    ...pane,
+    id: JSON.stringify([pane.hostGeneration, "%12"]),
+    paneId: "%12",
+    sessionId: "$12",
+    sessionName: "Other",
+    windowName: "Other tab",
+  };
+  const h = await harness([{ ...pane, windowIndex: 3 }, build, sibling, other]);
   try {
-    await act(async () => h.button("Open Build sh %8").click());
+    await act(async () => h.button("Open tab Build").click());
+    expect(
+      [...h.element.querySelectorAll(".wb-tabs button")].map(
+        (b) => b.textContent,
+      ),
+    ).toEqual(["Build", "shell", "＋"]);
+    const active = () =>
+      h.element.querySelector<HTMLElement>('.wb-tab[style*="display: block"]');
+    expect(
+      [...(active()?.querySelectorAll("[data-attached-pane]") ?? [])].map((p) =>
+        p.getAttribute("data-attached-pane"),
+      ),
+    ).toEqual(["%8", "%9"]);
+    expect(h.element.querySelectorAll(".wb-tree-pane")).toHaveLength(0);
+    expect(
+      JSON.parse(
+        active()
+          ?.querySelector('[data-attached-pane="%9"]')
+          ?.getAttribute("data-viewport") ?? "null",
+      ),
+    ).toEqual({
+      columns: 120,
+      rows: 40,
+      left: 0,
+      top: 21,
+      width: 120,
+      height: 19,
+    });
+    expect(h.button("Open space research").getAttribute("aria-current")).toBe(
+      "true",
+    );
+    expect(
+      h
+        .button("Open tab Build")
+        .closest(".wb-tab-row")
+        ?.getAttribute("aria-current"),
+    ).toBe("true");
+    const viewer = active()?.querySelector("[data-attached-pane]");
+    const renders = terminalRenders.mock.calls.length;
+    await act(async () => {
+      h.native.set(build.id, {
+        ...build,
+        attention: true,
+        windowName: "Compile",
+      });
+      h.publish();
+    });
+    expect(active()?.querySelector("[data-attached-pane]")).toBe(viewer);
+    expect(terminalRenders).toHaveBeenCalledTimes(renders);
+    await act(async () => h.button("shell").click());
+    expect(
+      active()
+        ?.querySelector("[data-attached-pane]")
+        ?.getAttribute("data-attached-pane"),
+    ).toBe("%2");
+    await act(async () => h.button("Open tab Other tab").click());
     expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
     expect(
       h.element
         .querySelector("[data-attached-pane]")
         ?.getAttribute("data-attached-pane"),
-    ).toBe("%8");
-    await act(async () =>
-      h.button("Open Build sh %8").dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Enter",
-          bubbles: true,
-          cancelable: true,
-        }),
-      ),
-    );
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(2);
+    ).toBe("%12");
+    await act(async () => h.button("Open agent research Compile %8").click());
+    expect(active()?.querySelectorAll("[data-attached-pane]")).toHaveLength(2);
+    await act(async () => h.button("Open space research").click());
+    expect(h.button("Compile").getAttribute("aria-pressed")).toBe("true");
     expect(h.send).not.toHaveBeenCalled();
-    const renders = terminalRenders.mock.calls.length;
-    await act(async () => {
-      h.native.set(next.id, { ...next, attention: true, status: "blocked" });
-      h.publish();
-    });
-    expect(h.element.querySelector(".wb-space .wb-status")?.textContent).toBe(
-      "●",
-    );
-    expect(terminalRenders).toHaveBeenCalledTimes(renders);
-    await act(async () => {
-      h.native.set(pane.id, { ...pane, branch: "feat/branch-patch" });
-      h.native.set(next.id, { ...next, branch: "feat/branch-patch" });
-      h.publish();
-    });
-    expect(h.element.querySelector(".wb-space-branch")?.textContent).toBe(
-      "feat/branch-patch",
-    );
-    expect(terminalRenders).toHaveBeenCalledTimes(renders);
   } finally {
     await h.close();
   }
@@ -332,79 +341,13 @@ const contextMenu = async (button: HTMLElement) => {
   );
 };
 
-test("tab rows open all live siblings as independent splits despite filtering; menu close only detaches this tab", async () => {
-  const sibling = {
-    ...pane,
-    id: JSON.stringify([pane.hostGeneration, "%8"]),
-    paneId: "%8",
-    command: "unique",
-  };
-  const dead = {
-    ...pane,
-    id: JSON.stringify([pane.hostGeneration, "%9"]),
-    paneId: "%9",
-    dead: true,
-  };
-  const unavailable = {
-    ...pane,
-    id: JSON.stringify([pane.hostGeneration, "%10"]),
-    paneId: "%10",
-    unavailable: true,
-  };
-  const h = await harness([pane, sibling, dead, unavailable]);
-  try {
-    const filter = h.element.querySelector<HTMLInputElement>("#agent-filter");
-    if (!filter) throw new Error("Missing filter");
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        "value",
-      )?.set?.call(filter, "unique");
-      filter.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    expect(
-      h.element.querySelectorAll(".wb-tree-pane[data-pane-key]"),
-    ).toHaveLength(1);
-    await act(async () => h.button("Open tab shell").click());
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(3);
-    const grids = h.element.querySelectorAll(".wb-tab");
-    expect(grids).toHaveLength(2);
-    expect(
-      [...(grids[1]?.querySelectorAll("[data-attached-pane]") ?? [])].map((p) =>
-        p.getAttribute("data-attached-pane"),
-      ),
-    ).toEqual(["%2", "%8"]);
-    expect(h.send).not.toHaveBeenCalled();
-    const renders = terminalRenders.mock.calls.length;
-    await act(async () => {
-      h.native.set(sibling.id, {
-        ...sibling,
-        status: "working",
-        branch: "feat/update",
-      });
-      h.publish();
-    });
-    expect(terminalRenders).toHaveBeenCalledTimes(renders);
-    await contextMenu(h.button("Open tab shell"));
-    expect(h.button("Rename").disabled).toBe(true);
-    await act(async () => h.button("Close panel").click());
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
-    expect(h.native.size).toBe(4);
-    expect(h.send).not.toHaveBeenCalled();
-    await contextMenu(h.button("Open tab shell"));
-    await act(async () => h.button("Open in new tab").click());
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(3);
-  } finally {
-    await h.close();
-  }
-});
-
 test("pane menu opens, copies the coordinator attach argv safely, and closes just its viewer", async () => {
   const sibling = {
     ...pane,
     id: JSON.stringify([pane.hostGeneration, "%8"]),
     paneId: "%8",
     command: "unique",
+    provider: "codex",
   };
   const h = await harness([pane, sibling]);
   const writeText = vi.fn().mockResolvedValue(undefined);
@@ -412,17 +355,17 @@ test("pane menu opens, copies the coordinator attach argv safely, and closes jus
     .spyOn(navigator.clipboard, "writeText")
     .mockImplementation(writeText);
   try {
-    await contextMenu(h.button("Open shell unique %8"));
+    await contextMenu(h.button("Open agent research shell %8"));
     await act(async () => h.button("Open").click());
     expect(
       h.element
         .querySelector("[data-attached-pane]")
         ?.getAttribute("data-attached-pane"),
-    ).toBe("%8");
-    await contextMenu(h.button("Open shell unique %8"));
-    await act(async () => h.button("Open in new tab").click());
+    ).toBe("%2");
+    await contextMenu(h.button("Open agent research shell %8"));
+    await act(async () => h.button("Open space").click());
     expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(2);
-    await contextMenu(h.button("Open shell unique %8"));
+    await contextMenu(h.button("Open agent research shell %8"));
     h.send.mockResolvedValueOnce({
       ok: true,
       result: {
@@ -464,14 +407,14 @@ test("pane menu opens, copies the coordinator attach argv safely, and closes jus
     expect(writeText).toHaveBeenCalledExactlyOnceWith(
       `'env' 'TMUX_TMPDIR=/tmp/private space' 'tmux' '-L' 'loom-test' 'attach-session' '-t' 'research'"'"'quoted'`,
     );
-    await contextMenu(h.button("Open shell unique %8"));
+    await contextMenu(h.button("Open agent research shell %8"));
     await act(async () => h.button("Close panel").click());
     expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
     expect(h.native.size).toBe(2);
     expect(h.send).toHaveBeenCalledTimes(1);
     // Keyboard opening and Escape restore the row without triggering Workbench bindings.
     await act(async () =>
-      h.button("Open shell unique %8").dispatchEvent(
+      h.button("Open agent research shell %8").dispatchEvent(
         new KeyboardEvent("keydown", {
           key: "F10",
           shiftKey: true,
@@ -491,7 +434,9 @@ test("pane menu opens, copies the coordinator attach argv safely, and closes jus
       ),
     );
     expect(h.element.querySelector('[role="menu"]')).toBeNull();
-    expect(document.activeElement).toBe(h.button("Open shell unique %8"));
+    expect(document.activeElement).toBe(
+      h.button("Open agent research shell %8"),
+    );
   } finally {
     clipboard.mockRestore();
     await h.close();
@@ -502,7 +447,7 @@ test("menu tracks unavailable inventory, retains viewer-only close, and reports 
   const h = await harness();
   const clipboard = vi.spyOn(navigator.clipboard, "writeText");
   try {
-    await contextMenu(h.button("Open shell sh %2"));
+    await contextMenu(h.button("Open tab shell"));
     h.send.mockResolvedValueOnce({
       ok: false,
       error: { code: "unavailable", message: "Pane is stale", details: [] },
@@ -518,7 +463,7 @@ test("menu tracks unavailable inventory, retains viewer-only close, and reports 
       h.publish();
     });
     expect(h.button("Open").disabled).toBe(true);
-    expect(h.button("Open in new tab").disabled).toBe(true);
+    expect(h.button("Open space").disabled).toBe(true);
     expect(h.button("Copy attach command").disabled).toBe(true);
     expect(h.button("Close panel").disabled).toBe(false);
     await act(async () => h.button("Close panel").click());
@@ -531,7 +476,7 @@ test("menu tracks unavailable inventory, retains viewer-only close, and reports 
   }
 });
 
-test("rename patches keep viewers mounted and close uses the current session name", async () => {
+test("rename patches keep viewers mounted and close remains viewer only", async () => {
   const h = await harness();
   try {
     const count = terminalRenders.mock.calls.length;
@@ -545,20 +490,91 @@ test("rename patches keep viewers mounted and close uses the current session nam
     expect(h.element.querySelector("[data-attached-pane]")).toBe(viewer);
     expect(terminalRenders).toHaveBeenCalledTimes(count);
     expect(h.element.querySelector('[title="Renamed space"]')).not.toBeNull();
-    const close = h.element.querySelector<HTMLButtonElement>(
-      '[aria-label="Close terminal"]',
-    );
-    if (!close) throw new Error("Missing close terminal");
-    await act(async () => close.click());
-    expect(h.send).toHaveBeenCalledWith({
-      kind: "close_terminal",
-      target: {
-        hostGeneration: pane.hostGeneration,
-        sessionName: "Renamed space",
-        windowId: pane.windowId,
-        paneId: pane.paneId,
-      },
+    expect(h.button("Renamed tab")).toBeDefined();
+    await act(async () => h.button("Close panel").click());
+    expect(h.send).not.toHaveBeenCalled();
+  } finally {
+    await h.close();
+  }
+});
+
+test("new tab targets the selected space and split targets the active native window", async () => {
+  const selected = { ...pane, sessionName: "Selected", sessionId: "$50" };
+  const h = await harness([selected]);
+  const submit = async () =>
+    act(async () => {
+      h.element
+        .querySelector("form")
+        ?.dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
     });
+  try {
+    await act(async () => h.button("＋").click());
+    await submit();
+    expect(h.send.mock.calls[0]?.[0]).toMatchObject({
+      kind: "open_workbench_terminal",
+      target: { sessionName: "Selected", paneId: "%2" },
+    });
+    expect(
+      [...h.element.querySelectorAll(".wb-tabs button")].map(
+        (b) => b.textContent,
+      ),
+    ).toEqual(["shell", "Terminal 2", "＋"]);
+    await act(async () => h.button("shell").click());
+    await act(async () =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "d",
+          metaKey: true,
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(h.element.querySelector("dialog")).not.toBeNull();
+    await submit();
+    expect(h.send.mock.calls[1]?.[0]).toMatchObject({
+      kind: "open_workbench_terminal",
+      split: "below",
+      target: { windowId: "@1", paneId: "%2" },
+    });
+    const active = h.element.querySelector('.wb-tab[style*="display: block"]');
+    expect(active?.querySelectorAll("[data-attached-pane]")).toHaveLength(2);
+  } finally {
+    await h.close();
+  }
+});
+
+test("pinned agents open only their native space and its windows", async () => {
+  const operator = {
+    ...pane,
+    id: JSON.stringify([pane.hostGeneration, "%50"]),
+    paneId: "%50",
+    sessionName: "loom-operator",
+    sessionId: "$50",
+    windowName: "Operator native",
+  };
+  const h = await harness([pane, operator]);
+  try {
+    await act(async () =>
+      h.element
+        .querySelector<HTMLButtonElement>('[data-pinned="operator"]')
+        ?.click(),
+    );
+    expect(
+      [...h.element.querySelectorAll(".wb-tabs button")].map(
+        (b) => b.textContent,
+      ),
+    ).toEqual(["Operator native", "＋"]);
+    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
+    expect(
+      h.element
+        .querySelector('[data-pinned="operator"]')
+        ?.getAttribute("aria-current"),
+    ).toBe("true");
+    expect(h.send).not.toHaveBeenCalled();
   } finally {
     await h.close();
   }

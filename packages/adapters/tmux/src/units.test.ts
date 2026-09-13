@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { WorktreePath } from "@loom/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { baseEnv, withUtf8Locale } from "./cli.js";
 import { CONFIG_LINES, configFile, hookCommand } from "./config.js";
 import { classifyLine } from "./monitor.js";
@@ -82,7 +82,7 @@ describe("pane rows", () => {
   });
 
   it("asks tmux for exactly the fields it parses", () => {
-    expect(PANE_FORMAT.split("")).toHaveLength(15);
+    expect(PANE_FORMAT.split("")).toHaveLength(17);
     expect(PANE_FORMAT).toContain("#{pane_start_path}");
     expect(PANE_FORMAT).toContain("#{pane_dead_status}");
   });
@@ -184,4 +184,20 @@ describe("monitor", () => {
     // Pane output is never a decision, so it is not even a hint.
     expect(classifyLine("%output %4 hello")).toBe("ignore");
   });
+});
+
+test("native window index and layout survive the validated observation boundary", () => {
+  const line = fixture("list-panes.txt").trim().split("\n")[0];
+  const fields = line?.split("\u001f") ?? [];
+  fields[14] = "workspace";
+  fields[15] = "3";
+  fields[16] = "abcd,120x40,0,0,2";
+  const parsed = parsePanes(fields.join("\u001f"))[0];
+  expect(parsed).toBeDefined();
+  if (!parsed) throw new Error("Missing row");
+  expect(
+    toObservation(parsed, "loom-test#1", "/tmp" as WorktreePath),
+  ).toMatchObject({ windowIndex: 3, windowLayout: fields[16] });
+  fields[15] = "invalid";
+  expect(parsePanes(fields.join("\u001f"))).toEqual([]);
 });

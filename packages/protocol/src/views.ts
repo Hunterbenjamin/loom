@@ -306,6 +306,8 @@ export const paneView = paneIdentity
     id: z.string().min(1),
     sessionId: z.string().nullable(),
     windowName: z.string().nullable(),
+    windowIndex: z.number().int().nonnegative().optional(),
+    windowLayout: z.string().max(65536).optional(),
     title: z.string().nullable(),
     command: z.string(),
     startCwd: worktreePath,

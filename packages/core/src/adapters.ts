@@ -233,6 +233,9 @@ export interface PaneHost {
   }): Promise<PaneRef>;
   /** Human shell, idempotent on key within a host generation. */
   createScratch(req: {
+    /** Existing native space; split additionally targets this window/pane. */
+    target?: PaneRef;
+    split?: "right" | "below";
     /** Allow a standalone human terminal workspace to be created without a task. */
     createWorkspace?: boolean;
     label?: string;

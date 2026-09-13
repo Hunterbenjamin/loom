@@ -469,7 +469,12 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
 
     createScratch(req) {
       return exclusive(async () => {
-        const session = await workspaceSession(req.workspaceId);
+        if (req.split && !req.target) throw new TmuxError("pane_not_found");
+        const target = req.target ? await rowFor(req.target) : null;
+        if (req.target && !target) throw new TmuxError("pane_not_found");
+        if (target?.dead) throw new TmuxError("pane_not_found");
+        const session =
+          target?.sessionName ?? (await workspaceSession(req.workspaceId));
         const key = z.string().uuid().parse(req.key);
         const cwd = (await realpath(req.cwd)) as WorktreePath;
         const windowName =
@@ -506,15 +511,17 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
           await scrub(session, req.env);
           const output = await tmux(
             [
-              "new-window",
+              ...(req.split
+                ? ["split-window", req.split === "right" ? "-h" : "-v"]
+                : ["new-window"]),
               "-d",
               "-P",
               "-F",
               "#{pane_id}",
               "-t",
-              `${session}:`,
-              "-n",
-              windowName,
+              ...(req.split && target
+                ? [target.paneId]
+                : [`${session}:`, "-n", windowName]),
               "-c",
               cwd,
               ...Object.entries(req.env).flatMap(([k, v]) => [
@@ -529,7 +536,7 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
               env: { ...env, ...(req.env.PATH ? { PATH: req.env.PATH } : {}) },
             },
           );
-          if (req.label !== undefined)
+          if (req.label !== undefined && !req.split)
             await tmux([
               "set-option",
               "-w",

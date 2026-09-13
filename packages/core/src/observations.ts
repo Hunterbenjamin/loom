@@ -200,6 +200,8 @@ export interface PaneObservation {
   workspaceId?: string;
   sessionId?: string | null;
   windowName?: string | null;
+  windowIndex?: number;
+  windowLayout?: string;
   title?: string | null;
   ref: PaneRef;
   /** The pane's current working directory; null once the pane is dead. */

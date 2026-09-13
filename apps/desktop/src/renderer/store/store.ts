@@ -1,4 +1,5 @@
 import { repoId as parseRepoId } from "@loom/protocol";
+import { sendWithMergeNotification } from "./merge-notification.js";
 // One in-memory snapshot, one UI state, one subscription. Everything a panel renders comes
 // from here; nothing reads disk or the network during an interaction.
 
@@ -295,7 +296,7 @@ export function createStore(
             },
           }
         : send
-          ? await send(parsed.data)
+          ? await sendWithMergeNotification(parsed.data, send)
           : {
               ok: false,
               error: {

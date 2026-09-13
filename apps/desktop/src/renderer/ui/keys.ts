@@ -3,6 +3,10 @@ import { inboxRows, reasonTab } from "../store/inbox.js";
 import { selectedPullRequests } from "../store/pull-requests.js";
 import { cursorRows } from "../store/selectors.js";
 import type { Store } from "../store/store.js";
+import {
+  pullRequestShortcut,
+  requestPullRequestAction,
+} from "./pull-request-commands.js";
 
 const TYPING = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 
@@ -45,9 +49,19 @@ export function useShortcuts(store: Store): void {
         return;
       }
 
-      if (ui.palette || ui.stagePicker || ui.openPr) return;
+      if (ui.palette || ui.stagePicker) return;
       if (typing(event.target)) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      if (ui.openPr) {
+        pendingG.current = false;
+        const action = pullRequestShortcut(event.key);
+        if (action && !event.repeat) {
+          event.preventDefault();
+          requestPullRequestAction({ ...ui.openPr, action });
+        }
+        return;
+      }
 
       if (pendingG.current) {
         pendingG.current = false;

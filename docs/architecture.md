@@ -51,7 +51,7 @@ carry for them are in [`docs/design/ui.md`](design/ui.md).
 | Fact | Owner | Loom's copy |
 |---|---|---|
 | Issue fields, stage, plans, findings, test results, approvals, run records | Coordinator (SQLite + artifact files) | Authoritative |
-| Branches (including PR head existence), PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time; repository PR lists and subscribed detail/patch projections are disposable, including PRs without issues |
+| Branches (including PR head existence), PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time; repository PR lists, readiness counts derived from them, and subscribed detail/patch projections are disposable, including PRs without issues |
 | Diffs | The worktree or the PR | Computed on demand |
 | Session transcripts and live status | Codex daemon / Claude Code | Cache + references |
 | Terminal processes | tmux, only while its server is alive | References (`{hostGeneration, sessionName, windowId, paneId}`), plus each run's intended command line and environment, so Loom can relaunch it. Pane IDs restart at `%0` after a server death, so every ref is scoped to a host generation |
@@ -87,7 +87,9 @@ Done is derived from GitHub: an issue is Done only once its PR is merged.
   to that repo/state (cursor pagination above 100 rows, capped at 1,000 pages). GraphQL has no ETag;
   compare mapped rows and preserve unchanged observations so identical refreshes publish no patch.
   First snapshots use cached rows immediately with an initial loading flag, then receive patches.
-  Reads run concurrently across scopes, with at most one in flight per key; REST
+  Reads run concurrently across scopes, with at most one in flight per key.
+  Each window subscribes to its selected repository's open list for the bottom-bar readiness count
+  in both Tracker and Workbench; other list states are subscribed only while visible. REST
   detail (including remote head-branch existence) and capped patches refresh every 30 seconds while the PR is open in a window. Identical
   scopes share one poll, and disconnect/unsubscribe cancels it when the last viewer leaves.
   PR commands run through the executor, always refresh their owner after success or failure, and
@@ -240,16 +242,16 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   terminal a minimum width (about 100 columns), and resize only when the panel resizes, debounced.
 - **Scrollback lives in tmux.** The mouse wheel enters copy mode and reaches tmux history; search
   and history still read provider transcripts, not the terminal buffer.
-- Closing a human terminal explicitly ends its native pane through `close_terminal`, then refreshes
-  the inventory. Selecting an existing terminal only attaches; it never creates or resurrects a shell.
-  Native exits remove terminal rows and their views. Closing the app or switching modes only detaches
-  clients. Pinned and supervised agents use a separately labelled **Hide agent view** action; their
-  existing stop controls own stopping work, so a terminal close cannot accidentally trigger recovery.
-  A host restart kills every pane process, and Loom relaunches runs from stored recipes.
-- The terminal sidebar is a projection of live native panes, independent of issue history and local
-  view layout. No default shell is recreated on render or navigation. New Terminal and Split are the
-  explicit Workbench shell-creation paths, and capture the native identity before mounting a viewer. This follows
-  [Herdr's pane close/runtime lifecycle](https://github.com/herdrdev/herdr/blob/d184b41fa36923c132629af725ff98bb02aa1b61/src/app/api/panes.rs#L1853).
+- Workbench shows exactly one native space at a time, with windows in native index order and
+  panes laid out from tmux's `window_layout`. These are disposable native facts in the inventory.
+  Workbench clients use the native window size and crop their screen to the target pane rectangle;
+  Dockview resizing scales the view without changing the native window layout.
+  Closing a Workbench panel only detaches its client; it never ends a shell or agent. Explicit
+  stop controls and `close_terminal` remain separate native lifecycle operations.
+- Workbench New tab and Split use the idempotent scratch-shell path: a generation-scoped target
+  resolves the selected space, and Split creates a pane in that target's window. Stale or dead
+  targets fail; they never create a replacement space. With no selection, New terminal creates
+  a window in the standalone Workbench space. No shell is created during render or navigation.
 - Issue detail's Terminal tab resolves through `open_task_terminal`: a live recorded agent pane
   takes precedence; otherwise an issue-keyed human shell opens in the surviving worktree or the
   configured project root. Reopening reuses that shell. The coordinator reads and displays the

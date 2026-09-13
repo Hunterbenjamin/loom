@@ -6,6 +6,7 @@ import { cursorRows, selectedRows } from "../store/selectors.js";
 import { VIEWS } from "../store/store.js";
 import { ChimeMuteCommand } from "../workbench/chime.js";
 import { stageLabel } from "./format.js";
+import { PullRequestPaletteCommands } from "./pull-request-commands.js";
 
 export function Palette() {
   const store = useStoreApi();
@@ -14,6 +15,8 @@ export function Palette() {
   const visibleRows = useStore(cursorRows);
   const cursor = useStore((s) => s.ui.cursor);
   const openTask = useStore((s) => s.ui.openTask);
+  const openPr = useStore((s) => s.ui.openPr);
+  const view = useStore((s) => s.ui.view);
   const pane = useStore((s) => s.ui.pane);
   const [value, setValue] = useState("");
 
@@ -22,7 +25,12 @@ export function Palette() {
   }, [open]);
 
   if (!open) return null;
-  const current = openTask ?? visibleRows[cursor]?.task.id ?? null;
+  const current = openPr
+    ? null
+    : (openTask ??
+      (view === "pull-requests"
+        ? null
+        : (visibleRows[cursor]?.task.id ?? null)));
   const close = () => store.setPalette(false);
   const run = (action: () => void) => {
     close();
@@ -58,6 +66,8 @@ export function Palette() {
               Switch to {pane === "list" ? "board" : "list"}
             </Command.Item>
           </Command.Group>
+
+          <PullRequestPaletteCommands close={close} />
 
           <Command.Group heading="Issue">
             {current ? (

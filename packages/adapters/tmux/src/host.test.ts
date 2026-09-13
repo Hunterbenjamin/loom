@@ -317,6 +317,52 @@ describe.skipIf(!available)("tmux pane host", () => {
     expect(await shells()).toHaveLength(2);
   });
 
+  it("creates windows in a selected renamed space and idempotent splits in its active window", async () => {
+    const request = {
+      workspaceId: "loom-space-layout",
+      key: crypto.randomUUID(),
+      cwd,
+      executable: "/bin/sh",
+      args: [],
+      env: paneEnv(),
+    };
+    const first = await host.createScratch(request);
+    const observation = await host.getPane(first);
+    if (!observation?.sessionId) throw new Error("Missing native session");
+    await host.renameSession({
+      hostGeneration: first.hostGeneration,
+      sessionId: observation.sessionId,
+      name: "Renamed layout",
+    });
+    const tab = await host.createScratch({
+      ...request,
+      key: crypto.randomUUID(),
+      target: first,
+      label: "Second",
+    });
+    expect(tab.sessionName).toBe("Renamed layout");
+    expect(tab.windowId).not.toBe(first.windowId);
+    const splitRequest = {
+      ...request,
+      key: crypto.randomUUID(),
+      target: tab,
+      split: "below" as const,
+    };
+    const split = await host.createScratch(splitRequest);
+    expect(await host.createScratch(splitRequest)).toEqual(split);
+    expect(split.windowId).toBe(tab.windowId);
+    expect(split.paneId).not.toBe(tab.paneId);
+    const splitPane = await host.getPane(split);
+    expect(splitPane?.windowLayout).toContain("[");
+    expect(splitPane?.windowIndex).toBeTypeOf("number");
+    await expect(
+      host.createScratch({
+        ...splitRequest,
+        target: { ...tab, hostGeneration: "loom-test#stale" },
+      }),
+    ).rejects.toThrow();
+  });
+
   it("reserves a task workspace without a blank shell and launches only the requested agent pane", async () => {
     const { workspaceId } = await host.ensureWorkspace({
       taskId: "t-no-shell" as TaskId,

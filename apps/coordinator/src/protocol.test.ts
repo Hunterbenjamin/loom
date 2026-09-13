@@ -621,3 +621,96 @@ test("rename commands map to the pane host and publish authoritative names to ev
     [...(client.state?.collections.pane.values() ?? [])][0]?.sessionName,
   ).toBe("New space");
 }, 30_000);
+
+test("Workbench creation passes selected space and split identity through scratch and publishes native metadata", async () => {
+  const h = await served();
+  const ref = {
+    hostGeneration: `loom-${h.config.instance}#1`,
+    sessionName: "Selected space",
+    windowId: "@7",
+    paneId: "%7",
+  };
+  const original = {
+    ref,
+    sessionId: "$7",
+    windowName: "shell",
+    windowIndex: 2,
+    windowLayout: "abcd,120x40,0,0,7",
+    dead: false,
+    exitCode: null,
+    pid: 12345,
+    command: "sh",
+    startCwd: h.repo.root,
+    cwd: h.repo.root,
+  };
+  const created = {
+    ...original,
+    ref: { ...ref, paneId: "%8" },
+    windowLayout: "abcd,120x40,0,0[120x20,0,0,7,120x19,0,21,8]",
+  };
+  let inventory = [original];
+  vi.spyOn(h.paneHost, "listPanes").mockImplementation(async () => inventory);
+  vi.spyOn(h.paneHost, "listClients").mockResolvedValue([]);
+  vi.spyOn(h.paneHost, "getPane").mockImplementation(
+    async (target) =>
+      inventory.find(
+        (p) =>
+          p.ref.paneId === target.paneId &&
+          p.ref.hostGeneration === target.hostGeneration,
+      ) ?? null,
+  );
+  const scratch = vi
+    .spyOn(h.paneHost, "createScratch")
+    .mockImplementation(async () => {
+      inventory = [original, created];
+      return created.ref;
+    });
+  vi.spyOn(h.paneHost, "attachArgs").mockReturnValue([
+    "tmux",
+    "-L",
+    "loom-test",
+    "attach-session",
+  ]);
+  const client = await connect(h, "space-create", [{ kind: "panes" }] as never);
+  expect(
+    await client.command({
+      kind: "open_workbench_terminal",
+      key: crypto.randomUUID(),
+      target: ref,
+      split: "below",
+      label: "Shell",
+    }),
+  ).toMatchObject({
+    ok: true,
+    result: { kind: "attach_session", target: { target: created.ref } },
+  });
+  expect(scratch).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ target: ref, split: "below", cwd: h.repo.root }),
+  );
+  await vi.waitFor(() =>
+    expect([...(client.state?.collections.pane.values() ?? [])]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          paneId: "%8",
+          windowIndex: 2,
+          windowLayout: created.windowLayout,
+        }),
+      ]),
+    ),
+  );
+  for (const target of [
+    { ...ref, hostGeneration: "loom-other#1" },
+    { ...ref, paneId: "%404" },
+    { ...ref, windowId: "@404" },
+  ]) {
+    expect(
+      await client.command({
+        kind: "open_workbench_terminal",
+        key: crypto.randomUUID(),
+        target,
+        label: "Shell",
+      }),
+    ).toMatchObject({ ok: false });
+  }
+  expect(scratch).toHaveBeenCalledTimes(1);
+});
