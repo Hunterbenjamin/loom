@@ -5,7 +5,7 @@ import type { Finding, Task } from "@loom/core";
 import type { CodeViewDiffItem, FileDiffMetadata } from "@pierre/diffs";
 import { parsePatchFiles } from "@pierre/diffs";
 import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { PatchFileMeta } from "../fixtures/patch.js";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { taskFindings } from "../store/selectors.js";
@@ -310,137 +310,6 @@ function FileRow({
       <span className="faint nums">
         +{file.added} −{file.deleted}
       </span>
-    </div>
-  );
-}
-
-/** Repository PRs have no Loom findings or durable review state. */
-export function PullRequestFiles({
-  row,
-  selectedFile,
-}: {
-  selectedFile?: string | null;
-  row: import("@loom/protocol").PullRequestDetailRow & {
-    patch: NonNullable<import("@loom/protocol").PullRequestDetailRow["patch"]>;
-  };
-}) {
-  const theme = useStore((s) => s.ui.theme);
-  const handle = useRef<CodeViewHandle<undefined, undefined>>(null);
-  const [active, setActive] = useState<string | null>(null);
-  const patch = row.patch.patch;
-  const truncated = row.patch.truncated;
-  const identity = `${row.repoId}:${row.number}:${row.detail.headSha}`;
-  const parsed = useMemo(() => {
-    try {
-      // A capped response may end inside a hunk. Only render complete preceding files.
-      const lastFile = patch.lastIndexOf("\ndiff --git ");
-      const text = truncated
-        ? lastFile >= 0
-          ? patch.slice(0, lastFile + 1)
-          : ""
-        : patch;
-      if (!text.startsWith("diff --git "))
-        throw new Error("No complete file diff is available.");
-      const version = bump();
-      const files = parsePatchFiles(
-        text,
-        `${identity}:${version}`,
-        true,
-      ).flatMap((p) => p.files);
-      if (!files.length)
-        throw new Error("The patch did not parse into any files.");
-      return { files, error: null, version };
-    } catch (error) {
-      return {
-        files: [],
-        error:
-          error instanceof Error ? error.message : "Could not read the patch.",
-        version: bump(),
-      };
-    }
-  }, [patch, truncated, identity]);
-  const items = useMemo(
-    (): CodeViewDiffItem[] =>
-      parsed.files.map((fileDiff, index) => ({
-        id: `${index}:${fileDiff.name}`,
-        type: "diff",
-        fileDiff,
-        version: parsed.version,
-      })),
-    [parsed],
-  );
-  useEffect(() => {
-    if (!selectedFile) return;
-    const item = items.find((item) => item.fileDiff.name === selectedFile);
-    if (item) {
-      setActive(item.id);
-      handle.current?.scrollTo({ type: "item", id: item.id, align: "start" });
-    }
-  }, [selectedFile, items]);
-  const options = useMemo(
-    () => ({
-      theme: { dark: "github-dark", light: "github-light" } as const,
-      themeType: theme,
-      diffStyle: "split" as const,
-      diffIndicators: "bars" as const,
-      enableLineSelection: false,
-      lineDiffType: "word-alt" as const,
-      hunkSeparators: "line-info" as const,
-      unsafeCSS:
-        ":host { --diffs-font-family: var(--mono); --diffs-font-size: 12px; --diffs-line-height: 20px; }",
-    }),
-    [theme],
-  );
-  return (
-    <div className="pr-files">
-      <div className="terminal-bar">
-        {row.detail.changedFiles} files · +{row.detail.additions} −
-        {row.detail.deletions} · Read-only
-      </div>
-      {truncated ? (
-        <div role="alert" className="pad attention">
-          This patch exceeds 8 MiB and is truncated. The final incomplete file
-          is omitted. Open on GitHub for the full diff.
-        </div>
-      ) : null}
-      {parsed.error ? (
-        <div role="alert" className="pad">
-          {parsed.error} Open on GitHub to inspect the files.
-        </div>
-      ) : (
-        <div className="review">
-          <div className="file-list">
-            {items.map((item) => (
-              <div
-                className="file-row"
-                data-active={active === item.id}
-                key={item.id}
-              >
-                <button
-                  className="path"
-                  type="button"
-                  onClick={() => {
-                    setActive(item.id);
-                    handle.current?.scrollTo({
-                      type: "item",
-                      id: item.id,
-                      align: "start",
-                    });
-                  }}
-                >
-                  {item.fileDiff.name}
-                </button>
-              </div>
-            ))}
-          </div>
-          <CodeView
-            ref={handle}
-            className="diff-scroll"
-            items={items}
-            options={options}
-          />
-        </div>
-      )}
     </div>
   );
 }

@@ -13,7 +13,8 @@
   "dependencies": {
     "@loom/core": "workspace:*",
     "better-sqlite3": "^12.4.1",
-    "zod": "^4.6.2"
+    "zod": "^4.6.2",
+    "@loom/protocol": "workspace:*"
   },
   "devDependencies": {
     "@loom/adapter-claude": "workspace:*",

@@ -463,3 +463,23 @@ Requested reviewers are read from GitHub alongside reviews. Adding reviewers sta
 Branch divergence uses an immutable base/head comparison, cached by both SHAs, and publishes
 independently after Overview; an unavailable comparison never claims Up to date. Conflicts
 come from GitHub mergeability. Every GitHub write retains the existing refresh path.
+
+## Reviews Diff (reviews slice 4)
+
+Diff replaces the old Files sidebar with the reference's Files N / Commits N toolbar and
+virtualized Pierre file cards. Files follow the Overview rail's Implementation, then Tests order.
+Each header shows name, directory, additions/deletions, Reviewed, and a copy-path/GitHub menu.
+Unified is the default; settings offer split and Hide whitespace changes. Syntax colors, line
+numbers and expandable unchanged-line separators use Pierre and the existing bounded worker pool.
+Full contents load on demand through the coordinator; whitespace patches are computed in the
+GitHub adapter, outside the renderer. Unavailable, binary, oversized and incomplete patches are
+explicit, never a clean review. File contents are capped at 2 MiB per side and patch reads at 8 MiB.
+
+Reviewed marks use `save_review_state` with repository/PR identity and the viewed-file contract.
+SQLite owns them at the PR head SHA; updates publish to every subscribed window, survive closing
+and reopening, and a different head shows no marks. An acknowledgement alone never checks a box.
+Marking Reviewed collapses that card; clearing it expands the card. Commits lists message, author
+and age; selecting a commit fetches its first-parent diff. Reviewed is disabled for a commit-only
+view because it cannot certify the complete PR. Files returns to the whole PR. `j`/`k` selects the
+next/previous file, `v` toggles Reviewed, and `[`/`]` jumps between the selected file's hunks.
+Typing, dialogs, the palette and modified key chords keep their existing bindings.
