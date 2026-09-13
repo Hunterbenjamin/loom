@@ -240,7 +240,8 @@ function wire(): void {
       const pane = resolved
         ? paneHostOf(resolved.argv, target?.pane?.paneId)
         : null;
-      const replay = pane !== null && (request.history ?? 0) > 0;
+      const history = request.history;
+      const replay = pane !== null && (history?.lines ?? 0) > 0;
       const session: Session = {
         proc,
         chunks: [],
@@ -268,10 +269,10 @@ function wire(): void {
         if (sessions.get(event.sender.id, request.id) !== session) return;
         session.chunks.push(data);
         if (session.holding) {
-          if (capturing || !pane) return;
+          if (capturing || !pane || !history) return;
           capturing = true;
           const timer = setTimeout(() => release(""), 2_000);
-          void readPaneHistory(pane, request.history ?? 0)
+          void readPaneHistory(pane, history)
             .catch(() => "")
             .then((history) => {
               clearTimeout(timer);

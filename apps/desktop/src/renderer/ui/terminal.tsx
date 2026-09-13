@@ -19,7 +19,11 @@ import {
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { terminalsForTask } from "../store/selectors.js";
 import { kittyEncode } from "./kitty.js";
-import { type PaneViewport, terminalCrop } from "./terminal-crop.js";
+import {
+  historyRequest,
+  type PaneViewport,
+  terminalCrop,
+} from "./terminal-crop.js";
 
 const THEMES = {
   dark: { background: "#0b0c0e", foreground: "#d8dbde", cursor: "#7aa2f7" },
@@ -404,8 +408,7 @@ export const TerminalSession = memo(function TerminalSession({
           cols: wanted.cols,
           rows: wanted.rows,
           label: settings.current.label,
-          // A cropped view shows one slice of a shared screen; history only makes sense whole.
-          history: viewportRef.current ? 0 : terminalHistoryLimit,
+          history: historyRequest(viewportRef.current, terminalHistoryLimit),
           pane,
           shellKey,
           shellName,
@@ -536,7 +539,7 @@ export const TerminalSession = memo(function TerminalSession({
     // History lands before any output, then enough newlines to push its last line just above
     // the screen: the host's first redraw then clears an empty screen and draws below it.
     window.loomTerminal.onHistory?.(id, (history) => {
-      if (!history || viewportRef.current) return;
+      if (!history) return;
       terminal.write(history + "\r\n".repeat(Math.max(0, terminal.rows - 1)));
     });
     window.loomTerminal.onData(id, (data) => {

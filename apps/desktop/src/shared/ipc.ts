@@ -18,8 +18,18 @@ export const ptySpawnRequest = z.strictObject({
     .regex(/^[^\p{Cc}]+$/u)
     .optional(),
   pane: paneIdentity.optional(),
-  /** How many lines of the pane's history to replay into the viewer on attach. */
-  history: z.number().int().min(0).max(200_000).optional(),
+  /**
+   * The pane's history to replay into the viewer on attach: how many lines, whether wrapped
+   * lines are joined (only when the pane spans the window's full width, so they wrap the same
+   * way again) and the screen column the pane starts at.
+   */
+  history: z
+    .strictObject({
+      lines: z.number().int().min(0).max(200_000),
+      join: z.boolean(),
+      column: z.number().int().min(0).max(1000),
+    })
+    .optional(),
 });
 /** The contract between the renderer and the Electron main process. */
 
@@ -35,7 +45,7 @@ export interface PtySpawnRequest {
   shellName?: string;
   pane?: import("@loom/protocol").PaneIdentity;
   runId?: import("@loom/core").RunId | null;
-  history?: number;
+  history?: { lines: number; join: boolean; column: number };
 }
 
 export interface PtySpawnResult {

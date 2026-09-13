@@ -33,21 +33,29 @@ function run(host: PaneHost, args: string[]): Promise<string> {
   });
 }
 
+export interface HistoryRequest {
+  lines: number;
+  /** Join wrapped lines, so they wrap again at the viewer's width. */
+  join: boolean;
+  /** The screen column the pane starts at; each line is placed there. */
+  column: number;
+}
+
 /**
- * The lines scrolled off the top of the pane, oldest first, with their colours, wrapped lines
- * joined, terminated by `\r\n`. Empty when there is no history.
+ * The lines scrolled off the top of the pane, oldest first, with their colours, terminated by
+ * `\r\n`. Empty when there is no history.
  */
 export async function readPaneHistory(
   host: PaneHost,
-  limit: number,
+  request: HistoryRequest,
 ): Promise<string> {
-  const lines = Math.max(0, Math.min(200_000, Math.floor(limit)));
+  const lines = Math.max(0, Math.min(200_000, Math.floor(request.lines)));
   if (lines === 0) return "";
   const raw = await run(host, [
     "capture-pane",
     "-p",
     "-e",
-    "-J",
+    ...(request.join ? ["-J"] : []),
     "-S",
     `-${lines}`,
     "-E",
@@ -55,14 +63,16 @@ export async function readPaneHistory(
     "-t",
     host.paneId,
   ]);
-  return historyText(raw);
+  return historyText(raw, request.column);
 }
 
 /** `capture-pane -p` output as terminal input: one empty line means no history at all. */
-export function historyText(raw: string): string {
+export function historyText(raw: string, column = 0): string {
   const trimmed = raw.replace(/\n+$/, "");
   if (trimmed === "") return "";
-  return `${trimmed.replace(/\r?\n/g, "\r\n")}\x1b[m\r\n`;
+  const at = column > 0 ? `\x1b[${column + 1}G` : "";
+  const lines = trimmed.split(/\r?\n/).map((line) => `${at}${line}`);
+  return `${lines.join("\r\n")}\x1b[m\r\n`;
 }
 
 /** Whether the pane's program is drawing on the alternate screen (a pager, an editor). */

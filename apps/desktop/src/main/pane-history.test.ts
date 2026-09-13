@@ -27,6 +27,9 @@ describe("historyText", () => {
     expect(historyText("")).toBe("");
     expect(historyText("\n")).toBe("");
   });
+  it("places every line at the pane's column", () => {
+    expect(historyText("a\nb\n", 40)).toBe("\x1b[41Ga\r\n\x1b[41Gb\x1b[m\r\n");
+  });
   it("keeps blank lines inside the history", () => {
     expect(historyText("a\n\nb\n\n\n")).toBe("a\r\n\r\nb\x1b[m\r\n");
   });
