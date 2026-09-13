@@ -177,19 +177,21 @@ const TabGrid = memo(function TabGrid({
           if (host.current?.clientWidth && host.current.clientHeight)
             e.api.layout(host.current.clientWidth, host.current.clientHeight);
           register(tab.id, e.api);
-          for (const [index, p] of tab.panels.entries())
+          for (const [index, p] of tab.panels.entries()) {
+            const previous = tab.panels[index - 1];
             e.api.addPanel({
               id: p.id,
               component: "cell",
               minimumWidth: 280,
               minimumHeight: 150,
-              position: index
+              position: previous
                 ? {
-                    referencePanel: tab.panels[index - 1]?.id,
+                    referencePanel: previous.id,
                     direction: "right",
                   }
                 : undefined,
             });
+          }
           if (host.current?.clientWidth && host.current.clientHeight)
             e.api.layout(host.current.clientWidth, host.current.clientHeight);
           e.api.onDidLayoutChange(() => requestAnimationFrame(measure));

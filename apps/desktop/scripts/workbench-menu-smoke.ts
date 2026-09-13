@@ -8,11 +8,14 @@ import { emptySnapshotBody, stateFromSnapshot } from "@loom/protocol";
 import { _electron as electron } from "playwright";
 import { pane } from "../../../packages/protocol/src/pane-fixture.js";
 import { meta } from "../../../packages/protocol/src/test-support.js";
-import type { Store } from "../src/renderer/store/store.js";
 
 declare const window: {
-  loom: { store: Store; terms?: Record<string, unknown> };
+  loom: {
+    store: { applyProtocol(state: ReturnType<typeof stateFromSnapshot>): void };
+    terms?: Record<string, unknown>;
+  };
 };
+declare const document: { activeElement: unknown };
 const temporary = await mkdtemp(join(tmpdir(), "loom-menu-smoke-"));
 const app = await electron.launch({
   args: [

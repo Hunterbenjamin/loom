@@ -28,7 +28,10 @@ export function RowMenu({
     const rect = element.getBoundingClientRect();
     element.style.left = `${Math.max(0, Math.min(x, window.innerWidth - rect.width))}px`;
     element.style.top = `${Math.max(0, Math.min(y, window.innerHeight - rect.height))}px`;
-    element.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    (
+      element.querySelector<HTMLButtonElement>("button:not(:disabled)") ??
+      element
+    ).focus();
     const outside = (event: PointerEvent) => {
       if (!element.contains(event.target as Node)) dismiss();
     };
@@ -44,6 +47,7 @@ export function RowMenu({
       ref={menu}
       className="wb-row-menu"
       role="menu"
+      tabIndex={-1}
       aria-label="Row actions"
       style={{ left: x, top: y }}
       onKeyDown={(event) => {
