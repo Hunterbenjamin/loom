@@ -33,7 +33,7 @@ import {
 } from "./schemas.js";
 
 export type McpIdentity =
-  | { runId: RunId; active: boolean; kind?: "run" }
+  | { runId: RunId; active: boolean; kind?: "run"; reason?: string }
   | { kind: "lead"; active: boolean; repoId: string };
 
 export type McpInput = Extract<Input, { type: "mcp" }>;
@@ -101,8 +101,12 @@ async function invoke(
     return failure("unknown_run", "The token does not identify a run");
   if (identity.kind === "lead")
     return failure("guard_failed", "Main identity cannot call task-run tools");
-  if (!identity.active)
+  if (!identity.active) {
+    options.log?.(
+      `Stale token for ${identity.runId}: ${identity.reason ?? "no reason recorded"}`,
+    );
     return failure("stale_run", "The run has ended or was superseded");
+  }
   const runId = runIdSchema.parse(identity.runId);
   if (name === "get_task_context")
     return {

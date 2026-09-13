@@ -75,7 +75,9 @@ const findingViews = (
 
 export function createMcpHost(deps: McpHostDeps): {
   host: McpHost;
-  resolveToken(token: string): { runId: RunId; active: boolean } | null;
+  resolveToken(
+    token: string,
+  ): { runId: RunId; active: boolean; reason?: string } | null;
   buildAnchor(input: {
     runId: RunId;
     reviewedSha: Sha;
@@ -164,28 +166,38 @@ export function createMcpHost(deps: McpHostDeps): {
    */
   const resolveToken = (
     token: string,
-  ): { runId: RunId; active: boolean } | null => {
+  ): { runId: RunId; active: boolean; reason?: string } | null => {
     const recipe = deps.recipes.resolve(token);
     if (!recipe) return null;
     let state: TaskState;
     try {
       state = deps.store.loadTaskState(recipe.taskId);
-    } catch {
-      return { runId: recipe.runId, active: false };
+    } catch (error) {
+      return {
+        runId: recipe.runId,
+        active: false,
+        reason: `task state unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      };
     }
     const run = state.runs.find((r) => r.id === recipe.runId);
     const current = state.runs
       .filter((r) => r.origin === "loom" && r.role === run?.role)
       .at(-1);
-    return {
-      runId: recipe.runId,
-      active:
-        !!run &&
-        !run.endedAt &&
-        run.attempts === recipe.attempt &&
-        current?.id === run.id &&
-        !["done", "canceled"].includes(state.task.stage),
-    };
+    // Each reason names the fact a stale answer rests on, for the coordinator log.
+    const reason = !run
+      ? "run not in task state"
+      : run.endedAt
+        ? `run ended (${run.endReason ?? "no reason"})`
+        : run.attempts !== recipe.attempt
+          ? `recipe is attempt ${recipe.attempt}, run is at ${run.attempts}`
+          : current?.id !== run.id
+            ? `superseded by ${current?.id ?? "none"}`
+            : ["done", "canceled"].includes(state.task.stage)
+              ? `task is ${state.task.stage}`
+              : null;
+    return reason
+      ? { runId: recipe.runId, active: false, reason }
+      : { runId: recipe.runId, active: true };
   };
 
   /**
