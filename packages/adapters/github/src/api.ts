@@ -56,9 +56,11 @@ export class Api {
           throw new GitHubError("fatal", "Invalid GitHub pagination");
         }
         // Follow only pagination of this resource, never arbitrary endpoints/hosts from output.
+        // GitHub writes `next` links for `repos/<owner>/<name>/…` as `repositories/<id>/…`; the
+        // numeric form names the same resource, so it is accepted when the rest of the path matches.
         if (
           url.origin !== "https://api.github.com" ||
-          url.pathname !== `/${endpoint.split("?")[0]}` ||
+          !samePath(url.pathname, `/${endpoint.split("?")[0]}`) ||
           url.username ||
           url.password
         )
@@ -106,3 +108,12 @@ export class Api {
     return values;
   }
 }
+
+const samePath = (linked: string, requested: string): boolean => {
+  if (linked === requested) return true;
+  const byName = /^\/repos\/[^/]+\/[^/]+(\/.*)?$/.exec(requested);
+  const byId = /^\/repositories\/\d+(\/.*)?$/.exec(linked);
+  return (
+    byName !== null && byId !== null && (byName[1] ?? "") === (byId[1] ?? "")
+  );
+};

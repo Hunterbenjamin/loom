@@ -294,9 +294,23 @@ describe("GitHub observations", () => {
     expect((await read(fake.adapter)).value.number).toBe(15477);
   });
 
+  it("follows pagination written in GitHub's numeric repository form", async () => {
+    const fake = setup();
+    const query = list.slice(list.indexOf("?"));
+    fake.set(list, [], {
+      Link: `<https://api.github.com/repositories/1365802580/pulls${query}&page=2>; rel="next"`,
+    });
+    fake.routes.set(
+      `repositories/1365802580/pulls${query}&page=2`,
+      ok(fixture("pulls")),
+    );
+    expect((await read(fake.adapter)).value.number).toBe(15477);
+  });
+
   it.each([
     "https://evil.invalid/x",
     `https://api.github.com/repos/other/repo/pulls?page=2`,
+    `https://api.github.com/repositories/1365802580/issues?page=2`,
   ])("rejects unsafe pagination %s", async (url) => {
     const fake = setup();
     fake.set(list, [], { Link: `<${url}>; rel="next"` });
