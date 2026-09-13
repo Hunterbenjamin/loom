@@ -253,8 +253,9 @@ kbd {
   display: grid;
   grid-template-columns: var(--cols);
   align-items: center;
+  gap: 8px;
   height: 28px;
-  padding: 0 12px;
+  padding: 0 22px;
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
@@ -276,13 +277,18 @@ kbd {
   background: none;
 }
 
+/* Issue rows follow the reviews list: padded, rounded, no hairlines. */
+.issues-list {
+  padding: 0 12px 12px;
+}
+
 .row {
   display: grid;
   grid-template-columns: var(--cols);
   align-items: center;
-  height: var(--row);
-  padding: 0 12px;
-  border-bottom: 1px solid var(--line);
+  height: 40px;
+  padding: 0 10px;
+  border-radius: var(--radius);
   gap: 8px;
   cursor: default;
 }
@@ -293,7 +299,6 @@ kbd {
 
 .row[data-cursor="true"] {
   background: var(--bg-active);
-  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .group-header,
@@ -313,15 +318,13 @@ kbd {
 .group-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: var(--row);
-  padding: 0 12px;
-  background: var(--bg-raised);
-  border-bottom: 1px solid var(--line);
+  gap: 6px;
+  height: 30px;
+  margin: 5px 0;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--bg-hover);
   color: var(--text-dim);
-  font-size: 11px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
 }
 
 .cell-title {

@@ -48,7 +48,7 @@ function ListViewComponent() {
         : `${item.kind}-${item.stage}`;
     },
     getScrollElement: () => scroller.current,
-    estimateSize: () => 32,
+    estimateSize: () => 40,
     overscan: 12,
   });
 
@@ -82,7 +82,7 @@ function ListViewComponent() {
           </button>
         ))}
       </div>
-      <div className="list" ref={scroller} data-testid="list">
+      <div className="list issues-list" ref={scroller} data-testid="list">
         <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
           {virtual.getVirtualItems().map((item) => {
             const entry = items[item.index] as ListItem;
@@ -106,12 +106,12 @@ function ListViewComponent() {
                     onClick={() => store.toggleListSection(entry.stage)}
                     onKeyDown={sectionKeyDown}
                   >
-                    <span aria-hidden="true">
-                      {entry.collapsed ? "▸" : "▾"}
-                    </span>
                     <span>
                       {stageLabel(entry.stage)} ·{" "}
                       <span className="faint nums">{entry.count}</span>
+                    </span>
+                    <span aria-hidden="true">
+                      {entry.collapsed ? "▸" : "▾"}
                     </span>
                   </button>
                 ) : entry.kind === "load-more" ? (
