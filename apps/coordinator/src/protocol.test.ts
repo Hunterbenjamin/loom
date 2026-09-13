@@ -346,9 +346,9 @@ test("permission attribution and the selected run's attach target reach the wind
   const client = await connect(h, "permission-inbox-window");
   expect(
     client.state?.collections.task.get(taskId)?.attention.reasons,
-  ).toContain("provider_permission");
+  ).toContain("provider_input");
   expect(
-    client.state?.collections.inbox.get(taskId)?.reasonRuns.provider_permission,
+    client.state?.collections.inbox.get(taskId)?.reasonRuns.provider_input,
   ).toMatchObject([
     {
       id: run.id,
