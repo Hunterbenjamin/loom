@@ -144,7 +144,7 @@ pane="$(tm new-window -d -P -F '#{pane_id}' -t "$session:" -n agent -c "$worktre
 tm select-window -t "$session:agent"
 
 if [ -n "$task" ]; then
-  prompt="Read AGENTS.md, then do this within its rules: $task. Work on branch $branch, run pnpm test, pnpm lint and pnpm typecheck, and open a pull request against $base. Stop and report once it is open."
+  prompt="Read AGENTS.md, then do this within its rules: $task. Work on branch $branch; run pnpm test, pnpm lint and pnpm typecheck until all three pass; open a pull request against $base with gh; wait for its check with 'gh pr checks --watch'; then squash-merge it with 'gh pr merge --squash --delete-branch'. Never push to $base directly. Stop and report once the PR is merged."
 else
   prompt="Read AGENTS.md and $brief_path, then carry out the work it describes within its rules. Stop and report once the pull request the brief asks for is open."
 fi
@@ -177,8 +177,10 @@ for _ in $(seq 1 60); do
       # transcript used before was not written for a fresh thread; this table was.)
       db="$(ls -t "${CODEX_HOME:-$HOME/.codex}"/state_*.sqlite 2>/dev/null | head -n 1)"
       if [ -n "$db" ] && command -v sqlite3 >/dev/null; then
-        q_wt="${worktree//\'/\'\'}"; q_prompt="${prompt//\'/\'\'}"
-        n="$(sqlite3 -readonly "$db" "select count(*) from threads where cwd = '$q_wt' and created_at >= $before and first_user_message = '$q_prompt';" 2>/dev/null || echo 0)"
+        # Match on the prompt's first 120 characters: the TUI may normalise whitespace or trim a
+        # long paste, and an exact comparison then reports a running agent as dropped.
+        q_wt="${worktree//\'/\'\'}"; q_prompt="${prompt:0:120}"; q_prompt="${q_prompt//\'/\'\'}"
+        n="$(sqlite3 -readonly "$db" "select count(*) from threads where cwd = '$q_wt' and created_at >= $before and substr(first_user_message, 1, 120) = '$q_prompt';" 2>/dev/null || echo 0)"
         [ "${n:-0}" -gt 0 ] && confirmed=1
       fi
       ;;
