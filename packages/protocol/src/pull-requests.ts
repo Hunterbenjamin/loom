@@ -33,6 +33,7 @@ export const pullRequestSummary = z.strictObject({
   observedAt: isoTime,
 });
 export const pullRequestDetail = pullRequestSummary.extend({
+  requestedReviewers: z.array(z.string()).default([]),
   files: z.array(
     z.strictObject({
       path: z.string(),
@@ -116,6 +117,8 @@ export const pullRequestDetailRow = z
   .strictObject({
     ...linkage,
     number: pullRequestNumber,
+    pinned: z.boolean().default(false),
+    behindBy: count.nullable().default(null),
     detail: pullRequestDetail,
     patch: pullRequestPatch.nullable(),
     patchLoading: z.boolean().default(false),
@@ -134,6 +137,25 @@ export type PullRequestDetailRow = z.output<typeof pullRequestDetailRow>;
 
 /** All repository commands name a registered repo, never an arbitrary GitHub URL. */
 export const pullRequestCommand = z.union([
+  z.strictObject({
+    kind: z.literal("pin_pull_request"),
+    repoId,
+    number: pullRequestNumber,
+    pinned: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal("link_pull_request"),
+    repoId,
+    number: pullRequestNumber,
+    taskKey: z.string().trim().min(1),
+  }),
+  z.strictObject({
+    kind: z.literal("comment_pull_request"),
+    repoId,
+    number: pullRequestNumber,
+    body: z.string().trim().min(1).max(60000),
+    requestId: z.uuid(),
+  }),
   z.strictObject({
     kind: z.literal("merge_pull_request"),
     repoId,

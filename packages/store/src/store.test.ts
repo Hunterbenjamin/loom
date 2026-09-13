@@ -689,3 +689,32 @@ it("persists inline-review publication and fixing/escalation evidence across res
   expect(restored.findings).toEqual(expect.arrayContaining(state.findings));
   expect(restored.findings).toHaveLength(state.findings.length);
 });
+
+it("PR pins and explicit issue links survive reopening without changing the task", async () => {
+  const store = await seeded();
+  const before = store.loadTaskState(taskId);
+  store.setPullRequestPreferences(repo.id, 42, { pinned: true });
+  store.setPullRequestPreferences(repo.id, 42, { taskId });
+  store.setPullRequestPreferences(repo.id, 42, { taskId });
+  store.close();
+  const reopened = await open();
+  expect(reopened.pullRequestPreferences(repo.id, 42)).toEqual({
+    pinned: true,
+    taskId,
+  });
+  expect(reopened.loadTaskState(taskId)).toEqual(before);
+  expect(reopened.pullRequestPreferences(repo.id, 43)).toEqual({
+    pinned: false,
+    taskId: null,
+  });
+  expect(() =>
+    reopened.setPullRequestPreferences(repo.id, 42, {
+      taskId: "missing" as TaskId,
+    }),
+  ).toThrow("repository");
+  reopened.setPullRequestPreferences(repo.id, 42, { pinned: false });
+  expect(reopened.pullRequestPreferences(repo.id, 42)).toEqual({
+    pinned: false,
+    taskId,
+  });
+});

@@ -111,3 +111,17 @@ both requested SHAs and may be null while loading. GitHub diff responses contain
 so the REST diff uses an immutable base/head compare endpoint. Cached list SHAs allow parallel
 reads; a direct open without cached metadata fetches detail before the diff. An outdated list
 range is never attached to a new head. Coordinator logs record read durations.
+
+## Superseded by Reviews slice 3
+
+`docs/briefs/reviews.md` slice 3 replaces the four-tab detail and action bar with the referenced
+Overview / Diff page. Description, activity/commits and expandable checks now live in the
+Overview's reading column and property rail. The header provides a durable pinned star, overflow
+Close/Delete branch/Refresh actions, GitHub chip and fullscreen. Squash & merge retains all
+existing guards and its exact-head confirmation, with a split menu for the default-on branch
+deletion option. The agent button opens an existing branch agent; it does not launch one.
+
+The rail adds same-repository issue linking, GitHub reviewers, branch divergence and grouped
+file counts; file selection opens the existing Diff viewer at that path. Pin and link commands
+persist in the coordinator, while PR comments go through the executor/adapter and owner refresh.
+The Reviews inbox, Diff card redesign/Reviewed state and reviews slice 5 polish remain separate.

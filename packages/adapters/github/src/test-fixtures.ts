@@ -252,6 +252,7 @@ export function setup(excludedAuthors: string[] = []) {
                       url: pull.html_url,
                     })),
                   ),
+                  reviewRequests: native([]),
                   comments: native([]),
                 },
               },

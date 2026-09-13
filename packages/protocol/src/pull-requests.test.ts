@@ -121,6 +121,8 @@ test("an 8 MiB capped patch survives JSON escaping and protocol roundtrip", () =
       repoId: summary.repoId,
       taskId: null,
       number: summary.number,
+      pinned: false,
+      behindBy: null,
       detail: {
         ...github,
         branchExists: true,
@@ -132,6 +134,7 @@ test("an 8 MiB capped patch survives JSON escaping and protocol roundtrip", () =
         additions: 0,
         deletions: 0,
         changedFiles: 0,
+        requestedReviewers: [],
         files: [],
         reviews: [],
         comments: [],

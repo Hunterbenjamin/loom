@@ -413,3 +413,34 @@ Opening an uncached PR shows detail first and then requests that range. Head/bas
 caches are disposable and shared across windows; unchanged polls only fetch live metadata/checks.
 Content edits, head/base changes and explicit refresh invalidate content. Targets on this repo:
 overview under two seconds, diff under four. Later Reviews slices own the layout redesign.
+
+## Reviews Overview (reviews slice 3)
+
+The PR detail frame now follows `linear-reviews-2.png`: one breadcrumb row (issue key or
+No issue, title, additions/deletions, pinned star, overflow actions, GitHub chip, fullscreen),
+then Overview / Diff and a primary Squash & merge split button. Its menu defaults branch
+deletion to on; the existing exact-head confirmation and merge guards remain in force.
+Open branch agent navigates to the linked issue's existing interactive agent terminal; it is
+disabled when no agent exists. Fullscreen expands the detail within the current window.
+
+Overview has a wide reading column with title, author/base/head, Markdown description,
+chronological GitHub activity and a PR comment composer. The right rail contains Status,
+Resolves, Reviewers, expandable Checks, Branch and changed files, in that order. Files are
+grouped into Implementation and Tests (`*.test.*` or a test/tests/__tests__ directory), with
+counts at both levels. Selecting a file opens Diff and scrolls the existing Pierre viewer to
+it, including when its patch arrives later. This slice retains the existing read-only Diff
+viewer and list; it does not add the later Reviewed cards, inbox grouping or polish shortcuts.
+
+Pin and Link issue commands store coordinator-owned preferences keyed by repository and PR
+number. Linking accepts an exact issue key (case insensitive) in the same repository, and the
+manual link takes precedence over branch matching in PR projections. It does not rewrite task
+branches or stage state; the issue-side PR display enhancement remains reviews slice 5. Both
+preferences survive restart and are re-read before publishing. There is no local optimistic pin
+or merge state. Comment drafts are transient form input; posting goes through the executor and
+GitHub adapter, with a per-submission identifier that makes retrying an uncertain submission
+idempotent. Only acknowledged posts clear the draft; owner refresh supplies Activity.
+
+Requested reviewers are read from GitHub alongside reviews. Adding reviewers stays disabled.
+Branch divergence uses an immutable base/head comparison, cached by both SHAs, and publishes
+independently after Overview; an unavailable comparison never claims Up to date. Conflicts
+come from GitHub mergeability. Every GitHub write retains the existing refresh path.

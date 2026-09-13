@@ -5,7 +5,7 @@ import type { Finding, Task } from "@loom/core";
 import type { CodeViewDiffItem, FileDiffMetadata } from "@pierre/diffs";
 import { parsePatchFiles } from "@pierre/diffs";
 import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PatchFileMeta } from "../fixtures/patch.js";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { taskFindings } from "../store/selectors.js";
@@ -317,7 +317,9 @@ function FileRow({
 /** Repository PRs have no Loom findings or durable review state. */
 export function PullRequestFiles({
   row,
+  selectedFile,
 }: {
+  selectedFile?: string | null;
   row: import("@loom/protocol").PullRequestDetailRow & {
     patch: NonNullable<import("@loom/protocol").PullRequestDetailRow["patch"]>;
   };
@@ -367,6 +369,14 @@ export function PullRequestFiles({
       })),
     [parsed],
   );
+  useEffect(() => {
+    if (!selectedFile) return;
+    const item = items.find((item) => item.fileDiff.name === selectedFile);
+    if (item) {
+      setActive(item.id);
+      handle.current?.scrollTo({ type: "item", id: item.id, align: "start" });
+    }
+  }, [selectedFile, items]);
   const options = useMemo(
     () => ({
       theme: { dark: "github-dark", light: "github-light" } as const,

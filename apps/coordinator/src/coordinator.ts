@@ -260,6 +260,8 @@ export class Coordinator {
       onResult: (taskId) => this.loop.enqueue(taskId),
     });
     this.prViews = new PullRequestViews({
+      preferences: (repo, number) =>
+        this.store.pullRequestPreferences(repo, number),
       log: (message) => this.log(message),
       github: this.adapters.github,
       repo: (id) => this.repoById(id),
