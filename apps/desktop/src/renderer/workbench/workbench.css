@@ -38,25 +38,6 @@
   border: 1px solid var(--line);
   border-radius: 5px;
 }
-.wb-sidebar h3 {
-  font-size: 12px;
-  margin: 20px 0 8px;
-  overflow-wrap: anywhere;
-}
-.wb-agent {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  text-align: left;
-  padding: 8px;
-  gap: 4px;
-}
-.wb-agent small {
-  opacity: 0.6;
-}
-.wb-agent.dead {
-  opacity: 0.4;
-}
 .wb-main {
   flex: 1;
   min-width: 0;
@@ -170,81 +151,49 @@
   margin-left: 4px;
 }
 .wb-terminals {
-  flex: 0 1 40%;
-  overflow: auto;
-  min-height: 100px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
-.wb-terminals details {
-  margin: 6px 0;
-}
-.wb-terminals summary {
-  cursor: pointer;
-  font-size: 12px;
-  padding: 6px 0;
-  overflow-wrap: anywhere;
-}
+.wb-tree-row,
 .wb-tree-pane {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   text-align: left;
-  padding: 7px 8px 7px 20px;
+  padding: 7px 4px;
   font-size: 12px;
+  min-width: 0;
 }
-.wb-tree-pane > span:nth-child(2) {
+.wb-tree-row:hover,
+.wb-pinned button:hover {
+  background: var(--line);
+}
+.wb-tree-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+.wb-tree-tab {
+  padding-left: 12px;
+}
+.wb-tree-tab .wb-tree-pane {
+  padding-left: 24px;
 }
 .wb-tree-pane.dead {
   opacity: 0.5;
 }
 .wb-tree-pane small {
   margin-left: auto;
+  font-size: 10px;
 }
-.wb-agents {
-  flex: 1;
-  min-height: 100px;
-  overflow: auto;
-  border-top: 1px solid var(--line);
-  padding-top: 8px;
-}
-.wb-agent-row {
-  display: flex;
-  align-items: center;
-  border-radius: 5px;
-}
-.wb-agent-row:hover,
-.wb-tree-pane:hover {
-  background: var(--line);
-}
-.wb-agent {
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 9px;
-  min-width: 0;
-}
-.wb-agent-text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.wb-agent-text strong {
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.wb-agent-text small,
 .wb-state-label {
-  font-size: 11px;
-}
-.wb-agent-details {
-  padding: 8px 4px;
-  opacity: 0.6;
+  flex-shrink: 0;
+  max-width: 45%;
 }
 .wb-status {
   flex-shrink: 0;
@@ -357,9 +306,8 @@
   flex-shrink: 0;
 }
 .wb-pinned {
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 6px;
-  margin-bottom: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
 }
 .wb-pinned small {
   opacity: 0.5;
@@ -368,7 +316,4 @@
 .wb-terminal-list {
   overflow: auto;
   min-height: 0;
-}
-.wb-tree-pane {
-  padding-left: 8px;
 }

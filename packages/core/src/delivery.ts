@@ -2,32 +2,31 @@ import type { Context } from "./context.js";
 import type { Message, Run } from "./entities.js";
 import { later, read } from "./helpers.js";
 
-function send(c: Context, run: Run, message: Message): void {
+/** Returns the current blocker, or null once a transport action owns the send. */
+function send(c: Context, run: Run, message: Message): string | null {
   const provider = read(
     c.observations.runs.find((o) => o.runId === run.id)?.provider,
   );
+  if (!provider) return "provider state is unavailable";
+  if (!run.sessionId) return "the run has no provider session";
+  if (run.endedAt || run.origin !== "loom") return "the run is not active";
   if (
-    !provider ||
-    !run.sessionId ||
-    run.endedAt ||
-    run.origin !== "loom" ||
     run.status === "unknown" ||
     run.status === "starting" ||
     run.status === "blocked" ||
     run.status === "failed"
   )
-    return;
-  if (
-    c.state.messages.some(
-      (m) =>
-        m.runId === run.id &&
-        m.id !== message.id &&
-        (m.status === "sent" || (m.status === "pending" && m.attempts > 0)),
-    )
-  )
-    return;
+    return `the run is ${run.status}`;
+  const earlier = c.state.messages.find(
+    (m) =>
+      m.runId === run.id &&
+      m.id !== message.id &&
+      (m.status === "sent" || (m.status === "pending" && m.attempts > 0)),
+  );
+  if (earlier)
+    return `earlier message ${earlier.id} is still ${earlier.status}`;
   if (run.status === "idle") {
-    if (!c.capacity(run.role)) return;
+    if (!c.capacity(run.role)) return `no capacity for the ${run.role} role`;
     c.reserved[run.provider]++;
     c.result.capacityVersion = c.observations.capacity.version;
   }
@@ -42,7 +41,8 @@ function send(c: Context, run: Run, message: Message): void {
         : "claude_sdk";
   message.expectedTurnId =
     message.via === "codex_turn_steer" ? (turn?.id ?? null) : null;
-  if (message.via === "codex_turn_steer" && !message.expectedTurnId) return;
+  if (message.via === "codex_turn_steer" && !message.expectedTurnId)
+    return "Codex steer has no expected turn";
   message.baselineTurnId =
     turn?.id ??
     (provider.provider === "claude"
@@ -58,8 +58,41 @@ function send(c: Context, run: Run, message: Message): void {
     text: message.text,
     expectedTurnId: message.expectedTurnId,
   });
+  if (message.status !== "pending") message.pendingSince = c.now;
   message.status = "pending";
   message.attempts++;
+  return null;
+}
+
+function pendingDelivery(c: Context, run: Run, message: Message): void {
+  // Legacy records begin a durable interval on their first reconciliation.
+  message.pendingSince ??= c.now;
+  const deadline = later(
+    message.pendingSince,
+    c.state.config.deliveryTimeoutMs,
+  );
+  const action = c.state.outbox.findLast(
+    (row) =>
+      row.action?.kind === "send_message" &&
+      row.action.messageId === message.id,
+  );
+  // Never replay a message already owned by the outbox, even after timeout.
+  const reason = action
+    ? `transport action is ${action.status}; awaiting a successful transport result`
+    : (send(c, run, message) ?? "awaiting a successful transport result");
+  if (deadline > c.now)
+    c.emit(`schedule:${c.task.id}:delivery_timeout:${deadline}`, {
+      kind: "schedule",
+      at: deadline,
+      why: "delivery_timeout",
+    });
+  else {
+    message.deliveryAttention = true;
+    c.notify(
+      `Message ${message.id} for run ${run.id} is still pending: ${reason}`,
+      `delivery_pending:${message.id}`,
+    );
+  }
 }
 
 export function delivery(c: Context): void {
@@ -136,15 +169,7 @@ export function delivery(c: Context): void {
       }
     }
     if (message.status === "pending") {
-      // A pending transport action already owns this message.
-      if (
-        !c.state.outbox.some(
-          (row) =>
-            row.action?.kind === "send_message" &&
-            row.action.messageId === message.id,
-        )
-      )
-        send(c, run, message);
+      pendingDelivery(c, run, message);
     } else if (message.status === "sent" && message.sentAt) {
       const deadline = later(message.sentAt, c.state.config.deliveryTimeoutMs);
       if (deadline > c.now)
@@ -166,7 +191,14 @@ export function delivery(c: Context): void {
           !c.task.blocked &&
           !c.task.failed
         ) {
-          send(c, run, message);
+          const reason = send(c, run, message);
+          if (reason) {
+            message.deliveryAttention = true;
+            c.notify(
+              `Message ${message.id} for run ${run.id} could not be resent: ${reason}`,
+              `delivery:${message.id}`,
+            );
+          } else pendingDelivery(c, run, message);
         } else {
           message.deliveryAttention = true;
           c.notify(

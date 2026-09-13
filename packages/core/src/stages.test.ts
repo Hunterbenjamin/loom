@@ -95,7 +95,7 @@ describe("all 23 transition rows", () => {
         mcp({ tool: "submit_plan", input: { plan } }, "planner"),
       ];
     },
-    ["stop_run", "notify"],
+    ["notify"],
   );
   row(
     6,
@@ -107,7 +107,7 @@ describe("all 23 transition rows", () => {
         mcp({ tool: "submit_plan", input: { plan } }, "planner"),
       ];
     },
-    ["stop_run", "start_run"],
+    ["start_run"],
   );
   row(
     7,
@@ -155,7 +155,7 @@ describe("all 23 transition rows", () => {
     ({ observations }) => {
       observations.inputs = [mcp(reviewCall(), "reviewer")];
     },
-    ["stop_run", "notify"],
+    ["notify"],
   );
   row(
     11,
@@ -164,7 +164,7 @@ describe("all 23 transition rows", () => {
     ({ observations }) => {
       observations.inputs = [mcp(reviewCall([finding()]), "reviewer")];
     },
-    ["stop_run", "send_message"],
+    ["send_message"],
   );
   row(
     12,
@@ -174,7 +174,7 @@ describe("all 23 transition rows", () => {
       state.task.reviewRoundCap = 1;
       observations.inputs = [mcp(reviewCall([finding()]), "reviewer")];
     },
-    ["stop_run", "notify"],
+    ["notify"],
   );
   row(
     13,
@@ -293,7 +293,7 @@ describe("all 23 transition rows", () => {
     },
     ["notify"],
   );
-  row(20, "backlog", "done", merged, ["stop_run", "notify"]);
+  row(20, "backlog", "done", merged, ["notify"]);
   row(
     21,
     "in_progress",
@@ -301,7 +301,7 @@ describe("all 23 transition rows", () => {
     ({ observations }) => {
       observations.inputs = [command({ type: "cancel", reason: "Stop" })];
     },
-    ["stop_run"],
+    [],
   );
   row(22, "canceled", "backlog", ({ observations }) => {
     observations.inputs = [command({ type: "reopen" })];
@@ -313,7 +313,7 @@ describe("all 23 transition rows", () => {
     ({ observations }) => {
       observations.inputs = [command({ type: "move", to: "backlog" })];
     },
-    ["stop_run"],
+    [],
   );
 });
 

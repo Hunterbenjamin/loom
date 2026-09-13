@@ -1,0 +1,16 @@
+[
+  {
+    "sha": "05c50f86b5fb9a95f30a4116e3bf4ab4d4bafa64",
+    "html_url": "https://github.com/vuejs/core/commit/05c50f86b5fb9a95f30a4116e3bf4ab4d4bafa64",
+    "author": {
+      "login": "contributor",
+      "type": "User"
+    },
+    "commit": {
+      "message": "Improve tree shaking",
+      "committer": {
+        "date": "2026-09-09T12:00:00Z"
+      }
+    }
+  }
+]

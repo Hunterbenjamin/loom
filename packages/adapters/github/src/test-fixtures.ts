@@ -82,7 +82,11 @@ export function setup(excludedAuthors: string[] = []) {
     throw new Error("Unexpected mutation");
   };
   const run = vi.fn<GhRunner>(async (args, input) => {
-    if (args[0] !== "api") return mutate(args, input);
+    if (
+      args[0] !== "api" ||
+      (args.includes("--method") && !args.includes("GET"))
+    )
+      return mutate(args, input);
     const endpoint = args.find((arg) => arg.startsWith("repos/"));
     const result = routes.get(endpoint ?? "");
     if (!result) throw new Error(`Missing fixture: ${endpoint}`);

@@ -7,7 +7,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
 import { StoreProvider } from "../store/react.js";
-import { selectedRows } from "../store/selectors.js";
+import { cursorRows } from "../store/selectors.js";
 import { createStore } from "../store/store.js";
 import { CreateIssue } from "./create-issue.js";
 import { useShortcuts } from "./keys.js";
@@ -165,6 +165,8 @@ test("defaults to the sidebar repo and sends the complete backlog payload with m
   h.change("#issue-description", "## Details\n\n- Keep **markdown**\n");
   h.change("#issue-size", "small");
   act(() => h.get<HTMLInputElement>("#issue-plan-approval").click());
+  h.store.toggleListSection("backlog");
+  h.store.toggleListSection("in_progress");
   h.store.setView("done");
   h.store.setQuery("unrelated");
   h.store.setPane("board");
@@ -202,14 +204,15 @@ test("defaults to the sidebar repo and sends the complete backlog payload with m
   });
   act(() => h.store.applyProtocol(stateFromSnapshot(meta, body)));
   expect(
-    selectedRows(h.store.getState())[h.store.getState().ui.cursor]?.task.id,
+    cursorRows(h.store.getState())[h.store.getState().ui.cursor]?.task.id,
   ).toBe(id);
   const newTask = body.tasks.find((task) => task.id === id);
   if (!newTask) throw new Error("Missing new task");
+  expect(h.store.getState().ui.listSections.backlog?.collapsed).toBe(false);
   newTask.stage = "in_progress";
   act(() => h.store.applyProtocol(stateFromSnapshot(meta, body)));
   expect(
-    selectedRows(h.store.getState())[h.store.getState().ui.cursor]?.task.id,
+    cursorRows(h.store.getState())[h.store.getState().ui.cursor]?.task.id,
   ).toBe(id);
 });
 
@@ -291,7 +294,7 @@ test("fixture mode creates with every field and selects the new Todo issue", asy
   expect(createTask).toHaveBeenCalledTimes(1);
   expect(h.send).not.toHaveBeenCalled();
   const state = h.store.getState();
-  expect(selectedRows(state)[state.ui.cursor]?.task).toMatchObject({
+  expect(cursorRows(state)[state.ui.cursor]?.task).toMatchObject({
     title: "Fixture issue",
     description: "Fixture description",
     stage: "todo",

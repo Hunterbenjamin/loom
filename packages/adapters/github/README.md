@@ -44,6 +44,41 @@ heuristic. `run` and `now` are injectable for tests.
   These use GitHub's native review node ID; regular comments use their numeric IDs.
   Outdated inline comments preserve `line: null`, their side, and their commit anchor.
 
+## Repository pull requests (slice 1)
+
+- `listPullRequests(repo, state)` accepts `open`, `merged`, or `closed` (closed excludes
+  merged), follows every list page, hydrates checks/reviews/mergeability, and returns
+  newest-first `PullRequestSummary` values, including `observedAt`.
+- `readPullRequest(repo, number)` adds the body, merge facts, commits, native check runs
+  with start/completion times, and change counts. Null authors remain null; a null body
+  becomes an empty string. Latest decisive review per author wins; comments/pending
+  reviews do not erase a decision, and any outstanding changes request takes priority.
+  Check summaries include legacy commit statuses using the same rules as task observations.
+- Each endpoint/page is conditionally refreshed using native ETags, even when the PR
+  itself is unchanged. These methods return the full value on each successful read and
+  retain only disposable per-list/per-detail caches (128 keys). A changed head/base or
+  update timestamp during assembly is retryable. GitHub's PR commits endpoint is capped
+  at 250; a count mismatch is an explicit incomplete-read error, never silent omission.
+- `readPullRequestPatch(repo, number)` requests `application/vnd.github.diff` through
+  `gh api`. It returns `{ patch, truncated, observedAt }`, capped at 8 MiB of UTF-8 without
+  cutting a code point. Subprocess capture is bounded, including a 64 KiB header allowance;
+  larger responses are drained without retaining them. Empty/non-diff responses fail.
+  The separate ETag cache holds at most four patches (32 MiB).
+- `closePullRequest(repo, number)` re-reads after closing and succeeds on an already
+  closed or merged PR. Lost command responses are recovered only through owner readback.
+- `deleteBranch(repo, branch)` deletes only the named **remote** head through REST,
+  then verifies its absence. HTTP 422 with exactly `Reference does not exist` is
+  idempotent; other 422 errors are not swallowed. No local branch/worktree is touched.
+- `mergePullRequest({ ..., deleteBranch: true })` deletes the actual head repository's
+  branch only after confirming the merge. Forks never fall back to the base repository.
+  A retry on an already-merged PR completes unfinished deletion. With `auto: true`,
+  deletion is deferred until a later call observes the merge; this adapter has no durable
+  deferred-action queue. A caller wanting immediate merge-and-delete uses `auto: false`.
+
+Only adapter contracts and fakes are added here. Coordinator polling schedules, protocol
+commands, and UI are later slices. Repository reads use the same ownership and conditional
+polling rules below; they do not create tasks or change workflow stages.
+
 ## Conditional polling
 
 Pass the returned `etag` back unchanged. It is an opaque validator for the combined
@@ -68,8 +103,7 @@ Merging checks the approved head, always invokes `gh pr merge --squash
 --match-head-commit <sha>`, adds `--auto` when requested, and re-reads the result.
 Already merged or already enabled squash auto-merge is idempotent. Success is never
 inferred from human-readable CLI stdout. Disabling auto-merge checks before and after
-and succeeds if a concurrent caller already disabled it. No admin override, branch
-deletion, force push, merge-stage transition, or automatic retry is performed here.
+and succeeds if a concurrent caller already disabled it. No admin override, force push, merge-stage transition, or automatic retry is performed here.
 
 `GitHubError` exposes `code: precondition | retryable | fatal` and a sanitized message
 suitable for an executor's `ActionError`. CLI diagnostics classify refusals and rate

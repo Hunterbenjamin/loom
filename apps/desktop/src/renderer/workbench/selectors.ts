@@ -1,3 +1,4 @@
+import type { Run } from "@loom/core";
 import type { PaneIdentity, PaneView } from "@loom/protocol";
 
 export const sameTerminal = (a: PaneIdentity, b: PaneIdentity) =>
@@ -15,83 +16,193 @@ export const terminalName = (pane: PaneView) =>
         pane.title ||
         pane.command ||
         `Terminal ${pane.paneId.slice(1)}`;
-export function spaces(panes: readonly PaneView[], filter = "") {
-  const sorted = [...panes].sort(
-    (a, b) =>
-      a.sessionName.localeCompare(b.sessionName) ||
-      (a.windowId ?? "").localeCompare(b.windowId ?? "", undefined, {
-        numeric: true,
-      }) ||
-      a.paneId.localeCompare(b.paneId, undefined, { numeric: true }),
+
+const indicators = {
+  waiting: { tone: "waiting", icon: "◐", label: "Needs you", priority: 0 },
+  failed: { tone: "failed", icon: "!", label: "Failed", priority: 1 },
+  unknown: {
+    tone: "unknown",
+    icon: "?",
+    label: "Status unavailable",
+    priority: 2,
+  },
+  working: { tone: "working", icon: "◌", label: "Working", priority: 3 },
+  finished: { tone: "finished", icon: "✓", label: "Done", priority: 4 },
+  idle: { tone: "idle", icon: "○", label: "Idle", priority: 5 },
+};
+export type Indicator = (typeof indicators)[keyof typeof indicators];
+
+/** Only published provider status and coordinator attention determine the indicator. */
+export function paneIndicator(pane: PaneView, run?: Run): Indicator {
+  const recorded =
+    run?.id === pane.runId &&
+    run?.pane &&
+    run.pane.hostGeneration === pane.hostGeneration &&
+    run.pane.paneId === pane.paneId
+      ? run
+      : undefined;
+  if (pane.attention || pane.status === "blocked")
+    return {
+      ...indicators.waiting,
+      label:
+        recorded?.blockedOn === "permission"
+          ? "Needs you: permission"
+          : pane.status === "blocked"
+            ? "Blocked / needs you"
+            : "Needs you",
+    };
+  if (pane.unavailable) return indicators.unknown;
+  if (
+    pane.status === "failed" ||
+    (pane.status === "ended" && recorded?.endReason === "crashed")
+  )
+    return indicators.failed;
+  if (pane.status === "unknown") return indicators.unknown;
+  if (pane.status === "working" || pane.status === "starting")
+    return {
+      ...indicators.working,
+      label: pane.status === "starting" ? "Starting" : "Working",
+    };
+  if (pane.status === "ended")
+    return { ...indicators.finished, label: "Ended" };
+  if (pane.status === "idle" && recorded?.lastTurn?.outcome === "completed")
+    return { ...indicators.finished, label: "Finished turn" };
+  if (pane.status === "idle" || (pane.status === null && !pane.runId))
+    return indicators.idle;
+  return indicators.unknown;
+}
+
+export const paneName = (pane: PaneView) =>
+  pane.role
+    ? [pane.role, pane.provider].filter(Boolean).join(" · ")
+    : pane.command || "Unknown process";
+export const spaceKey = (pane: PaneView) =>
+  JSON.stringify([pane.hostGeneration, pane.sessionName]);
+export const tabKey = (pane: PaneView) =>
+  JSON.stringify([pane.hostGeneration, pane.sessionName, pane.windowId]);
+const pinned = (pane: PaneView) =>
+  ["loom-lead", "loom-main", "loom-operator"].includes(pane.sessionName);
+const rollup = (states: Indicator[]) =>
+  states.reduce(
+    (worst, state) => (state.priority < worst.priority ? state : worst),
+    indicators.idle,
   );
-  const groups = new Map<
-    string,
-    { name: string; label: string; panes: PaneView[] }
-  >();
-  for (const p of sorted) {
-    const key = JSON.stringify([p.hostGeneration, p.sessionName]);
-    let group = groups.get(key);
-    if (!group) {
-      group = {
-        name: p.sessionName,
-        label: p.taskLabel ?? p.sessionName,
-        panes: [],
-      };
-      groups.set(key, group);
+const fuzzyMatch = (text: string, words: string[]) =>
+  words.every((word) => {
+    let at = -1;
+    for (const c of word) {
+      at = text.indexOf(c, at + 1);
+      if (at < 0) return false;
     }
-    if (p.taskLabel) group.label = p.taskLabel;
-    group.panes.push(p);
+    return true;
+  });
+
+export type TreePane = { pane: PaneView; name: string; indicator: Indicator };
+export type TreeTab = {
+  key: string;
+  name: string;
+  panes: TreePane[];
+  indicator: Indicator;
+};
+export type TreeSpace = {
+  key: string;
+  name: string;
+  label: string;
+  tabs: TreeTab[];
+  indicator: Indicator;
+};
+
+/** Native session/window identity defines the tree; names and task labels are display metadata. */
+export function spaces(
+  panes: readonly PaneView[],
+  filter = "",
+  runs: readonly Run[] = [],
+): TreeSpace[] {
+  const byRun = new Map(runs.map((run) => [run.id, run]));
+  const groups = new Map<string, TreeSpace>();
+  const tabs = new Map<string, TreeTab>();
+  const sorted = [...panes]
+    .filter((pane) => !pinned(pane))
+    .sort(
+      (a, b) =>
+        a.sessionName.localeCompare(b.sessionName) ||
+        a.hostGeneration.localeCompare(b.hostGeneration) ||
+        (a.windowId ?? "").localeCompare(b.windowId ?? "", undefined, {
+          numeric: true,
+        }) ||
+        a.paneId.localeCompare(b.paneId, undefined, { numeric: true }),
+    );
+  for (const pane of sorted) {
+    const key = spaceKey(pane);
+    let space = groups.get(key);
+    if (!space) {
+      space = {
+        key,
+        name: pane.sessionName,
+        label: pane.taskLabel ?? pane.sessionName,
+        tabs: [],
+        indicator: indicators.idle,
+      };
+      groups.set(key, space);
+    }
+    if (pane.taskLabel) space.label = pane.taskLabel;
+    const windowKey = tabKey(pane);
+    let tab = tabs.get(windowKey);
+    if (!tab) {
+      tab = {
+        key: windowKey,
+        name: pane.windowName || pane.windowId || "Tab",
+        panes: [],
+        indicator: indicators.idle,
+      };
+      tabs.set(windowKey, tab);
+      space.tabs.push(tab);
+    }
+    tab.panes.push({
+      pane,
+      name: paneName(pane),
+      indicator: paneIndicator(
+        pane,
+        pane.runId ? byRun.get(pane.runId) : undefined,
+      ),
+    });
   }
-  const words = filter.toLowerCase().trim().split(/\s+/);
+  const words = filter.trim().toLowerCase().split(/\s+/);
   return [...groups.values()]
-    .map((g) => ({
-      ...g,
-      panes: g.panes.filter((p) => {
-        const text = [
-          g.label,
-          g.name,
-          p.taskId,
-          p.role,
-          p.provider,
-          p.title,
-          p.windowName,
-          p.paneId,
-          p.command,
-        ]
-          .join(" ")
-          .toLowerCase();
-        return words.every((word) => {
-          let at = -1;
-          for (const c of word) {
-            at = text.indexOf(c, at + 1);
-            if (at < 0) return false;
-          }
-          return true;
-        });
-      }),
-    }))
-    .filter((g) => g.panes.length);
+    .map((space) => {
+      for (const tab of space.tabs)
+        tab.indicator = rollup(tab.panes.map((row) => row.indicator));
+      // Filtering hides rows, never a sibling's attention in the parent rollup.
+      return {
+        ...space,
+        indicator: rollup(space.tabs.map((tab) => tab.indicator)),
+        tabs: space.tabs
+          .map((tab) => ({
+            ...tab,
+            panes: tab.panes.filter(({ pane, name }) =>
+              fuzzyMatch(
+                [
+                  space.name,
+                  space.label,
+                  tab.name,
+                  pane.taskId,
+                  pane.paneId,
+                  name,
+                ]
+                  .join(" ")
+                  .toLowerCase(),
+                words,
+              ),
+            ),
+          }))
+          .filter((tab) => tab.panes.length),
+      };
+    })
+    .filter((space) => space.tabs.length);
 }
 export const attentionPanes = (panes: readonly PaneView[]) =>
   spaces(panes)
-    .flatMap((g) => g.panes)
-    .filter((p) => p.attention);
-
-/** Flat terminal inventory, independent of issue titles and issue grouping. */
-export function terminalList(panes: readonly PaneView[], filter = "") {
-  const query = filter.trim().toLowerCase();
-  return panes
-    .filter(
-      (pane) =>
-        !pane.dead &&
-        !["loom-lead", "loom-main", "loom-operator"].includes(pane.sessionName),
+    .flatMap((space) =>
+      space.tabs.flatMap((tab) => tab.panes.map(({ pane }) => pane)),
     )
-    .map((pane) => ({
-      pane,
-      name: terminalName(pane),
-    }))
-    .filter(({ name }) => name.toLowerCase().includes(query))
-    .sort((a, b) =>
-      a.pane.paneId.localeCompare(b.pane.paneId, undefined, { numeric: true }),
-    );
-}
+    .filter((pane) => pane.attention && !pane.dead);

@@ -3,6 +3,7 @@ import type {
   PaneHost,
   PaneObservation,
   PaneRef,
+  PullRequestDetail,
   PullRequestObservation,
   RunId,
   Sha,
@@ -197,7 +198,7 @@ export class FakePaneHost implements PaneHost {
   }
 }
 
-/** One fake repository/branch per instance; check IDs model native IDs, independent of names. */
+/** A repository with a primary workflow PR and independently seeded off-pipeline PRs. */
 export class FakeGitHub implements GitHubAdapter {
   readonly hints = new Hints();
   private revision = 0;
@@ -205,15 +206,166 @@ export class FakeGitHub implements GitHubAdapter {
   private checkId = 102790590318;
   private commentId = 0;
   private pr: PullRequestObservation | null;
+  private readonly additional = new Map<number, PullRequestObservation>();
+  private readonly details = new Map<number, PullRequestDetail>();
+  private readonly patches = new Map<number, string>();
+  private readonly branches = new Set<string>();
+  private readonly createdAt;
+  private title = "Fake pull request";
+  private body = "";
+
   constructor(
     readonly clock: FakeClock,
     readonly repo: string,
     readonly branch: string,
     initial: PullRequestObservation | null = null,
   ) {
+    this.createdAt = clock.now();
+    this.branches.add(branch);
     this.pr = structuredClone(initial);
     this.remoteHead = initial?.headSha ?? null;
   }
+  /** Seed any PR, including ones with no Loom task. No provider process is involved. */
+  setPullRequest(detail: PullRequestDetail, patch = "") {
+    const observation: PullRequestObservation = {
+      number: detail.number,
+      url: detail.url,
+      state: detail.state,
+      headSha: detail.headSha,
+      baseBranch: detail.base,
+      mergeable: detail.mergeable,
+      autoMergeEnabled: false,
+      mergedAt: detail.mergedAt,
+      mergeCommitSha: detail.mergeCommitSha,
+      ci: {
+        headSha: detail.headSha,
+        conclusion: detail.checks,
+        checks: detail.checkRuns,
+        observedAt: detail.observedAt,
+      },
+      reviews:
+        detail.review === "none"
+          ? []
+          : [
+              {
+                id: `review-${detail.number}`,
+                author: "reviewer",
+                state: detail.review,
+                submittedAt: this.clock.now(),
+              },
+            ],
+      comments: [],
+    };
+    if (
+      this.pr?.number === detail.number ||
+      (!this.pr && detail.head === this.branch)
+    ) {
+      this.pr = observation;
+      this.remoteHead = detail.headSha;
+      this.additional.delete(detail.number);
+    } else this.additional.set(detail.number, observation);
+    this.details.set(detail.number, structuredClone(detail));
+    this.patches.set(detail.number, patch);
+    this.branches.add(detail.head);
+    this.changed();
+  }
+  branchExists(branch = this.branch) {
+    return this.branches.has(branch);
+  }
+  readPullRequest: GitHubAdapter["readPullRequest"] = async (repo, number) => {
+    this.scope(repo);
+    const pr = this.requirePr(number);
+    const detail = this.details.get(number);
+    const latest = new Map<string, string>();
+    for (const review of pr.reviews)
+      if (review.state !== "commented") latest.set(review.author, review.state);
+    const decisions = [...latest.values()];
+    return structuredClone({
+      number,
+      title: this.title,
+      author: "human",
+      head: this.branch,
+      createdAt: this.createdAt,
+      updatedAt: this.createdAt,
+      draft: false,
+      body: this.body,
+      commits: [],
+      additions: 0,
+      deletions: 0,
+      changedFiles: 0,
+      ...detail,
+      state: pr.state,
+      base: pr.baseBranch,
+      headSha: pr.headSha,
+      url: pr.url,
+      mergeable: pr.mergeable,
+      checks: pr.ci.conclusion,
+      review: decisions.includes("changes_requested")
+        ? "changes_requested"
+        : decisions.includes("approved")
+          ? "approved"
+          : "none",
+      mergedAt: pr.mergedAt,
+      mergeCommitSha: pr.mergeCommitSha,
+      observedAt: this.clock.now(),
+      checkRuns: pr.ci.checks.map((check) => ({
+        startedAt: null,
+        completedAt: null,
+        ...check,
+      })),
+    });
+  };
+  listPullRequests: GitHubAdapter["listPullRequests"] = async (repo, state) => {
+    this.scope(repo);
+    const prs = [...(this.pr ? [this.pr] : []), ...this.additional.values()];
+    const values = [];
+    for (const pr of prs) {
+      if (pr.state !== state) continue;
+      const {
+        body: _body,
+        commits: _commits,
+        checkRuns: _runs,
+        additions: _add,
+        deletions: _del,
+        changedFiles: _files,
+        mergedAt: _at,
+        mergeCommitSha: _sha,
+        ...summary
+      } = await this.readPullRequest(repo, pr.number);
+      values.push(summary);
+    }
+    return values.sort(
+      (a, b) => b.createdAt.localeCompare(a.createdAt) || b.number - a.number,
+    );
+  };
+  readPullRequestPatch: GitHubAdapter["readPullRequestPatch"] = async (
+    repo,
+    number,
+  ) => {
+    this.scope(repo);
+    this.requirePr(number);
+    const bytes = Buffer.from(this.patches.get(number) ?? "");
+    const limit = 8 * 1024 * 1024;
+    let end = Math.min(limit, bytes.length);
+    while (end < bytes.length && end > 0 && ((bytes[end] ?? 0) & 0xc0) === 0x80)
+      end--;
+    return {
+      patch: bytes.subarray(0, end).toString("utf8"),
+      truncated: bytes.length > limit,
+      observedAt: this.clock.now(),
+    };
+  };
+  closePullRequest: GitHubAdapter["closePullRequest"] = async (
+    repo,
+    number,
+  ) => {
+    this.scope(repo);
+    if (this.requirePr(number).state === "open") this.close(number);
+  };
+  deleteBranch: GitHubAdapter["deleteBranch"] = async (repo, branch) => {
+    this.scope(repo);
+    if (this.branches.delete(branch)) this.changed();
+  };
   snapshot() {
     return structuredClone(this.pr);
   }
@@ -228,6 +380,7 @@ export class FakeGitHub implements GitHubAdapter {
   setHead(head: Sha) {
     if (this.remoteHead === head) return;
     this.remoteHead = head;
+    this.branches.add(this.branch);
     if (this.pr) {
       this.pr.headSha = head;
       this.ci("pending", true);
@@ -238,6 +391,8 @@ export class FakeGitHub implements GitHubAdapter {
     if (!this.remoteHead)
       throw new Error("Set the fake remote head before opening a PR");
     if (!this.pr) {
+      this.title = req.title;
+      this.body = req.body;
       this.pr = {
         number: 1,
         url: "https://example.test/pull/1",
@@ -266,7 +421,18 @@ export class FakeGitHub implements GitHubAdapter {
     const pr = this.requirePr(req.number);
     if (pr.headSha !== req.matchHeadSha)
       throw new Error("Head precondition failed");
-    if (pr.state === "merged") return { state: "merged" };
+    const deleteHead = async () => {
+      if (req.deleteBranch)
+        await this.deleteBranch(
+          req.repo,
+          this.details.get(pr.number)?.head ?? this.branch,
+        );
+    };
+    if (pr.state === "merged") {
+      await deleteHead();
+      return { state: "merged" };
+    }
+    if (pr.mergeable === "conflicting") throw new Error("PR cannot be merged");
     if (pr.state !== "open") throw new Error("PR is closed");
     if (req.auto) {
       if (!pr.autoMergeEnabled) {
@@ -276,7 +442,8 @@ export class FakeGitHub implements GitHubAdapter {
       return { state: "auto_merge_enabled" };
     }
     if (pr.ci.conclusion !== "success") throw new Error("CI is not green");
-    this.merge();
+    this.merge(req.number);
+    await deleteHead();
     return { state: "merged" };
   };
   disableAutoMerge: GitHubAdapter["disableAutoMerge"] = async (req) => {
@@ -337,8 +504,8 @@ export class FakeGitHub implements GitHubAdapter {
     });
     this.changed();
   }
-  merge() {
-    const pr = this.requirePr();
+  merge(number?: number) {
+    const pr = this.requirePr(number);
     if (pr.state === "merged") return;
     pr.state = "merged";
     pr.mergeCommitSha = pr.headSha;
@@ -346,16 +513,20 @@ export class FakeGitHub implements GitHubAdapter {
     pr.autoMergeEnabled = false;
     this.changed();
   }
-  close() {
-    const pr = this.requirePr();
+  close(number?: number) {
+    const pr = this.requirePr(number);
+    if (pr.state !== "open") return;
     pr.state = "closed";
     pr.autoMergeEnabled = false;
     this.changed();
   }
   private requirePr(number?: number) {
-    if (!this.pr || (number !== undefined && this.pr.number !== number))
-      throw new Error("Unknown fake PR");
-    return this.pr;
+    const pr =
+      number === undefined || this.pr?.number === number
+        ? this.pr
+        : this.additional.get(number);
+    if (!pr) throw new Error("Unknown fake PR");
+    return pr;
   }
   private scope(repo: string, branch = this.branch) {
     if (repo !== this.repo || branch !== this.branch)

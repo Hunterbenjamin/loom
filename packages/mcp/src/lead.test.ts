@@ -84,7 +84,7 @@ test("answer_pane_prompt is in the tool list", async () => {
 });
 
 test("answer_pane_prompt schema validates numeric and string choices", async () => {
-  const schema = leadInputSchemas["answer_pane_prompt"];
+  const schema = leadInputSchemas.answer_pane_prompt;
   expect(schema).toBeDefined();
   if (!schema) return;
   expect(
@@ -107,7 +107,7 @@ test("answer_pane_prompt schema validates numeric and string choices", async () 
 });
 
 test("answer_pane_prompt schema rejects invalid choices", async () => {
-  const schema = leadInputSchemas["answer_pane_prompt"];
+  const schema = leadInputSchemas.answer_pane_prompt;
   expect(schema).toBeDefined();
   if (!schema) return;
 

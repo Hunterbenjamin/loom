@@ -30,7 +30,7 @@ import {
   type Snapshot,
 } from "../fixtures/index.js";
 import { projectSnapshot } from "../live/snapshot.js";
-import { selectedRows } from "./selectors.js";
+import { cursorRows } from "./selectors.js";
 
 export type ViewId =
   | "all"
@@ -49,7 +49,15 @@ export type SortKey =
   | "age";
 export type Theme = "dark" | "light";
 
+/** Initial limit and each subsequent page for terminal list sections. */
+export const LIST_PAGE_SIZE = 20;
+export type ListSections = Partial<
+  Record<Stage, { collapsed?: boolean; visibleCount?: number }>
+>;
+
 export interface UiState {
+  /** Presentation only; owned by this window and never persisted. */
+  listSections: ListSections;
   view: ViewId;
   pane: Pane;
   /** Repo filter; `all` means every repo. */
@@ -65,6 +73,8 @@ export interface UiState {
   palette: boolean;
   stagePicker: boolean;
   createIssue: boolean;
+  /** Explicit selection should scroll even when it also reveals a collapsed section. */
+  selectionVersion: number;
   toast: string | null;
   openRun: RunId | null;
   openReason: AttentionReason | null;
@@ -126,6 +136,7 @@ export function matchesView(task: Task, view: ViewId): boolean {
 }
 
 const initialUi: UiState = {
+  listSections: {},
   view: "all",
   pane: "list",
   repo: "all",
@@ -140,6 +151,7 @@ const initialUi: UiState = {
   palette: false,
   stagePicker: false,
   createIssue: false,
+  selectionVersion: 0,
   toast: null,
   openRun: null,
   openReason: null,
@@ -178,13 +190,37 @@ export function createStore(
   let send: ((command: Command) => Promise<AckOutcome>) | null = null;
   const listeners = new Set<() => void>();
 
+  const revealStage = (id: TaskId) => {
+    const stage = state.snapshot.tasks.find((task) => task.id === id)?.stage;
+    if (stage && state.ui.listSections[stage]?.collapsed) {
+      state = {
+        ...state,
+        ui: {
+          ...state.ui,
+          listSections: {
+            ...state.ui.listSections,
+            [stage]: { ...state.ui.listSections[stage], collapsed: false },
+          },
+        },
+      };
+    }
+  };
+
   const emit = () => {
     if (pendingSelection) {
-      const cursor = selectedRows(state).findIndex(
+      revealStage(pendingSelection);
+      const cursor = cursorRows(state).findIndex(
         (row) => row.task.id === pendingSelection,
       );
       if (cursor >= 0) {
-        state = { ...state, ui: { ...state.ui, cursor } };
+        state = {
+          ...state,
+          ui: {
+            ...state.ui,
+            cursor,
+            selectionVersion: state.ui.selectionVersion + 1,
+          },
+        };
         pendingSelection = null;
       }
     }
@@ -246,7 +282,10 @@ export function createStore(
       const selectedTask =
         state.ui.view === "needs-you"
           ? undefined
-          : selectedRows(state)[state.ui.cursor]?.task.id;
+          : cursorRows(state)[state.ui.cursor]?.task.id;
+      const selectedStage = state.snapshot.tasks.find(
+        (task) => task.id === selectedTask,
+      )?.stage;
       const notices = [...client.collections.inbox.values()].flatMap((i) =>
         i.forHuman ? [i.forHuman.noteId] : [],
       );
@@ -294,10 +333,23 @@ export function createStore(
       };
       // Preserve the selected issue when a stage patch changes its sorted position.
       if (selectedTask) {
-        const cursor = selectedRows(state).findIndex(
+        const stageChanged =
+          state.snapshot.tasks.find((task) => task.id === selectedTask)
+            ?.stage !== selectedStage;
+        if (stageChanged) revealStage(selectedTask);
+        const cursor = cursorRows(state).findIndex(
           (row) => row.task.id === selectedTask,
         );
-        if (cursor >= 0) state = { ...state, ui: { ...state.ui, cursor } };
+        if (cursor >= 0)
+          state = {
+            ...state,
+            ui: {
+              ...state.ui,
+              cursor,
+              selectionVersion:
+                state.ui.selectionVersion + (stageChanged ? 1 : 0),
+            },
+          };
       }
       emit();
     },
@@ -321,7 +373,30 @@ export function createStore(
       setUi({ view, cursor: 0, openTask: null });
     },
     setPane(pane: Pane) {
-      setUi({ pane });
+      setUi({ pane, cursor: 0 });
+    },
+    toggleListSection(stage: Stage) {
+      const section = state.ui.listSections[stage];
+      setUi({
+        listSections: {
+          ...state.ui.listSections,
+          [stage]: { ...section, collapsed: !section?.collapsed },
+        },
+        cursor: 0,
+      });
+    },
+    loadMoreListSection(stage: "done" | "canceled") {
+      const section = state.ui.listSections[stage];
+      setUi({
+        listSections: {
+          ...state.ui.listSections,
+          [stage]: {
+            ...section,
+            visibleCount:
+              (section?.visibleCount ?? LIST_PAGE_SIZE) + LIST_PAGE_SIZE,
+          },
+        },
+      });
     },
     setRepo(repo: string) {
       setUi({ repo, cursor: 0 });

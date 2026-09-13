@@ -118,7 +118,7 @@ export function isStaleEntry(
   }
 
   // pid is null: use hook activity if available to make a determination
-  if (options && options.hookLastEventAt) {
+  if (options?.hookLastEventAt) {
     const lastEventTime = new Date(options.hookLastEventAt).getTime();
     const nowTime = new Date(options.now).getTime();
     const staleSince = nowTime - options.stallAfterMs;

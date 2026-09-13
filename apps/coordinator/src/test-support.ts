@@ -57,7 +57,10 @@ export interface HarnessOptions {
   serveProtocol?: boolean;
   /** Extra files committed into the repository before the branch exists. */
   files?: Record<string, string>;
-  config?: Partial<CoordinatorConfig>;
+  config?: Partial<Omit<CoordinatorConfig, "runModes">> & {
+    /** Raw environment-style value parsed at the same boundary as production configuration. */
+    runModes?: string;
+  };
 }
 
 export interface Harness {
@@ -199,6 +202,11 @@ async function open(
   const adapters: Adapters = {
     git: git2,
     github: {
+      listPullRequests: github.listPullRequests,
+      readPullRequest: github.readPullRequest,
+      readPullRequestPatch: github.readPullRequestPatch,
+      closePullRequest: github.closePullRequest,
+      deleteBranch: github.deleteBranch,
       findPullRequest: async (request) =>
         github.findPullRequest(await scope(request)),
       openPullRequest: async (request) =>

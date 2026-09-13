@@ -38,13 +38,33 @@ can be retried without recreating the issue. Success closes the modal, reveals a
 issue in the list, and toasts its key. Escape and Cancel confirm before discarding edited drafts.
 Only fixture mode edits the local snapshot.
 
+## Tracker list
+
+Stage headers are buttons: click or press Enter/Space to collapse or expand them. Each header
+always shows the total matching task count. Done and Canceled start with the 20 most recently
+transitioned tasks, ordered by `stageEnteredAt` descending; Load N more reveals the next 20 (or
+the remaining count). Other stages remain unlimited and follow the selected column sort.
+Collapse and loaded-page settings stay in each window's memory, including across view switches;
+new windows start expanded with the initial limit. Keyboard task navigation skips collapsed and
+unloaded rows. Task summaries, model labels and progress indicators remain visible per row.
+
 ## Workbench
 
-- **Sidebar:** live native terminal sessions, with Main and Operator pinned first. Rows use terminal
-  names rather than task titles. Run linkage is only by a unique recorded generation + pane ID,
-  never cwd, title, command or native run tags. Dead panes
-  disappear from the terminal list. Filtering matches terminal names. Clicking or pressing Enter
-  attaches the existing terminal, focusing its existing view if present, without a creation modal.
+- **Sidebar:** a native space → tab → pane tree, grouped by host generation/session and window
+  identity. Task spaces show the recorded task key/title; unlinked spaces show the session name.
+  Tabs show native window names; panes show their command or recorded role · provider and state.
+  Main and Operator are pinned at the bottom. Expansion is per-window memory; fuzzy filtering
+  reveals matching descendants and their ancestors without changing saved expansion. Native dead
+  panes remain dimmed and disabled. Run linkage is only by a unique recorded generation + pane ID,
+  never cwd, title, command or native run tags. Clicking a pane replaces the focused viewer; Enter
+  opens an independent Workbench tab. Pinned agent tabs retain their identity, so selecting another
+  pane from one opens a regular tab. Space and tab rows toggle expansion in this slice; tab-row
+  split opening and context menus are deferred to Workbench v2 slice 5.
+- **Indicators:** every tree row uses ◌ working, ◐ blocked/needs you, ✓ finished turn/ended,
+  ○ idle, ! failed, or ? unknown. Tabs and spaces roll up needs-you > failed > unknown > working >
+  done > idle across all descendants, including ones hidden by filtering. Only published provider
+  status and coordinator attention determine indicators; native process exit alone is not agent
+  completion. Branches, rename, sound and flash remain separate Workbench v2 slices.
 - **Tabs and splits:** each outer tab owns a Dockview 4.13.1 Gridview. Splitting names and creates
   an independent terminal, then adds its viewer next to the focused panel; the library handles sizing. Drag a
   panel header to an edge of another panel in the same tab to move it. Terminal mounts live as
@@ -162,17 +182,15 @@ Editing code, drag-and-drop between windows, a third mode, plugins, themes beyon
 Workbench restores a viewer of an existing live terminal from native inventory on open. It never
 creates a shell during mounting or navigation. New Terminal and Split name and create a native
 shell before mounting a viewer with its exact identity. Closing a terminal ends that pane; native
-exit and close updates remove the row and all its views. Closing the last terminal leaves an empty
-Workbench with a New terminal action. Selecting an existing row never opens a naming modal.
+exit and close updates remove all its views. Dead panes retained by the host remain dimmed in the tree.
+Closing the last terminal leaves an empty Workbench with a New terminal action. Selecting an existing row never opens a naming modal.
 The standalone `loom-workbench` session has no task or provider run; tmux owns it, and no spare
 shell is launched to hold the session open.
 
-The sidebar places the native session/terminal tree above a separate agent-terminal list. Only
-live, recorded agent panes appear; headless runs, ended runs and task history are excluded. Status
-icons come from recorded provider observations and unanswered questions: working, awaiting
-response/permission, finished turn, idle, rate limited, failed, or unavailable. A quiet or
-disconnected terminal is never proof of completion. Waiting agents sort first and contribute to a
-visible count. Clicking an agent attaches its existing terminal in Workbench without switching to Tracker.
+The sidebar uses the space → tab → pane tree described above. Recorded agent status appears on
+its pane row and rolls up to its ancestors, with no duplicate agent list. Headless runs and task
+history without native panes are excluded. A quiet or disconnected terminal is never proof of
+completion. Clicking a pane attaches in Workbench without switching to Tracker.
 
 New Tab (including the prefix shortcut) asks for a terminal name in a modal before creating a
 shell. Cancel creates nothing. Names are stored as native tmux window names and survive viewer
@@ -180,16 +198,15 @@ reconnects; the tab and terminal tree show the name. Provider-confirmed complete
 finished-turn icon while the agent terminal stays open. Idle and unknown status remain distinct.
 
 
-### Flat terminal navigation
+### Pinned terminal navigation
 
-Workbench lists actual terminals directly, without task/issue groups or issue titles. Main and
-Operator are always pinned above the scrollable terminal list. Main attaches the existing `lead`
+Main and Operator stay pinned below the scrollable space tree. Main attaches the existing `lead`
 identity; Operator attaches its interactive session, with the same durable queue and policy
-checks as before. Both reuse their pinned tabs. Their Hide agent view button only detaches the viewer; stopping
-an agent uses its existing agent/task controls. Opening a workspace reserves its tmux session
-name without creating a shell; a session is created only when a real agent or explicitly requested
-human terminal needs a pane. The brief bootstrap process used while setting its environment is
-removed before launch returns, leaving no spare terminal.
+checks as before. Both reuse their pinned tabs. Their Hide agent view button only detaches the viewer;
+stopping an agent uses its existing agent/task controls. Opening a workspace reserves its tmux
+session name without creating a shell; a session is created only when a real agent or explicitly
+requested human terminal needs a pane. The brief bootstrap process used while setting its environment
+is removed before launch returns, leaving no spare terminal.
 
 ### Automatic task terminal
 

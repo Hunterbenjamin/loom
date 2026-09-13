@@ -1,7 +1,7 @@
 [
   {
     "name": "planner",
-    "agent": { "provider": "claude", "role": "planner", "mode": "headless" },
+    "agent": { "provider": "claude", "role": "planner", "mode": "interactive" },
     "steps": [
       { "expect": "message" },
       {
@@ -77,7 +77,11 @@
   },
   {
     "name": "first review",
-    "agent": { "provider": "claude", "role": "reviewer", "mode": "headless" },
+    "agent": {
+      "provider": "claude",
+      "role": "reviewer",
+      "mode": "interactive"
+    },
     "steps": [
       { "expect": "message" },
       {
@@ -101,7 +105,11 @@
   },
   {
     "name": "verify the fix",
-    "agent": { "provider": "claude", "role": "reviewer", "mode": "headless" },
+    "agent": {
+      "provider": "claude",
+      "role": "reviewer",
+      "mode": "interactive"
+    },
     "steps": [
       { "expect": "message" },
       {

@@ -1,0 +1,34 @@
+{
+  "number": 15477,
+  "html_url": "https://github.com/vuejs/core/pull/15477",
+  "state": "closed",
+  "head": {
+    "ref": "edison/perf/treeshaking",
+    "sha": "05c50f86b5fb9a95f30a4116e3bf4ab4d4bafa64",
+    "label": "vuejs:edison/perf/treeshaking",
+    "repo": {
+      "full_name": "vuejs/core"
+    }
+  },
+  "merged": true,
+  "mergeable": null,
+  "auto_merge": null,
+  "merge_commit_sha": "51cce24b02a57ae2e70420f149a742aaf27746e6",
+  "merged_at": "2026-09-10T08:09:22Z",
+  "base": {
+    "ref": "minor"
+  },
+  "title": "Improve tree shaking",
+  "user": {
+    "login": "contributor",
+    "type": "User"
+  },
+  "body": "A description\n\nWith **markdown**.",
+  "created_at": "2026-09-09T00:00:00Z",
+  "updated_at": "2026-09-10T08:09:22Z",
+  "draft": false,
+  "additions": 2,
+  "deletions": 1,
+  "changed_files": 1,
+  "commits": 1
+}

@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import type { GitHubAdapter, PullRequestObservation } from "@loom/core";
 import { z } from "zod";
 import { Api, type Pages } from "./api.js";
+import { branchActions } from "./branches.js";
 import { failure, type GhRunner, GitHubError, runGh } from "./gh.js";
 import { observe } from "./observation.js";
+import { pullRequestReads } from "./pull-requests.js";
 import * as s from "./schemas.js";
 
 export { type GhResult, type GhRunner, GitHubError } from "./gh.js";
@@ -23,6 +25,14 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
       .map((v) => v.toLowerCase()),
   );
   const snapshots = new Map<string, { etag: string; pages: Pages }>();
+  const deleteBranch = branchActions(run);
+  const deleteHead = async (repo: string, number: number) => {
+    const { head } = (
+      await new Api(run).get(`repos/${repo}/pulls/${number}`, s.headRepository)
+    ).value;
+    // A deleted fork has no branch left to delete. Never fall back to the base repository.
+    if (head.repo) await deleteBranch(head.repo.full_name, head.ref);
+  };
 
   const locate = async (api: Api, repo: string, branch: string) => {
     const label = branch.includes(":")
@@ -49,6 +59,35 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
   };
 
   return {
+    ...pullRequestReads(run, () =>
+      s.time.parse((options.now?.() ?? new Date()).toISOString()),
+    ),
+    deleteBranch,
+    async closePullRequest(repo, number) {
+      s.repo.parse(repo);
+      s.id.parse(number);
+      const before = await freshPull(repo, number);
+      if (before.merged || before.state === "closed") return;
+      let closeError: unknown;
+      try {
+        await command([
+          "pr",
+          "close",
+          String(number),
+          "--repo",
+          `github.com/${repo}`,
+        ]);
+      } catch (error) {
+        closeError = error;
+      }
+      const after = await freshPull(repo, number);
+      if (after.merged || after.state === "closed") return;
+      if (closeError) throw closeError;
+      throw new GitHubError(
+        "retryable",
+        "GitHub PR closure is not yet observable",
+      );
+    },
     async findPullRequest(req) {
       s.repo.parse(req.repo);
       s.branch.parse(req.branch);
@@ -142,7 +181,10 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
           "precondition",
           "GitHub PR head no longer matches approval",
         );
-      if (before.merged) return { state: "merged" };
+      if (before.merged) {
+        if (req.deleteBranch) await deleteHead(req.repo, req.number);
+        return { state: "merged" };
+      }
       if (before.state === "closed" || before.mergeable === false)
         throw new GitHubError("precondition", "GitHub PR cannot be merged");
       if (req.auto && before.auto_merge?.merge_method === "squash")
@@ -158,16 +200,25 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
         req.matchHeadSha,
       ];
       if (req.auto) args.push("--auto");
-      await command(args);
+      let mergeError: unknown;
+      try {
+        await command(args);
+      } catch (error) {
+        mergeError = error;
+      }
       const after = await freshPull(req.repo, req.number);
       if (after.head.sha !== req.matchHeadSha)
         throw new GitHubError(
           "precondition",
           "GitHub PR head changed during merge",
         );
-      if (after.merged) return { state: "merged" };
+      if (after.merged) {
+        if (req.deleteBranch) await deleteHead(req.repo, req.number);
+        return { state: "merged" };
+      }
       if (req.auto && after.auto_merge?.merge_method === "squash")
         return { state: "auto_merge_enabled" };
+      if (mergeError) throw mergeError;
       throw new GitHubError(
         "retryable",
         "GitHub merge outcome is not yet observable",

@@ -340,11 +340,7 @@ export function submission(
           const openPrRow = c.state.outbox.find(
             (row) => row.key === `open_pr:${task.id}:${task.branch}`,
           );
-          if (
-            openPrRow &&
-            openPrRow.dependsOn &&
-            !openPrRow.dependsOn.includes(pushKey)
-          ) {
+          if (openPrRow?.dependsOn && !openPrRow.dependsOn.includes(pushKey)) {
             openPrRow.dependsOn.push(pushKey);
           }
         }

@@ -1,5 +1,4 @@
 import type {
-  CiState,
   GitHubComment,
   GitHubReview,
   IsoTime,
@@ -7,6 +6,7 @@ import type {
 } from "@loom/core";
 import { z } from "zod";
 import type { Api } from "./api.js";
+import { readCi } from "./checks.js";
 import { GitHubError } from "./gh.js";
 import * as s from "./schemas.js";
 
@@ -19,18 +19,7 @@ export async function observe(
 ): Promise<PullRequestObservation> {
   const root = `repos/${repo}`;
   const pr = `${root}/pulls/${initial.number}`;
-  const rawChecks = await api.all(
-    `${root}/commits/${initial.head.sha}/check-runs?per_page=100&filter=latest`,
-    s.checks.transform((v) => v.check_runs),
-  );
-  const combined = (
-    await api.get(`${root}/commits/${initial.head.sha}/status`, s.statuses)
-  ).value;
-  if (
-    combined.sha !== initial.head.sha ||
-    rawChecks.some((check) => check.head_sha !== initial.head.sha)
-  )
-    throw new GitHubError("retryable", "GitHub CI head changed during read");
+  const ci = await readCi(api, repo, initial.head.sha, now);
   const human = (user: { login: string; type: string } | null) =>
     user !== null &&
     user.type === "User" &&
@@ -109,33 +98,6 @@ export async function observe(
     final.base.ref !== initial.base.ref
   )
     throw new GitHubError("retryable", "GitHub PR changed during read");
-  const checks: CiState["checks"] = rawChecks.map((check) => ({
-    id: String(check.id),
-    name: check.name,
-    status:
-      check.status === "completed" || check.status === "in_progress"
-        ? check.status
-        : "queued",
-    conclusion: check.conclusion,
-    url: check.html_url,
-  }));
-  const failed = checks.some(
-    (check) =>
-      check.status === "completed" &&
-      check.conclusion !== null &&
-      !["success", "neutral", "skipped"].includes(check.conclusion),
-  );
-  const pending = checks.some(
-    (check) => check.status !== "completed" || check.conclusion === null,
-  );
-  const conclusion =
-    failed || (combined.total_count > 0 && combined.state === "failure")
-      ? "failure"
-      : pending || (combined.total_count > 0 && combined.state === "pending")
-        ? "pending"
-        : checks.length > 0 || combined.total_count > 0
-          ? "success"
-          : "none";
   return {
     number: final.number,
     url: final.html_url,
@@ -151,7 +113,12 @@ export async function observe(
     autoMergeEnabled: final.auto_merge !== null,
     mergeCommitSha: final.merged ? final.merge_commit_sha : null,
     mergedAt: final.merged_at,
-    ci: { headSha: final.head.sha, conclusion, checks, observedAt: now },
+    ci: {
+      ...ci,
+      checks: ci.checks.map(
+        ({ startedAt: _start, completedAt: _end, ...check }) => check,
+      ),
+    },
     reviews,
     comments,
   };
