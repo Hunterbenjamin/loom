@@ -327,8 +327,11 @@ export function human(
         return guard(
           "Resolve the failed task action before replacing its agent",
         );
+      const roleProfile = state.config.roleProfiles?.[role];
       const provider =
-        state.config.providerOverrides?.[role] ?? task.providers[role];
+        roleProfile?.provider ??
+        state.config.providerOverrides?.[role] ??
+        task.providers[role];
       c.end(run, "superseded", false, true);
       c.change("Human restarted the run with current agent settings", () => {
         task.failed = null;
@@ -343,10 +346,20 @@ export function human(
           runId: `${task.id}/${role}/${run.round}/restart/${sequence}` as RunId,
           previousRunId: run.id,
           provider,
-          model: state.config.models[provider],
-          ...(provider === "codex" && state.config.codexReasoningEffort
-            ? { reasoningEffort: state.config.codexReasoningEffort }
+          model: roleProfile?.model ?? state.config.models[provider],
+          ...(provider === "codex" &&
+          (roleProfile?.reasoningEffort ?? state.config.codexReasoningEffort)
+            ? {
+                reasoningEffort:
+                  roleProfile?.reasoningEffort ??
+                  state.config.codexReasoningEffort,
+              }
             : {}),
+          mode:
+            roleProfile?.runMode ??
+            state.config.runModes[role] ??
+            "interactive",
+          access: roleProfile?.access ?? "full",
         },
       };
       return null;

@@ -440,7 +440,7 @@ export class Context {
       this.state.findings.push(finding);
     return finding;
   }
-  approval(head?: Sha): void {
+  approval(head?: Sha, approvedBy: "human" | "policy" = "human"): void {
     const id =
       `${this.task.id}/approval/${this.task.version + 1}/${this.result.inputs.length}` as ApprovalId;
     const common = {
@@ -459,6 +459,7 @@ export class Context {
         kind: "merge",
         headSha: head,
         ci: clone(this.pr.ci),
+        approvedBy,
         findings: {
           findings,
           hash: this.state.config.sha256(JSON.stringify(findings)),

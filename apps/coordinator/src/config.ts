@@ -2,7 +2,15 @@
 // default: a development coordinator must never open the stable instance's database.
 
 import { hostname } from "node:os";
-import type { Provider, ReconcileConfig, Role, RunMode } from "@loom/core";
+import {
+  DEFAULT_SETTINGS,
+  type Provider,
+  type ReconcileConfig,
+  type Role,
+  type RunMode,
+  resolveSettings,
+  type SettingsPatch,
+} from "@loom/core";
 import { z } from "zod";
 import { deriveClaudeSessionId, sha256 } from "./derive.js";
 
@@ -166,6 +174,8 @@ export const configSchema = z
       .string()
       .optional()
       .transform((value) => parseRunModes(value)),
+    agentAccess: z.enum(["full", "approval-gated"]).default("full"),
+    settingsEnvironment: z.custom<SettingsPatch>().default({}),
   })
   .transform((config) => ({
     ...config,
@@ -176,23 +186,29 @@ export const configSchema = z
 export type CoordinatorConfig = z.output<typeof configSchema>;
 
 /** The subset core sees. The pure functions are injected here, never serialized. */
-export const reconcileConfig = (
-  config: CoordinatorConfig,
-): ReconcileConfig => ({
-  retry: config.retry,
-  stallAfterMs: config.stallAfterMs,
-  unknownGraceMs: config.unknownGraceMs,
-  deliveryTimeoutMs: config.deliveryTimeoutMs,
-  githubPollMs: config.githubPollMs,
-  deriveClaudeSessionId,
-  sha256,
-  worktreeRoot: config.worktreeRoot,
-  baseBranch: config.baseBranch,
-  models: config.models as Record<Provider, string>,
-  runModes: config.runModes,
-  providerOverrides: config.providerOverrides,
-  codexReasoningEffort: config.codexReasoningEffort,
-});
+export const reconcileConfig = (config: CoordinatorConfig): ReconcileConfig => {
+  return {
+    retry: config.retry,
+    stallAfterMs: config.stallAfterMs,
+    unknownGraceMs: config.unknownGraceMs,
+    deliveryTimeoutMs: config.deliveryTimeoutMs,
+    githubPollMs: config.githubPollMs,
+    deriveClaudeSessionId,
+    sha256,
+    worktreeRoot: config.worktreeRoot,
+    baseBranch: config.baseBranch,
+    models: config.models as Record<Provider, string>,
+    runModes: config.runModes,
+    providerOverrides: config.providerOverrides,
+    codexReasoningEffort: config.codexReasoningEffort,
+    ...(config.settingsEnvironment.roles
+      ? {
+          roleProfiles: resolveSettings(null, null, config.settingsEnvironment)
+            .effective.roles,
+        }
+      : {}),
+  };
+};
 
 const required = (
   name: string,
@@ -212,7 +228,7 @@ export function configFromEnvironment(
   const bindMatch = bindStr.match(/^(\[[^\]]+\]|[^:]+):(\d+)$/);
   const bindPort = bindMatch ? Number(bindMatch[2]) : 47800;
 
-  return configSchema.parse({
+  const parsed = configSchema.parse({
     instance: env.LOOM_INSTANCE ?? required("LOOM_INSTANCE", env),
     dataRoot: env.LOOM_DATA_ROOT ?? required("LOOM_DATA_ROOT", env),
     worktreeRoot:
@@ -257,6 +273,7 @@ export function configFromEnvironment(
     codexExecutable: optional("LOOM_CODEX"),
     claudeExecutable: optional("LOOM_CLAUDE"),
     runModes: optional("LOOM_RUN_MODES"),
+    agentAccess: optional("LOOM_AGENT_ACCESS"),
     mcpPort: env.LOOM_MCP_PORT
       ? Number(env.LOOM_MCP_PORT)
       : derivedPort(bindPort, 1),
@@ -264,6 +281,61 @@ export function configFromEnvironment(
       ? Number(env.LOOM_HOOK_PORT)
       : derivedPort(bindPort, 2),
   });
+  const rolePatch: SettingsPatch["roles"] = {};
+  for (const role of ["planner", "implementer", "reviewer"] as const) {
+    const provider =
+      parsed.providerOverrides[role] ?? DEFAULT_SETTINGS.roles[role].provider;
+    const value: Partial<(typeof DEFAULT_SETTINGS.roles)[typeof role]> = {};
+    if (env[`LOOM_PROVIDER_${role.toUpperCase()}`]) value.provider = provider;
+    const modelName =
+      provider === "codex" ? "LOOM_MODEL_CODEX" : "LOOM_MODEL_CLAUDE";
+    if (env[modelName]) value.model = parsed.models[provider];
+    if (env.LOOM_CODEX_REASONING_EFFORT && provider === "codex")
+      value.reasoningEffort = parsed.codexReasoningEffort as never;
+    if (env.LOOM_RUN_MODES) value.runMode = parsed.runModes[role];
+    if (env.LOOM_AGENT_ACCESS) value.access = parsed.agentAccess;
+    if (Object.keys(value).length) rolePatch[role] = value;
+  }
+  const settingsEnvironment: SettingsPatch = {
+    ...(Object.keys(rolePatch).length ? { roles: rolePatch } : {}),
+    operator: {
+      ...(env.LOOM_MODEL_OPERATOR
+        ? { model: parsed.operatorModel ?? null }
+        : {}),
+      ...(env.LOOM_MODEL_LEAD ? { leadModel: parsed.leadModel ?? null } : {}),
+      ...(env.LOOM_OPERATOR_REPO
+        ? { repoId: parsed.operator.repoId ?? null }
+        : {}),
+      ...(env.LOOM_OPERATOR_AUTO_FIX
+        ? { autoFix: parsed.operator.autoFix }
+        : {}),
+      ...(env.LOOM_OPERATOR_MAX_FILED_PER_HOUR
+        ? { maxFiledPerHour: parsed.operator.maxFiledPerHour }
+        : {}),
+    },
+    runtime: {
+      ...(env.LOOM_CAP_TOTAL ? { capTotal: parsed.caps.total } : {}),
+      ...(env.LOOM_CAP_CODEX ? { capCodex: parsed.caps.codex } : {}),
+      ...(env.LOOM_CAP_CLAUDE ? { capClaude: parsed.caps.claude } : {}),
+      ...(env.LOOM_WORKTREE_ROOT ? { worktreeRoot: parsed.worktreeRoot } : {}),
+      ...(env.LOOM_TMUX ? { tmuxExecutable: parsed.tmuxExecutable } : {}),
+      ...(env.LOOM_CODEX ? { codexExecutable: parsed.codexExecutable } : {}),
+      ...(env.LOOM_CLAUDE ? { claudeExecutable: parsed.claudeExecutable } : {}),
+      ...(env.LOOM_EXCLUDED_AUTHORS
+        ? { excludedAuthors: parsed.excludedAuthors }
+        : {}),
+    },
+    ...(env.LOOM_WINDOW_MODE
+      ? {
+          appearance: {
+            windowMode: z
+              .enum(["tracker", "workbench"])
+              .parse(env.LOOM_WINDOW_MODE),
+          },
+        }
+      : {}),
+  };
+  return { ...parsed, settingsEnvironment };
 }
 
 /** A stable name for this coordinator run, so clients notice a restart. */

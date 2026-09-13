@@ -57,6 +57,7 @@ import {
   positive,
   text,
 } from "./schema-helpers.js";
+import { SettingsStore } from "./settings.js";
 
 export type Conflict = {
   ok: false;
@@ -77,9 +78,11 @@ class CommitConflict extends Error {
   }
 }
 export class Store {
+  private roleProfilesForTask?: (task: Task) => ReconcileConfig["roleProfiles"];
   readonly operator: OperatorStore;
   readonly hooks: SqliteHookLog;
   readonly outbox: Outbox;
+  readonly settings: SettingsStore;
   constructor(
     private readonly db: Database.Database,
     readonly dataDirectory: string,
@@ -88,9 +91,16 @@ export class Store {
     this.operator = new OperatorStore(db);
     this.hooks = new SqliteHookLog(db);
     this.outbox = new Outbox(db);
+    this.settings = new SettingsStore(db);
   }
   close(): void {
     this.db.close();
+  }
+  /** Coordinator injection for next-run defaults; captured task/run fields still win in core. */
+  setRoleProfilesResolver(
+    resolver: (task: Task) => ReconcileConfig["roleProfiles"],
+  ): void {
+    this.roleProfilesForTask = resolver;
   }
   /** Coordinator-owned per-instance project selection, persisted in the existing metadata table. */
   selectedRepo(): Repo["id"] | null {
@@ -289,7 +299,9 @@ export class Store {
         artifactContents,
         consumedInputIds,
         outbox: this.outbox.list(taskId),
-        config: this.config,
+        config: this.roleProfilesForTask
+          ? { ...this.config, roleProfiles: this.roleProfilesForTask(task) }
+          : this.config,
         ...context,
       };
     })();

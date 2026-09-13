@@ -8,6 +8,7 @@ import { z } from "zod";
 import { humanCommand, providerRules } from "./entities.js";
 import { inputId, repoId, requestId, runId, sha, taskId } from "./ids.js";
 import { operatorState } from "./operator.js";
+import { settingsPatch, settingsScope } from "./settings.js";
 import { subscription } from "./subscriptions.js";
 import {
   leadTarget,
@@ -79,6 +80,19 @@ export const renameTab = z.strictObject({
 export const command = z.union([
   renameSpace,
   renameTab,
+
+  z.strictObject({
+    kind: z.literal("update_settings"),
+    scope: settingsScope,
+    expectedVersion: z.number().int().nonnegative(),
+    patch: settingsPatch,
+  }),
+  z.strictObject({
+    kind: z.literal("reset_settings"),
+    scope: settingsScope,
+    expectedVersion: z.number().int().nonnegative(),
+    keys: z.array(z.string().min(1)).min(1),
+  }),
 
   ...pullRequestCommand.options,
   z.strictObject({
@@ -187,6 +201,11 @@ export const commandRequest = z.strictObject({
 
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
+  z.strictObject({
+    kind: z.literal("settings_updated"),
+    scope: settingsScope,
+    version: z.number().int().positive(),
+  }),
   z.strictObject({ kind: z.literal("renamed") }),
   z.strictObject({
     kind: z.literal("pull_request_action"),

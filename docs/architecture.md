@@ -58,6 +58,45 @@ carry for them are in [`docs/design/ui.md`](design/ui.md).
 
 Done is derived from GitHub: an issue is Done only once its PR is merged.
 
+## Settings ownership and inventory
+
+The coordinator owns versioned instance defaults and sparse repository overrides in SQLite. The
+precedence is: explicit task-creation value, environment override, repository value, global value,
+built-in default. Task workflow policy is captured at creation; provider/model/reasoning/mode/access
+is captured on each run. Retries and recovery retain that recipe, while an explicit restart uses the
+current effective role profile. Live supervisor values apply immediately; the catalog labels values
+that apply to the next task, next run, or coordinator restart. Every stored mutation uses an expected
+version and appends a redacted audit row. Settings and audit schemas reject secret-bearing keys.
+
+This is the reviewed production configuration inventory. “Exposed” means it is represented by the
+typed catalog and Settings page; environment-backed rows are visible but disabled while the variable
+is present.
+
+| Configuration | Current code owner/location | Classification |
+|---|---|---|
+| Planner, implementer and reviewer provider (`LOOM_PROVIDER_*`), provider model (`LOOM_MODEL_CODEX`, `LOOM_MODEL_CLAUDE`), Codex reasoning (`LOOM_CODEX_REASONING_EFFORT`), `LOOM_RUN_MODES`, semantic `LOOM_AGENT_ACCESS` | `apps/coordinator/src/config.ts`, `packages/core/src/settings.ts`, run recipe and provider launch adapters | Exposed; next run. Planner read-only remains a fixed floor. |
+| Plan approval, size, budget, review-round cap, merge policy | create-task protocol/CLI and `packages/core` task policy | Exposed; captured on the next task. Explicit creation values win. |
+| Repository base branch, default providers and serialized-test flag | `packages/core` `Repo`, `apps/coordinator/src/repos.ts` | Exposed through repository registration plus role/workflow repository overrides; repository identity/root remains registration-owned. |
+| Operator/Main models and Operator repository, policy v1, auto-fix set and filing rate (`LOOM_MODEL_OPERATOR`, `LOOM_MODEL_LEAD`, `LOOM_OPERATOR_*`) | `apps/coordinator/src/operator*.ts`, `lead.ts`, `config.ts` | Exposed. Policy v1 is informational until another policy exists. |
+| Capacity, retry base/cap/attempts, stall/unknown/delivery timeouts, GitHub task poll, resync and heartbeat | `apps/coordinator/src/config.ts`, loop/executor/observation | Exposed in Advanced runtime; immediate except heartbeat, which needs restart. |
+| Worktree root and tmux/Codex/Claude executables (`LOOM_WORKTREE_ROOT`, `LOOM_TMUX`, `LOOM_CODEX`, `LOOM_CLAUDE`) | coordinator config and launch adapters | Exposed; restart required. |
+| GitHub excluded authors (`LOOM_EXCLUDED_AUTHORS`) | coordinator observation/config | Exposed; immediate. |
+| Theme, chime, startup window (`LOOM_WINDOW_MODE`), terminal history, key prefix/timeout and bindings | desktop renderer/main and instance `keybindings.json` | Exposed as instance-wide appearance/terminal defaults. Native keybinding file import remains compatibility input during migration. |
+| `LOOM_INSTANCE`, `LOOM_DATA_ROOT` | process bootstrap before SQLite opens | Deliberately not exposed: instance identity/storage cannot move from a connected client. |
+| `LOOM_BIND`, `LOOM_MCP_PORT`, `LOOM_HOOK_PORT` | protocol/MCP/hook bootstrap | Deliberately not exposed: live edits would strand clients and runs. |
+| `LOOM_TOKEN`, `LOOM_MCP_TOKEN`, provider/GitHub credentials | protocol auth and private per-run recipes | Deliberately not exposed. Only configured/not-configured readiness leaves the coordinator. |
+| Repository root/GitHub identity; provider session IDs and private recipes | repository registration; provider/runtime owners | Deliberately not exposed as preferences. |
+| Shell, PATH, HOME, locale; WORKFLOW commands and fixed safe command allowlists; Main/Operator MCP boundaries; tmux isolation/status/mouse/resize/remain-on-exit behavior | process environment, workflow file, adapters | Deliberately not exposed: identity, security and observability invariants. |
+| `LOOM_TASKS`, `LOOM_WIDTH`, `LOOM_HEIGHT`, `LOOM_ATTACH_PANE`, `LOOM_TMUX_BIN`, `LOOM_EXIT_WHEN_INTERACTIVE`, `LOOM_REAL_PROVIDERS`, `LOOM_TEST_SLOW_GIT` | fixture/performance/test scripts | Out of scope: non-production controls. |
+| `LOOM_AGENT_EXEC`, `LOOM_ATTACH_AGENT`, `LOOM_NAMESPACE`, `LOOM_TMUX_CONF` | standalone `scripts/agent.sh` workflow | Out of scope: the independent development launcher is not coordinator configuration. |
+| Adapter command/paste/reconnect/process-owner timeouts, patch/frame/page caps and test loop caps | adapter/protocol implementation constants | Out of scope until a measured production requirement promotes one into the catalog. |
+
+Automatic merge policy never bypasses the merge path. `auto-small` applies only to captured small
+tasks and `auto-all` to every task. Core creates a policy-attributed exact-head approval only after
+the reviewer published that head, blocking findings are clear, CI for that head is successful (or
+has no checks) and fresh, and GitHub reports the PR open and mergeable. Any changed head/findings,
+failed or stale guard, failed merge precondition, or recovery observation voids that approval.
+
 ## Synchronization
 
 - **Reconcile from current state.** Every event enqueues `reconcile(taskId)`: hooks, app-server

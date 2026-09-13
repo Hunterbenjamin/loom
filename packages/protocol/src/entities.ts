@@ -142,6 +142,30 @@ export const task = z.strictObject({
   blocked: blockedFlag.nullable(),
   failed: failedFlag.nullable(),
   requirePlanApproval: z.boolean(),
+  mergePolicy: z.enum(["require-human", "auto-small", "auto-all"]).optional(),
+  roleProfiles: z
+    .partialRecord(
+      z.enum(["planner", "implementer", "reviewer"]),
+      z.object({
+        provider: z.enum(["codex", "claude"]),
+        model: z.string().min(1),
+        reasoningEffort: z
+          .enum([
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra",
+          ])
+          .nullable(),
+        runMode: z.enum(["interactive", "headless"]),
+        access: z.enum(["full", "approval-gated"]),
+      }),
+    )
+    .optional(),
   reviewRound: count,
   reviewRoundCap: count,
   providers: providerRules,
@@ -224,6 +248,7 @@ export const run = z.strictObject({
   // from every client, CLI included, at the moment it needed attention (2026-09-12).
   model: z.string(),
   reasoningEffort: z.string().min(1).optional(),
+  access: z.enum(["full", "approval-gated"]).optional(),
   sessionId: providerSessionId.nullable(),
   sessionEpoch: count,
   codexGeneration: count.nullable(),
@@ -494,6 +519,7 @@ export const approval = z.union([
     headSha: sha,
     findings: findingsSnapshot,
     ci: ciState,
+    approvedBy: z.enum(["human", "policy"]).optional(),
   }),
 ]);
 

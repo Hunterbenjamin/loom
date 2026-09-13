@@ -317,6 +317,52 @@ describe("all 23 transition rows", () => {
   );
 });
 
+describe("guarded automatic merge policy", () => {
+  it("creates a policy-attributed exact-head approval only after every merge guard passes", () => {
+    const f = fixture("awaiting_approval");
+    f.state.task.mergePolicy = "auto-all";
+    const result = fixed(f.state, f.observations);
+    expect(result.next.task.stage).toBe("merging");
+    expect(result.next.approvals).toContainEqual(
+      expect.objectContaining({
+        kind: "merge",
+        headSha: head,
+        approvedBy: "policy",
+        voidedAt: null,
+      }),
+    );
+    expect(result.actions).toContainEqual(
+      expect.objectContaining({ kind: "merge_pr", matchHeadSha: head }),
+    );
+  });
+
+  it("limits auto-small to small tasks and waits on pending or stale CI", () => {
+    const normal = fixture("awaiting_approval");
+    normal.state.task.mergePolicy = "auto-small";
+    normal.state.task.size = "normal";
+    expect(fixed(normal.state, normal.observations).next.task.stage).toBe(
+      "awaiting_approval",
+    );
+
+    const pending = fixture("awaiting_approval");
+    pending.state.task.mergePolicy = "auto-all";
+    if (pending.observations.github?.ok && pending.observations.github.value)
+      pending.observations.github.value.ci.conclusion = "pending";
+    expect(fixed(pending.state, pending.observations).next.task.stage).toBe(
+      "awaiting_approval",
+    );
+
+    const stale = fixture("awaiting_approval");
+    stale.state.task.mergePolicy = "auto-all";
+    if (stale.observations.github?.ok && stale.observations.github.value)
+      stale.observations.github.value.ci.observedAt =
+        "2026-09-11T00:00:00.000Z" as never;
+    expect(fixed(stale.state, stale.observations).next.task.stage).toBe(
+      "awaiting_approval",
+    );
+  });
+});
+
 function reject(
   name: string,
   stage: Stage,
