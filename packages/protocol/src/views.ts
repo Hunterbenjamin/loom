@@ -308,6 +308,7 @@ export const paneView = paneIdentity
     title: z.string().nullable(),
     command: z.string(),
     startCwd: worktreePath,
+    branch: z.string().min(1).nullable(),
     dead: z.boolean(),
     exitStatus: z.number().int().nullable(),
     /** Session-group attachments, not viewers focused on this pane. */

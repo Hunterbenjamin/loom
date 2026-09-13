@@ -60,11 +60,26 @@ unloaded rows. Task summaries, model labels and progress indicators remain visib
   opens an independent Workbench tab. Pinned agent tabs retain their identity, so selecting another
   pane from one opens a regular tab. Space and tab rows toggle expansion in this slice; tab-row
   split opening and context menus are deferred to Workbench v2 slice 5.
+- **Branch:** space rows show the coordinator's `panes.branch`: the linked task's branch, or Git's
+  `rev-parse --abbrev-ref HEAD` at the first native pane's start cwd for an unlinked space.
+  Reads are cached per cwd within each serialized inventory refresh, including failures, and
+  refreshed on the same hints and poll as the view. Detached checkouts show `HEAD`; unreadable
+  paths show `—`. Branch patches update sidebar metadata without remounting terminal viewers.
 - **Indicators:** every tree row uses ◌ working, ◐ blocked/needs you, ✓ finished turn/ended,
   ○ idle, ! failed, or ? unknown. Tabs and spaces roll up needs-you > failed > unknown > working >
   done > idle across all descendants, including ones hidden by filtering. Only published provider
   status and coordinator attention determine indicators; native process exit alone is not agent
-  completion. Branches, rename, sound and flash remain separate Workbench v2 slices.
+  completion. Branches and rename remain separate Workbench v2 slices.
+- **Sound and flash:** the window store compares consecutive pane observations using the same
+  indicators (including recorded completed turns). Entering needs-you or done plays one bundled
+  320 ms chime and flashes the visible pane row once for 600 ms. Repeated patches, initial
+  discovery and recovery from an unavailable observation are silent. The focused pane in the
+  focused window is silent; background panes still chime. Sound uses ordinary HTML audio and
+  respects system output mute/volume. Reduced motion disables the flash. The bottom bar's Sound
+  toggle and both palettes' Mute/Unmute transition sounds command share per-window, memory-only
+  mute state across mode switches. Muting also stops a chime already playing. The window listens
+  in both modes; hidden rows do not replay flashes when revealed. No terminal render or attach
+  lifecycle changes are needed for either feedback effect.
 - **Tabs and splits:** each outer tab owns a Dockview 4.13.1 Gridview. Splitting names and creates
   an independent terminal, then adds its viewer next to the focused panel; the library handles sizing. Drag a
   panel header to an edge of another panel in the same tab to move it. Terminal mounts live as
@@ -74,12 +89,28 @@ unloaded rows. Task summaries, model labels and progress indicators remain visib
   worktree and existing workspace in the coordinator and creates an idempotent native shell pane.
   It is not a provider run. Close terminal ends its native session and removes it from the list. Plan, diff, activity and
   code panels are deferred; Tracker retains its existing review surface.
-- **Bindings:** Ctrl+A then `|` / `-` splits right/down; `h j k l` focuses left/down/up/right;
-  `c` names and creates a terminal; `n` / `p` switches tabs; `x` closes a terminal (or hides a supervised agent view); `z` toggles zoom;
-  `g` focuses the fuzzy agent filter; `?` opens the map. The prefix expires after 1.5 seconds;
-  Escape cancels it, Ctrl+A Ctrl+A sends a literal Ctrl+A, and an unknown suffix cancels and
-  passes through normally. Each action has the same dispatcher in the Command+K palette.
-  Directional focus returns input focus to xterm. Command+J toggles the shared Main panel.
+- **Bindings:** Main reads and watches `<LOOM_DATA_ROOT>/<instance>/keybindings.json`.
+  First launch writes the complete defaults. Zod validates the whole file; invalid JSON,
+  unknown/missing actions, invalid chords, duplicate bindings or an invalid timeout activate
+  defaults and show an error in the Workbench bottom bar. Saving a valid file updates every
+  open window, including its shortcut map and palette. This file is user configuration;
+  it stores no layout or task state.
+  Ctrl+A then `|` / `-` splits right/down; `h j k l` focuses left/down/up/right;
+  `c` names and creates a terminal; `n` / `p` switches tabs; `x` closes a terminal
+  (or hides a supervised agent view); `z` toggles zoom; `g` focuses the fuzzy agent filter;
+  `?` opens the map. The configurable prefix expires after **3 seconds** by default, with
+  an armed indicator in the bottom bar. Modifier presses preserve it. Escape or window blur
+  cancels it; an unknown suffix cancels and passes through. Ctrl+A Ctrl+A sends literal Ctrl+A
+  to the focused terminal. Repeated keydowns do not repeat commands; composition is left alone.
+  Direct Mac defaults: Cmd+D / Cmd+Shift+D split right/down; Cmd+Alt+Arrow focuses a direction;
+  Cmd+T names a new tab; Cmd+Shift+] / Cmd+Shift+[ switches next/previous tab; Cmd+W closes the
+  panel; Cmd+Shift+Enter zooms; Cmd+P finds an agent; Cmd+K opens the command palette.
+  One window capture listener handles terminals, sidebar inputs, tabs and panel headers before
+  xterm's custom handler or kitty encoding. Main suppresses competing Electron menu accelerators
+  for configured keys in Workbench (especially Cmd+W), while preserving unbound menu shortcuts.
+  Native naming dialogs and the command palette keep their own input handling.
+  Directional focus returns input focus to xterm. Cmd+J (Main) and Cmd+Shift+W (window mode)
+  remain reserved app shortcuts. The editable format is documented in the desktop README.
 - **Attention:** the separate agent count counts distinct flagged panes from coordinator attention,
   including Main's native waiting status. It does not count reason rows. Workbench attention
   navigation clears any hiding filter and selects the first flagged pane in sidebar order.

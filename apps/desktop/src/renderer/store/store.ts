@@ -17,6 +17,7 @@ import type {
   Entities,
   LeadState,
   OperatorState,
+  PaneIdentity,
   PaneView,
   PatchFrame,
   RunTarget,
@@ -30,6 +31,7 @@ import {
   type Snapshot,
 } from "../fixtures/index.js";
 import { projectSnapshot } from "../live/snapshot.js";
+import { createPaneTransitionDetector } from "./pane-transitions.js";
 import { cursorRows } from "./selectors.js";
 
 export type ViewId =
@@ -71,6 +73,7 @@ export interface UiState {
   searching: boolean;
   theme: Theme;
   palette: boolean;
+  chimeMuted: boolean;
   stagePicker: boolean;
   createIssue: boolean;
   /** Explicit selection should scroll even when it also reveals a collapsed section. */
@@ -149,6 +152,7 @@ const initialUi: UiState = {
   searching: false,
   theme: "dark",
   palette: false,
+  chimeMuted: false,
   stagePicker: false,
   createIssue: false,
   selectionVersion: 0,
@@ -173,6 +177,11 @@ export function createStore(
 ) {
   const notificationClaims = new Set<string>();
   let pendingSelection: TaskId | null = null;
+  const paneTransitions = createPaneTransitionDetector();
+  const transitionListeners = new Set<(pane: PaneView) => void>();
+  let paneFocus:
+    | (() => PaneIdentity | "main" | "operator" | undefined)
+    | undefined;
   let state: State = {
     snapshot,
     ui: initialUi,
@@ -274,7 +283,26 @@ export function createStore(
       });
       return outcome;
     },
+    subscribePaneTransitions(listener: (pane: PaneView) => void) {
+      transitionListeners.add(listener);
+      return () => {
+        transitionListeners.delete(listener);
+      };
+    },
+    registerPaneFocus(reader: NonNullable<typeof paneFocus>) {
+      paneFocus = reader;
+      return () => {
+        if (paneFocus === reader) paneFocus = undefined;
+      };
+    },
+    focusedPane() {
+      return paneFocus?.();
+    },
+    toggleChimeMuted() {
+      setUi({ chimeMuted: !state.ui.chimeMuted });
+    },
     setConnection(connection: string) {
+      if (connection !== "connected") paneTransitions.reset();
       state = { ...state, connection };
       emit();
     },
@@ -286,6 +314,7 @@ export function createStore(
       const selectedStage = state.snapshot.tasks.find(
         (task) => task.id === selectedTask,
       )?.stage;
+      const previous = state;
       const notices = [...client.collections.inbox.values()].flatMap((i) =>
         i.forHuman ? [i.forHuman.noteId] : [],
       );
@@ -351,7 +380,19 @@ export function createStore(
             },
           };
       }
+      const transitions =
+        previous.panes !== state.panes ||
+        previous.snapshot.runs !== state.snapshot.runs ||
+        previous.panesUnavailable !== state.panesUnavailable
+          ? paneTransitions.observe(
+              state.panes,
+              state.snapshot.runs,
+              state.panesUnavailable,
+            )
+          : [];
       emit();
+      for (const pane of transitions)
+        for (const listener of transitionListeners) listener(pane);
     },
     openAttention(
       task: TaskId,

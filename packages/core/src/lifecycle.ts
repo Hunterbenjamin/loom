@@ -226,7 +226,7 @@ export function observeRuns(c: Context): void {
   }
 }
 
-function launch(c: Context, run: Run, resume: boolean): void {
+function launch(c: Context, run: Run, resume: boolean, fresh = false): void {
   // Legacy ended runs can still carry attempted messages. Retire those before reusing
   // the run ID, while preserving unsent follow-ups queued for this new launch.
   if (run.endedAt)
@@ -242,8 +242,10 @@ function launch(c: Context, run: Run, resume: boolean): void {
   const observation = c.observations.runs.find((o) => o.runId === run.id);
   // `resumable: false` only ever comes from a direct owner read (§5.2), so it rotates the session
   // even when the transcript read itself failed: a Codex thread without a rollout can't be read.
-  if (observation?.resumable === false && run.sessionId) {
+  if (fresh || (observation?.resumable === false && run.sessionId)) {
     run.sessionEpoch++;
+    run.pane = null;
+    run.codexGeneration = null;
     run.sessionId =
       run.provider === "claude"
         ? c.state.config.deriveClaudeSessionId(run.id, run.sessionEpoch)
@@ -268,6 +270,11 @@ function launch(c: Context, run: Run, resume: boolean): void {
   c.reserved[run.provider]++;
   run.status = "starting";
   run.idleSince = null;
+  run.unknownSince = null;
+  run.pendingRequests = [];
+  delete run.pendingDialog;
+  run.lastTurn = null;
+  run.seenAt = null;
   run.endedAt = null;
   run.endReason = null;
   run.retryAt = null;
@@ -377,6 +384,13 @@ export function startDesired(c: Context): void {
           )
           .at(-1);
     const providerOverride = c.state.config.providerOverrides?.[desired.role];
+    if (desired.fresh && run) {
+      const stopKey = `stop_run:${run.id}#${run.attempts}:terminate`;
+      let stop = c.state.outbox.find((row) => row.key === stopKey);
+      while (stop?.retriedBy)
+        stop = c.state.outbox.find((row) => row.key === stop?.retriedBy);
+      if (stop?.status !== "succeeded") return;
+    }
     if (
       !run &&
       !replacement &&
@@ -433,7 +447,7 @@ export function startDesired(c: Context): void {
         };
         c.state.runs.push(run);
       } else run.attempts++;
-      launch(c, run, desired.resume && run.attempts > 1);
+      launch(c, run, desired.resume && run.attempts > 1, desired.fresh);
       c.state.desiredRun = null;
     }
   }

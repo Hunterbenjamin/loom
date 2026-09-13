@@ -12,7 +12,9 @@ import {
   type WindowMode,
   windowMode,
 } from "../shared/ipc.js";
+import { usesWorkbenchKey } from "../shared/keybindings.js";
 import { resolveAttach } from "./attach.js";
+import { watchKeybindings } from "./keybindings.js";
 import { OwnedResources } from "./ownership.js";
 
 const connection = connectionFromEnvironment(
@@ -61,6 +63,12 @@ const sessions = new OwnedResources<Session>((session) => {
   session.proc.kill("SIGHUP");
 });
 const windows = new Map<number, { window: BrowserWindow; mode: WindowMode }>();
+const keybindings = watchKeybindings(process.env, (state) => {
+  for (const { window } of windows.values()) {
+    if (!window.isDestroyed() && !window.webContents.isDestroyed())
+      window.webContents.send("app:keybindings-changed", state);
+  }
+});
 async function openWindow(mode: WindowMode) {
   await createWindow(mode);
 }
@@ -70,6 +78,7 @@ function setWindowMode(
 ) {
   if (entry.mode === mode) return;
   entry.mode = mode;
+  entry.window.webContents.setIgnoreMenuShortcuts(false);
   entry.window.webContents.send("app:mode-changed", mode);
 }
 function owned(sender: Electron.WebContents) {
@@ -127,6 +136,10 @@ function flush(window: BrowserWindow, id: string): void {
 }
 
 function wire(): void {
+  ipcMain.handle("app:keybindings", (event) => {
+    owned(event.sender);
+    return keybindings.get();
+  });
   ipcMain.handle("app:connection", (event) => {
     owned(event.sender);
     return connection;
@@ -285,10 +298,25 @@ async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
   window.on("closed", cleanup);
   window.webContents.on("render-process-gone", cleanup);
   window.webContents.on("before-input-event", (event, input) => {
+    // Cmd+W otherwise invokes Electron's native Close Window menu role before
+    // Workbench sees it. Keep unbound editing/menu shortcuts working normally.
+    window.webContents.setIgnoreMenuShortcuts(
+      windows.get(owner)?.mode === "workbench" &&
+        usesWorkbenchKey(keybindings.get().config, {
+          key: input.key,
+          ctrlKey: input.control,
+          metaKey: input.meta,
+          altKey: input.alt,
+          shiftKey: input.shift,
+        }),
+    );
     if (
       input.type === "keyDown" &&
       input.meta &&
       input.shift &&
+      !input.control &&
+      !input.alt &&
+      !input.isAutoRepeat &&
       input.key.toLowerCase() === "w"
     ) {
       event.preventDefault();
@@ -324,6 +352,7 @@ app.whenReady().then(async () => {
 
 // Quitting detaches every terminal. Nothing else of ours outlives the window.
 app.on("before-quit", () => {
+  keybindings.close();
   for (const owner of windows.keys()) sessions.close(owner);
 });
 

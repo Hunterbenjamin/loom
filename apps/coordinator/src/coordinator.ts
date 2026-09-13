@@ -212,6 +212,7 @@ export class Coordinator {
     });
     this.inventory = new PaneInventory(
       this.adapters.paneHost,
+      this.adapters.git,
       () => ({
         states: this.store.tasks().map((t) => this.store.loadTaskState(t.id)),
         now: this.now(),
@@ -945,6 +946,25 @@ export class Coordinator {
               },
             };
           const inputId = this.submitHuman(command.taskId, command.command);
+          if (command.command.type === "retry") {
+            for (let pass = 0; pass < 50; pass++) {
+              await this.loop.pass(command.taskId);
+              const disposition = this.store.inputDisposition(
+                command.taskId,
+                inputId,
+              );
+              if (!disposition) continue;
+              if (!disposition.accepted)
+                return {
+                  ok: false,
+                  error: { ...disposition.error, code: "invalid_input" },
+                };
+              return { ok: true, result: { kind: "human", inputId } };
+            }
+            throw new Error(
+              `Retry input ${inputId} was queued but not consumed`,
+            );
+          }
           return { ok: true, result: { kind: "human", inputId } };
         }
         case "open_attach_session": {

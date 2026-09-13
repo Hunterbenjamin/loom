@@ -235,9 +235,12 @@ export class Executor {
       case "stop_run": {
         const run = this.run(state, action.runId);
         if (action.terminate) {
-          if (run.origin !== "loom" || run.endReason !== "superseded")
+          if (
+            run.origin !== "loom" ||
+            !["superseded", "failed"].includes(run.endReason ?? "")
+          )
             throw new Fatal(
-              "Only a superseded Loom run can be retired for replacement",
+              "Only a superseded or human-retried Loom run can be retired for replacement",
             );
           if (run.sessionId && run.provider === "codex") {
             const codex = await adapters.codex(action.taskId);

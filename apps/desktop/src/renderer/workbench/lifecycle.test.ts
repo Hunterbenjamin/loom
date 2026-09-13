@@ -8,6 +8,7 @@ import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
 import { pane } from "../../../../../packages/protocol/src/pane-fixture.js";
 import { meta as protocolMeta } from "../../../../../packages/protocol/src/test-support.js";
+import { defaultKeybindingsState } from "../../shared/keybindings.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
 import { Workbench } from "./workbench.js";
@@ -45,6 +46,8 @@ async function harness(initial: PaneView[] = [pane]) {
   store.setConnection("connected");
   window.loomHost = {
     interactive: vi.fn(),
+    keybindings: async () => defaultKeybindingsState,
+    onKeybindingsChanged: () => () => {},
   } as unknown as typeof window.loomHost;
   window.loom = { store, ready: true, diffPaintedAt: null, term: null };
   const send = vi.fn(async (command): Promise<AckOutcome> => {
@@ -295,6 +298,15 @@ test("pane clicks replace the focused viewer, Enter opens an independent tab, an
     });
     expect(h.element.querySelector(".wb-space .wb-status")?.textContent).toBe(
       "◐",
+    );
+    expect(terminalRenders).toHaveBeenCalledTimes(renders);
+    await act(async () => {
+      h.native.set(pane.id, { ...pane, branch: "feat/branch-patch" });
+      h.native.set(next.id, { ...next, branch: "feat/branch-patch" });
+      h.publish();
+    });
+    expect(h.element.querySelector(".wb-space-branch")?.textContent).toBe(
+      "feat/branch-patch",
     );
     expect(terminalRenders).toHaveBeenCalledTimes(renders);
   } finally {

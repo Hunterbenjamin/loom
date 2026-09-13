@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { PtyExit, PtySpawnRequest } from "../shared/ipc.js";
+import {
+  type KeybindingsState,
+  keybindingsState,
+} from "../shared/keybindings.js";
 
 const onData = new Map<string, (data: string) => void>();
 const onExit = new Map<string, (info: PtyExit) => void>();
@@ -32,6 +36,17 @@ contextBridge.exposeInMainWorld("loomTerminal", {
 });
 
 contextBridge.exposeInMainWorld("loomHost", {
+  // IPC callbacks can run under the renderer CSP; validation must not use eval.
+  keybindings: async () =>
+    keybindingsState.parse(await ipcRenderer.invoke("app:keybindings"), {
+      jitless: true,
+    }),
+  onKeybindingsChanged: (listener: (state: KeybindingsState) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, raw: unknown) =>
+      listener(keybindingsState.parse(raw, { jitless: true }));
+    ipcRenderer.on("app:keybindings-changed", handler);
+    return () => ipcRenderer.removeListener("app:keybindings-changed", handler);
+  },
   notify: (request: { id: string; title: string; body: string }) =>
     ipcRenderer.send("app:notify", request),
   mode: () => ipcRenderer.invoke("app:mode"),

@@ -253,13 +253,15 @@ export const TerminalSession = memo(function TerminalSession({
     window.loom.terms[panelId ?? id] = terminal;
 
     terminal.attachCustomKeyEventHandler((event) => {
+      // Workbench's window capture listener owns bindings across every focus
+      // surface. It consumes them before xterm/kitty; never run a second matcher.
+      if (event.defaultPrevented) return false;
       if (
         settings.current.onKey?.(event, () =>
           window.loomTerminal.write(id, "\x01"),
         )
       )
         return false;
-      if (event.defaultPrevented) return false;
       if (event.type !== "keydown") return true;
       const encoded = kittyEncode(event);
       if (!encoded) return true;
