@@ -7,29 +7,38 @@ import { RowMenu } from "./row-menu.js";
 import { type Indicator, spaceKey, spaces, tabKey } from "./selectors.js";
 import { Status } from "./status.js";
 
-function pinnedState(status: string): Indicator {
+function pinnedState(status: string, finished = false): Indicator {
   const tone =
-    status === "waiting"
-      ? "waiting"
-      : status === "error"
-        ? "failed"
-        : status === "stopped"
-          ? "idle"
-          : status;
+    finished && status === "idle"
+      ? "finished"
+      : status === "waiting"
+        ? "waiting"
+        : status === "error"
+          ? "failed"
+          : status === "stopped"
+            ? "idle"
+            : status;
   const icon =
-    tone === "working"
-      ? "◌"
-      : tone === "waiting"
-        ? "●"
-        : tone === "idle"
-          ? "○"
-          : tone === "failed"
-            ? "!"
-            : "?";
+    tone === "finished"
+      ? "●"
+      : tone === "working"
+        ? "◌"
+        : tone === "waiting"
+          ? "●"
+          : tone === "idle"
+            ? "○"
+            : tone === "failed"
+              ? "!"
+              : "?";
   return {
     tone,
     icon,
-    label: status === "waiting" ? "Needs you" : status,
+    label:
+      tone === "finished"
+        ? "Finished"
+        : status === "waiting"
+          ? "Needs you"
+          : status,
     priority: 0,
   };
 }
@@ -125,6 +134,7 @@ export function Sidebar({
     [panes, filter, runs, read],
   );
   const lead = useStore((s) => s.lead);
+  const mainFinished = useStore((s) => s.mainFinished);
   const repo = useStore((s) => s.ui.repo);
   const operator = useStore((s) => s.operator);
   const [grouped, setGrouped] = useState(true);
@@ -375,7 +385,12 @@ export function Sidebar({
                     onClick={() => openPinned(target)}
                     title={`Open ${target === "main" ? "Main" : "Operator"} terminal`}
                   >
-                    <Status state={pinnedState(status)} />
+                    <Status
+                      state={pinnedState(
+                        status,
+                        target === "main" && mainFinished,
+                      )}
+                    />
                     <span className="wb-row-copy">
                       <strong>{target === "main" ? "Main" : "Operator"}</strong>
                       <small>{native?.provider ?? status}</small>

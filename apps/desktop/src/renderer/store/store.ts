@@ -108,6 +108,8 @@ export interface State {
   panesUnavailable: boolean;
   /** Pane keys whose latest finish the human has looked at; in memory, per window. */
   readFinished: ReadonlySet<string>;
+  /** Main finished a turn and the human has not looked at it since. */
+  mainFinished: boolean;
   runTargets: RunTarget[];
   lead: LeadState;
   operator: OperatorState | null;
@@ -225,6 +227,7 @@ export function createStore(
     panes: [],
     panesUnavailable: false,
     readFinished: new Set<string>(),
+    mainFinished: false,
     runTargets: [],
     instance,
     lead: {
@@ -337,6 +340,12 @@ export function createStore(
     },
     toggleChimeMuted() {
       setUi({ chimeMuted: !state.ui.chimeMuted });
+    },
+    /** The human looked at Main: its finished dot clears. */
+    markMainRead() {
+      if (!state.mainFinished) return;
+      state = { ...state, mainFinished: false };
+      emit();
     },
     /** The human opened or focused these panes: their finished dots clear. */
     markPanesRead(
@@ -502,9 +511,25 @@ export function createStore(
         if (read.size !== state.readFinished.size)
           state = { ...state, readFinished: read };
       }
+      // Main is not a task run: its turn boundaries come from the lead state. Working → idle
+      // is a finish (unread until looked at), working → waiting needs the human; both chime.
+      let leadTransition: PaneView | undefined;
+      if (
+        previous.lead.status === "working" &&
+        (state.lead.status === "idle" || state.lead.status === "waiting")
+      ) {
+        if (state.lead.status === "idle")
+          state = { ...state, mainFinished: true };
+        leadTransition = state.panes.find(
+          (pane) =>
+            pane.sessionName === `loom-lead-${state.ui.repo}` && !pane.dead,
+        );
+      }
       emit();
       for (const pane of transitions)
         for (const listener of transitionListeners) listener(pane);
+      if (leadTransition)
+        for (const listener of transitionListeners) listener(leadTransition);
     },
     openAttention(
       task: TaskId,

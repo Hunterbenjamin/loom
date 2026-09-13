@@ -349,6 +349,8 @@ export function Workbench() {
   useEffect(() => {
     const panel = tabs.flatMap((t) => t.panels).find((p) => p.id === focused);
     if (panel?.target) store.markPanesRead([panel.target]);
+    if (panel?.target?.sessionName === `loom-lead-${store.getState().ui.repo}`)
+      store.markMainRead();
   }, [focused, tabs, store]);
   const keyboardFocus = useCallback((id: string) => {
     setFocused(id);
@@ -424,6 +426,7 @@ export function Workbench() {
       return panes.find((p) => p.sessionName === `loom-lead-${state.ui.repo}`);
     };
     const existing = find();
+    if (system === "main") store.markMainRead();
     if (existing && (system !== "main" || state.lead.status !== "stopped"))
       return openGroup([existing], system);
     void store
