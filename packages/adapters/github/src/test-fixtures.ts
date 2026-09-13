@@ -96,7 +96,9 @@ export function setup(excludedAuthors: string[] = []) {
       (args.includes("--method") && !args.includes("GET"))
     )
       return mutate(args, input);
-    const endpoint = args.find((arg) => arg.startsWith("repos/"));
+    const endpoint = args.find(
+      (arg) => arg.startsWith("repos/") || arg.startsWith("repositories/"),
+    );
     const result = routes.get(endpoint ?? "");
     if (!result) throw new Error(`Missing fixture: ${endpoint}`);
     if (result.exitCode !== 0) return result;
