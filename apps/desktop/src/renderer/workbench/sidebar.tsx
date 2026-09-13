@@ -45,36 +45,36 @@ function pinnedState(status: string, finished = false): Indicator {
 
 export function Sidebar({
   filter,
-  setFilter,
   choose,
-  newTerminal,
   openPinned,
   openGroup,
   hidePanels,
-  hasPanels,
   copyAttach,
-  newSpace,
   selected,
   selectedSpace,
   selectedTab,
   collapsed: sidebarCollapsed = false,
   toggleSidebar,
-  showMenu,
 }: {
   selectedSpace?: string;
   selectedTab?: string;
   selected?: PaneIdentity | "main" | "operator";
   collapsed?: boolean;
   toggleSidebar?: () => void;
+  /** Accepted for compatibility; the palette owns this now. */
   showMenu?: () => void;
   filter: string;
-  setFilter: (value: string) => void;
+  /** Accepted for compatibility; the palette owns this now. */
+  setFilter?: (value: string) => void;
   choose: (pane: PaneView, newTab?: boolean) => void;
   openGroup: (panes: PaneView[], name: string) => void;
   hidePanels: (panes: PaneView[]) => void;
-  hasPanels: (panes: PaneView[]) => boolean;
+  /** Accepted for compatibility; the palette owns this now. */
+  hasPanels?: (panes: PaneView[]) => boolean;
   copyAttach: (pane: PaneView) => void;
-  newTerminal: () => void;
+  /** Accepted for compatibility; the palette owns this now. */
+  newTerminal?: () => void;
+  /** Accepted for compatibility; the palette owns this now. */
   newSpace?: () => void;
   openPinned: (target: "main" | "operator") => void;
 }) {
@@ -242,13 +242,6 @@ export function Sidebar({
             <div className="wb-section-heading">
               <h2>spaces</h2>
             </div>
-            <input
-              id="agent-filter"
-              aria-label="Find space, tab or agent"
-              placeholder="filter…"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            />
             {unavailable && (
               <p role="status">
                 Terminal host unavailable. Showing last known terminals.
@@ -332,22 +325,6 @@ export function Sidebar({
                 </p>
               )}
             </div>
-            <footer className="wb-spaces-footer">
-              <button
-                type="button"
-                aria-label="New space"
-                onClick={newSpace ?? newTerminal}
-              >
-                new
-              </button>
-              <button
-                type="button"
-                aria-label="Workbench menu"
-                onClick={showMenu}
-              >
-                menu
-              </button>
-            </footer>
           </section>
           <section className="wb-agents" aria-label="Agents">
             <div className="wb-section-heading">

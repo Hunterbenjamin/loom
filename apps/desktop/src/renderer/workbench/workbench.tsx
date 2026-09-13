@@ -23,6 +23,7 @@ import {
   isPrefixBinding,
   type KeybindingsState,
   matchesChord,
+  parseChord,
 } from "../../shared/keybindings.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { LeadBar } from "../ui/lead.js";
@@ -309,6 +310,12 @@ export function Workbench() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [filter, setFilter] = useState("");
   const [palette, setPalette] = useState(false);
+  const paletteRuns = useStore((s) => s.snapshot.runs);
+  const paletteRead = useStore((s) => s.readFinished);
+  const paletteTree = useMemo(
+    () => (palette ? spaces(panes, "", paletteRuns, false, paletteRead) : []),
+    [palette, panes, paletteRuns, paletteRead],
+  );
   const [help, setHelp] = useState(false);
   const [error, setError] = useState("");
   const [bindings, setBindings] = useState<KeybindingsState>(
@@ -649,20 +656,60 @@ export function Workbench() {
       return;
     }
     if (action === "literal") {
+      // The prefix chord itself, as the byte a terminal would have received: Ctrl+Space is NUL,
+      // Ctrl+<letter> is that control character.
+      const chord = parseChord(bindings.config.prefix ?? "");
+      const byte =
+        chord?.key === " "
+          ? "\x00"
+          : chord?.ctrlKey && /^[a-z]$/.test(chord.key)
+            ? String.fromCharCode(chord.key.charCodeAt(0) - 96)
+            : "\x01";
       (
         window.loom.terms?.[focused] as
           | { input(data: string, user?: boolean): void }
           | undefined
-      )?.input("\x01", true);
+      )?.input(byte, true);
+      return;
+    }
+    const numbered = /^(tab|agent|space)-([1-9])$/.exec(action);
+    if (numbered) {
+      const index = Number(numbered[2]) - 1;
+      if (numbered[1] === "tab") {
+        const target = tabs[index];
+        if (!target) return;
+        setActive(target.id);
+        setZoom(null);
+        keyboardFocus(target.panels[0]?.id ?? "");
+        return;
+      }
+      const state = store.getState();
+      const tree = spaces(
+        state.panes,
+        "",
+        state.snapshot.runs,
+        false,
+        state.readFinished,
+      );
+      if (numbered[1] === "space") {
+        const space = tree[index];
+        const rows = space?.tabs[0]?.panes.map((row) => row.pane) ?? [];
+        if (space && rows.length) openGroup(rows, space.name);
+        return;
+      }
+      const agent = tree
+        .flatMap((space) => space.tabs.flatMap((tab) => tab.panes))
+        .filter(
+          ({ pane }) =>
+            (pane.provider || pane.runId || pane.agent) && !pane.dead,
+        )[index];
+      if (agent) choose(agent.pane);
       return;
     }
     if (action === "new") return newTab();
     if (action === "new-space") return newSpace();
     if (action === "jump") {
-      setSidebarCollapsed(false);
-      requestAnimationFrame(() =>
-        document.getElementById("agent-filter")?.focus(),
-      );
+      setPalette(true);
       return;
     }
     if (action === "help") {
@@ -913,6 +960,45 @@ export function Workbench() {
                     {a.label} <kbd>{formatBindings(bindings.config, a.id)}</kbd>
                   </Command.Item>
                 ))}
+                {paletteTree.map((space) => (
+                  <Command.Item
+                    key={`space:${space.key}`}
+                    value={`space ${space.label} ${space.name} ${space.branch ?? ""}`}
+                    onSelect={() => {
+                      setPalette(false);
+                      const rows =
+                        space.tabs[0]?.panes.map((r) => r.pane) ?? [];
+                      if (rows.length) openGroup(rows, space.name);
+                    }}
+                  >
+                    Open space {space.label} <kbd>{space.branch ?? ""}</kbd>
+                  </Command.Item>
+                ))}
+                {paletteTree
+                  .flatMap((space) =>
+                    space.tabs.flatMap((tab) =>
+                      tab.panes
+                        .filter(
+                          ({ pane }) =>
+                            (pane.provider || pane.runId || pane.agent) &&
+                            !pane.dead,
+                        )
+                        .map((row) => ({ ...row, space, tab })),
+                    ),
+                  )
+                  .map(({ pane, space, tab }) => (
+                    <Command.Item
+                      key={`agent:${pane.id}`}
+                      value={`agent ${space.label} ${tab.name} ${pane.provider ?? pane.agent ?? ""}`}
+                      onSelect={() => {
+                        setPalette(false);
+                        choose(pane);
+                      }}
+                    >
+                      Open agent {space.label} · {tab.name}{" "}
+                      <kbd>{pane.provider ?? pane.agent ?? ""}</kbd>
+                    </Command.Item>
+                  ))}
                 <Command.Item
                   onSelect={() => {
                     setPalette(false);

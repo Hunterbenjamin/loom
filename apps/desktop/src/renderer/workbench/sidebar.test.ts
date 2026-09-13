@@ -141,9 +141,8 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
     expect(
       element.querySelector(".wb-sidebar-footer button")?.textContent,
     ).toBe("«");
-    expect(element.querySelector(".wb-spaces-footer")?.textContent).toBe(
-      "newmenu",
-    );
+    expect(element.querySelector(".wb-spaces-footer")).toBeNull();
+    expect(element.querySelector("#agent-filter")).toBeNull();
     // Spaces are never collapsible: their tabs are always shown.
     expect(space?.querySelector(".wb-disclosure")).toBeNull();
     expect(space?.querySelector(".wb-tree-tab")).not.toBeNull();

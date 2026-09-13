@@ -11,7 +11,7 @@ const key = (key: string, modifiers: Partial<KeyboardEvent> = {}) => ({
   type: "keydown",
   ...modifiers,
 });
-const prefix = key("a", { ctrlKey: true });
+const prefix = key(" ", { ctrlKey: true });
 afterEach(() => vi.useRealTimers());
 function harness(config = defaultKeybindings) {
   vi.useFakeTimers();
@@ -115,7 +115,7 @@ test("custom prefix, timeout and direct literal are honored; expiry is checked e
   const config = structuredClone(defaultKeybindings);
   config.prefix = "Ctrl+B";
   config.prefixTimeoutMs = 5000;
-  config.bindings.literal = ["Ctrl+A", "Prefix Ctrl+B"];
+  config.bindings.literal = ["Ctrl+Space", "Prefix Ctrl+B"];
   let now = 0;
   const dispatch = vi.fn();
   const h = bindingMatcher(config, dispatch, vi.fn(), () => now);

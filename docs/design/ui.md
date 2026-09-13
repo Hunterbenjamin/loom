@@ -125,12 +125,12 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   defaults and show an error in the Workbench bottom bar. Saving a valid file updates every
   open window, including its shortcut map and palette. This file is user configuration;
   it stores no layout or issue state.
-  Ctrl+A then `|` / `-` splits right/down; `h j k l` focuses left/down/up/right;
+  Ctrl+Space then `|` / `-` splits right/down; `h j k l` focuses left/down/up/right;
   `c` names and creates a terminal; `n` / `p` switches tabs; `x` closes a terminal
   (or hides a supervised agent view); `z` toggles zoom; `g` focuses the fuzzy agent filter;
   `?` opens the map. The configurable prefix expires after **3 seconds** by default, with
   an armed indicator in the bottom bar. Modifier presses preserve it. Escape or window blur
-  cancels it; an unknown suffix cancels and passes through. Ctrl+A Ctrl+A sends literal Ctrl+A
+  cancels it; an unknown suffix cancels and passes through. Ctrl+Space Ctrl+Space sends literal Ctrl+Space
   to the focused terminal. Repeated keydowns do not repeat commands; composition is left alone.
   Direct Mac defaults: Cmd+D / Cmd+Shift+D split right/down; Cmd+Alt+Arrow focuses a direction;
   Cmd+T names a new tab; Cmd+Shift+] / Cmd+Shift+[ switches next/previous tab; Cmd+W closes the

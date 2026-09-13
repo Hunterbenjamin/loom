@@ -172,7 +172,6 @@ test("prefix survives Shift on every focus surface; literal, plain typing and ki
   try {
     const surfaces = [
       h.terminal,
-      h.element.querySelector("#agent-filter"),
       h.element.querySelector(".wb-tabs button"),
       h.element.querySelector("[data-panel] header button"),
     ];
@@ -180,17 +179,17 @@ test("prefix survives Shift on every focus surface; literal, plain typing and ki
       if (!(surface instanceof HTMLElement))
         throw new Error("Missing focus surface");
       surface.focus();
-      await h.press(surface, "a", { ctrlKey: true });
+      await h.press(surface, " ", { ctrlKey: true });
       expect(h.element.querySelector(".bottom-bar")?.textContent).toContain(
-        "Ctrl+A armed",
+        "Ctrl+Space armed",
       );
       await h.press(surface, "Shift", { shiftKey: true });
       expect(h.element.querySelector(".bottom-bar")?.textContent).toContain(
-        "Ctrl+A armed",
+        "Ctrl+Space armed",
       );
       await h.press(surface, "?", { shiftKey: true });
       expect(h.element.querySelector(".wb-help")?.textContent).toContain(
-        "Cmd+D / Ctrl+A then |",
+        "Cmd+D / Ctrl+Space then |",
       );
       expect(h.element.querySelector(".bottom-bar")?.textContent).not.toContain(
         "armed",
@@ -200,12 +199,12 @@ test("prefix survives Shift on every focus surface; literal, plain typing and ki
       );
     }
     h.terminal.focus();
-    await h.press(h.terminal, "a", { ctrlKey: true });
+    await h.press(h.terminal, " ", { ctrlKey: true });
     await h.press(h.terminal, "Control", { ctrlKey: true });
-    await h.press(h.terminal, "a", { ctrlKey: true });
+    await h.press(h.terminal, " ", { ctrlKey: true });
     expect(window.loomTerminal.write).toHaveBeenLastCalledWith(
       expect.any(String),
-      "\x01",
+      "\x00",
     );
     await h.press(h.terminal, "b");
     expect(window.loomTerminal.write).toHaveBeenLastCalledWith(
@@ -228,7 +227,7 @@ test("prefix survives Shift on every focus surface; literal, plain typing and ki
 test("live reload changes help and matching together, disarms the old prefix, and reports invalid config in the bottom bar", async () => {
   const h = await harness();
   try {
-    await h.press(h.terminal, "a", { ctrlKey: true });
+    await h.press(h.terminal, " ", { ctrlKey: true });
     const config = structuredClone(defaultKeybindings);
     config.bindings.help = ["Ctrl+Shift+H"];
     config.bindings.new = ["Cmd+U"];
@@ -248,7 +247,7 @@ test("live reload changes help and matching together, disarms the old prefix, an
     expect(help?.textContent).toContain("Ctrl+Shift+H");
     expect(help?.textContent).toContain("Cmd+U");
     expect(help?.textContent).toContain("4.2 seconds");
-    expect(help?.textContent).not.toContain("Ctrl+A then ?");
+    expect(help?.textContent).not.toContain("Ctrl+Space then ?");
     await h.push({
       config: defaultKeybindings,
       path: "/fixture/dev/keybindings.json",
