@@ -82,8 +82,12 @@ Done is derived from GitHub: an issue is Done only once its PR is merged.
   | Human PR comments | Imported as findings |
   | Typing into an agent's terminal | Shows as activity only |
   | Moving a card while an agent is running | The coordinator interrupts the run |
-- **GitHub:** poll with conditional requests, because webhooks can't reach localhost. Repository PR
-  lists use the adapter's native ETags every 60 seconds while a window subscribes to that repo/state;
+- **GitHub:** poll because webhooks can't reach localhost. Repository PR lists use one GraphQL
+  request including check/review/mergeability summaries every 60 seconds while a window subscribes
+  to that repo/state (cursor pagination above 100 rows, capped at 1,000 pages). GraphQL has no ETag;
+  compare mapped rows and preserve unchanged observations so identical refreshes publish no patch.
+  First snapshots use cached rows immediately with an initial loading flag, then receive patches.
+  Reads run concurrently across scopes, with at most one in flight per key; REST
   detail (including remote head-branch existence) and capped patches refresh every 30 seconds while the PR is open in a window. Identical
   scopes share one poll, and disconnect/unsubscribe cancels it when the last viewer leaves.
   PR commands run through the executor, always refresh their owner after success or failure, and

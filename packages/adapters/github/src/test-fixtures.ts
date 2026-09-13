@@ -63,6 +63,27 @@ export function http(value: unknown, headers: Record<string, string> = {}) {
     .join("")}\n${content}`;
 }
 
+export const graphqlFixture = JSON.parse(
+  readFileSync(
+    new URL("./fixtures/pull-requests-graphql.json", import.meta.url),
+    "utf8",
+  ),
+);
+export const graphqlNode = s.graphqlPullRequest.parse(
+  graphqlFixture.data.repository.pullRequests.nodes[0],
+);
+export const graphqlPage = (
+  nodes: unknown[],
+  hasNextPage = false,
+  endCursor: string | null = null,
+) => ({
+  data: {
+    repository: {
+      pullRequests: { nodes, pageInfo: { hasNextPage, endCursor } },
+    },
+  },
+});
+
 export function setup(excludedAuthors: string[] = []) {
   const routes = new Map<string, GhResult>([
     [
@@ -91,6 +112,13 @@ export function setup(excludedAuthors: string[] = []) {
     throw new Error("Unexpected mutation");
   };
   const run = vi.fn<GhRunner>(async (args, input) => {
+    if (args[0] === "api" && args[1] === "graphql") {
+      const { variables } = JSON.parse(input ?? "{}");
+      const key = `graphql:${variables.state}:${variables.cursor ?? ""}`;
+      const result = routes.get(key);
+      if (!result) throw new Error(`Missing fixture: ${key}`);
+      return result;
+    }
     if (
       args[0] !== "api" ||
       (args.includes("--method") && !args.includes("GET"))

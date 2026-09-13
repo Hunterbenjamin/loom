@@ -145,3 +145,57 @@ export const remoteBranch = branch.refine(
           part.length > 0 && !part.startsWith(".") && !part.endsWith(".lock"),
       ),
 );
+
+export const graphqlEnvelope = z.object({
+  errors: z.array(z.unknown()).optional(),
+});
+export const graphqlPullRequest = z.object({
+  number: id,
+  title: z.string(),
+  author: z.object({ login: z.string().min(1) }).nullable(),
+  headRefName: z.string().min(1),
+  baseRefName: z.string().min(1),
+  headRefOid: sha,
+  isDraft: z.boolean(),
+  mergeable: z.enum(["MERGEABLE", "CONFLICTING", "UNKNOWN"]),
+  reviewDecision: z
+    .enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"])
+    .nullable(),
+  updatedAt: time,
+  createdAt: time,
+  url: z.url(),
+  commits: z.object({
+    nodes: z
+      .array(
+        z.object({
+          commit: z.object({
+            statusCheckRollup: z
+              .object({
+                state: z.enum([
+                  "SUCCESS",
+                  "PENDING",
+                  "EXPECTED",
+                  "FAILURE",
+                  "ERROR",
+                ]),
+              })
+              .nullable(),
+          }),
+        }),
+      )
+      .max(1),
+  }),
+});
+export const pullRequestList = z.object({
+  data: z.object({
+    repository: z.object({
+      pullRequests: z.object({
+        nodes: z.array(graphqlPullRequest).max(100),
+        pageInfo: z.object({
+          hasNextPage: z.boolean(),
+          endCursor: z.string().nullable(),
+        }),
+      }),
+    }),
+  }),
+});

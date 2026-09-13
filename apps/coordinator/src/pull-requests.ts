@@ -6,6 +6,7 @@ import {
   type PullRequestRow,
   pullRequestDetailRow,
   pullRequestKey,
+  pullRequestListKey,
   pullRequestRow,
   type Subscription,
 } from "@loom/protocol";
@@ -14,7 +15,10 @@ import type { Row } from "./views.js";
 type ListScope = Extract<Subscription, { kind: "pull_requests" }>;
 type DetailScope = Extract<Subscription, { kind: "pull_request" }>;
 type PrScope = ListScope | DetailScope;
-const scopeKey = (s: PrScope) => JSON.stringify(s);
+const scopeKey = (s: PrScope) =>
+  s.kind === "pull_requests"
+    ? pullRequestListKey(s.repoId, s.state)
+    : pullRequestKey(s.repoId, s.number);
 const isPrScope = (s: Subscription): s is PrScope =>
   s.kind === "pull_requests" || s.kind === "pull_request";
 
@@ -35,7 +39,9 @@ export class PullRequestViews {
   private readonly loaded = new Set<string>();
   private readonly lists = new Map<RepoId, Map<number, PullRequestRow>>();
   private readonly details = new Map<string, PullRequestDetailRow>();
-  private tail: Promise<unknown> = Promise.resolve();
+  private readonly reads = new Map<string, Promise<void>>();
+  private readonly commands = new Map<string, Promise<void>>();
+  private readonly listStates = new Set<string>();
   private stopped = false;
   constructor(private readonly deps: PullRequestViewsDeps) {}
 
@@ -64,9 +70,7 @@ export class PullRequestViews {
       scope.kind === "pull_requests" ? 60_000 : 30_000,
       () => {
         // Keep the key while a read is in flight, so another window cannot start a second poll.
-        void this.serial(async () => {
-          if (!this.stopped && this.active.has(key)) await this.read(scope);
-        })
+        void this.refresh(scope)
           .catch(this.deps.onError)
           .finally(() => {
             if (this.timers.get(key) !== cancel) return;
@@ -79,62 +83,100 @@ export class PullRequestViews {
   }
 
   ensure(scopes: readonly Subscription[]): Promise<void> {
-    const requested = scopes.filter(isPrScope);
-    if (!requested.length) return Promise.resolve();
-    return this.serial(async () => {
-      for (const scope of requested) {
-        if (this.loaded.has(scopeKey(scope))) continue;
-        // A GitHub outage must not prevent the entire window's handshake or subscription ack.
-        try {
-          await this.read(scope);
-        } catch (error) {
-          this.deps.onError(error);
-        }
-      }
-    });
+    if (this.stopped) return Promise.resolve();
+    for (const scope of scopes.filter(isPrScope)) {
+      if (!this.loaded.has(scopeKey(scope)))
+        void this.refresh(scope).catch(this.deps.onError);
+    }
+    // Handshakes and subscription acknowledgments only wait for the cached projection.
+    return Promise.resolve();
+  }
+
+  private publishLoading(scope: ListScope, loading: boolean): void {
+    const key = pullRequestListKey(scope.repoId, scope.state);
+    this.listStates.add(key);
+    this.deps.replace(`pull_requests_state:${key}`, [
+      {
+        collection: "pull_requests",
+        key,
+        value: { repoId: scope.repoId, state: scope.state, loading },
+      },
+    ]);
+  }
+
+  private refresh(scope: PrScope): Promise<void> {
+    if (this.stopped) return Promise.resolve();
+    const key = scopeKey(scope);
+    const pending = this.reads.get(key);
+    if (pending) return pending;
+    const initial = scope.kind === "pull_requests" && !this.listStates.has(key);
+    if (initial) this.publishLoading(scope, true);
+    const result = Promise.resolve()
+      .then(() => this.read(scope))
+      .finally(() => {
+        this.reads.delete(key);
+        if (initial) this.publishLoading(scope, false);
+      });
+    this.reads.set(key, result);
+    return result;
   }
 
   command(command: PullRequestCommand): Promise<void> {
-    return this.serial(async () => {
-      const repo = this.deps.repo(command.repoId);
-      let actionError: unknown;
-      try {
-        await this.deps.action(command);
-      } catch (error) {
-        actionError = error;
-      }
-      // Also refresh refusals and uncertain writes. Never automatically replay a command.
-      this.deps.changed(repo);
-      const scopes = new Map<string, PrScope>();
-      const list: ListScope = {
-        kind: "pull_requests",
-        repoId: repo.id,
-        state:
-          command.kind === "refresh_pull_requests" ? command.state : "open",
-      };
-      scopes.set(scopeKey(list), list);
-      for (const s of this.active.values())
-        if (s.repoId === repo.id) scopes.set(scopeKey(s), s);
-      if (command.kind !== "refresh_pull_requests") {
-        const detail: DetailScope = {
-          kind: "pull_request",
-          repoId: repo.id,
-          number: command.number,
-        };
-        scopes.set(scopeKey(detail), detail);
-      }
-      let refreshError: unknown;
-      for (const scope of scopes.values()) {
+    const key =
+      command.kind === "refresh_pull_requests"
+        ? pullRequestListKey(command.repoId, command.state)
+        : pullRequestKey(command.repoId, command.number);
+    const result = (this.commands.get(key) ?? Promise.resolve())
+      .catch(() => {})
+      .then(async () => {
+        const repo = this.deps.repo(command.repoId);
+        let actionError: unknown;
         try {
-          await this.read(scope);
+          await this.deps.action(command);
         } catch (error) {
-          refreshError = error;
-          this.deps.onError(error);
+          actionError = error;
         }
-      }
-      if (actionError) throw actionError;
-      if (refreshError) throw refreshError;
-    });
+        // Also refresh refusals and uncertain writes. Never automatically replay a command.
+        this.deps.changed(repo);
+        const scopes = new Map<string, PrScope>();
+        const list: ListScope = {
+          kind: "pull_requests",
+          repoId: repo.id,
+          state:
+            command.kind === "refresh_pull_requests" ? command.state : "open",
+        };
+        scopes.set(scopeKey(list), list);
+        for (const s of this.active.values())
+          if (s.repoId === repo.id) scopes.set(scopeKey(s), s);
+        if (command.kind !== "refresh_pull_requests") {
+          const detail: DetailScope = {
+            kind: "pull_request",
+            repoId: repo.id,
+            number: command.number,
+          };
+          scopes.set(scopeKey(detail), detail);
+        }
+        let refreshError: unknown;
+        await Promise.all(
+          [...scopes.values()].map(async (scope) => {
+            try {
+              // A read started before the action cannot confirm that action's outcome.
+              await this.reads.get(scopeKey(scope))?.catch(() => {});
+              await this.refresh(scope);
+            } catch (error) {
+              refreshError = error;
+              this.deps.onError(error);
+            }
+          }),
+        );
+        if (actionError) throw actionError;
+        if (refreshError) throw refreshError;
+      })
+      .finally(() => {
+        if (this.commands.get(key) === result) this.commands.delete(key);
+      });
+    this.commands.set(key, result);
+    return result;
   }
 
   private taskId(repoId: RepoId, head: string) {
@@ -186,7 +228,7 @@ export class PullRequestViews {
 
   private async read(scope: PrScope): Promise<void> {
     const repo = this.deps.repo(scope.repoId);
-    const rows = this.lists.get(repo.id) ?? new Map<number, PullRequestRow>();
+
     if (scope.kind === "pull_requests") {
       const list = await this.deps.github.listPullRequests(
         repo.github,
@@ -199,6 +241,19 @@ export class PullRequestViews {
           taskId: this.taskId(repo.id, pr.head),
         }),
       );
+      const rows = this.lists.get(repo.id) ?? new Map<number, PullRequestRow>();
+      this.lists.set(repo.id, rows);
+      for (let i = 0; i < parsed.length; i++) {
+        const row = parsed[i];
+        if (!row) continue;
+        const previous = rows.get(row.number);
+        if (
+          previous &&
+          JSON.stringify(previous) ===
+            JSON.stringify({ ...row, observedAt: previous.observedAt })
+        )
+          parsed[i] = previous;
+      }
       for (const [number, previous] of rows)
         if (previous.state === scope.state) rows.delete(number);
       for (const row of parsed) rows.set(row.number, row);
@@ -247,6 +302,8 @@ export class PullRequestViews {
         changedFiles: _files,
         ...summary
       } = after;
+      const rows = this.lists.get(repo.id) ?? new Map<number, PullRequestRow>();
+      this.lists.set(repo.id, rows);
       rows.set(
         scope.number,
         pullRequestRow.parse({
@@ -256,15 +313,8 @@ export class PullRequestViews {
         }),
       );
     }
-    this.lists.set(repo.id, rows);
     this.publishList(repo.id);
     this.loaded.add(scopeKey(scope));
-  }
-
-  private serial<T>(work: () => Promise<T>): Promise<T> {
-    const result = this.tail.then(work);
-    this.tail = result.catch(() => {});
-    return result;
   }
 
   async stop(): Promise<void> {
@@ -272,6 +322,9 @@ export class PullRequestViews {
     for (const cancel of this.timers.values()) cancel();
     this.timers.clear();
     this.active.clear();
-    await this.tail;
+    await Promise.allSettled([
+      ...this.commands.values(),
+      ...this.reads.values(),
+    ]);
   }
 }

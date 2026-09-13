@@ -4,6 +4,7 @@ import { decodeServerFrame, encodeFrame } from "./frames.js";
 import { applyPatch, stateFromSnapshot } from "./patch.js";
 import {
   pullRequestKey,
+  pullRequestListKey,
   pullRequestPatch,
   pullRequestRow,
 } from "./pull-requests.js";
@@ -142,4 +143,40 @@ test("an 8 MiB capped patch survives JSON escaping and protocol roundtrip", () =
   expect(
     pullRequestPatch.safeParse({ ...patch, patch: `${patch.patch}x` }).success,
   ).toBe(false);
+});
+
+test("list loading state survives snapshots and patches and is scoped to its repository", () => {
+  const repoId = id.repo("example");
+  const key = pullRequestListKey(repoId, "open");
+  const body = snapshot();
+  body.pullRequestLists = [{ repoId, state: "open", loading: true }];
+  const state = stateFromSnapshot(meta, body);
+  expect(state.collections.pull_requests.get(key)?.loading).toBe(true);
+  const change = {
+    op: "upsert" as const,
+    collection: "pull_requests" as const,
+    value: { repoId, state: "open" as const, loading: false },
+  };
+  expect(
+    inScope(
+      scopeOf([{ kind: "pull_requests", repoId, state: "open" }]),
+      change,
+    ),
+  ).toBe(true);
+  expect(
+    inScope(
+      scopeOf([
+        { kind: "pull_requests", repoId: id.repo("other"), state: "open" },
+      ]),
+      change,
+    ),
+  ).toBe(false);
+  expect(
+    inScope(scopeOf([{ kind: "pull_request", repoId, number: 1 }]), change),
+  ).toBe(false);
+  expect(
+    applyPatch(state, { seq: meta.seq + 1, now: meta.now, changes: [change] })
+      .ok,
+  ).toBe(true);
+  expect(state.collections.pull_requests.get(key)?.loading).toBe(false);
 });

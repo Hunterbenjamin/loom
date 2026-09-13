@@ -6,11 +6,14 @@ import * as s from "./schemas.js";
 import {
   body,
   checksPath,
+  graphqlNode,
+  graphqlPage,
   http,
   mergeRequest,
   ok,
   original,
   pr,
+  required,
   reviewsPath,
   root,
   setup,
@@ -32,14 +35,13 @@ const patch = readFileSync(
   new URL("./fixtures/pull.diff", import.meta.url),
   "utf8",
 );
-const endpoint = (state: string) =>
-  `${root}/pulls?state=${state}&sort=created&direction=desc&per_page=100`;
 function fixture() {
   const fake = setup();
   fake.set(pr, detail);
   fake.set(`${pr}/commits?per_page=100`, commits);
-  fake.set(endpoint("closed"), [detail]);
-  fake.set(endpoint("open"), []);
+  fake.set("graphql:MERGED:", graphqlPage([graphqlNode]));
+  fake.set("graphql:CLOSED:", graphqlPage([]));
+  fake.set("graphql:OPEN:", graphqlPage([]));
   return fake;
 }
 
@@ -113,37 +115,161 @@ describe("repository pull request reads", () => {
     });
   });
 
-  it("lists every page newest first and separates closed from merged", async () => {
+  it.each(["open", "merged", "closed"] as const)(
+    "maps %s lists with one GraphQL call and no detail reads",
+    async (state) => {
+      const fake = fixture();
+      fake.set(`graphql:${state.toUpperCase()}:`, graphqlPage([graphqlNode]));
+      const values = await fake.adapter.listPullRequests("vuejs/core", state);
+      expect(values).toEqual([
+        {
+          number: detail.number,
+          title: detail.title,
+          author: "contributor",
+          state,
+          head: detail.head.ref,
+          base: detail.base.ref,
+          headSha: detail.head.sha,
+          draft: false,
+          mergeable: "unknown",
+          checks: "success",
+          review: "approved",
+          createdAt: detail.created_at,
+          updatedAt: detail.updated_at,
+          url: detail.html_url,
+          observedAt: "2026-09-12T00:00:00.000Z",
+        },
+      ]);
+      expect(fake.run).toHaveBeenCalledTimes(1);
+      const [args, input] = required(fake.run.mock.calls[0]);
+      expect(args).toContain("graphql");
+      expect(args).not.toContain("If-None-Match");
+      expect(JSON.parse(required(input)).query).toContain("commits(last: 1)");
+      expect(JSON.parse(required(input)).variables).toEqual({
+        owner: "vuejs",
+        name: "core",
+        state: state.toUpperCase(),
+        cursor: null,
+      });
+    },
+  );
+
+  it.each([
+    ["SUCCESS", "success"],
+    ["FAILURE", "failure"],
+    ["ERROR", "failure"],
+    ["PENDING", "pending"],
+    ["EXPECTED", "pending"],
+    [null, "none"],
+  ])(
+    "maps rollup %s, draft, conflicts, changes requested and deleted authors",
+    async (rollup, checks) => {
+      const fake = fixture();
+      fake.set(
+        "graphql:OPEN:",
+        graphqlPage([
+          {
+            ...graphqlNode,
+            author: null,
+            isDraft: true,
+            mergeable: "CONFLICTING",
+            reviewDecision: "CHANGES_REQUESTED",
+            commits: {
+              nodes: [
+                {
+                  commit: {
+                    statusCheckRollup: rollup ? { state: rollup } : null,
+                  },
+                },
+              ],
+            },
+          },
+        ]),
+      );
+      expect(
+        (await fake.adapter.listPullRequests("vuejs/core", "open"))[0],
+      ).toMatchObject({
+        checks,
+        draft: true,
+        mergeable: "conflicting",
+        review: "changes_requested",
+        author: null,
+      });
+    },
+  );
+
+  it("follows cursors newest first and caches unchanged rows without timestamp churn or shared mutations", async () => {
     const fake = fixture();
     const newer = {
-      ...detail,
+      ...graphqlNode,
       number: 20000,
-      merged: false,
-      created_at: "2026-09-11T00:00:00Z",
+      createdAt: "2026-09-11T00:00:00Z",
     };
-    fake.set(`${root}/pulls/20000`, newer);
-    fake.set(`${root}/pulls/20000/reviews?per_page=100`, []);
-    fake.set(endpoint("closed"), [detail], {
-      Link: `<https://api.github.com/${endpoint("closed")}&page=2>; rel="next"`,
+    fake.set("graphql:OPEN:", graphqlPage([newer], true, "next"));
+    fake.set("graphql:OPEN:next", graphqlPage([graphqlNode]));
+    let now = new Date("2026-09-12T00:00:00Z");
+    const adapter = createGitHubAdapter({
+      excludedAuthors: [],
+      run: fake.run,
+      now: () => now,
     });
-    fake.set(`${endpoint("closed")}&page=2`, [newer]);
+    const first = await adapter.listPullRequests("vuejs/core", "open");
+    expect(first.map((row) => row.number)).toEqual([20000, detail.number]);
+    expect(fake.run).toHaveBeenCalledTimes(2);
+    now = new Date("2026-09-13T00:00:00Z");
+    expect(await adapter.listPullRequests("vuejs/core", "open")).toEqual(first);
+    required(first[0]).title = "caller mutation";
     expect(
-      (await fake.adapter.listPullRequests("vuejs/core", "merged")).map(
-        (p) => p.number,
-      ),
-    ).toEqual([detail.number]);
-    expect(
-      (await fake.adapter.listPullRequests("vuejs/core", "closed")).map(
-        (p) => p.number,
-      ),
-    ).toEqual([20000]);
-    fake.set(endpoint("open"), [detail, newer]);
-    fake.set(pr, { ...detail, merged: false, state: "open" });
-    fake.set(`${root}/pulls/20000`, { ...newer, state: "open" });
-    const values = await fake.adapter.listPullRequests("vuejs/core", "open");
-    expect(values.map((p) => p.number)).toEqual([20000, detail.number]);
-    expect(values[0]).not.toHaveProperty("body");
-    expect(values[0]).not.toHaveProperty("checkRuns");
+      (await adapter.listPullRequests("vuejs/core", "open"))[0]?.title,
+    ).toBe(newer.title);
+    fake.set(
+      "graphql:OPEN:next",
+      graphqlPage([{ ...graphqlNode, reviewDecision: "CHANGES_REQUESTED" }]),
+    );
+    const changed = await adapter.listPullRequests("vuejs/core", "open");
+    expect(changed[0]?.observedAt).toBe("2026-09-12T00:00:00.000Z");
+    expect(changed[1]).toMatchObject({
+      review: "changes_requested",
+      observedAt: now.toISOString(),
+    });
+  });
+
+  it("rejects GraphQL errors, invalid metadata, missing and repeated cursors", async () => {
+    const fake = fixture();
+    for (const payload of [
+      {
+        ...graphqlPage([graphqlNode]),
+        errors: [{ message: "private diagnostic" }],
+      },
+      graphqlPage([{ ...graphqlNode, headRefOid: "invalid" }]),
+      graphqlPage([graphqlNode], true, null),
+      { data: { repository: null } },
+    ]) {
+      fake.set("graphql:OPEN:", payload);
+      await expect(
+        fake.adapter.listPullRequests("vuejs/core", "open"),
+      ).rejects.toThrow(/GitHub/);
+    }
+    fake.set("graphql:OPEN:", graphqlPage([], true, "loop"));
+    fake.set("graphql:OPEN:loop", graphqlPage([], true, "loop"));
+    await expect(
+      fake.adapter.listPullRequests("vuejs/core", "open"),
+    ).rejects.toMatchObject({ code: "retryable" });
+  });
+
+  it("stops at the existing page cap without returning a partial list", async () => {
+    let calls = 0;
+    const adapter = createGitHubAdapter({
+      excludedAuthors: [],
+      run: async () => {
+        calls++;
+        return ok(http(graphqlPage([], true, `cursor-${calls}`)));
+      },
+    });
+    await expect(
+      adapter.listPullRequests("vuejs/core", "open"),
+    ).rejects.toMatchObject({ code: "retryable" });
+    expect(calls).toBe(1000);
   });
 
   it("refreshes checks and reviews despite unchanged PR ETags", async () => {

@@ -1,5 +1,6 @@
 import {
   pullRequestKey,
+  pullRequestListKey,
   pullRequestNumber,
   pullRequestState,
 } from "./pull-requests.js";
@@ -149,6 +150,7 @@ export function taskInScope(scope: Scope, task: Task): boolean {
 export function ownerTask(change: Change): string | null {
   if (change.op === "delete") return change.taskId;
   if (
+    change.collection === "pull_requests" ||
     change.collection === "pull_request" ||
     change.collection === "pull_request_detail" ||
     change.collection === "repo" ||
@@ -165,13 +167,16 @@ export function ownerTask(change: Change): string | null {
 /** Does this change belong on this client's stream? */
 export function inScope(scope: Scope, change: Change): boolean {
   if (
+    change.collection === "pull_requests" ||
     change.collection === "pull_request" ||
     change.collection === "pull_request_detail"
   ) {
     const key =
       change.op === "delete"
         ? change.key
-        : pullRequestKey(change.value.repoId, change.value.number);
+        : change.collection === "pull_requests"
+          ? pullRequestListKey(change.value.repoId, change.value.state)
+          : pullRequestKey(change.value.repoId, change.value.number);
     if (change.collection === "pull_request_detail")
       return scope.pullRequestDetails.has(key);
     // State is a polling filter. Subscribers receive all cached states for their repo,

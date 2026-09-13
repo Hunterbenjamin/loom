@@ -20,9 +20,14 @@ opened by hand or by off-pipeline agents.
   path, the same as a merge done on github.com. Nothing in the task workflow changes.
 - **Every command is idempotent and confirmed by re-reading.** Merging an already-merged PR
   succeeds; deleting a branch that is gone succeeds.
-- **Polling is conditional** (ETags through `gh api`, as the adapter already does), because
-  webhooks can't reach localhost. List every 60 s while a window shows the PR view; the open PR's
-  detail every 30 s while it is open; immediately after any command.
+- **Polling uses one GraphQL request per list** through `gh api graphql`, including checks,
+  review decision and mergeability (100 rows per page; cursor pagination up to the existing
+  1,000-page cap). GraphQL has no ETag: compare mapped rows per repo/state and publish no patch
+  when unchanged. REST detail/patch reads retain their conditional ETags. List every 60 s while
+  a window shows the PR view; detail every 30 s while it is open; refresh after any command.
+  First snapshots and subscription acknowledgments use the cached projection immediately,
+  with `loading: true` for an initial list read; rows arrive in patches. Different scopes read
+  concurrently and identical scopes share at most one in-flight read.
 - **Always squash, always `--match-head-commit`,** as the adapter already enforces: a merge
   names the head SHA the human saw, and a push in between makes it fail with a clear reason.
 

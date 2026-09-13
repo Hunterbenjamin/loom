@@ -47,17 +47,21 @@ heuristic. `run` and `now` are injectable for tests.
 ## Repository pull requests (slice 1)
 
 - `listPullRequests(repo, state)` accepts `open`, `merged`, or `closed` (closed excludes
-  merged), follows every list page, hydrates checks/reviews/mergeability, and returns
-  newest-first `PullRequestSummary` values, including `observedAt`.
+  merged) and returns newest-first `PullRequestSummary` values. Lists use one GraphQL
+  request through `gh api graphql`, selecting checks, review decision and mergeability
+  with the rows; there are no per-PR detail reads. Lists over 100 rows follow cursors,
+  one request per page, up to the existing 1,000-page cap (incomplete reads fail).
+  GraphQL has no ETag: disposable repo/state caches compare mapped rows, preserving
+  unchanged rows and their `observedAt` so identical refreshes publish no patch.
 - `readPullRequest(repo, number)` adds the body, merge facts, commits, native check runs
   with start/completion times, and change counts. Detail also includes `branchExists`, read
   from the actual head repository; an unidentified repository remains null (unknown). Null authors remain null; a null body
   becomes an empty string. Latest decisive review per author wins; comments/pending
   reviews do not erase a decision, and any outstanding changes request takes priority.
   Check summaries include legacy commit statuses using the same rules as task observations.
-- Each endpoint/page is conditionally refreshed using native ETags, even when the PR
+- Each REST detail endpoint/page is conditionally refreshed using native ETags, even when the PR
   itself is unchanged. These methods return the full value on each successful read and
-  retain only disposable per-list/per-detail caches (128 keys). A changed head/base or
+  retain only disposable per-detail caches (128 keys). A changed head/base or
   update timestamp during assembly is retryable. GitHub's PR commits endpoint is capped
   at 250; a count mismatch is an explicit incomplete-read error, never silent omission.
 - `readPullRequestPatch(repo, number)` requests `application/vnd.github.diff` through

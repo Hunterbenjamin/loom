@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
+import { stateFromSnapshot } from "@loom/protocol";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
 import { buildSnapshot } from "../fixtures/index.js";
+import { toSnapshot } from "../fixtures/protocol.js";
 import {
   pullRequestSubscriptions,
   selectedPullRequests,
@@ -212,4 +214,20 @@ test("sorts by creation time and searches branch, author, number and linked key"
     store.setPrQuery(query);
     expect(selectedPullRequests(store.getState()).length).toBeGreaterThan(0);
   }
+});
+
+test("shows loading from the live list state until the empty result arrives", () => {
+  const h = setup();
+  const wire = toSnapshot(buildSnapshot());
+  const repoId = wire.body.repos[0]?.id;
+  if (!repoId) throw new Error("Missing repo");
+  wire.body.pullRequests = [];
+  wire.body.pullRequestLists = [{ repoId, state: "open", loading: true }];
+  act(() => h.store.applyProtocol(stateFromSnapshot(wire.meta, wire.body)));
+  expect(h.host.textContent).toContain("Loading pull requests…");
+  wire.body.pullRequestLists = [{ repoId, state: "open", loading: false }];
+  act(() => h.store.applyProtocol(stateFromSnapshot(wire.meta, wire.body)));
+  expect(h.host.textContent).toContain(
+    "No open pull requests in the current snapshot.",
+  );
 });

@@ -3,6 +3,13 @@ import { ciCheck, ciState } from "./entities.js";
 import { count, isoTime, repoId, sha, taskId } from "./ids.js";
 
 export const pullRequestState = z.enum(["open", "closed", "merged"]);
+export const pullRequestListKey = (repo: string, state: string): string =>
+  JSON.stringify([repo, state]);
+export const pullRequestListState = z.strictObject({
+  repoId,
+  state: pullRequestState,
+  loading: z.boolean(),
+});
 export const pullRequestNumber = z.number().int().positive();
 export const pullRequestKey = (repo: string, number: number): string =>
   JSON.stringify([repo, number]);

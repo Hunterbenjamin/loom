@@ -1,6 +1,8 @@
 import {
   pullRequestDetailRow,
   pullRequestKey,
+  pullRequestListKey,
+  pullRequestListState,
   pullRequestRow,
 } from "./pull-requests.js";
 // The entity registry, and the snapshot built out of it. A client's state has exactly this shape:
@@ -70,6 +72,12 @@ export const collections = {
     value: projectState,
     key: z.literal("project"),
     keyOf: (v: z.output<typeof projectState>) => v.id,
+  },
+  pull_requests: {
+    value: pullRequestListState,
+    key: z.string().min(1),
+    keyOf: (v: z.output<typeof pullRequestListState>) =>
+      pullRequestListKey(v.repoId, v.state),
   },
   pull_request: {
     value: pullRequestRow,
@@ -186,6 +194,7 @@ export function keyOf<N extends CollectionName>(
 
 export const snapshotBody = z.strictObject({
   projects: z.array(projectState).default([]),
+  pullRequestLists: z.array(pullRequestListState).default([]),
   pullRequests: z.array(pullRequestRow).default([]),
   pullRequestDetails: z.array(pullRequestDetailRow).default([]),
   operators: z.array(operatorState).default([]),
@@ -214,6 +223,7 @@ export const snapshotBody = z.strictObject({
 /** Which snapshot collection each patch collection lands in. */
 export const COLLECTION_FIELDS = {
   project: "projects",
+  pull_requests: "pullRequestLists",
   pull_request: "pullRequests",
   pull_request_detail: "pullRequestDetails",
   operator: "operators",
@@ -243,6 +253,7 @@ export type SnapshotBody = z.output<typeof snapshotBody>;
 
 export const emptySnapshotBody = (): SnapshotBody => ({
   projects: [],
+  pullRequestLists: [],
   pullRequests: [],
   pullRequestDetails: [],
   operators: [],
