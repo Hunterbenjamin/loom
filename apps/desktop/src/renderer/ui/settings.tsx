@@ -72,11 +72,13 @@ function JsonInput({
   value,
   disabled,
   onChange,
+  onValidityChange,
 }: {
   id: string;
   value: object;
   disabled: boolean;
   onChange(value: unknown): void;
+  onValidityChange(valid: boolean): void;
 }) {
   const serialized = JSON.stringify(value, null, 2);
   const [text, setText] = useState(serialized);
@@ -92,8 +94,9 @@ function JsonInput({
         setText(next);
         try {
           onChange(JSON.parse(next));
+          onValidityChange(true);
         } catch {
-          // Saving remains disabled until the JSON is valid again.
+          onValidityChange(false);
         }
       }}
     />
@@ -106,12 +109,14 @@ function Control({
   draft,
   changed,
   onChange,
+  onValidityChange,
 }: {
   definition: SettingDefinition;
   document: SettingsDocument;
   draft: SettingsValues;
   changed: boolean;
   onChange(value: unknown): void;
+  onValidityChange(valid: boolean): void;
 }) {
   const key = definition.key;
   const value = settingValue(draft, key);
@@ -140,6 +145,7 @@ function Control({
         value={value}
         disabled={disabled}
         onChange={onChange}
+        onValidityChange={onValidityChange}
       />
     ) : typeof value === "boolean" ? (
       <input
@@ -242,11 +248,13 @@ export function SettingsView() {
     document?.effective ?? null,
   );
   const [changed, setChanged] = useState<Set<string>>(new Set());
+  const [invalid, setInvalid] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     setDraft(document ? structuredClone(document.effective) : null);
     setChanged(new Set());
+    setInvalid(new Set());
   }, [document]);
   const definitions = useMemo(() => document?.catalog ?? [], [document]);
   if (!document || !draft)
@@ -388,6 +396,7 @@ export function SettingsView() {
       {sections.map((section) => {
         const fields = definitions.filter((item) => item.section === section);
         const dirty = fields.some((item) => changed.has(item.key));
+        const hasInvalid = fields.some((item) => invalid.has(item.key));
         const resettable = fields.some(
           (item) => settingValue(document.stored, item.key) !== undefined,
         );
@@ -408,7 +417,7 @@ export function SettingsView() {
                 </button>
                 <button
                   type="button"
-                  disabled={busy || !dirty}
+                  disabled={busy || !dirty || hasInvalid}
                   onClick={() => void save(section)}
                 >
                   Save
@@ -423,6 +432,14 @@ export function SettingsView() {
                 draft={draft}
                 changed={changed.has(field.key)}
                 onChange={(value) => change(field.key, value)}
+                onValidityChange={(valid) =>
+                  setInvalid((keys) => {
+                    const next = new Set(keys);
+                    if (valid) next.delete(field.key);
+                    else next.add(field.key);
+                    return next;
+                  })
+                }
               />
             ))}
           </section>

@@ -86,6 +86,22 @@ test("settings supports scope-aware editing, save feedback, and redacted audit h
     });
     expect(host.textContent).toContain("Recent changes");
     expect(host.textContent).toContain("appearance.theme changed by desktop");
+    const keybindings = host.querySelector<HTMLTextAreaElement>(
+      "#setting-appearance-keybindings",
+    );
+    if (!keybindings) throw new Error("Missing keybindings setting");
+    await act(async () => {
+      keybindings.value = "{";
+      keybindings.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const terminals = [...host.querySelectorAll("section")].find((section) =>
+      section.textContent?.includes("Terminals & keybindings"),
+    );
+    expect(
+      [...(terminals?.querySelectorAll("button") ?? [])].find(
+        (button) => button.textContent === "Save",
+      )?.disabled,
+    ).toBe(true);
     const theme = host.querySelector<HTMLSelectElement>(
       "#setting-appearance-theme",
     );
