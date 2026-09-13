@@ -194,6 +194,8 @@ export interface ClaudeSessionObservation {
  * and provider identity is never inferred from a pane (spike 06 §4).
  */
 export interface PaneObservation {
+  /** Original workspace key retained by the host when its session is renamed. */
+  workspaceId?: string;
   sessionId?: string | null;
   windowName?: string | null;
   title?: string | null;

@@ -150,3 +150,8 @@ Run it after the desktop build and separately from other performance harnesses t
 Switching modes preserves Tracker selection and Workbench tabs/splits in the same window.
 Inactive terminal viewers detach and reattach when shown; the native panes and agents keep running.
 The app does not create a hidden spare Workbench window.
+
+Space and tab rows support inline rename: double-click or F2, Enter to submit, Escape to cancel.
+Validation and host errors appear in the editor; session names cannot contain `.` or `:`.
+The sidebar waits for native inventory patches to update labels, and renaming keeps terminal
+viewers attached. Task space labels remain the task title; the tooltip shows the session name.

@@ -52,7 +52,32 @@ export const protocolError = z.strictObject({
   details: z.array(z.string()),
 });
 
+export const tabName = z
+  .string()
+  .trim()
+  .min(1, "Enter a name")
+  .max(80, "Use at most 80 characters")
+  .regex(/^[^\p{Cc}]+$/u, "Names cannot contain control characters");
+export const spaceName = tabName.regex(
+  /^[^.:]+$/,
+  "Space names cannot contain . or :",
+);
+export const renameSpace = z.strictObject({
+  kind: z.literal("rename_space"),
+  hostGeneration: z.string().min(1),
+  sessionId: z.string().regex(/^\$\d+$/),
+  name: spaceName,
+});
+export const renameTab = z.strictObject({
+  kind: z.literal("rename_tab"),
+  hostGeneration: z.string().min(1),
+  windowId: z.string().regex(/^@\d+$/),
+  name: tabName,
+});
+
 export const command = z.union([
+  renameSpace,
+  renameTab,
   z.strictObject({
     kind: z.literal("claim_notification"),
     noteId: z.string().min(1).max(300),
@@ -150,6 +175,7 @@ export const commandRequest = z.strictObject({
 
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
+  z.strictObject({ kind: z.literal("renamed") }),
   z.strictObject({
     kind: z.literal("notification"),
     notice: z

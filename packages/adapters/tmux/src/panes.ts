@@ -22,6 +22,7 @@ const FIELDS = [
   "#{session_id}",
   "#{window_name}",
   "#{pane_title}",
+  "#{@loom_workspace_id}",
 ] as const;
 
 export const PANE_FORMAT = FIELDS.join(SEP);
@@ -44,6 +45,7 @@ const row = z
     z.string().regex(/^\$\d+$/),
     z.string(),
     z.string(),
+    z.string().optional(),
   ])
   .transform(
     ([
@@ -61,6 +63,7 @@ const row = z
       sessionId,
       windowName,
       title,
+      workspaceId,
     ]) => ({
       paneId,
       sessionName,
@@ -71,6 +74,7 @@ const row = z
       sessionId,
       windowName,
       title,
+      workspaceId: workspaceId || undefined,
       // Empty when the pane died from a signal rather than an exit status.
       exitCode: deadStatus === "" ? null : Number(deadStatus),
       startPath,
@@ -116,6 +120,7 @@ export function toObservation(
     sessionId: row.sessionId,
     windowName: row.windowName,
     title: row.title,
+    ...(row.workspaceId ? { workspaceId: row.workspaceId } : {}),
     ref: {
       hostGeneration,
       sessionName: row.sessionName,

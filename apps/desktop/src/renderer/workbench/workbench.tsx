@@ -42,7 +42,7 @@ const newPanel = (target?: PaneIdentity): Panel => ({
   id: crypto.randomUUID(),
   target,
 });
-const identity = (p: PaneView): PaneIdentity => ({
+const identity = (p: PaneIdentity): PaneIdentity => ({
   hostGeneration: p.hostGeneration,
   sessionName: p.sessionName,
   windowId: p.windowId,
@@ -489,7 +489,13 @@ export function Workbench() {
   const close = (id: string) => {
     const panel = tabs.flatMap((t) => t.panels).find((p) => p.id === id);
     if (!panel || closing.current.has(id)) return;
-    const target = panel.target;
+    const target = panel.target
+      ? identity(
+          panes.find((pane) =>
+            sameTerminal(pane, panel.target as PaneIdentity),
+          ) ?? panel.target,
+        )
+      : undefined;
     const managed =
       panel.system ||
       store
@@ -618,6 +624,7 @@ export function Workbench() {
     );
     const key = (e: KeyboardEvent) => {
       if (document.querySelector("dialog[open]")) return;
+      if (e.target instanceof Element && e.target.closest(".wb-rename")) return;
       if (e.metaKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         e.stopPropagation();

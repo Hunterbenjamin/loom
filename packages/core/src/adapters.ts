@@ -197,6 +197,17 @@ export interface GitHubAdapter {
  * Every method is idempotent on its key (`taskId`, `runId`, `PaneRef`).
  */
 export interface PaneHost {
+  /** Native IDs and generation survive renames; repeated requests set the same name. */
+  renameSession(req: {
+    hostGeneration: string;
+    sessionId: string;
+    name: string;
+  }): Promise<void>;
+  renameWindow(req: {
+    hostGeneration: string;
+    windowId: string;
+    name: string;
+  }): Promise<void>;
   /** Idempotent: reserves a task session name; creates no shell. The first pane creates the session. */
   ensureWorkspace(req: {
     taskId: TaskId;

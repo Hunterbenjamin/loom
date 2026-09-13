@@ -207,3 +207,15 @@ a reusable human shell in the task's worktree. With no surviving worktree, it op
 project root and shows that checkout's actual branch without changing it. Historical run selection
 cannot override this task-scoped resolution. Run identity changes re-resolve the target; routine
 activity updates do not remount the terminal. Missing host observations surface a retryable error.
+
+### Renaming spaces and tabs
+
+Double-click a space or tab row, or focus it and press F2, to edit its native name inline.
+Enter submits; Escape cancels. Space names cannot contain `.` or `:`; empty names and control
+characters are rejected, with the reason displayed beside the editor. Task spaces retain their
+task title as the label while the editor and row tooltip expose the native session name.
+The coordinator executes `rename_space` / `rename_tab` against generation-scoped native session
+and window IDs. Labels change only with the next `panes` patch. Tab automatic renaming stays off.
+Native pane identity keeps open viewers mounted across renames; reconnect resolves the current
+name. A tmux session option retains its original workspace key, preserving task links and later
+scratch/run creation across coordinator restarts. Main and Operator retain their pinned identities.

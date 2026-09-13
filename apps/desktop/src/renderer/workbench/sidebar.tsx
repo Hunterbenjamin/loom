@@ -1,6 +1,7 @@
 import type { PaneView } from "@loom/protocol";
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../store/react.js";
+import { RenameRow } from "./rename-row.js";
 import { type Indicator, spaces } from "./selectors.js";
 
 function Status({ state }: { state: Indicator }) {
@@ -73,12 +74,13 @@ export function Sidebar({
         <div className="wb-terminal-list">
           {tree.map((space) => (
             <section key={space.key} aria-label={space.label}>
-              <button
-                type="button"
-                className="wb-tree-row wb-space"
-                aria-expanded={expanded(space.key)}
-                onClick={() => toggle(space.key)}
-                title={space.name}
+              <RenameRow
+                kind="space"
+                pane={space.tabs[0]?.panes[0]?.pane}
+                name={space.name}
+                className="wb-space"
+                expanded={expanded(space.key)}
+                toggle={() => toggle(space.key)}
               >
                 <span aria-hidden="true">
                   {expanded(space.key) ? "▾" : "▸"}
@@ -91,7 +93,7 @@ export function Sidebar({
                 >
                   {space.branch ?? "—"}
                 </small>
-              </button>
+              </RenameRow>
               {expanded(space.key) &&
                 space.tabs.map((tab) => (
                   <section
@@ -99,18 +101,19 @@ export function Sidebar({
                     key={tab.key}
                     aria-label={tab.name}
                   >
-                    <button
-                      type="button"
-                      className="wb-tree-row"
-                      aria-expanded={expanded(tab.key)}
-                      onClick={() => toggle(tab.key)}
+                    <RenameRow
+                      kind="tab"
+                      pane={tab.panes[0]?.pane}
+                      name={tab.name}
+                      expanded={expanded(tab.key)}
+                      toggle={() => toggle(tab.key)}
                     >
                       <span aria-hidden="true">
                         {expanded(tab.key) ? "▾" : "▸"}
                       </span>
                       <Status state={tab.indicator} />
                       <span className="wb-tree-name">{tab.name}</span>
-                    </button>
+                    </RenameRow>
                     {expanded(tab.key) &&
                       tab.panes.map(({ pane, name, indicator }) => (
                         <button

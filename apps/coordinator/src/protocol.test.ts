@@ -468,3 +468,90 @@ test("publish errors deduplicate by task and cause, and reset after success", as
     publish.mockRestore();
   }
 }, 30_000);
+
+test("rename commands map to the pane host and publish authoritative names to every window", async () => {
+  const h = await served();
+  const ref = {
+    hostGeneration: `loom-${h.config.instance}#1`,
+    sessionName: "research",
+    windowId: "@7",
+    paneId: "%7",
+  };
+  let observation = {
+    ref,
+    sessionId: "$7",
+    windowName: "shell",
+    dead: false,
+    exitCode: null,
+    pid: 12345,
+    command: "sh",
+    startCwd: h.repo.root,
+    cwd: h.repo.root,
+  };
+  vi.spyOn(h.paneHost, "listPanes").mockImplementation(async () => [
+    observation,
+  ]);
+  vi.spyOn(h.paneHost, "listClients").mockResolvedValue([]);
+  const renameSession = vi
+    .spyOn(h.paneHost, "renameSession")
+    .mockImplementation(async (request) => {
+      observation = {
+        ...observation,
+        ref: { ...observation.ref, sessionName: request.name },
+      };
+    });
+  const renameWindow = vi
+    .spyOn(h.paneHost, "renameWindow")
+    .mockImplementation(async (request) => {
+      observation = { ...observation, windowName: request.name };
+    });
+  const client = await connect(h, "rename-first", [{ kind: "panes" }] as never);
+  const other = await connect(h, "rename-second", [{ kind: "panes" }] as never);
+  const space = {
+    kind: "rename_space" as const,
+    hostGeneration: ref.hostGeneration,
+    sessionId: "$7",
+    name: "New space",
+  };
+  expect(await client.command(space)).toMatchObject({
+    ok: true,
+    result: { kind: "renamed" },
+  });
+  expect(renameSession).toHaveBeenCalledExactlyOnceWith({
+    hostGeneration: ref.hostGeneration,
+    sessionId: "$7",
+    name: "New space",
+  });
+  const tab = {
+    kind: "rename_tab" as const,
+    hostGeneration: ref.hostGeneration,
+    windowId: ref.windowId,
+    name: "New tab",
+  };
+  expect(await client.command(tab)).toMatchObject({ ok: true });
+  expect(renameWindow).toHaveBeenCalledExactlyOnceWith({
+    hostGeneration: ref.hostGeneration,
+    windowId: ref.windowId,
+    name: "New tab",
+  });
+  await vi.waitFor(() => {
+    for (const window of [client, other])
+      expect([
+        ...(window.state?.collections.pane.values() ?? []),
+      ]).toMatchObject([
+        { sessionName: "New space", windowName: "New tab", paneId: ref.paneId },
+      ]);
+  });
+  renameSession.mockRejectedValueOnce(new Error("duplicate session"));
+  expect(await client.command({ ...space, name: "Taken" })).toMatchObject({
+    ok: false,
+    error: { message: "duplicate session" },
+  });
+  expect(
+    await client.command({ ...space, hostGeneration: "loom-other#1" }),
+  ).toMatchObject({ ok: false });
+  expect(renameSession).toHaveBeenCalledTimes(2);
+  expect(
+    [...(client.state?.collections.pane.values() ?? [])][0]?.sessionName,
+  ).toBe("New space");
+}, 30_000);
