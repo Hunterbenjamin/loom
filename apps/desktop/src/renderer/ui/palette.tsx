@@ -4,6 +4,7 @@ import { STAGES } from "../fixtures/index.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { selectedRows } from "../store/selectors.js";
 import { VIEWS } from "../store/store.js";
+import { ChimeMuteCommand } from "../workbench/chime.js";
 import { stageLabel } from "./format.js";
 
 export function Palette() {
@@ -90,6 +91,7 @@ export function Palette() {
           </Command.Group>
 
           <Command.Group heading="Window">
+            <ChimeMuteCommand close={close} />
             <Command.Item
               onSelect={() =>
                 run(() => window.dispatchEvent(new Event("loom:open-main")))
