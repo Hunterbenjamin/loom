@@ -250,15 +250,7 @@
 .wb-tab-row {
   display: flex;
   align-items: baseline;
-  padding-left: calc(12px + 2ch);
-}
-.wb-tab-row .wb-tree-row {
-  padding-left: 8px;
-}
-.wb-disclosure {
-  flex: none;
-  padding: 3px 0;
-  width: 1ch;
+  padding-left: calc(1ch + 8px);
 }
 .wb-sidebar .dead,
 .wb-sidebar button:disabled {
@@ -398,7 +390,6 @@
 .wb-space-row {
   display: flex;
   align-items: baseline;
-  padding-left: 8px;
 }
 .wb-space {
   flex: 1;
