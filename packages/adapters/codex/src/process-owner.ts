@@ -86,6 +86,29 @@ export async function socketOwner(
   return owners[0] ?? null;
 }
 
+/**
+ * App-server processes whose command line names this socket and that nobody owns any more: a
+ * previous coordinator killed hard leaves its child reparented to init, still holding the thread
+ * store while a fresh server is spawned beside it. Found by argv, which carries the private
+ * per-task socket path, so no other task's or user's process can match.
+ */
+export async function orphanServers(socket: string): Promise<number[]> {
+  let stdout: string;
+  try {
+    ({ stdout } = await exec("ps", ["-axo", "pid=,args="], { timeout: 5000 }));
+  } catch {
+    return [];
+  }
+  const needle = `app-server --listen unix://${socket}`;
+  const pids: number[] = [];
+  for (const line of stdout.split("\n")) {
+    const match = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (match?.[2]?.includes(needle) && Number(match[1]) !== process.pid)
+      pids.push(Number(match[1]));
+  }
+  return pids;
+}
+
 export async function terminateOwned(
   owner: ProcessOwner,
   socket: string,

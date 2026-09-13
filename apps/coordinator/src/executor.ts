@@ -29,7 +29,7 @@ import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
 import { checkPanePromptGate, checkSendGate } from "./gate.js";
-import { type LaunchDeps, startRun } from "./launch.js";
+import { type LaunchDeps, relaunchFromRecipe, startRun } from "./launch.js";
 import { indexChanges, mapFindings } from "./mapping.js";
 import type { PullRequestCache } from "./observe.js";
 
@@ -523,6 +523,28 @@ export class Executor {
       }
     };
     const output = await transport();
+    // A Codex TUI attaches with `codex resume`, which fails until the thread has its first turn;
+    // a pane launched before that message may have died in the race. Now that the message is in,
+    // put the pane back from its recipe. Only the pane changes; the thread is untouched.
+    if (run.mode === "interactive" && run.provider === "codex") {
+      const live = run.pane
+        ? await adapters.paneHost.getPane(run.pane).catch(() => null)
+        : null;
+      const recipe = this.deps.launch.recipes.get(run.id);
+      const workspaceId = state.worktree?.paneWorkspaceId;
+      if ((!live || live.dead) && recipe && workspaceId) {
+        try {
+          const pane = await relaunchFromRecipe(
+            this.deps.launch,
+            recipe,
+            workspaceId,
+          );
+          this.deps.store.updateRunPane(action.taskId, run.id, pane);
+        } catch {
+          // The next observation reports the pane's state; the message itself was delivered.
+        }
+      }
+    }
     return {
       ...output,
       transportAttempt: {

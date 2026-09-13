@@ -457,6 +457,30 @@ export function Sidebar({
               reason: "Native rename is provided by Workbench v2 slice 3",
               run: () => {},
             },
+            ...(menu.kind === "pane" &&
+            menuRows[0]?.runId &&
+            menuRows[0]?.taskId
+              ? [
+                  {
+                    label: "Restart agent",
+                    reason:
+                      "Fresh session for this run; the replacement appears once the previous agent stops",
+                    run: () => {
+                      const target = menuRows[0];
+                      if (!target?.runId || !target.taskId) return;
+                      void store
+                        .command({
+                          kind: "human",
+                          taskId: target.taskId,
+                          command: { type: "restart_run", runId: target.runId },
+                        })
+                        .then((outcome) => {
+                          if (!outcome.ok) window.alert(outcome.error.message);
+                        });
+                    },
+                  },
+                ]
+              : []),
             {
               label: "Copy attach command",
               disabled: !liveRows.length,

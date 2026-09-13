@@ -7,6 +7,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   Notification,
   shell,
 } from "electron";
@@ -369,6 +370,29 @@ async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
 }
 
 app.whenReady().then(async () => {
+  // Electron's default File menu binds Cmd+W to Close Window, which quits a one-window app and
+  // steals the Workbench's own Cmd+W. Close Window stays in the menu, without an accelerator.
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
+      { role: "editMenu" },
+      { role: "viewMenu" },
+      {
+        label: "Window",
+        submenu: [
+          { role: "minimize" },
+          { role: "zoom" },
+          { type: "separator" },
+          { role: "front" },
+          { type: "separator" },
+          {
+            label: "Close Window",
+            click: () => BrowserWindow.getFocusedWindow()?.close(),
+          },
+        ],
+      },
+    ]),
+  );
   wire();
   await createWindow(
     process.env.LOOM_WINDOW_MODE === "workbench" ? "workbench" : "tracker",
