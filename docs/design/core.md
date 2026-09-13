@@ -66,6 +66,7 @@ They follow the original fields in `Run`; their optional representation has thes
 |---|---|---|
 | `seenAt` | A | First authoritative evidence of this session; absent/null means never seen. Required to distinguish a not-yet-present Claude start from a vanished session after restart. |
 | `unknownSince` | A | Start of the current unknown-status interval; absent/null means no such interval. Repeated unavailable reads do not reset it. |
+| `idleSince` | A | Start of the current idle interval. Resets on a status change or new native activity, survives unchanged polls and restart. Legacy idle runs fall back to last activity or launch time. |
 | `observedAttempt` | A | Attempt whose failure was already scheduled; absent means no failure handled for this attempt. |
 | `retryBaseAttempt` | A | Monotonic attempt offset at the last human retry reset; absent means 0. Attempts themselves never reset, so action keys cannot be reused. |
 
@@ -159,7 +160,9 @@ Append-only; one row per committed stage change or flag change.
 Delivery metadata follows the original `Message` fields. Core writes it and the store must retain it:
 `via` identifies the transport path (absent before send), `expectedTurnId` identifies a steered turn,
 `baselineTurnId` identifies the last observed turn before sending (absent/null means none), and
-`deliveryAttention` defaults to false. These fields are never reconstructed from a terminal.
+`deliveryAttention` defaults to false. `transportAttempt` records executor start/completion times
+and session/run identity (§5.5), and is absent on legacy records. These fields are never
+reconstructed from a terminal.
 
 `CiCheck.id` is required: the GitHub adapter supplies the stringified stable check-run ID. Core uses
 it as the CI finding's external identity; name/head fallbacks are no longer permitted. The ID remains
@@ -314,6 +317,7 @@ while any of these reasons holds:
 | `failed` | `failed` is set |
 | `run_vanished` | An interactive run's session disappeared. Loom won't relaunch it; the human does. |
 | `stalled` | A run is `working` with no provider activity for `stallAfterMs`. Nothing is killed. |
+| `idle_without_submission` | A live Loom run stays idle for `stallAfterMs` (15 minutes by default) while its role owes a submission: planner in `planning`, implementer in `in_progress`, reviewer in `in_review`. Suppressed while the task is blocked/failed, a message to that run is pending/sent, or its question is unanswered. Nothing is killed or relaunched. |
 | `status_unknown` | A run has been `unknown` for longer than `unknownGraceMs` |
 | `over_budget` | Time in stages `planning` through `awaiting_approval` exceeds `budgetMinutes` |
 
@@ -501,6 +505,20 @@ A failed result carries `retryable`, `precondition` or `fatal`. `retryable` gets
 backoff (`<key>#<n>`). `precondition` means the world moved: re-read and decide again. `fatal` sets
 `failed: action_failed`.
 
+Provider answers are independent intents keyed by `(runId, generation, requestId)`, with no action
+dependencies. A fresh, hydrated Codex observation cancels pending/running answers and scheduled
+retries whose exact request is no longer pending, including after a generation change. Request IDs
+are opaque: concurrent requests remain answerable; a larger ID alone does not supersede another.
+Unavailable, wrong-session, pre-launch, and `notLoaded` readings cannot retire answers. Cancellation
+also removes obsolete dependencies from previously persisted pending answers. Late receipts are
+consumed without resurrecting canceled work, including when the provider resolved an answer before
+its executor receipt reached reconcile.
+
+The adapter's `StaleCodexRequestError` (missing pending request or changed generation) is a terminal
+`precondition`, never an automatic retry. Reconcile requests another provider observation. Transient
+answer failures use `retry.maxAttempts` (3 by default); the final failed attempt immediately sets
+`failed: action_failed` and Needs-you error attention, even if another task flag prevents retries.
+
 | | Codex headless | Codex interactive | Claude headless | Claude interactive |
 |---|---|---|---|---|
 | start | `thread/start` (read-only sandbox for planners/reviewers) | `thread/start` with the role sandbox, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>`; planners/reviewers disallow Edit, Write and NotebookEdit and omit implementer bypass permissions |
@@ -589,9 +607,16 @@ fails and the human is notified).
 The timeout resend keeps the message ID but uses `send_message:<id>#2`, since the first action key
 already succeeded. Transport failures separately use bounded action retries with suffixed keys.
 Persist `via`, expected/baseline turn IDs and delivery attention; confirmation must match the session
-and cannot use a receipt older than the send. Serialize outstanding messages per run until native
+and cannot use a receipt older than the transport attempt's start. The executor persists
+`transportAttempt` (start/completion times, session ID/epoch and run attempt) in the action result
+and message; `sentAt` is its completion time, never the later reconciliation time. A matching hook
+may precede transport completion or result consumption. Legacy messages without attempt metadata
+retain their `sentAt` lower bound; legacy results use their persisted receipt time. Serialize
+outstanding messages per run until native
 delivery is known. Ending a run retires its undelivered messages, so stale prompts cannot block a
-resumed attempt. For ambiguous timeout delivery, notify and set existing `provider_input` attention.
+resumed attempt. Historical messages on ended runs do not contribute delivery attention, and
+attempt metadata prevents an old session or run attempt's send from being confirmed or replayed
+into its replacement. For ambiguous timeout delivery, notify and set existing `provider_input` attention.
 Native executor idempotence checks remain necessary: core never infers delivery from transport success.
 
 ## 6. Adapter interfaces

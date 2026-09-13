@@ -11,6 +11,9 @@ import type { ToolRequestUserInputResponse } from "./generated/v2/ToolRequestUse
 import { type Incoming, type RpcConnection, redact } from "./protocol.js";
 import * as schemas from "./schemas.js";
 
+/** The exact request can no longer be answered; retrying cannot restore it. */
+export class StaleCodexRequestError extends Error {}
+
 interface Pending {
   wireId: string | number;
   threadId: string;
@@ -172,7 +175,7 @@ export class PendingRequests {
   ) {
     const pending = this.pending.get(req.requestId);
     if (!pending || pending.threadId !== req.threadId)
-      throw new Error("No matching pending Codex request");
+      throw new StaleCodexRequestError("No matching pending Codex request");
     if (pending.answered) return;
     let result:
       | CommandExecutionRequestApprovalResponse

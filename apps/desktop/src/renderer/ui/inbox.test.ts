@@ -100,6 +100,7 @@ const tabs: Record<AttentionReason, string> = {
   failed: "activity",
   run_vanished: "activity",
   stalled: "activity",
+  idle_without_submission: "activity",
   status_unknown: "activity",
   observability_failure: "activity",
   over_budget: "activity",

@@ -634,6 +634,7 @@ export function Workbench() {
   };
   return (
     <div className="workbench">
+      <div className="wb-titlebar" aria-hidden="true" />
       {pendingTab && (
         <NewTerminalDialog
           initialName={`Terminal ${tabs.length + 1}`}

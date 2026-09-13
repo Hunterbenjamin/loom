@@ -108,6 +108,7 @@ export type AttentionReason =
   /** An interactive run vanished; only a human relaunches it. */
   | "run_vanished"
   | "stalled"
+  | "idle_without_submission"
   | "status_unknown"
   | "observability_failure"
   | "over_budget";
@@ -311,6 +312,8 @@ export interface Run {
   endReason: RunEndReason | null;
   seenAt?: IsoTime | null;
   unknownSince?: IsoTime | null;
+  /** Start of the current idle interval; absent on legacy runs, cleared on activity/status change. */
+  idleSince?: IsoTime | null;
   observedAttempt?: number;
   /** Attempts remain monotonic for action keys; human retry resets this budget offset. */
   retryBaseAttempt?: number;
@@ -339,6 +342,15 @@ export type DeliveryConfirmation =
   | { via: "codex_user_message_item"; turnId: string }
   | { via: "claude_user_prompt_submit"; promptId: string };
 
+/** Executor-owned timing and identity of one successful transport attempt. */
+export interface TransportAttempt {
+  startedAt: IsoTime;
+  completedAt: IsoTime;
+  sessionId: ProviderSessionId;
+  sessionEpoch: number;
+  runAttempt: number;
+}
+
 export interface Message {
   id: MessageId;
   runId: RunId;
@@ -350,7 +362,10 @@ export interface Message {
   attempts: number;
   /** Codex turn ID returned by `turn/start` or `turn/steer`. (ref) */
   transportRef: string | null;
+  /** Transport completion time; legacy records may contain reconciliation time. */
   sentAt: IsoTime | null;
+  /** Absent on records written before executor timing was persisted. */
+  transportAttempt?: TransportAttempt;
   delivered: (DeliveryConfirmation & { at: IsoTime }) | null;
   via?: import("./actions.js").SendVia;
   expectedTurnId?: string | null;

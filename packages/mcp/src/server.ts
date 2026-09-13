@@ -101,7 +101,7 @@ async function invoke(
   if (!identity)
     return failure("unknown_run", "The token does not identify a run");
   if (identity.kind === "lead" || identity.kind === "operator")
-    return failure("guard_failed", "Lead identity cannot call task-run tools");
+    return failure("guard_failed", "Main identity cannot call task-run tools");
   if (!identity.active)
     return failure("stale_run", "The run has ended or was superseded");
   const runId = runIdSchema.parse(identity.runId);
@@ -214,7 +214,10 @@ export function createMcpServer(
       return {
         tools: leadToolNames.map((name) => ({
           name,
-          description: `Lead: ${name.replaceAll("_", " ")}. Uses Loom's human commands and guards.`,
+          description:
+            name === "set_note"
+              ? "Replace Main's instance memory note (max 2000 characters); empty clears it."
+              : `Main: ${name.replaceAll("_", " ")}. Uses Loom's human commands and guards.`,
           inputSchema: z.toJSONSchema(leadInputSchemas[name] as z.ZodObject, {
             io: "input",
           }) as { type: "object" },
@@ -284,17 +287,17 @@ export function createMcpServer(
       if (!identity) return reply(failure("unknown_run", "Unknown identity"));
       if (identity.kind !== "lead")
         return reply(
-          failure("guard_failed", "Task-run identity cannot call Lead tools"),
+          failure("guard_failed", "Task-run identity cannot call Main tools"),
         );
       if (!identity.active)
-        return reply(failure("stale_run", "Lead session stopped"));
+        return reply(failure("stale_run", "Main session stopped"));
       const parsed = (leadInputSchemas[name] as z.ZodObject).safeParse(
         request.params.arguments ?? {},
       );
       if (!parsed.success)
         return reply(failure("invalid_input", "Tool input failed validation"));
       try {
-        if (!options.leadHost) throw new Error("Lead unavailable");
+        if (!options.leadHost) throw new Error("Main unavailable");
         return reply({
           ok: true,
           value: await options.leadHost.invoke(name, parsed.data),

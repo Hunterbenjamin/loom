@@ -17,6 +17,17 @@ export const id = text.min(1);
 export const count = z.number().int().nonnegative();
 export const positive = z.number().int().positive();
 export const time = z.iso.datetime();
+export const transportAttempt = z
+  .object({
+    startedAt: time,
+    completedAt: time,
+    sessionId: id,
+    sessionEpoch: count,
+    runAttempt: positive,
+  })
+  .refine((attempt) => attempt.completedAt >= attempt.startedAt, {
+    message: "Transport completion precedes its start",
+  });
 export const sha = text.regex(/^[0-9a-f]{40}$/);
 export const hash = text.regex(/^[0-9a-f]{64}$/);
 export const provider = z.enum(["codex", "claude"]);

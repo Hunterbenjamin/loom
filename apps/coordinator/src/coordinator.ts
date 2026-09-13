@@ -279,7 +279,7 @@ export class Coordinator {
     await this.recipes.load();
     await this.lead.load();
     await this.operator.load();
-    // Stable instance configuration wins; only ephemeral instances reuse the Lead recipe's port.
+    // Stable instance configuration wins; only ephemeral instances reuse the Main recipe's port.
     const mcpPort =
       this.config.mcpPort || this.lead.mcpPort || this.operator.mcpPort;
     try {
@@ -481,6 +481,8 @@ export class Coordinator {
       },
       leadHost: {
         invoke: async (name: string, input: Record<string, unknown>) => {
+          if (name === "set_note")
+            return this.lead.setNote(input.note as string);
           if (name === "list_tasks") return this.store.tasks();
           if (name === "list_repos") return this.store.repos();
           if (name === "inspect_task")
@@ -669,7 +671,7 @@ export class Coordinator {
       this.protocol.publish(changes);
       if (changes.length) void this.inventory.refresh();
     } catch {
-      this.log("Could not refresh Lead status");
+      this.log("Could not refresh Main status");
     } finally {
       this.pollingLead = false;
     }

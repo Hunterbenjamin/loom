@@ -97,6 +97,8 @@ export class Context {
         "schedule",
         "refresh",
         "disable_auto_merge",
+        // Each human answer is independent, including concurrent requests on one run.
+        "answer_provider_request",
       ].includes(full.kind)
         ? []
         : dependsOn,

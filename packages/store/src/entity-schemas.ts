@@ -36,6 +36,7 @@ import {
   stage,
   text,
   time,
+  transportAttempt,
 } from "./schema-helpers.js";
 
 export const repoSchema = contract<Repo>()(
@@ -58,6 +59,7 @@ const attentionReason = z.enum([
   "failed",
   "run_vanished",
   "stalled",
+  "idle_without_submission",
   "status_unknown",
   "over_budget",
   "observability_failure",
@@ -208,6 +210,7 @@ export const runSchema = contract<Run>()(
       .nullable(),
     seenAt: time.nullable().optional(),
     unknownSince: time.nullable().optional(),
+    idleSince: time.nullable().optional(),
     observedAttempt: count.optional(),
     retryBaseAttempt: count.optional(),
   }),
@@ -229,6 +232,7 @@ export const messageSchema = contract<Message>()(
     attempts: count,
     transportRef: text.nullable(),
     sentAt: time.nullable(),
+    transportAttempt: transportAttempt.optional(),
     delivered: z
       .union([
         z.object({

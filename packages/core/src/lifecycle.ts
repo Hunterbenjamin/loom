@@ -39,6 +39,7 @@ export function observeRuns(c: Context): void {
       continue;
     const derived = deriveStatus(run, observation);
     const provider = read(observation?.provider);
+    const previousStatus = run.status;
     run.status = derived.status;
     run.blockedOn = derived.blockedOn;
     if (
@@ -59,6 +60,33 @@ export function observeRuns(c: Context): void {
           summary: r.summary,
           receivedAt: r.receivedAt,
         }));
+        // Only a fresh, hydrated reading can retire requests. IDs are opaque and may
+        // coexist: a newer ID does not supersede an older one that is still pending.
+        for (const row of c.state.outbox) {
+          const action = row.action;
+          if (
+            action?.kind !== "answer_provider_request" ||
+            action.runId !== run.id
+          )
+            continue;
+          // Repair answers persisted before each request became independent.
+          if (row.status === "pending") row.dependsOn = [];
+          if (
+            !(
+              row.status === "pending" ||
+              row.status === "running" ||
+              (row.status === "failed" && row.retryAt)
+            ) ||
+            (action.generation === provider.generation &&
+              provider.pendingRequests.some(
+                (r) => r.requestId === action.requestId,
+              ))
+          )
+            continue;
+          row.status = "canceled";
+          row.finishedAt ??= c.now;
+          row.retryAt = undefined;
+        }
         const turn = provider.turns.at(-1);
         if (turn)
           run.lastTurn = {
@@ -89,6 +117,15 @@ export function observeRuns(c: Context): void {
       if (activity && (!run.lastActivityAt || activity > run.lastActivityAt))
         run.lastActivityAt = activity;
     }
+    if (run.status === "idle") {
+      run.idleSince =
+        previousStatus === "idle"
+          ? (run.idleSince ?? run.lastActivityAt ?? run.launchedAt ?? c.now)
+          : c.now;
+      // A turn can start and stop between polls. Native activity starts a fresh grace period.
+      if (run.lastActivityAt && run.lastActivityAt > run.idleSince)
+        run.idleSince = run.lastActivityAt;
+    } else run.idleSince = null;
     if (run.status === "unknown") {
       run.unknownSince ??= c.now;
       delete run.pendingDialog;
@@ -190,6 +227,18 @@ export function observeRuns(c: Context): void {
 }
 
 function launch(c: Context, run: Run, resume: boolean): void {
+  // Legacy ended runs can still carry attempted messages. Retire those before reusing
+  // the run ID, while preserving unsent follow-ups queued for this new launch.
+  if (run.endedAt)
+    for (const message of c.state.messages)
+      if (
+        message.runId === run.id &&
+        (message.status === "sent" ||
+          (message.status === "pending" && message.attempts > 0))
+      ) {
+        message.status = "failed";
+        message.deliveryAttention = false;
+      }
   const observation = c.observations.runs.find((o) => o.runId === run.id);
   // `resumable: false` only ever comes from a direct owner read (§5.2), so it rotates the session
   // even when the transcript read itself failed: a Codex thread without a rollout can't be read.
@@ -218,6 +267,7 @@ function launch(c: Context, run: Run, resume: boolean): void {
   c.result.capacityVersion = c.observations.capacity.version;
   c.reserved[run.provider]++;
   run.status = "starting";
+  run.idleSince = null;
   run.endedAt = null;
   run.endReason = null;
   run.retryAt = null;

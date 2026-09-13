@@ -35,6 +35,17 @@ export function actionResult(
       c.fail("action_failed", result.error.message);
     else if (result.error.code === "retryable") {
       const retry = c.state.config.retry;
+      if (
+        row.action.kind === "answer_provider_request" &&
+        row.attempts - (row.retryBaseAttempt ?? 0) >= retry.maxAttempts
+      ) {
+        row.retryAt = undefined;
+        c.fail(
+          "action_failed",
+          `Provider answer retries exhausted: ${row.key}: ${result.error.message}`,
+        );
+        return null;
+      }
       row.retryAt = later(
         c.now,
         Math.min(
@@ -48,6 +59,14 @@ export function actionResult(
         why: "retry",
       });
     } else {
+      if (row.action.kind === "answer_provider_request") {
+        c.emit(`schedule:${input.key}:provider`, {
+          kind: "schedule",
+          at: c.now,
+          why: "poll",
+        });
+        return null;
+      }
       c.emit(`refresh:${input.key}:git`, { kind: "refresh", owner: "git" });
       c.emit(`refresh:${input.key}:github`, {
         kind: "refresh",
@@ -125,9 +144,12 @@ export function actionResult(
     case "send_message": {
       if (action.kind !== "send_message") break;
       const message = c.state.messages.find((m) => m.id === action.messageId);
-      if (message && message.status !== "delivered") {
+      const run = c.state.runs.find((r) => r.id === action.runId);
+      if (message && run && !run.endedAt && message.status !== "delivered") {
         message.status = "sent";
-        message.sentAt = c.now;
+        message.transportAttempt = result.output.transportAttempt;
+        message.sentAt =
+          result.output.transportAttempt?.completedAt ?? input.receivedAt;
         message.transportRef = result.output.transportRef;
       }
       break;

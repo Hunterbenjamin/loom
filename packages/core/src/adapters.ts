@@ -297,6 +297,8 @@ export interface ClaudeAdapter {
    * `--settings` file with HTTP hooks, the SessionStart command hook and Loom's MCP server.
    */
   interactiveArgs(req: {
+    /** Conversation sessions: only Loom MCP and read-only file tools, confined to cwd. */
+    conversationOnly?: boolean;
     sessionId: ProviderSessionId;
     resume: boolean;
     model: string;

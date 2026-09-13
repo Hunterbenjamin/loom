@@ -166,6 +166,42 @@ describe("createClaudeAdapter", () => {
     ]);
   });
 
+  test.each([false, true])(
+    "conversation argv restricts tools on launch and resume (%s)",
+    (resume) => {
+      const args = adapter.interactiveArgs({
+        sessionId: SESSION,
+        resume,
+        model: "haiku",
+        settingsPath: "/runs/main/settings.json",
+        readOnly: true,
+        conversationOnly: true,
+      });
+      expect(args).toContain(resume ? "--resume" : "--session-id");
+      expect(args[args.indexOf("--disallowedTools") + 1]?.split(",")).toEqual([
+        "Bash",
+        "Edit",
+        "Write",
+        "MultiEdit",
+        "NotebookEdit",
+        "WebFetch",
+        "WebSearch",
+        "Task",
+      ]);
+      expect(args[args.indexOf("--tools") + 1]).toBe("Read,Glob,Grep");
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "--restricted",
+          "--strict-mcp-config",
+          "--disable-slash-commands",
+          "--no-chrome",
+        ]),
+      );
+      expect(args[args.indexOf("--permission-mode") + 1]).toBe("dontAsk");
+      expect(args).not.toContain("bypassPermissions");
+    },
+  );
+
   test("headlessState is null for a session this coordinator didn't launch", async () => {
     expect(await adapter.headlessState(SESSION)).toBeNull();
     await expect(

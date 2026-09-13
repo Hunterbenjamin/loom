@@ -89,6 +89,21 @@ describe("round trips", () => {
     expect(parsed).toEqual(body);
   });
 
+  it("carries idle submission attention and its interval through a snapshot", () => {
+    const body = snapshot();
+    const idleRun = body.runs[0];
+    const idleTask = body.tasks[0];
+    if (!idleRun || !idleTask) throw new Error("missing fixture");
+    const at = idleTask.createdAt;
+    idleRun.idleSince = at;
+    idleTask.attention = {
+      reasons: ["idle_without_submission"],
+      reasonSince: { idle_without_submission: at },
+      since: at,
+    };
+    expect(snapshotBody.parse(JSON.parse(JSON.stringify(body)))).toEqual(body);
+  });
+
   const cases: [string, z.ZodType, unknown][] = [
     ["repo", repo, snapshot().repos[0]],
     ["task", task, snapshot().tasks[0]],

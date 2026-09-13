@@ -7,10 +7,16 @@ import {
   fixture,
   now,
 } from "../test/fixtures.js";
-import type { Action, Run, RunObservation } from "./index.js";
+import type {
+  Action,
+  IsoTime,
+  Run,
+  RunObservation,
+  TransportAttempt,
+} from "./index.js";
 import { normalizeText, reconcile } from "./index.js";
 
-function prepared(provider: "codex" | "claude" = "codex", working = false) {
+function queued(provider: "codex" | "claude" = "codex", working = false) {
   const f = fixture();
   const run = f.state.runs.find((r) => r.provider === provider) as Run;
   const observation = f.observations.runs.find(
@@ -37,13 +43,16 @@ function prepared(provider: "codex" | "claude" = "codex", working = false) {
   const action = initial.actions.find(
     (a) => a.kind === "send_message",
   ) as Action;
+  return { ...f, run, observation, action, state: initial.next };
+}
+function prepared(provider: "codex" | "claude" = "codex", working = false) {
+  const f = queued(provider, working);
   f.observations.inputs = [
-    actionInput(action, {
+    actionInput(f.action, {
       transportRef: provider === "codex" ? "turn1" : null,
     }),
   ];
-  const sent = reconcile(initial.next, f.observations);
-  return { ...f, run, observation, action, state: sent.next };
+  return { ...f, state: reconcile(f.state, f.observations).next };
 }
 describe("delivery requires provider evidence", () => {
   it("normalizes tabs and CRLF before hashing", () => {
@@ -223,5 +232,271 @@ describe("delivery requires provider evidence", () => {
         (a) => a.kind === "send_message",
       ),
     ).toBe(false);
+  });
+});
+
+describe("executor timing survives delayed reconciliation", () => {
+  const startedAt = "2026-09-12T00:00:01.000Z" as IsoTime;
+  const hookAt = "2026-09-12T00:00:02.000Z" as IsoTime;
+  const completedAt = "2026-09-12T00:00:03.000Z" as IsoTime;
+  const reconciledAt = "2026-09-12T00:00:40.000Z" as IsoTime;
+
+  function delayed() {
+    const f = queued("claude");
+    const p = f.observation.provider;
+    if (!p.ok || p.value?.provider !== "claude") throw Error("Missing Claude");
+    const transportAttempt: TransportAttempt = {
+      startedAt,
+      completedAt,
+      sessionId: p.value.sessionId,
+      sessionEpoch: f.run.sessionEpoch,
+      runAttempt: f.run.attempts,
+    };
+    p.at = reconciledAt;
+    p.value.hooks.promptSubmits = [
+      {
+        promptId: "early-hook",
+        textHash: f.state.messages[0]?.textHash ?? "",
+        at: hookAt,
+      },
+    ];
+    f.observations.now = reconciledAt;
+    const input = actionInput(f.action, {
+      transportRef: null,
+      transportAttempt,
+    });
+    input.receivedAt = completedAt;
+    f.observations.inputs = [input];
+    return { ...f, provider: p.value, transportAttempt };
+  }
+
+  it("accepts an early hook after delayed action result and releases the follow-up exactly once", () => {
+    const f = delayed();
+    // The hook can be observed while the transport result is still pending.
+    const waiting = fixed(f.state, { ...f.observations, inputs: [] });
+    expect(waiting.next.messages[0]?.status).toBe("pending");
+    expect(waiting.actions.some((a) => a.kind === "send_message")).toBe(false);
+    const r = fixed(waiting.next, f.observations);
+    expect(r.next.messages[0]).toMatchObject({
+      status: "delivered",
+      sentAt: completedAt,
+      transportAttempt: f.transportAttempt,
+      delivered: { promptId: "early-hook", at: hookAt },
+      deliveryAttention: false,
+    });
+    expect(r.actions.some((a) => a.kind === "send_message")).toBe(false);
+    expect(r.transitions).toEqual([]);
+    f.observations.inputs = [
+      command(
+        {
+          type: "send_message",
+          runId: f.run.id,
+          text: "Fix the review findings",
+        },
+        "follow-up",
+      ),
+    ];
+    const follow = fixed(r.next, f.observations);
+    expect(
+      follow.actions.filter((a) => a.kind === "send_message"),
+    ).toHaveLength(1);
+    expect(
+      fixed(follow.next, f.observations).actions.filter(
+        (a) => a.kind === "send_message",
+      ),
+    ).toHaveLength(0);
+  });
+
+  for (const invalid of [
+    "old receipt",
+    "wrong hash",
+    "wrong session",
+    "old epoch",
+    "old run attempt",
+  ] as const) {
+    it(`rejects ${invalid} despite delayed reconciliation`, () => {
+      const f = delayed();
+      const receipt = f.provider.hooks.promptSubmits[0];
+      if (!receipt) throw Error("Missing receipt");
+      if (invalid === "old receipt") receipt.at = now;
+      if (invalid === "wrong hash") receipt.textHash = "different";
+      if (invalid === "wrong session")
+        f.provider.sessionId = "other-session" as typeof f.run.sessionId &
+          string;
+      if (invalid === "old epoch") f.transportAttempt.sessionEpoch++;
+      if (invalid === "old run attempt") f.transportAttempt.runAttempt++;
+      const r = fixed(f.state, f.observations);
+      expect(r.next.messages[0]?.status).not.toBe("delivered");
+      expect(r.next.messages[0]?.delivered).toBeNull();
+      expect(r.actions.some((a) => a.kind === "send_message")).toBe(false);
+    });
+  }
+
+  it("unblocks an already queued fix_round when the original's early hook is reconciled", () => {
+    const f = delayed();
+    const original = f.state.messages[0];
+    if (!original) throw Error("Missing original");
+    original.purpose = "initial";
+    f.state.messages.push({
+      ...original,
+      id: `${original.id}:fix` as typeof original.id,
+      purpose: "fix_round",
+      text: "Fix review findings",
+      textHash: config.sha256("Fix review findings"),
+      status: "pending",
+      attempts: 0,
+    });
+    const waiting = fixed(f.state, { ...f.observations, inputs: [] });
+    expect(waiting.actions.some((a) => a.kind === "send_message")).toBe(false);
+    const r = fixed(waiting.next, f.observations);
+    expect(r.next.messages[0]?.status).toBe("delivered");
+    expect(r.actions.filter((a) => a.kind === "send_message")).toMatchObject([
+      { messageId: `${original.id}:fix` },
+    ]);
+    // Replayed action results with a different inbox ID cannot regress delivery or resend.
+    const duplicate = {
+      ...f.observations.inputs[0],
+      id: "duplicate-result",
+    } as (typeof f.observations.inputs)[number];
+    const replayed = fixed(r.next, { ...f.observations, inputs: [duplicate] });
+    expect(replayed.next.messages[0]?.status).toBe("delivered");
+    expect(replayed.actions.some((a) => a.kind === "send_message")).toBe(false);
+  });
+
+  it("never retries a previous session's sent message into the replacement session", () => {
+    const f = delayed();
+    f.transportAttempt.sessionEpoch++;
+    f.provider.hooks.promptSubmits = [];
+    const r = fixed(f.state, f.observations);
+    expect(r.next.messages[0]).toMatchObject({
+      status: "failed",
+      deliveryAttention: false,
+    });
+    expect(r.actions.some((a) => a.kind === "send_message")).toBe(false);
+    expect(r.next.task.attention.reasons).not.toContain("provider_input");
+  });
+
+  it("does not let a receipt from the first send acknowledge the retry", () => {
+    const f = prepared("claude");
+    f.observations.now = "2026-09-12T00:00:11.000Z" as IsoTime;
+    const retry = fixed(f.state, f.observations);
+    const action = retry.actions.find((a) => a.kind === "send_message");
+    if (!action) throw Error("Missing retry");
+    const p = f.observation.provider;
+    if (!p.ok || p.value?.provider !== "claude") throw Error("Missing Claude");
+    p.at = reconciledAt;
+    p.value.hooks.promptSubmits = [
+      {
+        promptId: "old-attempt",
+        textHash: f.state.messages[0]?.textHash ?? "",
+        at: hookAt,
+      },
+    ];
+    f.observations.now = reconciledAt;
+    f.observations.inputs = [
+      actionInput(
+        action,
+        {
+          transportRef: null,
+          transportAttempt: {
+            startedAt: "2026-09-12T00:00:12.000Z",
+            completedAt: "2026-09-12T00:00:13.000Z",
+            sessionId: f.run.sessionId,
+            sessionEpoch: f.run.sessionEpoch,
+            runAttempt: f.run.attempts,
+          },
+        },
+        "retry-result",
+      ),
+    ];
+    const r = fixed(retry.next, f.observations);
+    expect(r.next.messages[0]).toMatchObject({
+      status: "sent",
+      attempts: 2,
+      delivered: null,
+      deliveryAttention: true,
+    });
+    expect(r.actions.some((a) => a.kind === "send_message")).toBe(false);
+  });
+
+  it("uses persisted receipt time for legacy action results", () => {
+    const f = queued("claude");
+    f.observations.now = reconciledAt;
+    const input = actionInput(f.action, { transportRef: null });
+    input.receivedAt = completedAt;
+    f.observations.inputs = [input];
+    expect(fixed(f.state, f.observations).next.messages[0]?.sentAt).toBe(
+      completedAt,
+    );
+  });
+
+  it("retires a legacy sent message before resuming the same run ID", () => {
+    const f = prepared("claude");
+    const old = f.state.runs.find((r) => r.id === f.run.id);
+    const original = f.state.messages[0];
+    if (!old || !original) throw Error("Missing history");
+    old.endedAt = now;
+    old.endReason = "submitted";
+    old.status = "ended";
+    original.deliveryAttention = true;
+    f.state.desiredRun = { role: old.role, round: old.round, resume: true };
+    f.state.messages.push({
+      ...original,
+      id: `${original.id}:follow` as typeof original.id,
+      purpose: "fix_round",
+      status: "pending",
+      attempts: 0,
+      sentAt: null,
+      deliveryAttention: false,
+    });
+    f.observations.inputs = [];
+    const launched = fixed(f.state, f.observations);
+    expect(launched.next.messages[0]).toMatchObject({
+      status: "failed",
+      deliveryAttention: false,
+    });
+    const action = launched.actions.find((a) => a.kind === "start_run");
+    if (!action) throw Error("Missing launch");
+    f.observations.inputs = [
+      actionInput(
+        action,
+        { sessionId: old.sessionId, codexGeneration: null, pane: null },
+        "launch-result",
+      ),
+    ];
+    const ready = fixed(launched.next, f.observations);
+    expect(
+      ready.actions.filter((a) => a.kind === "send_message"),
+    ).toMatchObject([{ messageId: `${original.id}:follow` }]);
+    expect(ready.next.task.attention.reasons).not.toContain("provider_input");
+  });
+
+  it("ignores historical sent messages and their attention when a different run sends", () => {
+    const f = prepared("claude");
+    const old = f.state.runs.find((r) => r.id === f.run.id);
+    const message = f.state.messages[0];
+    if (!old || !message) throw Error("Missing history");
+    old.endedAt = now;
+    old.endReason = "submitted";
+    old.status = "ended";
+    message.deliveryAttention = true;
+    const current = f.state.runs.find((r) => r.role === "implementer");
+    if (!current) throw Error("Missing new run");
+    f.observations.now = reconciledAt;
+    f.observations.inputs = [
+      command(
+        { type: "send_message", runId: current.id, text: "Fix findings" },
+        "new-run-message",
+      ),
+    ];
+    const r = fixed(f.state, f.observations);
+    expect(r.next.task.attention.reasons).not.toContain("provider_input");
+    expect(r.actions.filter((a) => a.kind === "send_message")).toMatchObject([
+      { runId: current.id },
+    ]);
+    expect(r.next.messages[0]).toMatchObject({
+      status: "sent",
+      delivered: null,
+    });
   });
 });

@@ -45,11 +45,11 @@ Closing a window closes only its viewers; the coordinator owns durable task stat
   `g` focuses the fuzzy agent filter; `?` opens the map. The prefix expires after 1.5 seconds;
   Escape cancels it, Ctrl+A Ctrl+A sends a literal Ctrl+A, and an unknown suffix cancels and
   passes through normally. Each action has the same dispatcher in the Command+K palette.
-  Directional focus returns input focus to xterm. Command+J toggles the shared Lead panel.
+  Directional focus returns input focus to xterm. Command+J toggles the shared Main panel.
 - **Attention:** the separate agent count counts distinct flagged panes from coordinator attention,
-  including Lead's native waiting status. It does not count reason rows. Workbench attention
+  including Main's native waiting status. It does not count reason rows. Workbench attention
   navigation clears any hiding filter and selects the first flagged pane in sidebar order.
-  The Lead toggle retains Tracker's existing inbox reason count and restart behavior.
+  The Main toggle retains Tracker's existing inbox reason count and restart behavior.
 - **Terminals:** each panel owns an independent authenticated attach client. Mode/window teardown
   kills only that client. Explicit Close terminal also asks the coordinator to end the native pane. Electron keys resources by webContents and panel/client identity,
   including pending spawns and late exit callbacks. Metadata patches update labels without
@@ -94,13 +94,14 @@ in the latency numbers.
   window closing;
 - an exported attention derivation in `packages/core`, so the UI never re-implements the rule.
 
-## Lead
+## Main
 
-Every window has a 34px bottom bar: connection state and instance on the left, and a Lead toggle
-with the number of Needs-you rows on the right. `⌘J` opens or closes Lead, including while typing
+Every window has a 34px bottom bar: connection state and instance on the left, and a Main toggle
+with the number of Needs-you rows on the right. `⌘J` opens or closes Main, including while typing
 in its terminal. The panel overlays the lower third of the window. Its top edge supports pointer
 and arrow-key resizing; height and visibility live only in that window's memory. Closing detaches
-that terminal client and leaves the session running. Reopening attaches again. Toggle and resize
+that terminal client and leaves the session running. Reopening attaches again and, if native status is idle with no pending dialog, requests a short
+Needs-you summary. The palette command **Open Main** opens the same panel. Toggle and resize
 state belong to the bar component, so neither updates the task store nor re-renders the task list.
 The terminal module loads only when first opened, preserving the cold-start path.
 
@@ -109,7 +110,7 @@ An absent or unavailable provider observation is unknown, never inferred from te
 Restart stops the session, revokes its token and opens a fresh session through the same attach flow.
 Fixture mode previews the bar and terminal without contacting a coordinator or launching an agent.
 
-Lead is one interactive Claude session per instance, not a task run. The coordinator persists its
+Main is one interactive Claude session per instance, not a task run. The coordinator persists its
 session ID, private token, launch recipe and per-session settings under `<instance data>/lead/`
 before launching in the instance data directory. Its fixed pane workspace is `lead` (`loom-lead`
 on the instance's private tmux server). `LOOM_MODEL_LEAD` overrides the configured Claude model.
@@ -117,18 +118,20 @@ on the instance's private tmux server). `LOOM_MODEL_LEAD` overrides the configur
 creates the pane. `stop_lead_session` records the stop before closing the pane. Startup recovery
 relaunches a confirmed dead pane from the recipe, resumes a session with a provider-confirmed
 transcript, and leaves a missing pane alone until an explicit open. The configured stable MCP port
-takes precedence; an instance using ephemeral ports rebinds the saved Lead port on restart so an
-existing process keeps its endpoint. Lead settings are rewritten during recovery to use the current
+takes precedence; an instance using ephemeral ports rebinds the saved Main port on restart so an
+existing process keeps its endpoint. Main settings are rewritten during recovery to use the current
 endpoint. A conflicting listener causes startup to fail rather than silently changing that endpoint.
 
-Lead's token selects a separate MCP tool set on the coordinator's existing host: `list_tasks`,
+Main's token selects a separate MCP tool set on the coordinator's existing host: `list_tasks`,
 `inspect_task`, `create_task`, `move_task`, `approve_plan`, `reject_plan`, `approve_merge`,
 `request_changes`, `answer_question`, `answer_provider_request`, `retry_task`, `cancel_task`, and
-`list_repos`. Inspection uses the same view as `loom task inspect --json`. Mutations use the CLI's
+`list_repos`, plus `set_note` for its bounded instance memory. Inspection uses the same view as `loom task inspect --json`. Mutations use the CLI's
 human-command path and keep every core guard; an input acknowledgement means queued, not approved.
-Task-run tokens cannot call these tools, and Lead cannot call task-run result tools. Its first
-message requires repository work to become Loom tasks and forbids merging or pushing to a base
-branch. The task model, core stages and reconciler are unchanged.
+Task-run tokens cannot call these tools, and Main cannot call task-run result tools. Its first
+message includes `main-notes` as context and requires a two-sentence introduction followed by waiting.
+Work longer than a few seconds becomes a task. The launch denies shell, editing, web and subagent
+tools, exposes only Loom MCP plus read-only file tools in the instance directory, and grants no
+terminal attach capability to Main. The human can still attach to Main through this panel. The task model, core stages and reconciler are unchanged.
 
 ## Performance
 
@@ -166,7 +169,7 @@ finished-turn icon while the agent terminal stays open. Idle and unknown status 
 ### Flat terminal navigation
 
 Workbench lists actual terminals directly, without task/issue groups or issue titles. Main and
-Operator are always pinned above the scrollable terminal list. Main attaches the existing Lead
+Operator are always pinned above the scrollable terminal list. Main attaches the existing `lead`
 identity; Operator attaches its interactive session, with the same durable queue and policy
 checks as before. Both reuse their pinned tabs. Their Hide agent view button only detaches the viewer; stopping
 an agent uses its existing agent/task controls. Opening a workspace reserves its tmux session

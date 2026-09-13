@@ -37,8 +37,13 @@ export function LeadBar({ onAttention }: { onAttention?: () => void } = {}) {
         setOpen((value) => !value);
       }
     };
+    const show = () => setOpen(true);
+    window.addEventListener("loom:open-main", show);
     window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("loom:open-main", show);
+      window.removeEventListener("keydown", key);
+    };
   }, []);
   const resize = (value: number) =>
     setHeight(Math.max(160, Math.min(window.innerHeight - 100, value)));
@@ -55,7 +60,7 @@ export function LeadBar({ onAttention }: { onAttention?: () => void } = {}) {
       setGeneration((value) => value + 1);
     } catch (error) {
       setError(
-        error instanceof Error ? error.message : "Could not restart Lead",
+        error instanceof Error ? error.message : "Could not restart Main",
       );
     } finally {
       setRestarting(false);
@@ -66,12 +71,12 @@ export function LeadBar({ onAttention }: { onAttention?: () => void } = {}) {
       {open ? (
         <section
           className="lead-panel"
-          aria-label="Lead panel"
+          aria-label="Main panel"
           style={{ height }}
         >
           <hr
             className="lead-resize"
-            aria-label="Resize Lead panel"
+            aria-label="Resize Main panel"
             aria-orientation="horizontal"
             aria-valuenow={height}
             tabIndex={0}
@@ -97,7 +102,7 @@ export function LeadBar({ onAttention }: { onAttention?: () => void } = {}) {
             }}
           />
           <header className="lead-header">
-            <strong>Lead</strong>
+            <strong>Main</strong>
             <span role="status">{live ? status : "idle · preview"}</span>
             <span className="spacer" />
             <button
@@ -109,7 +114,7 @@ export function LeadBar({ onAttention }: { onAttention?: () => void } = {}) {
             </button>
             <button
               type="button"
-              aria-label="Close Lead"
+              aria-label="Close Main"
               onClick={() => {
                 setOpen(false);
                 toggle.current?.focus();
@@ -119,10 +124,10 @@ export function LeadBar({ onAttention }: { onAttention?: () => void } = {}) {
             </button>
           </header>
           {error ? <div role="alert">{error}</div> : null}
-          <Suspense fallback={<div className="pad faint">Opening Lead…</div>}>
+          <Suspense fallback={<div className="pad faint">Opening Main…</div>}>
             <Terminal
               key={generation}
-              label="Lead"
+              label="Main"
               lead
               live={live}
               theme={theme}
@@ -167,7 +172,7 @@ export function LeadBar({ onAttention }: { onAttention?: () => void } = {}) {
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
         >
-          Lead <span className="lead-badge">{count}</span>
+          Main <span className="lead-badge">{count}</span>
           <kbd>⌘J</kbd>
         </button>
       </footer>

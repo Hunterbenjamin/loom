@@ -92,6 +92,7 @@ export const attentionReason = z.enum([
   "failed",
   "run_vanished",
   "stalled",
+  "idle_without_submission",
   "status_unknown",
   "observability_failure",
   "over_budget",
@@ -271,6 +272,7 @@ export const run = z.strictObject({
     .nullable(),
   seenAt: isoTime.nullable().optional(),
   unknownSince: isoTime.nullable().optional(),
+  idleSince: isoTime.nullable().optional(),
   observedAttempt: count.optional(),
   retryBaseAttempt: count.optional(),
 });
@@ -293,6 +295,18 @@ export const message = z.strictObject({
   attempts: count,
   transportRef: z.string().min(1).nullable(),
   sentAt: isoTime.nullable(),
+  transportAttempt: z
+    .strictObject({
+      startedAt: isoTime,
+      completedAt: isoTime,
+      sessionId: providerSessionId,
+      sessionEpoch: count,
+      runAttempt: z.number().int().positive(),
+    })
+    .refine((attempt) => attempt.completedAt >= attempt.startedAt, {
+      message: "Transport completion precedes its start",
+    })
+    .optional(),
   delivered: z
     .union([
       z.strictObject({
