@@ -220,6 +220,42 @@ it.each(["dead", "unlinked"])(
   },
 );
 
+it("refuses recovery while an unended run owns a recorded session", async () => {
+  const diagnostics: import("@loom/core").AdapterDiagnostic[] = [];
+  const first = new TaskServer(directory, executable);
+  const recovered = new TaskServer(
+    directory,
+    executable,
+    join(directory, "missing-auth"),
+    (event) => diagnostics.push(event),
+    async () => ["live-reviewer-thread"],
+  );
+  try {
+    await first.start();
+    const pid = await pidOf();
+    const owner = await readFile(first.pidfile, "utf8");
+    // Force recovery down the verified stale-owner path without changing process identity.
+    await unlink(first.socket);
+    await expect(recovered.start()).rejects.toThrow(
+      "unended Codex run still owns a recorded session",
+    );
+    expect(() => process.kill(pid, 0)).not.toThrow();
+    expect(await readFile(first.pidfile, "utf8")).toBe(owner);
+    expect(await spawns()).toEqual([pid]);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        kind: "stale_process",
+        resource: "codex_server",
+        sessionId: "live-reviewer-thread",
+        message: expect.stringContaining("Refusing to recover"),
+      }),
+    ]);
+  } finally {
+    await recovered.stop();
+    await first.stop();
+  }
+});
+
 it("serializes simultaneous starts from independent adapters", async () => {
   const first = createCodexAdapter({ taskDirectory: directory, executable });
   const second = createCodexAdapter({ taskDirectory: directory, executable });

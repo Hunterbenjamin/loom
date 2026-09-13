@@ -348,10 +348,8 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
         );
         if (!row) throw new TmuxError("session_not_found", parsed.sessionId);
         if (
-          [MONITOR_SESSION, "loom-lead", "loom-main", "loom-operator"].includes(
-            parsed.name,
-          ) ||
-          ["loom-lead", "loom-main", "loom-operator"].includes(row.sessionName)
+          [MONITOR_SESSION, "loom-lead", "loom-main"].includes(parsed.name) ||
+          ["loom-lead", "loom-main"].includes(row.sessionName)
         )
           throw new TmuxError("reserved_session_name");
         if (row.sessionName === parsed.name) return;

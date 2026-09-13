@@ -220,7 +220,6 @@ export function toSnapshot(fixture: Snapshot): {
       pullRequestLists: [],
       pullRequests: fixture.pullRequests,
       pullRequestDetails: [],
-      operators: [],
       notes: [],
       panes: [],
       paneInventory: [],

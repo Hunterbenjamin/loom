@@ -1,3 +1,4 @@
+import { automate } from "./automation.js";
 import { Context } from "./context.js";
 import { delivery } from "./delivery.js";
 import { attention, budget, reconcileFlags } from "./flags.js";
@@ -67,6 +68,7 @@ export const reconcile: Reconcile = (state, observations) => {
   startDesired(c);
   retireFinishedPanes(c);
   delivery(c);
+  automate(c);
   attention(c);
   if (!structurallyEqual(c.state, state)) {
     c.task.version = state.task.version + 1;

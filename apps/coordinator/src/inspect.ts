@@ -26,10 +26,10 @@ export function inspectTask(store: Store, taskId: TaskId, adapters?: Adapters) {
   );
 
   return {
-    notes: store.operator.notes(taskId),
+    notes: store.mainMessages.notes(taskId),
     reviewHistory: state.findings,
     task: {
-      signature: store.operator.signature(taskId),
+      signature: task.signature ?? null,
       id: task.id,
       title: task.title,
       stage: task.stage,

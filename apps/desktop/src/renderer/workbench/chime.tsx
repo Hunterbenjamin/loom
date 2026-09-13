@@ -13,7 +13,6 @@ function focused(store: Store, pane: PaneView) {
     : store.focusedPane();
   if (target === "main")
     return pane.sessionName === `loom-lead-${store.getState().ui.repo}`;
-  if (target === "operator") return pane.sessionName === "loom-operator";
   return target !== undefined && paneKey(target) === paneKey(pane);
 }
 

@@ -14,7 +14,7 @@ test("Main introduces itself in two sentences, waits and delegates longer work",
   expect(prompt).toContain(
     "Anything longer than a few seconds must become a Loom issue via create_task",
   );
-  expect(prompt).toContain("Operator and issue agents will handle");
+  expect(prompt).toContain("issue agents will handle");
   expect(prompt).toContain("Never poll");
   expect(prompt).toContain("No shell, terminal attach");
 });
@@ -33,13 +33,11 @@ test("Main reads its bounded memory as context, and panel summaries do not start
   expect(mainPanelBrief()).toContain("end your turn and wait");
 });
 
-test("Main messages never make it wait, and summaries mention unread replies", () => {
-  const prompt = leadBrief("", "example/repo", [
-    { body: "A decision is needed", taskId: "t" },
-  ]);
-  expect(prompt).toContain("first message must also briefly mention");
-  expect(prompt).toContain("A decision is needed");
+test("Main messages never wait and have no Operator reply plumbing", () => {
+  const prompt = leadBrief("", "example/repo");
   expect(prompt).toContain("Never wait for the answer");
   expect(prompt).toContain("Never use it to drive an agent's work");
-  expect(mainPanelBrief()).toContain("unread replies addressed to Main");
+  expect(prompt).not.toContain("Operator");
+  expect(prompt).not.toContain("read_agent_replies");
+  expect(mainPanelBrief()).not.toContain("read_agent_replies");
 });

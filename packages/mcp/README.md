@@ -197,7 +197,7 @@ Main tools by name, and Main cannot invoke run-result tools. A stopped Main toke
 
 `set_note({note})` is Main-only and returns `{recorded: true}` after the coordinator replaces
 its private instance `main-notes` document. Notes are at most 2,000 characters; empty clears them.
-Task-run, Operator and stopped Main identities cannot update it. Every Main launch includes the note.
+Task-run and stopped Main identities cannot update it. Every Main launch includes the note.
 
 Main task mutations return the same command outcome as the CLI, inside the MCP result's `value`.
 A `human` outcome records an inbox input, not a passed guard; `inspect_task` reads the current

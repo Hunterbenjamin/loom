@@ -46,14 +46,7 @@ export interface SettingsValues {
     baseBranch: string;
     serialTests: boolean;
   };
-  operator: {
-    policy: "v1";
-    model: string | null;
-    leadModel: string | null;
-    repoId: string | null;
-    autoFix: ("pass_failed" | "publish_failed" | "stale_process")[];
-    maxFiledPerHour: number;
-  };
+  main: { model: string | null };
   runtime: {
     capTotal: number;
     capCodex: number;
@@ -88,7 +81,7 @@ export type SettingsPatch = {
   roles?: Partial<Record<Role, Partial<RoleProfile>>>;
   workflow?: Partial<SettingsValues["workflow"]>;
   repository?: Partial<SettingsValues["repository"]>;
-  operator?: Partial<SettingsValues["operator"]>;
+  main?: Partial<SettingsValues["main"]>;
   runtime?: Partial<SettingsValues["runtime"]>;
   appearance?: Partial<SettingsValues["appearance"]>;
 };
@@ -106,7 +99,7 @@ export interface SettingDefinition {
     | "Workflow & approvals"
     | "Repositories"
     | "Access & safety"
-    | "Operator & Main"
+    | "Main"
     | "Terminals & keybindings"
     | "GitHub"
     | "Appearance"
@@ -183,14 +176,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
     mergePolicy: "require-human",
   },
   repository: { baseBranch: "main", serialTests: false },
-  operator: {
-    policy: "v1",
-    model: null,
-    leadModel: null,
-    repoId: null,
-    autoFix: [],
-    maxFiledPerHour: 5,
-  },
+  main: { model: null },
   runtime: {
     capTotal: 4,
     capCodex: 3,
@@ -380,51 +366,11 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
     scopes: [...BOTH],
   },
   {
-    key: "operator.policy",
-    section: "Operator & Main",
-    label: "Operator policy",
-    timing: "restart-required",
-    scopes: [...GLOBAL],
-    readOnly: true,
-  },
-  {
-    key: "operator.model",
-    section: "Operator & Main",
-    label: "Operator model",
-    timing: "next-run",
-    environment: "LOOM_MODEL_OPERATOR",
-    scopes: [...GLOBAL],
-  },
-  {
-    key: "operator.leadModel",
-    section: "Operator & Main",
+    key: "main.model",
+    section: "Main",
     label: "Main model",
     timing: "next-run",
     environment: "LOOM_MODEL_LEAD",
-    scopes: [...GLOBAL],
-  },
-  {
-    key: "operator.repoId",
-    section: "Operator & Main",
-    label: "Operator repository",
-    timing: "next-run",
-    environment: "LOOM_OPERATOR_REPO",
-    scopes: [...GLOBAL],
-  },
-  {
-    key: "operator.autoFix",
-    section: "Operator & Main",
-    label: "Automatic fixes",
-    timing: "immediate",
-    environment: "LOOM_OPERATOR_AUTO_FIX",
-    scopes: [...GLOBAL],
-  },
-  {
-    key: "operator.maxFiledPerHour",
-    section: "Operator & Main",
-    label: "Maximum filed per hour",
-    timing: "immediate",
-    environment: "LOOM_OPERATOR_MAX_FILED_PER_HOUR",
     scopes: [...GLOBAL],
   },
   {
@@ -553,7 +499,7 @@ const merge = (
     } as SettingsValues["roles"],
     workflow: { ...base.workflow, ...patch.workflow },
     repository: { ...base.repository, ...patch.repository },
-    operator: { ...base.operator, ...patch.operator },
+    main: { ...base.main, ...patch.main },
     runtime: { ...base.runtime, ...patch.runtime },
     appearance: { ...base.appearance, ...patch.appearance },
   };
@@ -596,14 +542,8 @@ export function validateSettings(values: SettingsValues): string[] {
       values.workflow.budgetMinutes < 1)
   )
     errors.push("Budget must be null or a positive integer");
-  if (
-    !Number.isInteger(values.operator.maxFiledPerHour) ||
-    values.operator.maxFiledPerHour < 1
-  )
-    errors.push("Maximum filed per hour must be positive");
   if (!values.repository.baseBranch.trim())
     errors.push("Base branch is required");
-  if (values.operator.policy !== "v1") errors.push("Unknown Operator policy");
   if (
     values.appearance.keyPrefix !== null &&
     !values.appearance.keyPrefix.trim()

@@ -115,17 +115,6 @@ export const configSchema = z
     hookPort: port.optional(),
     /** Compared in constant time on every `hello`. Absence is an error, not an open socket. */
     token: z.string().min(16),
-    operatorModel: z.string().min(1).optional(),
-    operator: z
-      .object({
-        policy: z.literal("v1").default("v1"),
-        autoFix: z
-          .array(z.enum(["pass_failed", "publish_failed", "stale_process"]))
-          .default([]),
-        maxFiledPerHour: z.number().int().positive().default(5),
-        repoId: z.string().min(1).optional(),
-      })
-      .prefault({}),
     leadModel: z.string().min(1).optional(),
     models: z.object({ codex: z.string().min(1), claude: z.string().min(1) }),
     providerOverrides: z
@@ -257,14 +246,6 @@ export function configFromEnvironment(
       reviewer: optional("LOOM_PROVIDER_REVIEWER"),
     },
     codexReasoningEffort: optional("LOOM_CODEX_REASONING_EFFORT"),
-    operatorModel: optional("LOOM_MODEL_OPERATOR"),
-    operator: {
-      repoId: optional("LOOM_OPERATOR_REPO"),
-      autoFix: optional("LOOM_OPERATOR_AUTO_FIX")?.split(",").filter(Boolean),
-      maxFiledPerHour: env.LOOM_OPERATOR_MAX_FILED_PER_HOUR
-        ? Number(env.LOOM_OPERATOR_MAX_FILED_PER_HOUR)
-        : undefined,
-    },
     leadModel: optional("LOOM_MODEL_LEAD"),
     excludedAuthors: optional("LOOM_EXCLUDED_AUTHORS")
       ?.split(",")
@@ -304,20 +285,8 @@ export function configFromEnvironment(
   }
   const settingsEnvironment: SettingsPatch = {
     ...(Object.keys(rolePatch).length ? { roles: rolePatch } : {}),
-    operator: {
-      ...(env.LOOM_MODEL_OPERATOR
-        ? { model: parsed.operatorModel ?? null }
-        : {}),
-      ...(env.LOOM_MODEL_LEAD ? { leadModel: parsed.leadModel ?? null } : {}),
-      ...(env.LOOM_OPERATOR_REPO
-        ? { repoId: parsed.operator.repoId ?? null }
-        : {}),
-      ...(env.LOOM_OPERATOR_AUTO_FIX
-        ? { autoFix: parsed.operator.autoFix }
-        : {}),
-      ...(env.LOOM_OPERATOR_MAX_FILED_PER_HOUR
-        ? { maxFiledPerHour: parsed.operator.maxFiledPerHour }
-        : {}),
+    main: {
+      ...(env.LOOM_MODEL_LEAD ? { model: parsed.leadModel ?? null } : {}),
     },
     runtime: {
       ...(env.LOOM_CAP_TOTAL ? { capTotal: parsed.caps.total } : {}),
@@ -362,13 +331,7 @@ export function settingsDefaultsForConfig(
 ): SettingsValues {
   let defaults = mergeSettings(DEFAULT_SETTINGS, {
     repository: { baseBranch: config.baseBranch },
-    operator: {
-      model: config.operatorModel ?? null,
-      leadModel: config.leadModel ?? null,
-      repoId: config.operator.repoId ?? null,
-      autoFix: config.operator.autoFix,
-      maxFiledPerHour: config.operator.maxFiledPerHour,
-    },
+    main: { model: config.leadModel ?? null },
     runtime: {
       capTotal: config.caps.total,
       capCodex: config.caps.codex,
@@ -440,11 +403,7 @@ export function applyStoredSettingsToConfig(
   target.githubPollMs = value.runtime.githubPollMs;
   target.resyncMs = value.runtime.resyncMs;
   target.excludedAuthors = [...value.runtime.excludedAuthors];
-  target.operator.autoFix = [...value.operator.autoFix];
-  target.operator.maxFiledPerHour = value.operator.maxFiledPerHour;
-  target.operatorModel = value.operator.model ?? undefined;
-  target.leadModel = value.operator.leadModel ?? undefined;
-  target.operator.repoId = value.operator.repoId ?? undefined;
+  target.leadModel = value.main.model ?? undefined;
   if (startup) {
     target.heartbeatMs = value.runtime.heartbeatMs;
     target.worktreeRoot = value.runtime.worktreeRoot;

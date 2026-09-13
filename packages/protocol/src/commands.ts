@@ -13,7 +13,6 @@ import {
 import { z } from "zod";
 import { humanCommand, providerRules } from "./entities.js";
 import { inputId, repoId, requestId, runId, sha, taskId } from "./ids.js";
-import { operatorState } from "./operator.js";
 import { settingsPatch, settingsScope } from "./settings.js";
 import { subscription } from "./subscriptions.js";
 import {
@@ -103,15 +102,6 @@ export const command = z.union([
   ...pullRequestCommand.options,
   pullRequestReviewChange,
   ...pullRequestDiffRead.options,
-  z.strictObject({
-    kind: z.literal("claim_notification"),
-    noteId: z.string().min(1).max(300),
-  }),
-  z.strictObject({ kind: z.literal("open_operator_session") }),
-  z.strictObject({ kind: z.literal("retry_operator_session") }),
-  z.strictObject({ kind: z.literal("open_operator_terminal") }),
-  z.strictObject({ kind: z.literal("stop_operator_session") }),
-  z.strictObject({ kind: z.literal("operator_status") }),
   z.strictObject({ kind: z.literal("open_task_terminal"), taskId }),
   z.strictObject({
     kind: z.literal("open_workbench_terminal"),
@@ -249,13 +239,6 @@ export const ackResult = z.union([
     repoId,
     number: z.number().int().positive().nullable(),
   }),
-  z.strictObject({
-    kind: z.literal("notification"),
-    notice: z
-      .object({ id: z.string(), title: z.string(), body: z.string() })
-      .nullable(),
-  }),
-  z.strictObject({ kind: z.literal("operator_state"), state: operatorState }),
   z.strictObject({
     kind: z.literal("task_terminal"),
     taskId,

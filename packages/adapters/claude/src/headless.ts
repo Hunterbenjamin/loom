@@ -30,7 +30,6 @@ export interface StartHeadlessRequest {
   cwd: WorktreePath;
   model: string;
   settingsPath: string;
-  mcpOnly?: boolean;
   readOnly: boolean;
   prompt: string;
 }
@@ -90,19 +89,6 @@ export class HeadlessRun {
   ) {
     this.#input.push(request.prompt);
     const options: Options = {
-      ...(request.mcpOnly
-        ? {
-            tools: [],
-            settingSources: [],
-            canUseTool: async (name: string, input: Record<string, unknown>) =>
-              name.startsWith("mcp__loom__")
-                ? { behavior: "allow" as const, updatedInput: input }
-                : {
-                    behavior: "deny" as const,
-                    message: "Operator has only Loom MCP capabilities",
-                  },
-          }
-        : {}),
       cwd: request.cwd,
       model: request.model,
       settings: request.settingsPath,

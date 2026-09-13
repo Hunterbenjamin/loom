@@ -49,7 +49,7 @@ export interface LaunchDeps {
  * The Codex TUI that Loom attaches with `codex resume --remote` reads `CODEX_HOME/config.toml`,
  * not the overrides `thread/start` was given: with an empty per-task config it ran in the
  * workspace-write sandbox (no `.git` writes), asked for approvals, and had no Loom MCP tools
- * (2026-09-13, the Operator task). The file is rewritten on every launch so the run's token is
+ * (2026-09-13). The file is rewritten on every launch so the run's token is
  * the current one; it holds a secret, so mode 0600.
  */
 export async function writeCodexHomeConfig(

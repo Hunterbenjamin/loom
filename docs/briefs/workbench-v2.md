@@ -37,7 +37,7 @@ row-to-task links the Tracker relies on.
   ▸ ✓ workbench-drag                   fix/workbench-window-drag
   ▸ ○ scratch                          main
   ─────────────────────────────────
-  ⌁ Main      idle        ⌁ Operator   working
+  ⌁ Main      idle
 ```
 
 - **Rows.** A space row shows: the indicator, the space name, and its git branch. A tab row shows
@@ -69,7 +69,7 @@ row-to-task links the Tracker relies on.
   is detected in the renderer store from consecutive `panes` snapshots, so it needs no new
   coordinator event. The chime is a bundled short sound file played through an `Audio` element;
   respect the system's reduced-motion and mute settings.
-- **Pinned.** Main and Operator stay pinned at the bottom of the sidebar, as today.
+- **Pinned.** Main stays pinned at the bottom of the sidebar, as today.
 
 ## Slices
 

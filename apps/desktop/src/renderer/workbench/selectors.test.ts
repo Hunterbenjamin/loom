@@ -120,7 +120,7 @@ test("fuzzy filter retains ancestors, matches task and native names, and keeps f
   expect(spaces([agent], "  ")).toEqual(spaces([agent]));
 });
 
-test("only repository Main and Operator sessions are excluded from the space tree", () => {
+test("only repository Main sessions are excluded from the space tree", () => {
   const legacy = ["loom-main", "loom-lead"].map((sessionName) => ({
     ...pane,
     sessionName,
@@ -132,7 +132,7 @@ test("only repository Main and Operator sessions are excluded from the space tre
   ).toEqual(["loom-lead", "loom-main"]);
   expect(
     spaces(
-      ["loom-lead-repo", "loom-operator"].map((sessionName) => ({
+      ["loom-lead-repo"].map((sessionName) => ({
         ...pane,
         sessionName,
       })),

@@ -19,7 +19,6 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { type LeadHost, leadInputSchemas, leadToolNames } from "./lead.js";
-import { operatorInputSchemas } from "./operator.js";
 import {
   anchorSchema,
   errorSchema,
@@ -35,8 +34,7 @@ import {
 
 export type McpIdentity =
   | { runId: RunId; active: boolean; kind?: "run" }
-  | { kind: "lead"; active: boolean; repoId: string }
-  | { kind: "operator"; active: boolean };
+  | { kind: "lead"; active: boolean; repoId: string };
 
 export type McpInput = Extract<Input, { type: "mcp" }>;
 export interface McpHost {
@@ -50,7 +48,6 @@ export interface McpServerOptions {
   /** Receives the cause of a host failure that the agent only sees as a generic error. */
   log?: (message: string) => void;
   leadHost?: LeadHost;
-  operatorHost?: LeadHost;
   /** Re-read authoritative liveness on every call; null means an unknown token. */
   resolveToken(token: string): McpIdentity | null | Promise<McpIdentity | null>;
   /** Read the exact reviewed blobs, verifying the path and range; never read the working file. */
@@ -102,7 +99,7 @@ async function invoke(
   const identity = token ? await options.resolveToken(token) : null;
   if (!identity)
     return failure("unknown_run", "The token does not identify a run");
-  if (identity.kind === "lead" || identity.kind === "operator")
+  if (identity.kind === "lead")
     return failure("guard_failed", "Main identity cannot call task-run tools");
   if (!identity.active)
     return failure("stale_run", "The run has ended or was superseded");
@@ -202,16 +199,6 @@ export function createMcpServer(
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const identity = token ? await options.resolveToken(token) : null;
-    if (identity?.kind === "operator")
-      return {
-        tools: Object.entries(operatorInputSchemas).map(([name, schema]) => ({
-          name,
-          description: `Operator v1: ${name}. Coordinator selects and guards the action for eventId.`,
-          inputSchema: z.toJSONSchema(schema, { io: "input" }) as {
-            type: "object";
-          },
-        })),
-      };
     if (identity?.kind === "lead")
       return {
         tools: leadToolNames.map((name) => ({
@@ -219,11 +206,9 @@ export function createMcpServer(
           description:
             name === "message_agent"
               ? "Queue a short question or heads-up through Loom, always recorded. Returns queued/refused without waiting for a reply. Use idempotencyKey for retries; create an issue for work."
-              : name === "read_agent_replies"
-                ? "Read this repository's unread replies addressed to Main and mark the returned notes read. Use once in a panel summary; never poll for replies."
-                : name === "set_note"
-                  ? "Replace Main's instance memory note (max 2000 characters); empty clears it."
-                  : `Main: ${name.replaceAll("_", " ")}. Uses Loom's human commands and guards.`,
+              : name === "set_note"
+                ? "Replace Main's instance memory note (max 2000 characters); empty clears it."
+                : `Main: ${name.replaceAll("_", " ")}. Uses Loom's human commands and guards.`,
           inputSchema: z.toJSONSchema(leadInputSchemas[name] as z.ZodObject, {
             io: "input",
           }) as { type: "object" },
@@ -257,37 +242,6 @@ export function createMcpServer(
   });
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const name = request.params.name;
-    const caller =
-      !names.includes(name as McpToolName) && token
-        ? await options.resolveToken(token)
-        : null;
-    if (
-      caller?.kind === "operator" ||
-      ["operator_events", "file_task", "append_note"].includes(name)
-    ) {
-      if (caller?.kind !== "operator")
-        return reply(
-          failure("guard_failed", "Only Operator may call this tool"),
-        );
-      if (!caller.active)
-        return reply(failure("stale_run", "Operator stopped"));
-      const parsed = operatorInputSchemas[name]?.safeParse(
-        request.params.arguments ?? {},
-      );
-      if (!parsed?.success)
-        return reply(
-          failure(
-            "guard_failed",
-            "Operator cannot call this tool or input is invalid",
-          ),
-        );
-      if (!options.operatorHost)
-        return reply(failure("guard_failed", "Operator unavailable"));
-      return reply({
-        ok: true,
-        value: await options.operatorHost.invoke(name, parsed.data),
-      });
-    }
     if (leadToolNames.includes(name)) {
       const identity = token ? await options.resolveToken(token) : null;
       if (!identity) return reply(failure("unknown_run", "Unknown identity"));

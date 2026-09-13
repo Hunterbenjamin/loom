@@ -153,7 +153,10 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
       if (run.endReason === "vanished") fromRun("run_vanished", run.id);
       if (run.endedAt) continue;
       if (run.blockedOn === "permission")
-        fromRun("provider_permission", run.id);
+        fromRun(
+          run.role === "implementer" ? "provider_input" : "provider_permission",
+          run.id,
+        );
       // Only emit provider_input if we can actually observe the run.
       // If status is "unknown", emit observability_failure instead.
       if (run.blockedOn === "input" && run.status !== "unknown")

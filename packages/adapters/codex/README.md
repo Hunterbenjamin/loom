@@ -20,7 +20,11 @@ change global config.
    `CODEX_HOME` and records the server PID and process birth time. `stopServer()`
    terminates adopted servers as well as children; recovered-process signals require
    the same birth time and exact private socket in the process command. Verified stale
-   owners are reaped before replacement. Foreign homes and non-socket paths are refused.
+   owners are reaped before replacement, but only after a caller-supplied authoritative query
+   confirms that no unended Loom Codex run for the task still has a recorded session. That query
+   and process identity are checked again immediately before every recovery signal. A live owner
+   refuses recovery, preserves the socket/ownership record, and emits a task-correlated diagnostic.
+   Explicit task shutdown is separate and remains allowed. Foreign homes and non-socket paths are refused.
    Recovery requires `ps` and `lsof` on PATH; `lsof` queries only the task's socket.
    Numeric or missing ownership files from older versions are upgraded on adoption.
 2. Call `startThread()` with an explicit model and persist its ID and connection
@@ -28,9 +32,10 @@ change global config.
 3. `subscribe()` emits hints for the coordinator to enqueue reconciliation. Reads
    throw on unavailable or malformed responses; wrap these as failed core `Reading`s,
    never as idle/failed provider snapshots.
-4. After connection loss, `generation()` is null. Call `reconnect()`, persist its
-   new generation, then `resumeThread()` for each recorded thread. `readThread()`
-   requires that subscription so pending requests have been replayed. Supply the
+4. After connection loss, `generation()` is null. The adapter preserves its desired thread
+   subscriptions and `reconnect()` resumes and hydrates them on the new connection before reads
+   are retried. On a new adapter after coordinator restart, call `resumeThread()` for each recorded
+   live thread. `readThread()` requires that subscription so pending requests have been replayed. Supply the
    last persisted generation as `initialGeneration` after a coordinator restart.
 5. Read rate limits with `readRateLimits()` during reconciliation. Thread snapshots
    leave `rateLimits` null rather than copying a previous account snapshot or sparse

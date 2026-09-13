@@ -8,7 +8,6 @@ export const ptySpawnRequest = z.strictObject({
   label: z.string().max(200),
   runId: runId.nullable().optional(),
   lead: repoId.optional(),
-  operator: z.boolean().optional(),
   shellKey: z.string().uuid().optional(),
   shellName: z
     .string()
@@ -40,7 +39,6 @@ export interface PtySpawnRequest {
   /** Shown in the panel header so the human knows what they are typing into. */
   label: string;
   lead?: string;
-  operator?: boolean;
   shellKey?: string;
   shellName?: string;
   pane?: import("@loom/protocol").PaneIdentity;

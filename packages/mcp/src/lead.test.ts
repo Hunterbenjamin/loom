@@ -2,7 +2,6 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { leadInputSchemas, leadToolNames } from "./lead.js";
-import { operatorInputSchemas } from "./operator.js";
 import { createMcpServer } from "./server.js";
 import { setup } from "./test-support.js";
 
@@ -155,7 +154,6 @@ test("set_note accepts replacement and clearing, and rejects invalid or oversize
         .structuredContent,
     ).toMatchObject({ ok: false, error: { code: "invalid_input" } });
   expect(invoke).toHaveBeenCalledTimes(2);
-  expect(operatorInputSchemas).not.toHaveProperty("set_note");
 });
 
 test("Main is never granted terminal attach tools", async () => {
@@ -170,10 +168,9 @@ test("Main is never granted terminal attach tools", async () => {
   expect(invoke).not.toHaveBeenCalled();
 });
 
-test("Main message destinations and text are validated, and Operator cannot use Main messaging tools", async () => {
+test("Main message destinations and text are validated; removed Operator destinations are refused", async () => {
   const { client, invoke } = await connect(true);
   for (const to of [
-    { kind: "operator" },
     { kind: "run", taskId: "t", runId: "r" },
     { kind: "task", taskId: "t", role: "reviewer" },
   ]) {
@@ -193,17 +190,20 @@ test("Main message destinations and text are validated, and Operator cannot use 
     );
   }
   for (const input of [
-    { to: { kind: "operator" }, text: "" },
-    { to: { kind: "operator" }, text: "x".repeat(4001) },
+    { to: { kind: "operator" }, text: "Hello" },
+    { to: { kind: "run", taskId: "t", runId: "r" }, text: "" },
+    { to: { kind: "run", taskId: "t", runId: "r" }, text: "x".repeat(4001) },
     { to: { kind: "operator", taskId: "t" }, text: "Hi" },
     { to: { kind: "run", taskId: "t" }, text: "Hi" },
     { to: { kind: "task", taskId: "t", role: "main" }, text: "Hi" },
-    { to: { kind: "operator" }, text: "Hi", idempotencyKey: "" },
+    {
+      to: { kind: "run", taskId: "t", runId: "r" },
+      text: "Hi",
+      idempotencyKey: "",
+    },
   ])
     expect(
       (await client.callTool({ name: "message_agent", arguments: input }))
         .isError,
     ).toBe(true);
-  expect(operatorInputSchemas).not.toHaveProperty("message_agent");
-  expect(operatorInputSchemas).not.toHaveProperty("read_agent_replies");
 });

@@ -40,7 +40,7 @@ import {
 } from "./entity-schemas.js";
 import { SqliteHookLog } from "./hooks.js";
 import { dispositionSchema, inputSchema } from "./input-schemas.js";
-import { OperatorStore } from "./operator.js";
+import { MainMessageStore } from "./main-messages.js";
 import { Outbox } from "./outbox.js";
 import {
   assertSame,
@@ -80,7 +80,7 @@ class CommitConflict extends Error {
 }
 export class Store {
   private roleProfilesForTask?: (task: Task) => ReconcileConfig["roleProfiles"];
-  readonly operator: OperatorStore;
+  readonly mainMessages: MainMessageStore;
   readonly hooks: SqliteHookLog;
   readonly outbox: Outbox;
   readonly settings: SettingsStore;
@@ -89,7 +89,7 @@ export class Store {
     readonly dataDirectory: string,
     private config: ReconcileConfig,
   ) {
-    this.operator = new OperatorStore(db);
+    this.mainMessages = new MainMessageStore(db);
     this.hooks = new SqliteHookLog(db);
     this.outbox = new Outbox(db);
     this.settings = new SettingsStore(db);

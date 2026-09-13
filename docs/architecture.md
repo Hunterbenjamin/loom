@@ -79,7 +79,7 @@ typed catalog and Settings page; environment-backed rows are visible but disable
 is present.
 
 Repository scope is intentionally limited to role profiles, task/workflow defaults, base branch and
-serialized tests. Capacity, retry/polling, executable paths, Operator/Main, GitHub observation and
+serialized tests. Capacity, retry/polling, executable paths, Main, GitHub observation and
 desktop presentation are single-supervisor or single-instance facts and are editable only at Global
 defaults; repository documents show them as inherited and disabled. Existing `Repo.defaultProviders`
 remain the per-role compatibility baseline until that exact role field is overridden, so one sparse
@@ -90,7 +90,7 @@ edit cannot reroute the other roles.
 | Planner, implementer and reviewer provider (`LOOM_PROVIDER_*`), provider model (`LOOM_MODEL_CODEX`, `LOOM_MODEL_CLAUDE`), Codex reasoning (`LOOM_CODEX_REASONING_EFFORT`), `LOOM_RUN_MODES`, semantic `LOOM_AGENT_ACCESS` | `apps/coordinator/src/config.ts`, `packages/core/src/settings.ts`, run recipe and provider launch adapters | Exposed; next run. Planner read-only remains a fixed floor. |
 | Plan approval, size, budget, review-round cap, merge policy | create-task protocol/CLI and `packages/core` task policy | Exposed; captured on the next task. Explicit creation values win. |
 | Repository base branch, default providers and serialized-test flag | `packages/core` `Repo`, `apps/coordinator/src/repos.ts` | Exposed in the Repositories and role sections at global/repository scope; repository identity/root remains registration-owned. |
-| Operator/Main models and Operator repository, policy v1, auto-fix set and filing rate (`LOOM_MODEL_OPERATOR`, `LOOM_MODEL_LEAD`, `LOOM_OPERATOR_*`) | `apps/coordinator/src/operator*.ts`, `lead.ts`, `config.ts` | Exposed. Policy v1 is informational until another policy exists. |
+| Main model (`main.model`, `LOOM_MODEL_LEAD`) | `apps/coordinator/src/lead.ts`, `config.ts` | Exposed in Main; next run. |
 | Capacity, retry base/cap/attempts, stall/unknown/delivery timeouts, GitHub task poll, resync and heartbeat | `apps/coordinator/src/config.ts`, loop/executor/observation | Exposed in Advanced runtime; immediate except heartbeat, which needs restart. |
 | Worktree root and tmux/Codex/Claude executables (`LOOM_WORKTREE_ROOT`, `LOOM_TMUX`, `LOOM_CODEX`, `LOOM_CLAUDE`) | coordinator config and launch adapters | Exposed; restart required. |
 | GitHub excluded authors (`LOOM_EXCLUDED_AUTHORS`) | coordinator observation/config | Exposed; immediate. |
@@ -99,7 +99,7 @@ edit cannot reroute the other roles.
 | `LOOM_BIND`, `LOOM_MCP_PORT`, `LOOM_HOOK_PORT` | protocol/MCP/hook bootstrap | Deliberately not exposed: live edits would strand clients and runs. |
 | `LOOM_TOKEN`, `LOOM_MCP_TOKEN`, provider/GitHub credentials | protocol auth and private per-run recipes | Deliberately not exposed. Only configured/not-configured readiness leaves the coordinator. |
 | Repository root/GitHub identity; provider session IDs and private recipes | repository registration; provider/runtime owners | Deliberately not exposed as preferences. |
-| Shell, PATH, HOME, locale; WORKFLOW commands and fixed safe command allowlists; Main/Operator MCP boundaries; tmux isolation/status/mouse/resize/remain-on-exit behavior | process environment, workflow file, adapters | Deliberately not exposed: identity, security and observability invariants. |
+| Shell, PATH, HOME, locale; WORKFLOW commands and fixed safe command allowlists; Main MCP boundaries; tmux isolation/status/mouse/resize/remain-on-exit behavior | process environment, workflow file, adapters | Deliberately not exposed: identity, security and observability invariants. |
 | `LOOM_TASKS`, `LOOM_WIDTH`, `LOOM_HEIGHT`, `LOOM_ATTACH_PANE`, `LOOM_TMUX_BIN`, `LOOM_EXIT_WHEN_INTERACTIVE`, `LOOM_REAL_PROVIDERS`, `LOOM_TEST_SLOW_GIT` | fixture/performance/test scripts | Out of scope: non-production controls. |
 | `LOOM_AGENT_EXEC`, `LOOM_ATTACH_AGENT`, `LOOM_NAMESPACE`, `LOOM_TMUX_CONF` | standalone `scripts/agent.sh` workflow | Out of scope: the independent development launcher is not coordinator configuration. |
 | Adapter command/paste/reconnect/process-owner timeouts, patch/frame/page caps and test loop caps | adapter/protocol implementation constants | Out of scope until a measured production requirement promotes one into the catalog. |
@@ -215,7 +215,10 @@ Rules:
   `CODEX_HOME`. Persist its PID and process birth time in the private issue directory; verify both
   birth time and the exact issue socket in its command before signaling a recovered process.
   Pre-pidfile servers are identified with a query scoped to that socket. Reap a verified stale
-  owner before replacing its record; refuse a foreign home or a non-socket path. Explicit shutdown
+  owner before replacing its record only when an immediate store query finds no unended Codex run
+  with a recorded session for that task. Re-check that ownership and the PID birth/socket identity
+  immediately before every recovery signal. A live session refuses recovery and emits a
+  task-correlated diagnostic; refuse a foreign home or a non-socket path. Explicit shutdown
   terminates adopted servers as well as children. Never discover or signal the shared daemon.
 - A pane is not evidence of a session. `pane_current_command` was `2.1.269` for Claude and `node` for
   Codex's launcher, and cwd identifies the issue, not the session (spike 06 §4). Reject an ambiguous
@@ -235,14 +238,13 @@ the agent has no terminal attach capability. Human viewers still attach to its p
 The coordinator persists the per-instance last-opened repository in SQLite and publishes selection
 to windows. Selecting another repository retargets a viewer without stopping either session.
 Startup recovers every per-repository recipe and idempotently migrates the legacy single recipe
-to the first registered repository, keeping its session ID and token. Operator remains instance-wide.
+to the first registered repository, keeping its session ID and token.
 This conversation-only policy is separate from issue planners' and reviewers' edit restrictions,
 so those issue roles retain the tools needed to inspect the repository and run tests.
 Main may also send short questions or heads-ups through `message_agent`, fire-and-forget. Every
 message is recorded, task-run delivery uses the core send gate and native receipt path, and
-Operator messages/replies reuse its durable events and notes. Repository-scoped unread replies
-appear in Main's introduction and panel summaries; Main never waits for an answer or assigns work
-through messages. The human-command tools enqueue the same guarded inputs as the CLI; they do not
+Main message notes and idempotency receipts use dedicated SQLite tables. Destinations are exact
+task/run or task/role identities; Main never waits for an answer or assigns work through messages. The human-command tools enqueue the same guarded inputs as the CLI; they do not
 change stage ownership. Issue-run tools and Main tools reject each other's identities. See
 [Main](design/ui.md#main) for its lifecycle, recovery and bottom-bar UI.
 
@@ -473,7 +475,7 @@ that crosses providers goes only through artifacts.
 | UI closed or crashed | Nothing happens. On reopen, the UI reconnects and gets a fresh snapshot. |
 | Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, panes, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts). |
 | Pane host stop, crash or kill | Every pane process dies, shells included (spikes 05 and 06). The host has no restore feature and needs none: Loom recreates the server, its sessions and each run's pane from stored state — session or thread ID, cwd, full command line and environment. Pane IDs restart at `%0`, so stale refs name nothing and every ref carries its host generation. Measured at about 30 s to a fresh reply from both providers. A Codex turn in flight completes because its app-server runs outside the pane host; Claude's is lost and re-sent. |
-| Codex app-server restart | Runs are `unknown` until `thread/resume`; the interrupted turn is a failed attempt and is re-sent (spike 01). |
+| Codex app-server restart | Desired thread subscriptions survive the connection generation and are resumed/hydrated before retrying reads. An unavailable owner leaves runs `unknown`; after `unknownGraceMs` they raise `observability_failure`. Interrupted or completed turns without a Loom submission remain live and can raise `idle_without_submission`; they are not inferred ended. |
 | Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, flag the issue failed and notify the human (see `docs/design/core.md` §3). |
 | Stall | No events for N minutes → set the attention flag. Don't kill it; the human may be typing. |
 | Rate limits | Codex `account/rateLimits/updated` or Claude StopFailure → the provider is cooling down until its reset. Queue new work, and offer to switch providers only for runs that haven't started. |
@@ -535,32 +537,28 @@ guarantees that a command did not run. The broader restart matrix remains spike 
 - **05 completed:** nothing in a pane survives a host restart; Loom relaunches from stored state, and
   the Codex app-server lives outside the pane host. See the findings.
 
-### Operator integration
+### Coordinator automation
 
-One coordinator-owned interactive Claude Operator consumes durable structured hints outside the
-per-issue run/capacity model. SQLite owns its queue, decisions, notes, processing receipts, retry
-ledger and bug-filing accounting. A private recipe under the instance's `operator` directory owns
-its launch identity and recorded pane. Its terminal lives on the private tmux server and survives
-coordinator and viewer restarts. MCP-only capability
-configuration (`--tools ""`, strict MCP config and per-process settings) and a separate authenticated
-identity prevent the Operator agent from using issue-run, shell and attach tools. Humans can attach
-its terminal through the pinned Workbench entry. Native Claude status gates queued input: busy,
-waiting and unknown sessions receive no paste. A durable prompt hash is recorded before paste;
-UserPromptSubmit confirms delivery. On startup and every pump, an unconfirmed attempt also
-checks the session's native transcript for a submitted user message with the same normalized hash
-between the attempt start and the observation time. A matching Stop or native idle finishes a
-confirmed turn. After 30 seconds without a receipt, an idle session with no pending dialog may
-retry through the same send gate; busy sessions retain the attempt for further receipt checks.
-Delivery errors never prevent observation. Genuine native turn failures stay visible until Retry.
-Main messages have a separate durable chat receipt: each is pasted as `Message from Main: <text>`
-even if a tool already completed its `main_message` event. Provider confirmation retires the chat
-item; the idempotent event and `append_note` reply remain the durable record. The desktop shows
-Operator errors on hover and offers Retry without replacing the session or its terminal.
-Every mutation is checked against policy v1 using fresh observations. Rescue commands reuse the
-core/outbox/executor path, without a submission or stage transition; automatic bug planning uses
-the existing `todo` input. Runtime bug repository routing is explicit. Desktop status and authored
-notes are projections, and notification dedupe is coordinator-owned. See the
-[Operator contract](design/agents.md#operator-implementation-contract).
+The Operator was removed by user decision on 2026-09-13. Two narrow behaviours remain in
+plain core code, using fresh provider/git observations and the existing guarded outbox:
+
+- A Loom-launched implementer's native permission request is accepted for an exact command
+  from its registered repository's validated `WORKFLOW.md`, or a conservative simple `git add`,
+  `git commit -m` or `pnpm install` command. Extra install flags require an exact workflow entry.
+  Claude requires a waiting native Bash PermissionRequest with an occurrence ID; Codex requires
+  a command approval on the current connection generation. Questions, trust dialogs and all
+  other commands retain `provider_input` attention for the human. Actions are deduplicated by
+  request identity and revalidated immediately before execution.
+- A vanished Loom-launched interactive implementation with no accepted submission, review,
+  replacement or live run can have its clean committed branch pushed through `push_branch`.
+  The exact recorded HEAD must be ahead of base and its remote (or the remote branch absent);
+  git proves remote ancestry and the executor rechecks worktree, branch and HEAD. Push is never
+  forced. The coordinator retains `run_vanished` attention, never opens a PR automatically and
+  never fabricates a submission or changes the stage. Reconciliation and recovery reuse the
+  same commit-keyed outbox intent.
+
+Existing headless retry limits and human plan/merge approvals remain unchanged. Runtime failures
+are logged for the human; no agent files bugs or resets retry budgets automatically.
 
 ### Repository review preferences and Overview actions
 

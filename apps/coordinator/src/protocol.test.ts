@@ -304,7 +304,7 @@ test("human terminal close confirms native removal and publishes deletion to con
   expect(
     await client.command({
       kind: "close_terminal",
-      target: { ...ref, sessionName: "loom-operator" },
+      target: { ...ref, sessionName: "loom-main" },
     }),
   ).toMatchObject({ ok: false });
   expect(close).not.toHaveBeenCalled();
@@ -524,9 +524,9 @@ test("permission attribution and the selected run's attach target reach the wind
   const client = await connect(h, "permission-inbox-window");
   expect(
     client.state?.collections.task.get(taskId)?.attention.reasons,
-  ).toContain("provider_permission");
+  ).toContain("provider_input");
   expect(
-    client.state?.collections.inbox.get(taskId)?.reasonRuns.provider_permission,
+    client.state?.collections.inbox.get(taskId)?.reasonRuns.provider_input,
   ).toMatchObject([
     {
       id: run.id,

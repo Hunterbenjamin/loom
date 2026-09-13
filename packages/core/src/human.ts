@@ -65,7 +65,7 @@ export function human(
             branch: task.branch,
             baseBranch: state.worktree.baseBranch,
             title: task.title,
-            body: "Operator rescued committed work from a vanished run. No implementation submission was accepted; human follow-up is required.",
+            body: "Loom rescued committed work from a vanished run. No implementation submission was accepted; human follow-up is required.",
           });
       }
       return null;

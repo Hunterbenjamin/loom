@@ -18,7 +18,6 @@ import type {
   Command,
   Entities,
   LeadState,
-  OperatorState,
   PaneIdentity,
   PaneView,
   PatchFrame,
@@ -118,7 +117,6 @@ export interface State {
   mainFinished: boolean;
   runTargets: RunTarget[];
   lead: LeadState;
-  operator: OperatorState | null;
   notes: Entities["note"][];
   instance: string;
   settings: SettingsDocument[];
@@ -214,13 +212,10 @@ export function createStore(
   live = false,
   instance = live ? "unconfigured" : "fixtures",
 ) {
-  const notificationClaims = new Set<string>();
   let pendingSelection: TaskId | null = null;
   const paneTransitions = createPaneTransitionDetector();
   const transitionListeners = new Set<(pane: PaneView) => void>();
-  let paneFocus:
-    | (() => PaneIdentity | "main" | "operator" | undefined)
-    | undefined;
+  let paneFocus: (() => PaneIdentity | "main" | undefined) | undefined;
   let state: State = {
     snapshot,
     pullRequestLists: [],
@@ -231,7 +226,6 @@ export function createStore(
     live,
     connection: live ? "connecting" : "fixtures",
     inbox: [],
-    operator: null,
     notes: [],
     panes: [],
     panesUnavailable: false,
@@ -389,27 +383,6 @@ export function createStore(
         (task) => task.id === selectedTask,
       )?.stage;
       const previous = state;
-      const notices = [...client.collections.inbox.values()].flatMap((i) =>
-        i.forHuman ? [i.forHuman.noteId] : [],
-      );
-      for (const note of client.collections.operator.get("operator")?.actions ??
-        [])
-        if (note.forHuman && !note.taskId) notices.push(note.id);
-      for (const noteId of notices)
-        if (send && !notificationClaims.has(noteId)) {
-          notificationClaims.add(noteId);
-          void send({ kind: "claim_notification", noteId })
-            .then((outcome) => {
-              if (
-                outcome.ok &&
-                outcome.result.kind === "notification" &&
-                outcome.result.notice
-              )
-                globalThis.window?.loomHost?.notify?.(outcome.result.notice);
-              else if (!outcome.ok) notificationClaims.delete(noteId);
-            })
-            .catch(() => notificationClaims.delete(noteId));
-        }
       state = {
         ...state,
         snapshot: projectSnapshot(state.snapshot, client, patch),
@@ -448,7 +421,6 @@ export function createStore(
           sessionId: null,
           status: "stopped",
         },
-        operator: client.collections.operator.get("operator") ?? null,
         notes:
           !patch || patch.changes.some((c) => c.collection === "note")
             ? [...client.collections.note.values()]
