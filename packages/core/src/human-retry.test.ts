@@ -142,6 +142,43 @@ test.each(["starting", "working", "idle", "blocked"] as const)(
   },
 );
 
+test("human retry still replaces a failed run when an older action also failed", () => {
+  const f = setup();
+  const worktree = f.state.worktree;
+  const branch = f.state.task.branch;
+  const gitReading = f.observations.git;
+  const git = gitReading?.ok ? gitReading.value : null;
+  if (!worktree || !branch || !git?.headSha)
+    throw new Error("Missing retry fixture state");
+  f.state.outbox = [
+    {
+      key: `push_branch:${f.state.task.id}:${git.headSha}` as never,
+      kind: "push_branch",
+      status: "failed",
+      attempts: 3,
+      createdAt: now,
+      finishedAt: now,
+      action: {
+        kind: "push_branch",
+        taskId: f.state.task.id,
+        worktreePath: worktree.path,
+        branch,
+        expectedHeadSha: git.headSha,
+      },
+      error: { code: "retryable", message: "Earlier push rejected" },
+    },
+  ];
+
+  const result = fixed(f.state, f.observations);
+
+  expect(result.inputs[0]?.accepted).toBe(true);
+  expect(result.actions.find((a) => a.kind === "stop_run")).toMatchObject({
+    runId: f.run.id,
+    terminate: true,
+  });
+  expect(result.next.desiredRun?.fresh).toBe(true);
+});
+
 test("failed task actions retry without replacing live runs in the worktree", () => {
   const f = fixture("in_review");
   const planner = f.state.runs.find((r) => r.role === "planner");
