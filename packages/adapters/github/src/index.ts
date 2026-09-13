@@ -3,6 +3,7 @@ import type { GitHubAdapter, PullRequestObservation } from "@loom/core";
 import { z } from "zod";
 import { Api, type Pages } from "./api.js";
 import { branchActions } from "./branches.js";
+import { diffReads } from "./diff.js";
 import { failure, type GhRunner, GitHubError, runGh } from "./gh.js";
 import { observe } from "./observation.js";
 import { pullRequestReads } from "./pull-requests.js";
@@ -59,11 +60,70 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
     if (result.exitCode !== 0) throw failure(result);
   };
 
+  const reads = pullRequestReads(run, () =>
+    s.time.parse((options.now?.() ?? new Date()).toISOString()),
+  );
+  const comparisons = new Map<string, number>();
   return {
     setExcludedAuthors,
-    ...pullRequestReads(run, () =>
-      s.time.parse((options.now?.() ?? new Date()).toISOString()),
-    ),
+    ...diffReads(run, reads.readPullRequestPatch),
+    async readPullRequestBehind(repo, range) {
+      s.repo.parse(repo);
+      s.sha.parse(range.baseSha);
+      s.sha.parse(range.headSha);
+      const key = `${repo}:${range.baseSha}:${range.headSha}`;
+      const cached = comparisons.get(key);
+      if (cached !== undefined) return cached;
+      const { value } = await new Api(run).get(
+        `repos/${repo}/compare/${range.baseSha}...${range.headSha}?per_page=1`,
+        z.object({ behind_by: z.number().int().nonnegative() }),
+      );
+      comparisons.set(key, value.behind_by);
+      if (comparisons.size > 128) {
+        const first = comparisons.keys().next().value;
+        if (first) comparisons.delete(first);
+      }
+      return value.behind_by;
+    },
+    async commentPullRequest(repo, number, body, requestId) {
+      s.repo.parse(repo);
+      s.id.parse(number);
+      z.uuid().parse(requestId);
+      z.string().trim().min(1).max(60000).parse(body);
+      const marker = `<!-- loom-comment:${requestId} -->`;
+      const posted = async () =>
+        (
+          await new Api(run).all(
+            `repos/${repo}/issues/${number}/comments?per_page=100`,
+            z.array(z.object({ body: z.string() })),
+          )
+        ).some((c) => c.body.endsWith(marker));
+      if (await posted()) return;
+      let error: unknown;
+      try {
+        await command(
+          [
+            "pr",
+            "comment",
+            String(number),
+            "--repo",
+            `github.com/${repo}`,
+            "--body-file",
+            "-",
+          ],
+          `${body}\n\n${marker}`,
+        );
+      } catch (cause) {
+        error = cause;
+      }
+      if (await posted()) return;
+      if (error) throw error;
+      throw new GitHubError(
+        "retryable",
+        "Comment outcome is unconfirmed; refresh before retrying",
+      );
+    },
+    ...reads,
     deleteBranch,
     async closePullRequest(repo, number) {
       s.repo.parse(repo);

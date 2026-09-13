@@ -169,3 +169,41 @@ test("Main is never granted terminal attach tools", async () => {
     expect((await client.callTool({ name, arguments: {} })).isError).toBe(true);
   expect(invoke).not.toHaveBeenCalled();
 });
+
+test("Main message destinations and text are validated, and Operator cannot use Main messaging tools", async () => {
+  const { client, invoke } = await connect(true);
+  for (const to of [
+    { kind: "operator" },
+    { kind: "run", taskId: "t", runId: "r" },
+    { kind: "task", taskId: "t", role: "reviewer" },
+  ]) {
+    const input = {
+      to,
+      text: "Any context to share?",
+      idempotencyKey: "same-call",
+    };
+    expect(
+      (await client.callTool({ name: "message_agent", arguments: input }))
+        .isError,
+    ).not.toBe(true);
+    expect(invoke).toHaveBeenLastCalledWith(
+      "message_agent",
+      input,
+      "repo-loom",
+    );
+  }
+  for (const input of [
+    { to: { kind: "operator" }, text: "" },
+    { to: { kind: "operator" }, text: "x".repeat(4001) },
+    { to: { kind: "operator", taskId: "t" }, text: "Hi" },
+    { to: { kind: "run", taskId: "t" }, text: "Hi" },
+    { to: { kind: "task", taskId: "t", role: "main" }, text: "Hi" },
+    { to: { kind: "operator" }, text: "Hi", idempotencyKey: "" },
+  ])
+    expect(
+      (await client.callTool({ name: "message_agent", arguments: input }))
+        .isError,
+    ).toBe(true);
+  expect(operatorInputSchemas).not.toHaveProperty("message_agent");
+  expect(operatorInputSchemas).not.toHaveProperty("read_agent_replies");
+});

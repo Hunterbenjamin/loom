@@ -45,6 +45,7 @@ const recipeSchema = z.strictObject({
       hash: z.string(),
       at: z.string(),
       promptId: z.string().nullable(),
+      eventIds: z.array(z.string()).optional(),
     })
     .nullable()
     .optional(),
@@ -363,12 +364,23 @@ export class OperatorSession {
         this.deps.store.operator.set("session_error", this.error);
       });
   }
-  pump(): Promise<void> {
+  retry(): Promise<void> {
+    return this.pump(true);
+  }
+  private setError(error: string | null) {
+    this.error = error;
+    this.deps.store.operator.set("session_error", error);
+  }
+  pump(retry = false): Promise<void> {
     return this.exclusive(async () => {
       if (!this.ready || this.recipe?.stopped) return;
-      const events = this.deps.store.operator.pending();
-      if (this.error) return;
-      if (!this.recipe && !events.length) return;
+      const queued = [
+        ...this.deps.store.operator.pendingChat(),
+        ...this.deps.store.operator
+          .pending()
+          .filter((e) => e.kind !== "main_message"),
+      ];
+      if (!this.recipe && !queued.length) return;
       if (!this.recipe) await this.initialize();
       const recipe = this.recipe;
       if (!recipe) return;
@@ -389,14 +401,20 @@ export class OperatorSession {
             : session?.status === "idle"
               ? "idle"
               : "unknown";
+      const ready =
+        this.nativeStatus === "idle" || this.nativeStatus === "working";
+      // A genuine failed turn remains visible until Retry; stale delivery/observation
+      // errors must never prevent fresh owner reads on the next pump or restart.
+      if (this.error?.startsWith("Operator turn failed:") && !retry) return;
       const delivery = recipe.delivery;
       if (delivery) {
         this.active = true;
         if (hooks.stopFailure && hooks.stopFailure.at >= delivery.at) {
-          this.error = sanitizeEvidence(
-            `Operator turn failed: ${hooks.stopFailure.error}. Open Operator to retry.`,
+          this.setError(
+            sanitizeEvidence(
+              `Operator turn failed: ${hooks.stopFailure.error}. Retry Operator to try again.`,
+            ),
           );
-          this.deps.store.operator.set("session_error", this.error);
           this.active = false;
           await this.save({
             ...(this.recipe as NonNullable<typeof this.recipe>),
@@ -404,25 +422,56 @@ export class OperatorSession {
           });
           return;
         }
-        const submitted = hooks.promptSubmits.find(
-          (p) => p.textHash === delivery.hash && p.at >= delivery.at,
-        );
+        const now = this.deps.now();
+        const submitted =
+          hooks.promptSubmits.find(
+            (p) =>
+              p.textHash === delivery.hash &&
+              p.at >= delivery.at &&
+              p.at <= now,
+          ) ??
+          (!delivery.promptId
+            ? await this.deps.adapters.claude.promptReceipt({
+                sessionId,
+                cwd: recipe.cwd as WorktreePath,
+                textHash: delivery.hash,
+                after: delivery.at as IsoTime,
+                before: now,
+              })
+            : null);
         const promptId = delivery.promptId ?? submitted?.promptId;
-        if (promptId && !delivery.promptId)
-          await this.save({
-            ...(this.recipe as NonNullable<typeof this.recipe>),
-            delivery: { ...delivery, promptId },
-          });
-        if (!promptId || hooks.lastStop?.promptId !== promptId) {
+        if (promptId) {
+          for (const id of delivery.eventIds ?? [])
+            if (this.deps.store.operator.event(id)?.kind === "main_message")
+              this.deps.store.operator.set(`chat:${id}`, {
+                sessionId,
+                promptId,
+              });
+          if (!delivery.promptId)
+            await this.save({
+              ...(this.recipe as NonNullable<typeof this.recipe>),
+              delivery: { ...delivery, promptId },
+            });
+          this.setError(null);
+          // A lost Stop hook cannot hold a confirmed turn forever: native idle
+          // also says it finished. A busy session still owns its current turn.
           if (
-            !promptId &&
-            Date.parse(this.deps.now()) - Date.parse(delivery.at) > 30000
-          ) {
-            this.error =
-              "Operator input delivery is unconfirmed; inspect its terminal before retrying.";
-            this.deps.store.operator.set("session_error", this.error);
+            hooks.lastStop?.promptId !== promptId &&
+            this.nativeStatus !== "idle"
+          )
+            return;
+        } else {
+          const expired = Date.parse(now) - Date.parse(delivery.at) > 30000;
+          if (!expired && !retry) return;
+          if (!ready) {
+            this.setError(
+              "Operator input delivery is unconfirmed; waiting for the session to accept a retry.",
+            );
+            return;
           }
-          return;
+          this.setError(null);
+          // Recheck the receipt on every busy pump; only idle permits the resend.
+          if (this.nativeStatus !== "idle") return;
         }
         this.active = false;
         this.delivered.clear();
@@ -431,17 +480,30 @@ export class OperatorSession {
           delivery: null,
         });
       }
-      // Native provider status is the send gate. Never paste into an approval or busy turn.
-      if (!events.length || session?.status !== "idle" || hooks.pendingDialog)
-        return;
-      const prompt = `${operatorBrief()}\nEvents (coalesced by task):\n${JSON.stringify(
-        events.reduce<Record<string, OperatorEvent[]>>((groups, e) => {
-          const key = e.taskId ?? "instance";
-          groups[key] ??= [];
-          groups[key].push(e);
-          return groups;
-        }, {}),
-      )}`;
+      if (!ready) return;
+      this.setError(null);
+      // Native idle is the send gate, including Main messages queued mid-turn.
+      if (this.nativeStatus !== "idle") return;
+      const pending = [
+        ...this.deps.store.operator.pendingChat(),
+        ...this.deps.store.operator
+          .pending()
+          .filter((e) => e.kind !== "main_message"),
+      ];
+      const first = pending[0];
+      if (!first) return;
+      const events = first.kind === "main_message" ? [first] : pending;
+      const prompt =
+        first.kind === "main_message"
+          ? `Message from Main: ${first.message}`
+          : `${operatorBrief()}\nEvents (coalesced by task):\n${JSON.stringify(
+              events.reduce<Record<string, OperatorEvent[]>>((groups, e) => {
+                const key = e.taskId ?? "instance";
+                groups[key] ??= [];
+                groups[key].push(e);
+                return groups;
+              }, {}),
+            )}`;
       for (const event of events)
         this.deps.store.operator.set(`delivery:${event.id}`, {
           sessionId: recipe.sessionId,
@@ -451,20 +513,20 @@ export class OperatorSession {
       this.active = true;
       this.delivered = new Set(events.map((e) => e.id));
       try {
-        // Persist before paste. Only UserPromptSubmit confirms delivery; an uncertain paste is not replayed.
+        // Persist identity and attempt start before paste; transport ACK is not delivery.
         await this.save({
           ...(this.recipe as NonNullable<typeof this.recipe>),
           delivery: {
             hash: sha256(normalizeText(prompt)),
             at: this.deps.now(),
             promptId: null,
+            eventIds: events.map((e) => e.id),
           },
         });
         await this.deps.adapters.paneHost.pasteText(pane, prompt);
       } catch (e) {
         this.active = false;
-        this.error = sanitizeEvidence(String(e));
-        this.deps.store.operator.set("session_error", this.error);
+        this.setError(sanitizeEvidence(String(e)));
         throw e;
       }
     });
@@ -475,7 +537,12 @@ export class OperatorSession {
       const result = await this.call(name, input);
       if (input.eventId) {
         const event = this.deps.store.operator.event(String(input.eventId));
-        await this.deps.changed((event?.taskId as TaskId) ?? null);
+        await this.deps.changed(
+          (event?.taskId as TaskId) ??
+            (this.deps.store.operator.noteById(`${event?.id}:reply`)
+              ?.taskId as TaskId) ??
+            null,
+        );
       }
       const events = this.deps.store.operator
         .pending()
@@ -547,6 +614,48 @@ export class OperatorSession {
     }
     if (store.operator.isProcessed(event.id))
       return { accepted: true, replayed: true };
+    if (event.kind === "main_message") {
+      if (name !== "append_note")
+        return {
+          accepted: false,
+          reason:
+            "Main messages are questions or heads-ups, never work commands",
+        };
+      const reply = z
+        .strictObject({
+          eventId: z.string(),
+          text: z.string().min(1).max(4000).optional(),
+          taskId: z.string().min(1).optional(),
+        })
+        .parse(input);
+      const task = reply.taskId
+        ? store
+            .tasks()
+            .find((t) => t.id === reply.taskId && t.repoId === event.repoId)
+        : null;
+      if (reply.taskId && !task)
+        return {
+          accepted: false,
+          reason: "Reply issue is outside the sending Main's repository",
+        };
+      store.operator.atomic(() => {
+        const note = this.note(
+          event,
+          "main.message",
+          reply.text ? "reply" : "acknowledged",
+          reply.text ?? "Main's message was read; no reply.",
+          false,
+          task?.id ?? null,
+        );
+        store.operator.updateNote({
+          ...note,
+          repoId: event.repoId,
+          ...(reply.text ? { addressedTo: "main" as const } : {}),
+        });
+        store.operator.complete(event.id, this.deps.now());
+      });
+      return { accepted: true };
+    }
     if (name === "file_task") return this.file(event, filingInput.parse(input));
     if (!event.taskId) {
       if (name !== "append_note")

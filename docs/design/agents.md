@@ -79,7 +79,7 @@ Main launches with only `Read`, `Glob`, `Grep` and Loom MCP tools. `--disallowed
 restricted mode confines file reads to the repository, and strict MCP configuration
 excludes other servers (including terminal attach tools). The panel remains a human view of
 Main's conversation. Its first response is a two-sentence introduction, then it waits; it never
-starts drills or resumes work on its own. Internal `lead` identifiers remain for compatibility.
+starts drills or resumes work on its own. When unread replies addressed to Main exist, its first message also mentions them. Internal `lead` identifiers remain for compatibility.
 
 ### The Coordinator stays code
 
@@ -123,17 +123,19 @@ hints, and the coordinator validates and deduplicates every resulting action und
 
 ## How the layers communicate
 
-Main and the Operator never talk to each other directly, and neither talks to an issue agent outside an
-issue. Everything goes through Loom, so it is persisted and visible:
+Main may message agents fire-and-forget through Loom; every message is recorded; Main never waits.
+Messages are short questions or heads-ups, never a way to drive work; work becomes an issue.
+This is the user decision of 2026-09-13. Everything goes through Loom, so it is persisted and visible:
 
 | From | To | Channel |
 |---|---|---|
 | Human | Main | The bottom-bar panel |
 | Main | Coordinator | Loom commands (create, move, approve, answer) |
-| Main | Operator | A note on an issue ("look at why the reviewer keeps raising this") |
+| Main | Operator | `message_agent`: an authored note and event in the existing Operator queue, consumed on its next pump |
+| Main | Issue agents | `message_agent`: an issue note authored `main`, then the core message path and provider-confirmed receipt; unavailable or waiting runs are refused |
 | Operator | Issue agents | Loom commands: answer a request, send a message, retry |
 | Operator | Human | A Needs-you row tagged `for human`; a note on the issue with its reasoning |
-| Operator | Main | Nothing direct; Main reads the same rows and notes when the human opens the panel |
+| Operator | Main | Optional `append_note` reply on the relevant issue or an Operator note, addressed to Main; first-message and Needs-you summaries mention unread replies |
 | Coordinator | Everyone | Snapshot and patches (protocol) |
 
 When the human is not looking, a `for human` row raises a desktop notification. When they open the
@@ -187,7 +189,7 @@ human can audit it and widen or narrow the row.
 - An Operator that plans work on its own initiative. It reacts to rows; Main and the human decide
   what to build.
 - A Main shared across repositories or instances.
-- Agent-to-agent chat of any kind outside an issue's recorded channels.
+- Unrecorded agent-to-agent chat, synchronous conversations, waiting for replies, or using messages to assign or drive work.
 
 ## Operator implementation contract
 
@@ -204,7 +206,11 @@ settings and MCP registration are rewritten at launch, and resume requires provi
 The recorded tmux pane is reused across coordinator and viewer restarts. If that identity is still
 live without its recorded pane, recovery refuses a duplicate launch and exposes an error.
 Only native idle status permits queued input; delivery hashes are saved before paste and matched
-to UserPromptSubmit receipts. Uncertain delivery is retained without automatically pasting again. Stop intent, event queue, retry ledger, filing quota and notes survive
+to UserPromptSubmit receipts or the corresponding native transcript submission within the attempt
+window. Every pump, including recovery, rechecks uncertain delivery despite a stored error. After
+30 seconds without confirmation, native idle with no pending dialog permits retry; busy or waiting
+sessions retain the queued input. Confirmed input plus native idle recovers a missing Stop hook.
+Stop intent, event queue, retry ledger, filing quota and notes survive
 restart. Operator failures do not produce recursive Operator events.
 
 Policy row identifiers are `permission.allowed`, `permission.other`, `headless.retry`,
@@ -245,5 +251,11 @@ observation. The command evidence is retained for escalation as well as permissi
 
 A failed native SDK result pauses Operator delivery immediately, even if its streaming child is
 still open. The visible session error is durable and queued events are retained across restart;
-`open_operator_session` explicitly clears the error to retry. Polling never starts an automatic
-redelivery loop for a failed turn.
+`retry_operator_session` (desktop Retry) or `open_operator_session` explicitly retries. Polling never
+starts an automatic redelivery loop for a failed turn.
+
+Main-to-Operator messages also have a durable chat-delivery receipt, separate from event processing.
+They queue while the Operator is busy or waiting, then enter its transcript as
+`Message from Main: <text>` through the normal idle send gate. Tool consumption cannot remove a
+pending chat delivery. The Operator answers briefly in chat and records the same reply with
+`append_note` on the matching `main_message`; replaying that event never creates a second reply.

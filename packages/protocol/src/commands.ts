@@ -1,4 +1,10 @@
-import { pullRequestCommand } from "./pull-requests.js";
+import {
+  pullRequestCommand,
+  pullRequestCommitDiff,
+  pullRequestDiffRead,
+  pullRequestFileContents,
+  pullRequestReviewChange,
+} from "./pull-requests.js";
 // What a window asks the coordinator to do. Human commands become inputs on the task's inbox and
 // are acknowledged with the input ID; reconcile decides what happens next and the result arrives
 // as patches (principle 3: code moves tasks, and only after validating). UI-only requests answer
@@ -95,11 +101,14 @@ export const command = z.union([
   }),
 
   ...pullRequestCommand.options,
+  pullRequestReviewChange,
+  ...pullRequestDiffRead.options,
   z.strictObject({
     kind: z.literal("claim_notification"),
     noteId: z.string().min(1).max(300),
   }),
   z.strictObject({ kind: z.literal("open_operator_session") }),
+  z.strictObject({ kind: z.literal("retry_operator_session") }),
   z.strictObject({ kind: z.literal("open_operator_terminal") }),
   z.strictObject({ kind: z.literal("stop_operator_session") }),
   z.strictObject({ kind: z.literal("operator_status") }),
@@ -206,10 +215,22 @@ export const ackResult = z.union([
     scope: settingsScope,
     version: z.number().int().positive(),
   }),
+  z.strictObject({ kind: z.literal("pull_request_review_state") }),
+  z.strictObject({
+    kind: z.literal("pull_request_commit"),
+    diff: pullRequestCommitDiff,
+  }),
+  z.strictObject({
+    kind: z.literal("pull_request_file"),
+    contents: pullRequestFileContents,
+  }),
   z.strictObject({ kind: z.literal("renamed") }),
   z.strictObject({
     kind: z.literal("pull_request_action"),
     command: z.enum([
+      "pin_pull_request",
+      "link_pull_request",
+      "comment_pull_request",
       "merge_pull_request",
       "close_pull_request",
       "delete_branch",

@@ -29,6 +29,7 @@ import {
   isIgnoredSubagentEvent,
   MemoryHookLog,
 } from "./hooks.js";
+import { promptReceipt } from "./receipts.js";
 import type { HookReceiver } from "./receiver.js";
 import { startHookReceiver } from "./receiver.js";
 import type { McpServerEntry } from "./settings.js";
@@ -94,6 +95,7 @@ export async function createClaudeAdapter(
 
   const settingsRequest = {
     hookBaseUrl: receiver.baseUrl,
+
     mcpServerName,
     mcpServer: config.mcpServer,
     bashCommandPrefixes: undefined, // Will be set per-run if interactive
@@ -107,6 +109,7 @@ export async function createClaudeAdapter(
 
   return {
     hookBaseUrl: receiver.baseUrl,
+    promptReceipt,
 
     listSessions: (): Promise<ClaudeAgentsEntry[]> =>
       readAgents(config.agents ?? {}),

@@ -2,6 +2,8 @@ import {
   type ProtocolError,
   paneIdentity,
   pullRequestCommand,
+  pullRequestDiffRead,
+  pullRequestReviewChange,
 } from "@loom/protocol";
 import { PaneInventory, paneKey } from "./pane-inventory.js";
 import { PullRequestViews } from "./pull-requests.js";
@@ -60,6 +62,7 @@ import { inspectTask } from "./inspect.js";
 import type { LaunchDeps } from "./launch.js";
 import { LeadSession, legacyLeadPort, migrateLead } from "./lead.js";
 import { Loop } from "./loop.js";
+import { messageAgent } from "./main-messages.js";
 import { createMcpHost } from "./mcp-host.js";
 import { observe as observeOwners, PullRequestCache } from "./observe.js";
 import { OperatorSession } from "./operator.js";
@@ -202,6 +205,7 @@ export class Coordinator {
         config: this.config,
         dataDirectory: this.store.dataDirectory,
         repo,
+        unreadReplies: () => this.store.operator.unreadReplies(repo.id),
         mcpEntry: (token) => this.launchDeps().mcpEntry(token),
         now: () => this.now(),
       });
@@ -653,6 +657,13 @@ export class Coordinator {
       onResult: (taskId) => this.loop.enqueue(taskId),
     });
     this.prViews = new PullRequestViews({
+      viewedFiles: (repo, number, head) =>
+        this.store.pullRequestViewedFiles(repo, number, head),
+      saveReviewState: (command) =>
+        this.store.savePullRequestReviewState(command),
+      preferences: (repo, number) =>
+        this.store.pullRequestPreferences(repo, number),
+      log: (message) => this.log(message),
       github: this.adapters.github,
       repo: (id) => this.repoById(id),
       tasks: () => this.store.tasks(),
@@ -720,10 +731,7 @@ export class Coordinator {
       heartbeatMs: this.config.heartbeatMs,
       bind: this.config.bind,
       now: () => this.now(),
-      snapshot: async (scope) => {
-        await this.ensure(scope);
-        return this.published.rows();
-      },
+      snapshot: () => this.published.rows(),
       command: (value) => this.command(value),
       ensure: (scope) => this.ensure(scope),
       scopesChanged: (scope) => this.prViews.subscriptions(scope),
@@ -988,6 +996,27 @@ export class Coordinator {
         ) => {
           if (!repoId) throw new Error("Main repository identity is required");
           const lead = this.leadFor(repoId);
+          if (name === "message_agent")
+            return messageAgent(
+              {
+                store: this.store,
+                adapters: this.adapters,
+                now: () => this.now(),
+                enqueue: (taskId) => this.loop.enqueue(taskId),
+              },
+              repoId,
+              input,
+            );
+          if (name === "read_agent_replies")
+            return this.store.operator.atomic(() => {
+              const replies = this.store.operator.unreadReplies(repoId);
+              for (const reply of replies)
+                this.store.operator.updateNote({
+                  ...reply,
+                  readAt: this.now(),
+                });
+              return replies;
+            });
           if (name === "set_note") return lead.setNote(input.note as string);
           if (name === "list_tasks")
             return this.store.tasks().filter((task) => task.repoId === repoId);
@@ -1259,6 +1288,33 @@ export class Coordinator {
   ): Promise<
     { ok: true; result: unknown } | { ok: false; error: ProtocolError }
   > {
+    const review = pullRequestReviewChange.safeParse(value);
+    const diffRead = pullRequestDiffRead.safeParse(value);
+    if (review.success || diffRead.success) {
+      try {
+        if (review.success) {
+          await this.prViews.saveReview(review.data);
+          return { ok: true, result: { kind: "pull_request_review_state" } };
+        }
+        if (diffRead.success)
+          return {
+            ok: true,
+            result: await this.prViews.readDiff(diffRead.data),
+          };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "guard_failed",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Could not read review state",
+            details: [],
+          },
+        };
+      }
+    }
     const pr = pullRequestCommand.safeParse(value);
     if (pr.success) {
       if (!this.store.repos().some((repo) => repo.id === pr.data.repoId))
@@ -1381,6 +1437,13 @@ export class Coordinator {
           });
           return { ok: true, result: { kind: "notification", notice } };
         }
+        case "retry_operator_session":
+          await this.operator.retry();
+          await this.publishOperator();
+          return {
+            ok: true,
+            result: { kind: "operator_state", state: this.operator.state() },
+          };
         case "open_operator_session":
           await this.operator.open();
           await this.publishOperator();

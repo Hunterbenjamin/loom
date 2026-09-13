@@ -12,6 +12,10 @@ export function buildPullRequests(
       const linked = index === 0 ? task : undefined;
       return {
         repoId: repo.id,
+        viewerDidAuthor: index >= 2,
+        viewerReviewRequested: index === 1,
+        reviewRequired: index === 1,
+        completedAt: index >= 4 ? minutesBefore(index * 10) : null,
         number: 201 + index,
         title:
           linked?.title ??
@@ -28,6 +32,7 @@ export function buildPullRequests(
         head: linked?.branch ?? `feat/example-${index}`,
         base: "main",
         headSha: sha(index + 1),
+        baseSha: sha(0),
         author: index === 3 ? null : "fixture-contributor",
         state: index === 4 ? "merged" : index === 5 ? "closed" : "open",
         draft: index === 3,
@@ -61,6 +66,9 @@ export function buildPullRequestDetails(rows: PullRequestRow[]) {
     repoId: row.repoId,
     number: row.number,
     taskId: row.taskId,
+    pinned: false,
+    viewedFiles: [],
+    behindBy: 0,
     detail: {
       ...(({ repoId: _repo, taskId: _task, ...summary }) => summary)(row),
       branchExists: row.state !== "closed",
@@ -93,8 +101,23 @@ export function buildPullRequestDetails(rows: PullRequestRow[]) {
       additions: 1,
       deletions: 1,
       changedFiles: 1,
+      requestedReviewers: [],
+      files: [
+        {
+          path: "example.ts",
+          additions: 1,
+          deletions: 1,
+          changeType: "MODIFIED",
+        },
+      ],
+      reviews: [],
+      comments: [],
     },
+    patchLoading: false,
+    patchError: null,
     patch: {
+      headSha: row.headSha,
+      baseSha: row.baseSha,
       patch: `diff --git a/example.ts b/example.ts\nindex 1234567..abcdef0 100644\n--- a/example.ts\n+++ b/example.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = ${row.number};\n`,
       truncated: false,
       observedAt: row.observedAt,

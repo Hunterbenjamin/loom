@@ -114,6 +114,152 @@ export function setup(excludedAuthors: string[] = []) {
   const run = vi.fn<GhRunner>(async (args, input) => {
     if (args[0] === "api" && args[1] === "graphql") {
       const { variables } = JSON.parse(input ?? "{}");
+      if (variables.number) {
+        const explicit = routes.get(`graphql:detail:${variables.number}`);
+        if (explicit) return explicit;
+        const pull = s.pullDetail.parse(
+          JSON.parse(response(required(routes.get(pr))).body),
+        );
+        const commits = s.commit
+          .array()
+          .parse(
+            JSON.parse(
+              response(required(routes.get(`${pr}/commits?per_page=100`))).body,
+            ),
+          );
+        const checks = s.checks.parse(
+          JSON.parse(response(required(routes.get(checksPath))).body),
+        );
+        const statuses = s.statuses.parse(
+          JSON.parse(response(required(routes.get(statusesPath))).body),
+        );
+        const reviews = s.review
+          .array()
+          .parse(JSON.parse(response(required(routes.get(reviewsPath))).body));
+        const decisions = new Map<string, string>();
+        for (const r of [...reviews].sort(
+          (a, b) =>
+            (a.submitted_at ?? "").localeCompare(b.submitted_at ?? "") ||
+            a.id - b.id,
+        ))
+          if (r.user && r.state !== "PENDING" && r.state !== "COMMENTED")
+            decisions.set(r.user.login, r.state);
+        const native = (nodes: unknown[], more = false) => ({
+          nodes,
+          pageInfo: { hasNextPage: more },
+        });
+        const ref =
+          pull.head.repo &&
+          routes.get(
+            `repos/${pull.head.repo.full_name}/git/ref/heads/${encodeURIComponent(pull.head.ref)}`,
+          );
+        return ok(
+          http({
+            data: {
+              repository: {
+                pullRequest: {
+                  ...graphqlNode,
+                  number: pull.number,
+                  title: pull.title,
+                  body: pull.body ?? "",
+                  author: pull.user,
+                  headRefName: pull.head.ref,
+                  headRefOid: pull.head.sha,
+                  baseRefName: pull.base.ref,
+                  state: pull.merged ? "MERGED" : pull.state.toUpperCase(),
+                  isDraft: pull.draft,
+                  headRef: ref?.exitCode === 0 ? { name: pull.head.ref } : null,
+                  headRepository: pull.head.repo
+                    ? { nameWithOwner: pull.head.repo.full_name }
+                    : null,
+                  mergeable:
+                    pull.mergeable === null
+                      ? "UNKNOWN"
+                      : pull.mergeable
+                        ? "MERGEABLE"
+                        : "CONFLICTING",
+                  reviewDecision: [...decisions.values()].includes(
+                    "CHANGES_REQUESTED",
+                  )
+                    ? "CHANGES_REQUESTED"
+                    : [...decisions.values()].includes("APPROVED")
+                      ? "APPROVED"
+                      : null,
+                  createdAt: pull.created_at,
+                  updatedAt: pull.updated_at,
+                  mergedAt: pull.merged_at,
+                  mergeCommit: pull.merge_commit_sha
+                    ? { oid: pull.merge_commit_sha }
+                    : null,
+                  additions: pull.additions,
+                  deletions: pull.deletions,
+                  changedFiles: pull.changed_files,
+                  latest: {
+                    nodes: [
+                      {
+                        commit: {
+                          oid: pull.head.sha,
+                          statusCheckRollup: {
+                            state:
+                              statuses.total_count &&
+                              statuses.state === "failure"
+                                ? "FAILURE"
+                                : "SUCCESS",
+                            contexts: native(
+                              checks.check_runs.map((c) => ({
+                                __typename: "CheckRun",
+                                databaseId: c.id,
+                                name: c.name,
+                                status: c.status.toUpperCase(),
+                                conclusion: c.conclusion?.toUpperCase() ?? null,
+                                detailsUrl: c.html_url,
+                                startedAt: c.started_at ?? null,
+                                completedAt: c.completed_at ?? null,
+                              })),
+                            ),
+                          },
+                        },
+                      },
+                    ],
+                  },
+                  commits: native(
+                    commits.map((c) => ({
+                      commit: {
+                        oid: c.sha,
+                        message: c.commit.message,
+                        author: { user: c.author },
+                        committedDate: c.commit.committer?.date,
+                        url: c.html_url,
+                      },
+                    })),
+                    pull.commits > commits.length,
+                  ),
+                  files: native([
+                    {
+                      path: "example.ts",
+                      additions: pull.additions,
+                      deletions: pull.deletions,
+                      changeType: "MODIFIED",
+                    },
+                  ]),
+                  reviews: native(
+                    reviews.map((r) => ({
+                      id: r.node_id,
+                      author: r.user,
+                      body: r.body,
+                      state: r.state,
+                      submittedAt: r.submitted_at ?? null,
+                      url: pull.html_url,
+                    })),
+                  ),
+                  reviewRequests: native([]),
+                  comments: native([]),
+                },
+              },
+            },
+          }),
+        );
+      }
       const key = `graphql:${variables.state}:${variables.cursor ?? ""}`;
       const result = routes.get(key);
       if (!result) throw new Error(`Missing fixture: ${key}`);

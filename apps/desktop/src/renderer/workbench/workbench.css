@@ -7,7 +7,7 @@
 }
 /* Keep the hiddenInset title area in flow, above the sidebar and panel layout. */
 .wb-titlebar {
-  height: 30px;
+  height: var(--titlebar-height);
   flex: none;
 }
 .wb-titlebar,
@@ -206,6 +206,10 @@
 .wb-pinned {
   flex: none;
 }
+.wb-pinned-agent {
+  display: flex;
+  align-items: center;
+}
 .wb-tree-row {
   display: flex;
   align-items: baseline;
@@ -214,6 +218,10 @@
   text-align: left;
   padding: 7px 12px;
   font-size: 12px;
+  min-width: 0;
+}
+.wb-pinned-agent > .wb-tree-row {
+  flex: 1;
   min-width: 0;
 }
 .wb-sidebar [aria-current="true"],

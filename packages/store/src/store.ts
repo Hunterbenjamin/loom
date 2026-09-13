@@ -15,6 +15,7 @@ import type {
   TaskState,
   Transition,
 } from "@loom/core";
+import { pullRequestReviewChange, viewedFile } from "@loom/protocol";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { actionSchema } from "./action-schemas.js";
@@ -123,6 +124,88 @@ export class Store {
         "INSERT INTO meta(key, value) VALUES ('last_opened_repo', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       )
       .run(id);
+  }
+  /** PR preferences are Loom facts; GitHub content remains a disposable projection. */
+  pullRequestPreferences(
+    repoId: string,
+    number: number,
+  ): { pinned: boolean; taskId: TaskId | null } {
+    const raw = this.db
+      .prepare("SELECT value FROM meta WHERE key = ?")
+      .pluck()
+      .get(`pr:${JSON.stringify([repoId, number])}`);
+    return raw === undefined
+      ? { pinned: false, taskId: null }
+      : z
+          .object({
+            pinned: z.boolean(),
+            taskId: z
+              .string()
+              .min(1)
+              .transform((value) => value as TaskId)
+              .nullable(),
+          })
+          .parse(JSON.parse(z.string().parse(raw)));
+  }
+  setPullRequestPreferences(
+    repoId: string,
+    number: number,
+    update: { pinned?: boolean; taskId?: TaskId },
+  ): void {
+    if (!this.repos().some((repo) => repo.id === repoId))
+      throw new Error("Unknown registered repository");
+    if (!Number.isSafeInteger(number) || number < 1)
+      throw new Error("Invalid pull request number");
+    if (
+      update.taskId &&
+      !this.tasks().some(
+        (task) => task.id === update.taskId && task.repoId === repoId,
+      )
+    )
+      throw new Error("Issue must belong to the pull request repository");
+    const value = { ...this.pullRequestPreferences(repoId, number), ...update };
+    this.db
+      .prepare(
+        "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run(`pr:${JSON.stringify([repoId, number])}`, JSON.stringify(value));
+  }
+  pullRequestViewedFiles(repoId: string, number: number, headSha: string) {
+    const raw = this.db
+      .prepare("SELECT value FROM meta WHERE key = ?")
+      .pluck()
+      .get(`pr-viewed:${JSON.stringify([repoId, number])}`);
+    if (raw === undefined) return [];
+    const saved = z
+      .object({ headSha: z.string(), files: z.array(viewedFile) })
+      .parse(JSON.parse(z.string().parse(raw)));
+    return saved.headSha === headSha ? saved.files : [];
+  }
+  savePullRequestReviewState(
+    command: z.output<typeof pullRequestReviewChange>,
+  ): void {
+    const { repoId, number, change } = pullRequestReviewChange.parse(command);
+    if (!this.repos().some((repo) => repo.id === repoId))
+      throw new Error("Unknown registered repository");
+    const files = new Map(
+      this.pullRequestViewedFiles(repoId, number, change.headSha).map(
+        (file) => [file.fileId, file],
+      ),
+    );
+    for (const file of change.viewed ?? []) {
+      if (file.headSha !== change.headSha)
+        throw new Error("Viewed file head must match review head");
+      files.set(file.fileId, file);
+    }
+    for (const id of change.unviewed ?? []) files.delete(id);
+    this.db
+      .prepare(
+        "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run(
+        `pr-viewed:${JSON.stringify([repoId, number])}`,
+        JSON.stringify({ headSha: change.headSha, files: [...files.values()] }),
+      );
   }
   putRepo(repo: Repo): void {
     const value = repoSchema.parse(repo);

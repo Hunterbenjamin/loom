@@ -292,7 +292,12 @@ export type HumanCommand =
       };
       text?: string;
     }
-  | { type: "send_message"; runId: RunId; text: string }
+  | {
+      type: "send_message";
+      runId: RunId;
+      text: string;
+      expectedRun?: { sessionEpoch: number; attempts: number };
+    }
   | { type: "retry" }
   | { type: "restart_run"; runId: RunId }
   | { type: "grant_review_round" }

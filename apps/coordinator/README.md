@@ -169,7 +169,7 @@ Subscriptions filter the stream; heartbeats drop a client that misses three; hum
 recorded as inputs and acknowledged with their input ID. Frames are validated on the way out as
 well as in.
 
-`fetch_diff` and `save_review_state` answer `unavailable`: they belong to the Workbench, in
+Task-targeted `fetch_diff` and `save_review_state` answer `unavailable`: they belong to the Workbench, in
 Phase 4, and the git adapter has no raw-patch reader yet.
 
 ## The CLI

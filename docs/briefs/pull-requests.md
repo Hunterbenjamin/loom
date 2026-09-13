@@ -23,7 +23,9 @@ opened by hand or by off-pipeline agents.
 - **Polling uses one GraphQL request per list** through `gh api graphql`, including checks,
   review decision and mergeability (100 rows per page; cursor pagination up to the existing
   1,000-page cap). GraphQL has no ETag: compare mapped rows per repo/state and publish no patch
-  when unchanged. REST detail/patch reads retain their conditional ETags. List every 60 s while
+  when unchanged. Reviews slice 1 supersedes the detail transport: one GraphQL content read and an immutable
+  REST compare diff, published independently. Warm polls refresh metadata/checks and reuse content
+  and diff by head/base; an edited PR or explicit refresh invalidates content. List every 60 s while
   a window shows the PR view; detail every 30 s while it is open; refresh after any command.
   First snapshots and subscription acknowledgments use the cached projection immediately,
   with `loading: true` for an initial list read; rows arrive in patches. Different scopes read
@@ -33,14 +35,13 @@ opened by hand or by off-pipeline agents.
 
 ## What the human sees
 
-**Sidebar.** A new Tracker view, *Pull requests*, under the existing views, with the count of
-open PRs for the selected repository.
-
-**List.** One row per PR: number, title, head branch → base, author, age, and three badges: checks
-(pass / pending / fail), review (approved / changes requested / none), and mergeability
-(mergeable / conflicts / unknown). A PR whose head branch is a Loom task's branch shows the task
-key, and clicking that opens the task. Filters: open (default), merged, closed; a text filter.
-Sorted newest first. Keyboard as in the task list.
+**Sidebar and list.** Superseded by Reviews slice 2 in `docs/briefs/reviews.md`: the
+sidebar entry is **Reviews**, with the count needing the human. **For you** and **Created**
+replace the state tabs. Collapsible Ready to merge, Needs attention, Waiting, Created by you
+and Completed sections replace the field table. Completed starts collapsed and reveals the
+newest merged/closed PRs in pages of 20. Rows show a state glyph, title, one check/working
+glyph and age; the linked issue key appears on hover or keyboard focus. Existing detail and
+actions below remain unchanged.
 
 **Detail.** Opens in place of the task detail, same frame:
 
@@ -98,3 +99,48 @@ the browser.
 - `pnpm test`, `pnpm lint`, `pnpm typecheck` and the desktop build green. Update
   `docs/architecture.md` (ownership table, polling) and `docs/design/ui.md` where this changes
   them, in the same PR as the slice that changes them.
+
+## Superseded by Reviews slice 1
+
+`docs/briefs/reviews.md` slice 1 changes loading only; the current sidebar, tabs and actions stay.
+GraphQL detail includes file metadata, reviews and comments for future slices. Detail publishes
+before its diff. The Files tab shows Loading diff until the matching patch arrives, or a retryable
+error while Description remains readable. List rows now include `baseSha`; diff payloads carry
+both requested SHAs and may be null while loading. GitHub diff responses contain no commit SHA,
+so the REST diff uses an immutable base/head compare endpoint. Cached list SHAs allow parallel
+reads; a direct open without cached metadata fetches detail before the diff. An outdated list
+range is never attached to a new head. Coordinator logs record read durations.
+
+## Superseded by Reviews slice 2
+
+List and detail summaries carry GitHub's `viewerDidAuthor`, `viewerReviewRequested`,
+`reviewRequired` and `completedAt` (GitHub `closedAt`). No identity is inferred from local
+Git configuration or a task link. Required/pending review prevents the Reviews ready group;
+existing merge action guards and bottom-bar semantics are unchanged. The Reviews sidebar
+count includes ready PRs, viewer review requests, and the viewer's PRs with failing checks,
+conflicts or requested changes. Reviews subscribes to open, merged and closed lists while
+visible; history uses the existing shared list reads, with 20-row presentation pages.
+
+## Superseded by Reviews slice 3
+
+`docs/briefs/reviews.md` slice 3 replaces the four-tab detail and action bar with the referenced
+Overview / Diff page. Description, activity/commits and expandable checks now live in the
+Overview's reading column and property rail. The header provides a durable pinned star, overflow
+Close/Delete branch/Refresh actions, GitHub chip and fullscreen. Squash & merge retains all
+existing guards and its exact-head confirmation, with a split menu for the default-on branch
+deletion option. The agent button opens an existing branch agent; it does not launch one.
+
+The rail adds same-repository issue linking, GitHub reviewers, branch divergence and grouped
+file counts; file selection opens the existing Diff viewer at that path. Pin and link commands
+persist in the coordinator, while PR comments go through the executor/adapter and owner refresh.
+The Reviews inbox and reviews slice 5 polish remain separate; Diff is superseded below.
+
+## Superseded by Reviews slice 4
+
+The Diff tab now uses the referenced Files/Commits bar and per-file Pierre cards, ordered like
+the Overview rail. Unified/split and whitespace settings, expandable unchanged regions, file/hunk
+keyboard navigation, and on-demand first-parent commit diffs replace the old sidebar viewer.
+Reviewed files are coordinator-owned, scoped to repository, PR number and head SHA, using the
+existing `save_review_state` viewed-file contract with a PR target. Marking a file collapses it;
+new heads reset the visible marks. Commit-only views cannot mark the entire PR reviewed.
+Reviews slice 5 remains separate.

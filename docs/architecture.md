@@ -138,15 +138,28 @@ failed or stale guard, failed merge precondition, or recovery observation voids 
   request including check/review/mergeability summaries every 60 seconds while a window subscribes
   to that repo/state (cursor pagination above 100 rows, capped at 1,000 pages). GraphQL has no ETag;
   compare mapped rows and preserve unchanged observations so identical refreshes publish no patch.
+  Reviews list/detail summaries include GitHub viewer authorship, outstanding viewer review
+  requests, required-review status and completion time. These are disposable owner facts used
+  for inbox grouping; the renderer never guesses the human identity from a local Git author.
   First snapshots use cached rows immediately with an initial loading flag, then receive patches.
   Reads run concurrently across scopes, with at most one in flight per key.
   Each window subscribes to its selected repository's open list for the bottom-bar readiness count
-  in both Tracker and Workbench; other list states are subscribed only while visible. REST
-  detail (including remote head-branch existence) and capped patches refresh every 30 seconds while the PR is open in a window. Identical
+  in both Tracker and Workbench; other list states are subscribed only while visible. GraphQL
+  detail (including remote head-branch existence) and capped REST compare diffs refresh every 30 seconds while the PR is open in a window. Identical
   scopes share one poll, and disconnect/unsubscribe cancels it when the last viewer leaves.
   PR commands run through the executor, always refresh their owner after success or failure, and
   invalidate linked issues' observations. Failed reads retain the last good projection and read time.
-  A detail read brackets its patch read with head/base checks to reject a concurrent push.
+  A detail read publishes the overview immediately; its matching diff arrives in a second patch.
+  The diff is an immutable REST `compare/<baseSha>...<headSha>` request: GitHub's diff media
+  response has no head SHA, so consistency uses the requested SHAs and the GraphQL observation,
+  never an ETag as a commit identity. Cached list SHAs let both requests start together; a direct
+  uncached open reads detail first. A stale list range is discarded and the new range fetched.
+  Detail content and diffs are disposable caches scoped to PR/head/base. Unchanged polls select
+  only live metadata and check runs; a push, base change or edited PR invalidates content. Explicit
+  refresh and actions force fresh content. Failed diffs retain the readable overview with a retry
+  error, never a mismatched patch. Snapshot rows and their sequence are captured synchronously,
+  so an early detail/diff patch cannot be overwritten by an older snapshot. Every
+  list/detail/check/diff read logs its elapsed milliseconds.
 
 ## Agent integration
 
@@ -225,7 +238,11 @@ Startup recovers every per-repository recipe and idempotently migrates the legac
 to the first registered repository, keeping its session ID and token. Operator remains instance-wide.
 This conversation-only policy is separate from issue planners' and reviewers' edit restrictions,
 so those issue roles retain the tools needed to inspect the repository and run tests.
-The human-command tools enqueue the same guarded inputs as the CLI; they do not
+Main may also send short questions or heads-ups through `message_agent`, fire-and-forget. Every
+message is recorded, task-run delivery uses the core send gate and native receipt path, and
+Operator messages/replies reuse its durable events and notes. Repository-scoped unread replies
+appear in Main's introduction and panel summaries; Main never waits for an answer or assigns work
+through messages. The human-command tools enqueue the same guarded inputs as the CLI; they do not
 change stage ownership. Issue-run tools and Main tools reject each other's identities. See
 [Main](design/ui.md#main) for its lifecycle, recovery and bottom-bar UI.
 
@@ -527,10 +544,48 @@ configuration (`--tools ""`, strict MCP config and per-process settings) and a s
 identity prevent the Operator agent from using issue-run, shell and attach tools. Humans can attach
 its terminal through the pinned Workbench entry. Native Claude status gates queued input: busy,
 waiting and unknown sessions receive no paste. A durable prompt hash is recorded before paste;
-UserPromptSubmit confirms delivery and the matching Stop receipt finishes a turn. Uncertain
-delivery is never automatically replayed after restart.
+UserPromptSubmit confirms delivery. On startup and every pump, an unconfirmed attempt also
+checks the session's native transcript for a submitted user message with the same normalized hash
+between the attempt start and the observation time. A matching Stop or native idle finishes a
+confirmed turn. After 30 seconds without a receipt, an idle session with no pending dialog may
+retry through the same send gate; busy sessions retain the attempt for further receipt checks.
+Delivery errors never prevent observation. Genuine native turn failures stay visible until Retry.
+Main messages have a separate durable chat receipt: each is pasted as `Message from Main: <text>`
+even if a tool already completed its `main_message` event. Provider confirmation retires the chat
+item; the idempotent event and `append_note` reply remain the durable record. The desktop shows
+Operator errors on hover and offers Retry without replacing the session or its terminal.
 Every mutation is checked against policy v1 using fresh observations. Rescue commands reuse the
 core/outbox/executor path, without a submission or stage transition; automatic bug planning uses
 the existing `todo` input. Runtime bug repository routing is explicit. Desktop status and authored
 notes are projections, and notification dedupe is coordinator-owned. See the
 [Operator contract](design/agents.md#operator-implementation-contract).
+
+### Repository review preferences and Overview actions
+
+Loom owns pinned PR stars and explicit issue links in SQLite metadata, keyed by repository and
+PR number; GitHub remains the owner of PR content. PR projections prefer a valid same-repository
+manual issue link over branch matching. These preferences do not rewrite branches, workflow
+state or approvals. Pin/link commands re-read local ownership before publishing; comment commands
+run through the executor and GitHub adapter, then refresh GitHub through the existing PR path.
+A hidden per-submission marker in the posted comment lets the adapter recover an uncertain write
+or repeated command by reading all comment pages. Comment text travels through stdin, never shell
+interpolation. The renderer retains only the active draft and submission identity.
+Requested reviewers come from GraphQL. Branch divergence is read from an immutable REST comparison
+and cached by both SHAs; it publishes after detail so it cannot delay Overview or diff rendering.
+No branch status is inferred from mergeability alone, except GitHub's explicit conflict state.
+
+### PR Diff review state and immutable content
+
+`save_review_state` also accepts a repository/PR target, independent of an issue. SQLite metadata
+owns its viewed-file records at one head SHA; per-file updates preserve other windows' marks and
+publish through the existing PR detail projection. The coordinator checks the current GitHub head
+and file membership before saving. A different head projects an empty viewed set. Renderer state
+contains only transient selection/settings and disposable content read results.
+
+Commit and full-file requests travel through validated coordinator commands and the GitHub adapter.
+Commit membership is checked against the observed PR head; the REST commit's first parent supplies
+its immutable comparison range. Full file reads resolve rename paths and the merge base from GitHub
+comparison metadata, never patch guesses. Missing comparison metadata, binary data, oversized files
+and parse failures are explicit errors. Contents are bounded at 2 MiB per side; whitespace-filtered
+patches are computed in the adapter with a one-second computation limit. No local checkout or
+provider session is involved. The UI continues to use Pierre CodeView and its bounded worker pool.

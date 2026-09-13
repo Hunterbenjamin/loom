@@ -204,6 +204,10 @@ async function open(
     git: git2,
     github: {
       listPullRequests: github.listPullRequests,
+      readPullRequestCommit: github.readPullRequestCommit,
+      readPullRequestFile: github.readPullRequestFile,
+      readPullRequestBehind: github.readPullRequestBehind,
+      commentPullRequest: github.commentPullRequest,
       readPullRequest: github.readPullRequest,
       readPullRequestPatch: github.readPullRequestPatch,
       closePullRequest: github.closePullRequest,

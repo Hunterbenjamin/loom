@@ -4,6 +4,7 @@ import { z } from "zod";
 export const operatorEvent = z.strictObject({
   id: z.string().min(1).max(300),
   kind: z.enum([
+    "main_message",
     "attention",
     "run_ended",
     "pass_failed",
@@ -11,6 +12,7 @@ export const operatorEvent = z.strictObject({
     "stale_process",
   ]),
   at: z.string().datetime(),
+  repoId: z.string().optional(),
   taskId: z.string().nullable(),
   runId: z.string().nullable(),
   message: z.string().max(8000),
@@ -21,7 +23,10 @@ export type OperatorEvent = z.output<typeof operatorEvent>;
 export const taskNote = z.strictObject({
   id: z.string(),
   taskId: z.string().nullable(),
-  author: z.enum(["operator", "lead", "human"]),
+  repoId: z.string().optional(),
+  addressedTo: z.literal("main").optional(),
+  readAt: z.string().datetime().optional(),
+  author: z.enum(["operator", "main", "lead", "human"]),
   at: z.string().datetime(),
   eventId: z.string(),
   row: z.string(),
@@ -121,6 +126,16 @@ export class OperatorStore {
       .all()
       .map((v) => operatorEvent.parse(JSON.parse(String(v))));
   }
+  /** Chat visibility is independent of whether a tool already processed the event. */
+  pendingChat(): OperatorEvent[] {
+    return this.db
+      .prepare(
+        "SELECT e.data FROM operator_events e LEFT JOIN operator_ledger l ON l.key='chat:' || e.id WHERE json_extract(e.data,'$.kind')='main_message' AND l.key IS NULL ORDER BY e.rowid LIMIT 100",
+      )
+      .pluck()
+      .all()
+      .map((v) => operatorEvent.parse(JSON.parse(String(v))));
+  }
   complete(id: string, at: string) {
     this.db
       .prepare("UPDATE operator_events SET processed_at=? WHERE id=?")
@@ -150,6 +165,15 @@ export class OperatorStore {
             .pluck()
             .all(taskId);
     return rows.map((v) => taskNote.parse(JSON.parse(String(v))));
+  }
+  unreadReplies(repoId: string): TaskNote[] {
+    return this.db
+      .prepare(
+        "SELECT data FROM operator_notes WHERE json_extract(data,'$.repoId')=? AND json_extract(data,'$.addressedTo')='main' AND json_extract(data,'$.readAt') IS NULL ORDER BY rowid",
+      )
+      .pluck()
+      .all(repoId)
+      .map((v) => taskNote.parse(JSON.parse(String(v))));
   }
   get<T>(key: string, schema: z.ZodType<T>): T | null {
     const raw = this.db

@@ -12,6 +12,7 @@ import { toSnapshot } from "../fixtures/protocol.js";
 import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
 import { pullRequestSubscriptions } from "../store/pull-requests.js";
 import { StoreProvider } from "../store/react.js";
+import { terminalsForTask } from "../store/selectors.js";
 import { createStore } from "../store/store.js";
 import { Detail } from "./detail.js";
 import { useShortcuts } from "./keys.js";
@@ -21,10 +22,25 @@ import { PullRequestDetail } from "./pull-request-detail.js";
 vi.mock("@pierre/diffs/react", () => ({
   CodeView: (props: unknown) => {
     viewer(props);
-    return createElement("div", { "data-testid": "pierre" });
+    const ref = (props as { ref?: { current: unknown } }).ref;
+    if (ref) ref.current = { scrollTo: scroll };
+    const p = props as {
+      items: import("@pierre/diffs").CodeViewItem<undefined>[];
+      renderCustomHeader?: (
+        item: import("@pierre/diffs").CodeViewItem<undefined>,
+      ) => import("react").ReactNode;
+    };
+    return createElement(
+      "div",
+      { "data-testid": "pierre" },
+      p.items.map((i) =>
+        createElement("div", { key: i.id }, p.renderCustomHeader?.(i)),
+      ),
+    );
   },
 }));
 const viewer = vi.fn();
+const scroll = vi.fn();
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -34,6 +50,7 @@ afterEach(() => {
     for (const cleanup of cleanups.splice(0)) cleanup();
   });
   viewer.mockClear();
+  scroll.mockClear();
 });
 function setup(change: Partial<PullRequestDetailRow["detail"]> = {}) {
   const fixture = buildSnapshot();
@@ -115,7 +132,7 @@ test.each([
   "merge remains visible and explains refusal %j",
   (change, reason) => {
     const h = setup(change);
-    expect(h.button("Squash and merge").disabled).toBe(true);
+    expect(h.button("Squash & merge").disabled).toBe(true);
     expect(h.host.textContent).toContain(reason);
     expect(h.sender).not.toHaveBeenCalled();
   },
@@ -140,15 +157,15 @@ test.each(["success", "none"] as const)(
         },
       };
     });
-    expect(h.button("Squash and merge").disabled).toBe(false);
+    expect(h.button("Squash & merge").disabled).toBe(false);
     expect(h.button("Delete branch").disabled).toBe(true);
-    await h.click("Squash and merge");
+    await h.click("Squash & merge");
     const dialog = h.host.querySelector("dialog");
     expect(dialog?.open).toBe(true);
     expect(dialog?.textContent).toContain(h.row.detail.headSha);
     expect(dialog?.textContent).toContain(h.row.detail.base);
     expect(
-      dialog?.querySelector<HTMLInputElement>('input[type="checkbox"]')
+      dialog?.querySelector<HTMLInputElement>('dialog input[type="checkbox"]')
         ?.checked,
     ).toBe(true);
     expect(h.sender).not.toHaveBeenCalled();
@@ -168,12 +185,14 @@ test.each(["success", "none"] as const)(
 
 test("cancel sends nothing; unchecking deletion reaches the command and GitHub errors stay inline", async () => {
   const h = setup();
-  await h.click("Squash and merge");
+  await h.click("Squash & merge");
   await h.click("Cancel");
   expect(h.sender).not.toHaveBeenCalled();
-  await h.click("Squash and merge");
+  await h.click("Squash & merge");
   act(() =>
-    h.host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.click(),
+    h.host
+      .querySelector<HTMLInputElement>('dialog input[type="checkbox"]')
+      ?.click(),
   );
   h.sender.mockResolvedValue({
     ok: false,
@@ -190,7 +209,7 @@ test("cancel sends nothing; unchecking deletion reaches the command and GitHub e
 
 test("a push invalidates an open confirmation instead of silently approving the new head", async () => {
   const h = setup();
-  await h.click("Squash and merge");
+  await h.click("Squash & merge");
   act(() => {
     h.row.detail.headSha = "b".repeat(40) as typeof h.row.detail.headSha;
     h.update();
@@ -239,7 +258,7 @@ test("close confirms, refresh routes through coordinator, and disconnected actio
     state: "open",
   });
   act(() => h.store.setConnection("disconnected"));
-  for (const label of ["Squash and merge", "Delete branch", "Close", "Refresh"])
+  for (const label of ["Squash & merge", "Delete branch", "Close", "Refresh"])
     expect(h.button(label).disabled).toBe(true);
 });
 
@@ -253,21 +272,23 @@ test("renders markdown safely, every check with duration/link, commits, and read
   expect(h.host.querySelector("strong")?.textContent).toBe("Bold");
   expect(h.host.querySelector("script")).toBeNull();
   expect(h.host.querySelector('a[href^="javascript:"]')).toBeNull();
-  await h.click("Checks");
+  await act(async () =>
+    h.host.querySelector<HTMLElement>(".pr-checks summary")?.click(),
+  );
   expect(h.host.textContent).toContain("completed · success");
   expect(h.host.textContent).toContain("2m 0s");
   expect(h.host.querySelector(".pr-data a")?.getAttribute("href")).toBe(
     h.row.detail.checkRuns[0]?.url,
   );
-  await h.click("Commits");
+
   expect(h.host.querySelector(".pr-commit")?.textContent).toContain(
     h.row.detail.headSha.slice(0, 7),
   );
   await act(async () => {
-    await import("./diff.js");
+    await import("./pull-request-diff.js");
   });
-  await h.click("Files");
-  expect(h.host.textContent).toContain("Read-only");
+  await h.click("Diff");
+  expect(h.host.textContent).toContain("Files");
   const first = viewer.mock.lastCall?.[0] as {
     items: { version: number; fileDiff: unknown }[];
     options: { enableLineSelection: boolean };
@@ -277,19 +298,23 @@ test("renders markdown safely, every check with duration/link, commits, and read
   expect(first.renderAnnotation).toBeUndefined();
   expect(first.items).toHaveLength(1);
   act(() => {
+    if (!h.row.patch) throw new Error("Expected patch");
     h.row.patch.patch = h.row.patch.patch.replace(`= ${h.row.number}`, "= 999");
     h.update();
   });
   const second = viewer.mock.lastCall?.[0] as typeof first;
   expect(second.items[0]?.version).not.toBe(first.items[0]?.version);
   act(() => {
+    if (!h.row.patch) throw new Error("Expected patch");
     h.row.patch.truncated = true;
     h.update();
   });
   expect(h.host.textContent).toContain("truncated");
   expect(h.host.textContent).toContain("No complete file diff");
   act(() => {
+    if (!h.row.patch) throw new Error("Expected patch");
     h.row.patch.truncated = false;
+    if (!h.row.patch) throw new Error("Expected patch");
     h.row.patch.patch = "invalid patch";
     h.update();
   });
@@ -475,4 +500,432 @@ test("opening a linked issue retains issue palette commands over the PR list", (
   expect(
     h.host.querySelector('[data-value^="pull-request-merge "]'),
   ).toBeNull();
+});
+
+test("description renders while the diff is loading, and a diff error leaves it readable", async () => {
+  const h = setup({ body: "Overview arrives first" });
+  act(() => {
+    h.row.patch = null;
+    h.row.patchLoading = true;
+    h.update();
+  });
+  expect(h.host.textContent).toContain("Overview arrives first");
+  await h.click("Diff");
+  expect(h.host.textContent).toContain("Loading diff…");
+  expect(viewer).not.toHaveBeenCalled();
+  act(() => {
+    h.row.patchLoading = false;
+    h.row.patchError = "Could not load the diff. Refresh to retry.";
+    h.update();
+  });
+  expect(h.host.textContent).toContain("Refresh to retry");
+  await h.click("Overview");
+  expect(h.host.textContent).toContain("Overview arrives first");
+});
+
+test("Overview keeps the reference rail order, grouped counts, and file-to-Diff navigation", async () => {
+  const h = setup({
+    requestedReviewers: ["reviewer"],
+    files: [
+      {
+        path: "src/feature.ts",
+        additions: 5,
+        deletions: 2,
+        changeType: "MODIFIED",
+      },
+      {
+        path: "src/feature.test.ts",
+        additions: 3,
+        deletions: 0,
+        changeType: "ADDED",
+      },
+      {
+        path: "tests/helpers.ts",
+        additions: 2,
+        deletions: 1,
+        changeType: "MODIFIED",
+      },
+    ],
+    changedFiles: 3,
+  });
+  expect(
+    [...h.host.querySelectorAll('[role="tab"]')].map((el) => el.textContent),
+  ).toEqual(["Overview", "Diff"]);
+  expect(
+    [...h.host.querySelectorAll(".pr-rail h3")].map((el) => el.textContent),
+  ).toEqual([
+    "Status",
+    "Resolves",
+    "Reviewers",
+    "Checks",
+    "Branch",
+    "3 files changed",
+  ]);
+  expect(h.host.querySelector(".pr-file-groups")?.textContent).toContain(
+    "Implementation 1",
+  );
+  expect(h.host.querySelector(".pr-file-groups")?.textContent).toContain(
+    "Tests 2",
+  );
+  expect(h.host.querySelector(".pr-rail")?.textContent).toContain("reviewer");
+  expect(
+    h.host.querySelector<HTMLButtonElement>(
+      '[title="Adding reviewers is not available in v1"]',
+    )?.disabled,
+  ).toBe(true);
+  await act(async () =>
+    h.host
+      .querySelector<HTMLButtonElement>('[title="src/feature.ts"]')
+      ?.click(),
+  );
+  expect(
+    h.host.querySelector('[role="tab"][aria-selected="true"]')?.textContent,
+  ).toBe("Diff");
+});
+
+test("pin waits for the coordinator projection and the split option controls merge confirmation", async () => {
+  const h = setup();
+  const pin = h.host.querySelector<HTMLButtonElement>(
+    '[aria-label="Pin pull request"]',
+  );
+  await act(async () => pin?.click());
+  expect(h.sender).toHaveBeenCalledWith({
+    kind: "pin_pull_request",
+    repoId: h.row.repoId,
+    number: h.row.number,
+    pinned: true,
+  });
+  expect(pin?.getAttribute("aria-pressed")).toBe("false");
+  act(() => {
+    h.row.pinned = true;
+    h.update();
+  });
+  expect(
+    h.host
+      .querySelector('[aria-label="Unpin pull request"]')
+      ?.getAttribute("aria-pressed"),
+  ).toBe("true");
+  act(() =>
+    h.host
+      .querySelector<HTMLInputElement>('.pr-merge-split input[type="checkbox"]')
+      ?.click(),
+  );
+  await h.click("Squash & merge");
+  expect(
+    h.host.querySelector<HTMLInputElement>('dialog input[type="checkbox"]')
+      ?.checked,
+  ).toBe(false);
+  await h.click("Confirm squash merge");
+  expect(h.sender.mock.lastCall?.[0]).toMatchObject({
+    kind: "merge_pull_request",
+    deleteBranch: false,
+  });
+});
+
+test("comment errors keep the draft and retry identity, while acknowledgement clears it", async () => {
+  const h = setup();
+  const area = h.host.querySelector<HTMLTextAreaElement>(
+    '[aria-label="PR comment"]',
+  );
+  if (!area) throw new Error("Missing comment box");
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set?.call(area, "A considered comment");
+    area.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  h.sender.mockResolvedValue({
+    ok: false,
+    error: { code: "unavailable", message: "Connection lost", details: [] },
+  });
+  await act(async () =>
+    h.host
+      .querySelector<HTMLButtonElement>('[aria-label="Post comment"]')
+      ?.click(),
+  );
+  const command = h.sender.mock.lastCall?.[0];
+  expect(command).toMatchObject({
+    kind: "comment_pull_request",
+    body: "A considered comment",
+  });
+  expect(area.value).toBe("A considered comment");
+  h.sender.mockResolvedValue({
+    ok: true,
+    result: {
+      kind: "pull_request_action",
+      command: "comment_pull_request",
+      repoId: h.row.repoId,
+      number: h.row.number,
+    },
+  });
+  await act(async () =>
+    h.host
+      .querySelector<HTMLButtonElement>('[aria-label="Post comment"]')
+      ?.click(),
+  );
+  expect(h.sender.mock.lastCall?.[0]).toEqual(command);
+  expect(area.value).toBe("");
+});
+
+test("file selection scrolls the existing viewer after a delayed patch arrives", async () => {
+  const h = setup();
+  const patch = h.row.patch;
+  act(() => {
+    h.row.patch = null;
+    h.row.patchLoading = true;
+    h.update();
+  });
+  await act(async () =>
+    h.host.querySelector<HTMLButtonElement>('[title="example.ts"]')?.click(),
+  );
+  expect(h.host.textContent).toContain("Loading diff");
+  expect(scroll).not.toHaveBeenCalled();
+  await act(async () => {
+    h.row.patch = patch;
+    h.row.patchLoading = false;
+    h.update();
+  });
+  expect(scroll).toHaveBeenCalledWith({
+    type: "item",
+    id: "example.ts",
+    align: "start",
+  });
+});
+
+test("manually linking another issue never opens an agent on that issue's different branch", async () => {
+  const h = setup({ head: "feat/no-agent" });
+  const issue = h.fixture.tasks.find(
+    (task) =>
+      task.repoId === h.row.repoId &&
+      task.branch &&
+      terminalsForTask(h.fixture, task).length > 0,
+  );
+  if (!issue) throw new Error("Missing agent fixture");
+  act(() => {
+    h.row.taskId = issue.id;
+    h.update();
+  });
+  expect(
+    h.host.querySelector<HTMLButtonElement>('[aria-label="Open branch agent"]')
+      ?.disabled,
+  ).toBe(true);
+  act(() => {
+    h.row.detail.head = issue.branch ?? "";
+    h.update();
+  });
+  const button = h.host.querySelector<HTMLButtonElement>(
+    '[aria-label="Open branch agent"]',
+  );
+  expect(button?.disabled).toBe(false);
+  await act(async () => button?.click());
+  expect(h.store.getState().ui.openTask).toBe(issue.id);
+  expect(h.store.getState().ui.tab).toBe("terminal");
+});
+
+test("Diff uses rail order, unified cards, durable Reviewed marks and file/hunk keys", async () => {
+  const h = setup();
+  const testFile = {
+    path: "tests/example.test.ts",
+    additions: 2,
+    deletions: 0,
+    changeType: "ADDED" as const,
+  };
+  act(() => {
+    h.row.detail.files.unshift(testFile);
+    h.row.detail.changedFiles = 2;
+    h.update();
+  });
+  await act(async () => {
+    await import("./pull-request-diff.js");
+  });
+  await h.click("Diff");
+  type Viewer = {
+    items: import("@pierre/diffs").CodeViewItem<undefined>[];
+    options: {
+      diffStyle: string;
+      hunkSeparators: string;
+      loadDiffFiles: (...args: never[]) => unknown;
+    };
+  };
+  const before = viewer.mock.lastCall?.[0] as Viewer;
+  expect(before.items.map((i) => i.id)).toEqual(["example.ts", testFile.path]);
+  expect(before.options.diffStyle).toBe("unified");
+  expect(before.options.hunkSeparators).toBe("line-info");
+  expect(before.options.loadDiffFiles).toBeTypeOf("function");
+  await act(async () =>
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "]" })),
+  );
+  expect(scroll).toHaveBeenCalledWith(
+    expect.objectContaining({ type: "line", id: "example.ts", lineNumber: 1 }),
+  );
+  await act(async () =>
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "v" })),
+  );
+  expect(h.sender.mock.lastCall?.[0]).toMatchObject({
+    kind: "save_review_state",
+    repoId: h.row.repoId,
+    number: h.row.number,
+    change: {
+      headSha: h.row.detail.headSha,
+      viewed: [
+        {
+          fileId: "example.ts",
+          path: "example.ts",
+          headSha: h.row.detail.headSha,
+        },
+      ],
+    },
+  });
+  // An ack alone cannot manufacture persisted state; the coordinator patch owns it.
+  expect(
+    (viewer.mock.lastCall?.[0] as Viewer | undefined)?.items[0]?.collapsed,
+  ).toBe(false);
+  act(() => {
+    h.row.viewedFiles = [
+      {
+        fileId: "example.ts",
+        path: "example.ts",
+        headSha: h.row.detail.headSha,
+        at: h.row.detail.observedAt,
+      },
+    ];
+    h.update();
+  });
+  expect(
+    (viewer.mock.lastCall?.[0] as Viewer | undefined)?.items[0]?.collapsed,
+  ).toBe(true);
+  expect(
+    (viewer.mock.lastCall?.[0] as Viewer | undefined)?.items[0]?.version,
+  ).not.toBe(before.items[0]?.version);
+  await act(async () =>
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" })),
+  );
+  expect(scroll).toHaveBeenCalledWith({
+    type: "item",
+    id: testFile.path,
+    align: "start",
+  });
+  await h.click("Overview");
+  await h.click("Diff");
+  expect(
+    (
+      h.host.querySelector(
+        '[aria-label="Reviewed example.ts"]',
+      ) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  act(() => {
+    h.row.detail.headSha = "f".repeat(40) as typeof h.row.detail.headSha;
+    h.row.patch = null;
+    h.update();
+  });
+  expect(
+    (viewer.mock.lastCall?.[0] as Viewer | undefined)?.items[0]?.collapsed,
+  ).toBe(false);
+});
+
+test("Commits requests the selected commit, disables whole-PR marks, and Files restores the full diff", async () => {
+  const h = setup();
+  await act(async () => {
+    await import("./pull-request-diff.js");
+  });
+  await h.click("Diff");
+  const commitButton = () =>
+    h.host.querySelector<HTMLButtonElement>(".pr-diff-commits button");
+  await act(async () =>
+    h.host
+      .querySelector<HTMLButtonElement>(
+        '[role="tablist"][aria-label="Diff range"] button:last-child',
+      )
+      ?.click(),
+  );
+  h.sender.mockImplementation(async () => ({
+    ok: true,
+    result: {
+      kind: "pull_request_commit",
+      diff: {
+        files: h.row.detail.files,
+        patch: h.row.patch as NonNullable<typeof h.row.patch>,
+      },
+    },
+  }));
+  await act(async () => commitButton()?.click());
+  expect(h.sender.mock.lastCall?.[0]).toMatchObject({
+    kind: "fetch_pull_request_commit",
+    headSha: h.row.detail.headSha,
+    commitSha: h.row.detail.commits[0]?.sha,
+  });
+  expect(
+    (
+      h.host.querySelector(
+        '[aria-label="Reviewed example.ts"]',
+      ) as HTMLInputElement
+    ).disabled,
+  ).toBe(true);
+  await act(async () =>
+    h.host
+      .querySelector<HTMLButtonElement>(
+        '[role="tablist"][aria-label="Diff range"] button:first-child',
+      )
+      ?.click(),
+  );
+  expect(
+    (
+      h.host.querySelector(
+        '[aria-label="Reviewed example.ts"]',
+      ) as HTMLInputElement
+    ).disabled,
+  ).toBe(false);
+});
+
+test("whitespace setting reads coordinator-filtered patches and keeps native expansion available", async () => {
+  const h = setup();
+  await act(async () => {
+    await import("./pull-request-diff.js");
+  });
+  await h.click("Diff");
+  h.sender.mockImplementation(async () => ({
+    ok: true,
+    result: {
+      kind: "pull_request_file",
+      contents: {
+        old: "old\n",
+        new: "new\n",
+        patch: "--- example.ts\n+++ example.ts\n@@ -1 +1 @@\n-old\n+new\n",
+      },
+    },
+  }));
+  await act(async () =>
+    h.host
+      .querySelector<HTMLInputElement>('.pr-diff-bar input[type="checkbox"]')
+      ?.click(),
+  );
+  expect(h.sender.mock.lastCall?.[0]).toMatchObject({
+    kind: "fetch_pull_request_file",
+    path: "example.ts",
+    commitSha: null,
+    ignoreWhitespace: true,
+    headSha: h.row.detail.headSha,
+  });
+  const props = viewer.mock.lastCall?.[0] as {
+    items: import("@pierre/diffs").CodeViewItem<undefined>[];
+    options: {
+      loadDiffFiles(
+        file: import("@pierre/diffs").FileDiffMetadata,
+      ): Promise<unknown>;
+    };
+  };
+  const item = props.items[0];
+  expect(item?.type).toBe("diff");
+  if (item?.type !== "diff") throw new Error("Expected diff");
+  expect(item.fileDiff.additionLines.join("")).toContain("new");
+  await act(async () => {
+    await expect(
+      props.options.loadDiffFiles(item.fileDiff),
+    ).resolves.toMatchObject({
+      oldFile: { contents: "old\n" },
+      newFile: { contents: "new\n" },
+    });
+  });
 });

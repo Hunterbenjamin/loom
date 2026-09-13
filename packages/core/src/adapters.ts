@@ -108,6 +108,10 @@ export interface GitAdapter {
 export type PullRequestState = "open" | "closed" | "merged";
 
 export interface PullRequestSummary {
+  viewerDidAuthor: boolean;
+  viewerReviewRequested: boolean;
+  reviewRequired: boolean;
+  completedAt: IsoTime | null;
   number: number;
   title: string;
   author: string | null;
@@ -115,6 +119,7 @@ export interface PullRequestSummary {
   head: string;
   base: string;
   headSha: Sha;
+  baseSha: Sha;
   createdAt: IsoTime;
   updatedAt: IsoTime;
   draft: boolean;
@@ -126,6 +131,40 @@ export interface PullRequestSummary {
 }
 
 export interface PullRequestDetail extends PullRequestSummary {
+  requestedReviewers?: string[];
+  files: {
+    path: string;
+    additions: number;
+    deletions: number;
+    changeType:
+      | "ADDED"
+      | "DELETED"
+      | "MODIFIED"
+      | "RENAMED"
+      | "COPIED"
+      | "CHANGED"
+      | "UNCHANGED";
+  }[];
+  reviews: {
+    id: string;
+    author: string | null;
+    body: string;
+    state:
+      | "APPROVED"
+      | "CHANGES_REQUESTED"
+      | "COMMENTED"
+      | "DISMISSED"
+      | "PENDING";
+    submittedAt: IsoTime | null;
+    url: string;
+  }[];
+  comments: {
+    id: string;
+    author: string | null;
+    body: string;
+    createdAt: IsoTime;
+    url: string;
+  }[];
   /** null means the head repository could not be identified. */
   branchExists: boolean | null;
   body: string;
@@ -148,6 +187,8 @@ export interface PullRequestDetail extends PullRequestSummary {
 }
 
 export interface PullRequestPatch {
+  headSha: Sha;
+  baseSha: Sha;
   patch: string;
   /** At most 8 MiB of UTF-8; never treat a truncated patch as a complete diff. */
   truncated: boolean;
@@ -157,13 +198,46 @@ export interface PullRequestPatch {
 export interface GitHubAdapter {
   /** Update observation filtering without rebuilding the adapter or losing its caches. */
   setExcludedAuthors?(authors: readonly string[]): void;
+  readPullRequestCommit(
+    repo: string,
+    number: number,
+    commitSha: Sha,
+  ): Promise<{
+    patch: PullRequestPatch;
+    files: PullRequestDetail["files"];
+  }>;
+  readPullRequestFile(
+    repo: string,
+    range: { baseSha: Sha; headSha: Sha },
+    path: string,
+    ignoreWhitespace: boolean,
+  ): Promise<{ old: string; new: string; patch: string }>;
+
+  readPullRequestBehind(
+    repo: string,
+    range: { baseSha: Sha; headSha: Sha },
+  ): Promise<number>;
+  commentPullRequest(
+    repo: string,
+    number: number,
+    body: string,
+    requestId: string,
+  ): Promise<void>;
   /** All pages, newest first. Closed excludes merged. Reads use disposable native ETags. */
   listPullRequests(
     repo: string,
     state: PullRequestState,
   ): Promise<PullRequestSummary[]>;
-  readPullRequest(repo: string, number: number): Promise<PullRequestDetail>;
-  readPullRequestPatch(repo: string, number: number): Promise<PullRequestPatch>;
+  readPullRequest(
+    repo: string,
+    number: number,
+    options?: { cached?: boolean },
+  ): Promise<PullRequestDetail>;
+  readPullRequestPatch(
+    repo: string,
+    number: number,
+    range: { baseSha: Sha; headSha: Sha },
+  ): Promise<PullRequestPatch>;
   /** Idempotent, with a fresh owner read before and after a mutation. */
   closePullRequest(repo: string, number: number): Promise<void>;
   /** Remote heads only; never deletes a local branch or changes a checkout. */
@@ -361,6 +435,14 @@ export interface ClaudeAdapter {
   listSessions(): Promise<ClaudeAgentsEntry[]>;
   /** Hooks received for the session, folded. */
   hookSummary(sessionId: ProviderSessionId): Promise<ClaudeHookSummary>;
+  /** Re-read a submitted user prompt from the provider transcript, scoped to this attempt. */
+  promptReceipt(request: {
+    sessionId: ProviderSessionId;
+    cwd: WorktreePath;
+    textHash: string;
+    after: IsoTime;
+    before: IsoTime;
+  }): Promise<ClaudeHookSummary["promptSubmits"][number] | null>;
   /**
    * Writes the per-run settings file `interactiveArgs` and `startHeadless` are then given:
    * HTTP hooks pointing at this coordinator, the SessionStart command hook, and Loom's MCP

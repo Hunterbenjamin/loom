@@ -165,8 +165,10 @@ it("fake GitHub supports multiple off-pipeline PRs and isolated branch deletion"
   expect(fake.branchExists("feat/other")).toBe(false);
   expect(fake.branchExists(raw.head.ref)).toBe(true);
   expect((await fake.readPullRequest(repo, raw.number)).state).toBe("open");
-  expect(await fake.readPullRequestPatch(repo, raw.number)).toEqual({
+  expect(await fake.readPullRequestPatch(repo, raw.number, detail)).toEqual({
     patch,
+    headSha: detail.headSha,
+    baseSha: detail.baseSha,
     truncated: false,
     observedAt: clock.now(),
   });

@@ -28,7 +28,11 @@
                   }
                 }
               ]
-            }
+            },
+            "baseRefOid": "0000000000000000000000000000000000000000",
+            "viewerDidAuthor": false,
+            "viewerLatestReviewRequest": null,
+            "closedAt": null
           }
         ],
         "pageInfo": {

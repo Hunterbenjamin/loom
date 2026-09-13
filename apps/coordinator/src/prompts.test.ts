@@ -32,3 +32,14 @@ test("Main reads its bounded memory as context, and panel summaries do not start
   );
   expect(mainPanelBrief()).toContain("end your turn and wait");
 });
+
+test("Main messages never make it wait, and summaries mention unread replies", () => {
+  const prompt = leadBrief("", "example/repo", [
+    { body: "A decision is needed", taskId: "t" },
+  ]);
+  expect(prompt).toContain("first message must also briefly mention");
+  expect(prompt).toContain("A decision is needed");
+  expect(prompt).toContain("Never wait for the answer");
+  expect(prompt).toContain("Never use it to drive an agent's work");
+  expect(mainPanelBrief()).toContain("unread replies addressed to Main");
+});

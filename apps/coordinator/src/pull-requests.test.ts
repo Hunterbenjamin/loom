@@ -23,6 +23,10 @@ const detail = (
   overrides: Partial<PullRequestDetail> = {},
 ): PullRequestDetail => ({
   branchExists: true,
+  viewerDidAuthor: true,
+  viewerReviewRequested: false,
+  reviewRequired: false,
+  completedAt: null,
   number,
   title: `PR ${number}`,
   author: "human",
@@ -30,6 +34,10 @@ const detail = (
   head: `feat/pr-${number}`,
   base: "main",
   headSha: head,
+  baseSha: sha.parse("0".repeat(40)),
+  files: [],
+  reviews: [],
+  comments: [],
   createdAt: at,
   updatedAt: at,
   draft: false,
@@ -98,7 +106,11 @@ test("repository lists include off-pipeline PRs, join only this repo's task bran
   );
   const reader = await connect(h, [listScope(h), detailScope(h)]);
   await vi.waitFor(() =>
-    expect(reader.state?.collections.pull_request_detail.size).toBe(1),
+    expect(
+      reader.state?.collections.pull_request_detail.get(
+        pullRequestKey(h.repo.id, 1),
+      )?.patch?.headSha,
+    ).toBe(head),
   );
   const rows = [...(reader.state?.collections.pull_request.values() ?? [])];
   expect(rows.map((r) => r.number)).toEqual([2, 1]);
@@ -319,52 +331,79 @@ test("polling deduplicates windows, uses 60/30 seconds, and cancels on unsubscri
   await new Promise<void>((resolve) => setImmediate(resolve));
   expect(patches).toHaveBeenCalledTimes(1);
   h.clock.advance(1);
-  await vi.waitFor(() => expect(patches).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(patches).toHaveBeenCalledTimes(1));
   await new Promise<void>((resolve) => setImmediate(resolve));
   h.clock.advance(30_000);
   await vi.waitFor(() => expect(lists).toHaveBeenCalledTimes(2));
-  await vi.waitFor(() => expect(patches).toHaveBeenCalledTimes(3));
+  await vi.waitFor(() => expect(patches).toHaveBeenCalledTimes(1));
   await one.subscribe([], true, [listScope(h), detailScope(h)]);
   two.close();
   await vi.waitFor(() => expect(h.coordinator.protocol.clients).toBe(1));
   h.clock.advance(120_000);
   await new Promise<void>((resolve) => setImmediate(resolve));
   expect(lists).toHaveBeenCalledTimes(2);
-  expect(patches).toHaveBeenCalledTimes(3);
+  expect(patches).toHaveBeenCalledTimes(1);
   await one.subscribe([listScope(h)]);
   expect(lists).toHaveBeenCalledTimes(3);
 });
 
-test("a patch read racing a push retains the previous complete detail", async () => {
-  const clock = new FakeClock();
-  const github = new FakeGitHub(clock, "example/repo", "feat/pr-1");
-  github.setPullRequest(detail(), "old patch");
-  const id = repoId.parse("repo");
-  const replace = vi.fn();
-  const onError = vi.fn();
-  const views = new PullRequestViews({
-    github,
-    repo: () => ({ id, github: "example/repo" }) as never,
-    tasks: () => [],
-    replace,
-    after: clock.after.bind(clock),
-    action: async () => {},
-    changed: () => {},
-    onError,
+test("detail publishes before a blocked diff, then a second patch delivers the matching diff", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail(), "diff --git a/a b/a\n");
+  const gate = deferred();
+  const read = h.adapters.github.readPullRequestPatch;
+  vi.spyOn(h.adapters.github, "readPullRequestPatch").mockImplementation(
+    async (...args) => {
+      await gate.promise;
+      return read(...args);
+    },
+  );
+  try {
+    const client = await connect(h, [listScope(h), detailScope(h)]);
+    const key = pullRequestKey(h.repo.id, 1);
+    await vi.waitFor(() =>
+      expect(
+        client.state?.collections.pull_request_detail.get(key),
+      ).toMatchObject({
+        detail: { body: "A description" },
+        patch: null,
+        patchLoading: true,
+      }),
+    );
+    gate.release();
+    await vi.waitFor(() =>
+      expect(
+        client.state?.collections.pull_request_detail.get(key),
+      ).toMatchObject({ patch: { headSha: head }, patchLoading: false }),
+    );
+  } finally {
+    gate.release();
+  }
+});
+
+test("a mismatched diff is rejected without hiding the early overview", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail());
+  vi.spyOn(h.adapters.github, "readPullRequestPatch").mockResolvedValue({
+    headSha: nextHead,
+    baseSha: detail().baseSha,
+    patch: "new patch",
+    truncated: false,
+    observedAt: at,
   });
-  const scope: Subscription = { kind: "pull_request", repoId: id, number: 1 };
-  views.subscriptions([scope]);
-  await views.ensure([scope]);
-  await vi.waitFor(() => expect(replace).toHaveBeenCalledTimes(2));
-  replace.mockClear();
-  vi.spyOn(github, "readPullRequestPatch").mockImplementation(async () => {
-    github.setPullRequest(detail(1, { headSha: nextHead }));
-    return { patch: "new patch", truncated: false, observedAt: at };
-  });
-  clock.advance(30_000);
-  await vi.waitFor(() => expect(onError).toHaveBeenCalled());
-  expect(replace).not.toHaveBeenCalled();
-  await views.stop();
+  const client = await connect(h, [detailScope(h)]);
+  await vi.waitFor(() =>
+    expect(
+      client.state?.collections.pull_request_detail.get(
+        pullRequestKey(h.repo.id, 1),
+      ),
+    ).toMatchObject({
+      detail: { headSha: head, body: "A description" },
+      patch: null,
+      patchLoading: false,
+      patchError: expect.stringContaining("Refresh"),
+    }),
+  );
 });
 
 function deferred() {
@@ -515,4 +554,261 @@ test("unchanged GraphQL polls publish no patch and failed reads retain cached ro
   expect(published.rows()).toEqual(initial);
   expect(patches).not.toHaveBeenCalled();
   await views.stop();
+});
+
+test("cached list SHAs start detail and diff together; a pushed head gets its own range", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail(), "diff --git a/a b/a\n");
+  const client = await connect(h, [listScope(h)]);
+  const key = pullRequestKey(h.repo.id, 1);
+  await vi.waitFor(() =>
+    expect(client.state?.collections.pull_request.has(key)).toBe(true),
+  );
+  const gate = deferred();
+  const read = h.adapters.github.readPullRequest;
+  const details = vi
+    .spyOn(h.adapters.github, "readPullRequest")
+    .mockImplementation(async (...args) => {
+      await gate.promise;
+      return read(...args);
+    });
+  const patches = vi.spyOn(h.adapters.github, "readPullRequestPatch");
+  h.github.setPullRequest(
+    detail(1, { headSha: nextHead }),
+    "diff --git a/b b/b\n",
+  );
+  try {
+    await client.subscribe([detailScope(h)]);
+    await vi.waitFor(() => {
+      expect(details).toHaveBeenCalledTimes(1);
+      expect(patches).toHaveBeenCalledTimes(1);
+    });
+    expect(client.state?.collections.pull_request_detail.has(key)).toBe(false);
+    gate.release();
+    await vi.waitFor(() =>
+      expect(
+        client.state?.collections.pull_request_detail.get(key),
+      ).toMatchObject({
+        detail: { headSha: nextHead },
+        patch: { headSha: nextHead },
+        patchLoading: false,
+      }),
+    );
+    expect(patches).toHaveBeenCalledTimes(2);
+    expect(h.logs.some((line) => /detail\/checks: \d+ms/.test(line))).toBe(
+      true,
+    );
+    expect(h.logs.some((line) => /diff: \d+ms/.test(line))).toBe(true);
+  } finally {
+    gate.release();
+  }
+});
+
+test("overview commands publish durable pins and manual links, and reread comments once per intent", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail());
+  const issue = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Manually linked",
+    description: "",
+  }).task;
+  const client = await connect(h, [listScope(h), detailScope(h)]);
+  const key = pullRequestKey(h.repo.id, 1);
+  await vi.waitFor(() =>
+    expect(
+      client.state?.collections.pull_request_detail.get(key)?.patchLoading,
+    ).toBe(false),
+  );
+  const selection = { repoId: h.repo.id, number: 1 };
+  const read = () => client.state?.collections.pull_request_detail.get(key);
+  expect(
+    await client.command({
+      kind: "pin_pull_request",
+      ...selection,
+      pinned: true,
+    }),
+  ).toMatchObject({ ok: true });
+  expect(read()?.pinned).toBe(true);
+  expect(
+    await client.command({
+      kind: "link_pull_request",
+      ...selection,
+      taskKey: "missing",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "guard_failed" } });
+  expect(read()?.taskId).toBeNull();
+  expect(
+    await client.command({
+      kind: "link_pull_request",
+      ...selection,
+      taskKey: issue.id.toUpperCase(),
+    }),
+  ).toMatchObject({ ok: true });
+  expect(read()?.taskId).toBe(issue.id);
+  expect(client.state?.collections.pull_request.get(key)?.taskId).toBe(
+    issue.id,
+  );
+  expect(h.store.pullRequestPreferences(h.repo.id, 1)).toEqual({
+    pinned: true,
+    taskId: issue.id,
+  });
+  const comment = {
+    kind: "comment_pull_request" as const,
+    ...selection,
+    body: "Looks ready",
+    requestId: "b5e9155b-4c50-49b7-876b-c6cf884cc789",
+  };
+  expect(await client.command(comment)).toMatchObject({ ok: true });
+  expect(await client.command(comment)).toMatchObject({ ok: true });
+  expect(read()?.detail.comments.map((c) => c.body)).toEqual(["Looks ready"]);
+  expect(h.store.loadTaskState(issue.id).task.stage).toBe("backlog");
+});
+
+test("branch comparison never holds back overview or diff, and publishes an honest count", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail());
+  let release!: (count: number) => void;
+  h.adapters.github.readPullRequestBehind = () =>
+    new Promise((resolve) => {
+      release = resolve;
+    });
+  const client = await connect(h, [detailScope(h)]);
+  const key = pullRequestKey(h.repo.id, 1);
+  try {
+    await vi.waitFor(() =>
+      expect(
+        client.state?.collections.pull_request_detail.get(key)?.patchLoading,
+      ).toBe(false),
+    );
+    expect(
+      client.state?.collections.pull_request_detail.get(key)?.behindBy,
+    ).toBeNull();
+  } finally {
+    release(3);
+  }
+  await vi.waitFor(() =>
+    expect(
+      client.state?.collections.pull_request_detail.get(key)?.behindBy,
+    ).toBe(3),
+  );
+});
+
+test("PR Reviewed state publishes to two windows, survives reconnect, and rejects stale/foreign files", async () => {
+  const h = await setup();
+  const file = {
+    path: "a.ts",
+    additions: 1,
+    deletions: 1,
+    changeType: "MODIFIED" as const,
+  };
+  h.github.setPullRequest(detail(1, { files: [file] }));
+  const first = await connect(h, [detailScope(h)]);
+  const second = await connect(h, [detailScope(h)]);
+  await vi.waitFor(() =>
+    expect(first.state?.collections.pull_request_detail.size).toBe(1),
+  );
+  const command = {
+    kind: "save_review_state" as const,
+    repoId: h.repo.id,
+    number: 1,
+    change: {
+      headSha: head,
+      viewed: [{ fileId: file.path, path: file.path, headSha: head, at }],
+    },
+  };
+  expect(await first.command(command)).toMatchObject({ ok: true });
+  const read = (client: LoomClient) =>
+    client.state?.collections.pull_request_detail.get(
+      pullRequestKey(h.repo.id, 1),
+    )?.viewedFiles;
+  await vi.waitFor(() => expect(read(second)).toHaveLength(1));
+  expect(await first.command(command)).toMatchObject({ ok: true });
+  expect(read(second)).toHaveLength(1);
+  first.close();
+  const reopened = await connect(h, [detailScope(h)]);
+  await vi.waitFor(() => expect(read(reopened)).toHaveLength(1));
+  expect(
+    await second.command({
+      ...command,
+      change: {
+        headSha: head,
+        viewed: [{ headSha: head, at, fileId: "foreign", path: "foreign" }],
+      },
+    }),
+  ).toMatchObject({ ok: false });
+  h.github.setPullRequest(detail(1, { files: [file], headSha: nextHead }));
+  expect(await second.command(command)).toMatchObject({ ok: false });
+  await second.command({
+    kind: "refresh_pull_requests",
+    repoId: h.repo.id,
+    state: "open",
+  });
+  await vi.waitFor(() => expect(read(second)).toEqual([]));
+});
+
+test("commit/file reads are scoped to the observed PR head and its commit/file membership", async () => {
+  const h = await setup();
+  const file = {
+    path: "a.ts",
+    additions: 1,
+    deletions: 1,
+    changeType: "MODIFIED" as const,
+  };
+  h.github.setPullRequest(
+    detail(1, {
+      files: [file],
+      commits: [
+        {
+          sha: head,
+          message: "A commit",
+          author: "human",
+          committedAt: at,
+          url: "https://example.test/commit",
+        },
+      ],
+    }),
+  );
+  const client = await connect(h, [detailScope(h)]);
+  const command = {
+    kind: "fetch_pull_request_commit" as const,
+    repoId: h.repo.id,
+    number: 1,
+    headSha: head,
+    baseSha: detail().baseSha,
+    commitSha: head,
+  };
+  expect(await client.command(command)).toMatchObject({
+    ok: true,
+    result: { kind: "pull_request_commit", diff: { patch: { headSha: head } } },
+  });
+  expect(
+    await client.command({ ...command, commitSha: nextHead }),
+  ).toMatchObject({ ok: false });
+  expect(
+    await client.command({
+      kind: "fetch_pull_request_file",
+      repoId: h.repo.id,
+      number: 1,
+      headSha: head,
+      baseSha: detail().baseSha,
+      commitSha: null,
+      path: "foreign",
+      ignoreWhitespace: false,
+    }),
+  ).toMatchObject({ ok: false });
+  h.github.setPullRequest(detail(1, { baseSha: nextHead }));
+  expect(
+    await client.command({
+      ...command,
+      kind: "fetch_pull_request_file",
+      commitSha: null,
+      path: file.path,
+      ignoreWhitespace: false,
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: { message: "PR head or base changed; refresh the diff" },
+  });
+  h.github.setPullRequest(detail(1, { headSha: nextHead }));
+  expect(await client.command(command)).toMatchObject({ ok: false });
 });

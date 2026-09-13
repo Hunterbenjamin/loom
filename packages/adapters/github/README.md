@@ -53,22 +53,23 @@ heuristic. `run` and `now` are injectable for tests.
   one request per page, up to the existing 1,000-page cap (incomplete reads fail).
   GraphQL has no ETag: disposable repo/state caches compare mapped rows, preserving
   unchanged rows and their `observedAt` so identical refreshes publish no patch.
-- `readPullRequest(repo, number)` adds the body, merge facts, commits, native check runs
-  with start/completion times, and change counts. Detail also includes `branchExists`, read
-  from the actual head repository; an unidentified repository remains null (unknown). Null authors remain null; a null body
-  becomes an empty string. Latest decisive review per author wins; comments/pending
-  reviews do not erase a decision, and any outstanding changes request takes priority.
-  Check summaries include legacy commit statuses using the same rules as task observations.
-- Each REST detail endpoint/page is conditionally refreshed using native ETags, even when the PR
-  itself is unchanged. These methods return the full value on each successful read and
-  retain only disposable per-detail caches (128 keys). A changed head/base or
-  update timestamp during assembly is retryable. GitHub's PR commits endpoint is capped
-  at 250; a count mismatch is an explicit incomplete-read error, never silent omission.
-- `readPullRequestPatch(repo, number)` requests `application/vnd.github.diff` through
-  `gh api`. It returns `{ patch, truncated, observedAt }`, capped at 8 MiB of UTF-8 without
-  cutting a code point. Subprocess capture is bounded, including a 64 KiB header allowance;
-  larger responses are drained without retaining them. Empty/non-diff responses fail.
-  The separate ETag cache holds at most four patches (32 MiB).
+- `readPullRequest(repo, number)` uses one GraphQL request for metadata, branch existence,
+  body, commits, native check runs, files (including change type), reviews and comments.
+  `headRef` supplies existence in the actual head repository, including forks. Null authors
+  stay null; unmerged test merge commits are not exposed as merge facts. Legacy status contexts
+  contribute through GitHub's check rollup without fabricated check-run IDs.
+- Polls may pass `{cached: true}` to refresh only live metadata/check runs for the cached
+  head/base. A changed head, base or update timestamp invalidates content. Default reads and
+  explicit refreshes read fresh content. Caches are disposable and bounded to 128 PRs.
+  Connections over 100 rows follow cursors (up to 1,000 pages), checking head/base/update
+  identity on each page. Incomplete/racing reads fail, never silently omit content.
+- `readPullRequestPatch(repo, number, {baseSha, headSha})` requests
+  `compare/<baseSha>...<headSha>` with `application/vnd.github.diff`. The diff response contains
+  no head SHA; its identity is the immutable request range, validated against GraphQL by the
+  coordinator. Both SHAs accompany the capped patch. Cache hits make no network request, and
+  only four ranges (32 MiB) are retained. Capture is bounded at 8 MiB plus a 64 KiB header
+  allowance; larger responses are drained, marked truncated and never split a UTF-8 code point.
+  Empty/non-diff responses fail. Lists include the base SHA so detail and diff can start together.
 - `closePullRequest(repo, number)` re-reads after closing and succeeds on an already
   closed or merged PR. Lost command responses are recovered only through owner readback.
 - `deleteBranch(repo, branch)` deletes only the named **remote** head through REST,
@@ -140,3 +141,11 @@ tests are intentionally absent; all action tests use the stub.
 References: [GitHub conditional requests and pagination](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api),
 [PR mergeability and test merge commits](https://docs.github.com/en/rest/guides/using-the-rest-api-to-interact-with-your-git-database),
 [`gh pr merge` guards and merge queues](https://cli.github.com/manual/gh_pr_merge).
+
+Reviews Overview adds requested reviewers (including team requests) to the rich GraphQL content.
+`readPullRequestBehind(repo, {baseSha, headSha})` validates an immutable REST comparison's
+`behind_by`, caches by both SHAs, and never substitutes a failed comparison with zero.
+`commentPullRequest(repo, number, body, requestId)` sends text through stdin and confirms the
+unique hidden submission marker through paginated comment readback. Repeating that submission
+or losing its write response cannot post another copy. This marker is for command idempotence;
+it does not change the task observation's author filtering.

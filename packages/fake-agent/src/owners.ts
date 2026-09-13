@@ -344,6 +344,10 @@ export class FakeGitHub implements GitHubAdapter {
     return structuredClone({
       number,
       title: this.title,
+      viewerDidAuthor: true,
+      viewerReviewRequested: false,
+      reviewRequired: false,
+      completedAt: null,
       author: "human",
       head: this.branch,
       createdAt: this.createdAt,
@@ -354,6 +358,10 @@ export class FakeGitHub implements GitHubAdapter {
       additions: 0,
       deletions: 0,
       changedFiles: 0,
+      baseSha: "0".repeat(40) as Sha,
+      files: [],
+      reviews: [],
+      comments: [],
       ...detail,
       branchExists: this.branches.has(detail?.head ?? this.branch),
       state: pr.state,
@@ -384,6 +392,10 @@ export class FakeGitHub implements GitHubAdapter {
     for (const pr of prs) {
       if (pr.state !== state) continue;
       const {
+        requestedReviewers: _requestedReviewers,
+        files: _fileDetails,
+        reviews: _reviews,
+        comments: _comments,
         branchExists: _branchExists,
         body: _body,
         commits: _commits,
@@ -430,15 +442,24 @@ export class FakeGitHub implements GitHubAdapter {
           pullRequests: {
             nodes: page.map((row) => ({
               number: row.number,
+              viewerDidAuthor: row.viewerDidAuthor,
+              viewerLatestReviewRequest: row.viewerReviewRequested
+                ? { id: "request" }
+                : null,
+              closedAt: row.completedAt,
               title: row.title,
               author: row.author ? { login: row.author } : null,
               headRefName: row.head,
               baseRefName: row.base,
               headRefOid: row.headSha,
+              baseRefOid: row.baseSha,
               isDraft: row.draft,
               mergeable: row.mergeable.toUpperCase(),
-              reviewDecision:
-                row.review === "none" ? null : row.review.toUpperCase(),
+              reviewDecision: row.reviewRequired
+                ? "REVIEW_REQUIRED"
+                : row.review === "none"
+                  ? null
+                  : row.review.toUpperCase(),
               updatedAt: row.updatedAt,
               createdAt: row.createdAt,
               url: row.url,
@@ -464,22 +485,70 @@ export class FakeGitHub implements GitHubAdapter {
       },
     };
   }
+  readPullRequestCommit: GitHubAdapter["readPullRequestCommit"] = async (
+    repo,
+    number,
+    commitSha,
+  ) => {
+    const detail = await this.readPullRequest(repo, number);
+    return {
+      files: detail.files,
+      patch: await this.readPullRequestPatch(repo, number, {
+        baseSha: detail.baseSha,
+        headSha: commitSha,
+      }),
+    };
+  };
+  readPullRequestFile: GitHubAdapter["readPullRequestFile"] = async () => ({
+    old: "before\n",
+    new: "after\n",
+    patch: "--- a/example.ts\n+++ b/example.ts\n@@ -1 +1 @@\n-before\n+after\n",
+  });
   readPullRequestPatch: GitHubAdapter["readPullRequestPatch"] = async (
     repo,
     number,
+    range,
   ) => {
     this.scope(repo);
-    this.requirePr(number);
+    const pr = this.pullRequestDetail(number);
+    if (range.headSha !== pr.headSha || range.baseSha !== pr.baseSha)
+      throw new Error("Fake diff range is unavailable");
     const bytes = Buffer.from(this.patches.get(number) ?? "");
     const limit = 8 * 1024 * 1024;
     let end = Math.min(limit, bytes.length);
     while (end < bytes.length && end > 0 && ((bytes[end] ?? 0) & 0xc0) === 0x80)
       end--;
     return {
+      headSha: range.headSha,
+      baseSha: range.baseSha,
       patch: bytes.subarray(0, end).toString("utf8"),
       truncated: bytes.length > limit,
       observedAt: this.clock.now(),
     };
+  };
+  readPullRequestBehind: GitHubAdapter["readPullRequestBehind"] = async (
+    repo,
+  ) => {
+    this.scope(repo);
+    return 0;
+  };
+  commentPullRequest: GitHubAdapter["commentPullRequest"] = async (
+    repo,
+    number,
+    body,
+    requestId,
+  ) => {
+    this.scope(repo);
+    const detail = this.pullRequestDetail(number);
+    if (detail.comments.some((comment) => comment.id === requestId)) return;
+    detail.comments.push({
+      id: requestId,
+      author: "human",
+      body,
+      createdAt: this.clock.now(),
+      url: detail.url,
+    });
+    this.setPullRequest(detail);
   };
   closePullRequest: GitHubAdapter["closePullRequest"] = async (
     repo,

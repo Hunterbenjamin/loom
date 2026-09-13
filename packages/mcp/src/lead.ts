@@ -2,7 +2,7 @@
 // Tools reuse the protocol boundary and human command path. No stage rules live here.
 
 import type { Command } from "@loom/protocol";
-import { command, humanCommand, repoId, taskId } from "@loom/protocol";
+import { command, humanCommand, repoId, runId, taskId } from "@loom/protocol";
 import { z } from "zod";
 
 const humanTypes = {
@@ -31,7 +31,26 @@ const create = command.options.find(
 );
 if (!create) throw new Error("Missing create_task command");
 export const mainNoteSchema = z.string().max(2000);
+export const messageAgentSchema = z.strictObject({
+  to: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("operator") }),
+    z.strictObject({ kind: z.literal("run"), taskId, runId }),
+    z.strictObject({
+      kind: z.literal("task"),
+      taskId,
+      role: z.enum(["planner", "implementer", "reviewer"]),
+    }),
+  ]),
+  text: z.string().min(1).max(4000),
+  idempotencyKey: z.string().min(1).max(200).optional(),
+});
+export const messageAgentResultSchema = z.strictObject({
+  delivered: z.enum(["queued", "refused"]),
+  reason: z.string().optional(),
+});
 export const leadInputSchemas = {
+  message_agent: messageAgentSchema,
+  read_agent_replies: z.strictObject({}),
   set_note: z.strictObject({ note: mainNoteSchema }),
   list_tasks: z.strictObject({}),
   inspect_task: z.strictObject({ taskId }),
