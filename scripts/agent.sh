@@ -2,7 +2,7 @@
 # Start an agent on a brief: a git worktree on <branch>, a window on Loom's private tmux server,
 # and an agent told to follow the brief. Run it from anywhere; it needs no terminal of its own.
 #
-# Usage: scripts/agent.sh <name> <claude|codex> <branch> <brief|-> [--task <text>] [--model <model>] [--base <branch>] [--auto]
+# Usage: scripts/agent.sh <name> <claude|codex> <branch> <brief|-> [--task <text>] [--model <model>] [--base <branch>] [--auto|--full]
 #   e.g. scripts/agent.sh core-design claude feat/core-design docs/briefs/phase-1a-core-design.md
 #        scripts/agent.sh ui-shell claude feat/ui-shell docs/briefs/ui-shell.md --model opus
 #        scripts/agent.sh fix-timings codex fix/timings - --task "loom task timings prints 0 for the last stage; fix it and add a test"
@@ -10,7 +10,10 @@
 # Pass `-` and --task <text> instead for a job too small for a brief; the text is the whole job.
 # Without --model the agent uses its own default. --auto reduces approval prompts: Codex runs
 # --full-auto (writes sandboxed to the worktree; it asks only when a sandboxed command fails) and
-# Claude runs --permission-mode acceptEdits. Use it for Loom's own agents in isolated worktrees.
+# Claude runs --permission-mode acceptEdits. --full removes every prompt and sandbox (Codex
+# --dangerously-bypass-approvals-and-sandbox, Claude --dangerously-skip-permissions): the agent
+# can push, run gh and install packages unattended. Use one of them for Loom's own agents in
+# isolated worktrees; --full is the one to use when nobody is watching the pane.
 #
 # It uses the same server as the coordinator's pane host, `-L loom-<instance>`, so there is one
 # multiplexer. It never touches the default tmux socket or the user's own servers.
@@ -21,7 +24,7 @@ die() {
   exit 1
 }
 
-[ $# -ge 4 ] || die "usage: scripts/agent.sh <name> <claude|codex> <branch> <brief|-> [--task <text>] [--model <model>] [--base <branch>] [--auto]"
+[ $# -ge 4 ] || die "usage: scripts/agent.sh <name> <claude|codex> <branch> <brief|-> [--task <text>] [--model <model>] [--base <branch>] [--auto|--full]"
 name="$1"
 kind="$2"
 branch="$3"
@@ -38,6 +41,7 @@ while [ $# -gt 0 ]; do
     --model) [ $# -ge 2 ] || die "--model needs a value"; model="$2"; shift 2 ;;
     --base) [ $# -ge 2 ] || die "--base needs a value"; base="$2"; shift 2 ;;
     --auto) auto=1; shift ;;
+    --full) auto=2; shift ;;
     *) die "unknown flag: $1" ;;
   esac
 done
@@ -122,10 +126,12 @@ case "$kind" in
   claude)
     [ -n "$model" ] && cmd+=(--model "$model")
     [ "$auto" = 1 ] && cmd+=(--permission-mode acceptEdits)
+    [ "$auto" = 2 ] && cmd+=(--dangerously-skip-permissions)
     ;;
   codex)
     [ -n "$model" ] && cmd+=(-c "model=\"$model\"")
     [ "$auto" = 1 ] && cmd+=(--approve-for-me)
+    [ "$auto" = 2 ] && cmd+=(--dangerously-bypass-approvals-and-sandbox)
     ;;
 esac
 # An escape hatch for testing this script's plumbing without starting a provider.
