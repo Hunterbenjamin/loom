@@ -23,6 +23,8 @@ const FIELDS = [
   "#{window_name}",
   "#{pane_title}",
   "#{@loom_workspace_id}",
+  "#{window_index}",
+  "#{window_layout}",
 ] as const;
 
 export const PANE_FORMAT = FIELDS.join(SEP);
@@ -46,6 +48,8 @@ const row = z
     z.string(),
     z.string(),
     z.string().optional(),
+    z.coerce.number().int().nonnegative().optional(),
+    z.string().max(65536).optional(),
   ])
   .transform(
     ([
@@ -64,6 +68,8 @@ const row = z
       windowName,
       title,
       workspaceId,
+      windowIndex,
+      windowLayout,
     ]) => ({
       paneId,
       sessionName,
@@ -75,6 +81,8 @@ const row = z
       windowName,
       title,
       workspaceId: workspaceId || undefined,
+      windowIndex,
+      windowLayout,
       // Empty when the pane died from a signal rather than an exit status.
       exitCode: deadStatus === "" ? null : Number(deadStatus),
       startPath,
@@ -120,6 +128,8 @@ export function toObservation(
     sessionId: row.sessionId,
     windowName: row.windowName,
     title: row.title,
+    ...(row.windowIndex !== undefined ? { windowIndex: row.windowIndex } : {}),
+    ...(row.windowLayout ? { windowLayout: row.windowLayout } : {}),
     ...(row.workspaceId ? { workspaceId: row.workspaceId } : {}),
     ref: {
       hostGeneration,

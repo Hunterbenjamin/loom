@@ -1,0 +1,95 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`native mixed layout maps to Dockview splits and proportions 1`] = `
+{
+  "grid": {
+    "height": 40,
+    "orientation": "HORIZONTAL",
+    "root": {
+      "data": [
+        {
+          "data": {
+            "component": "cell",
+            "id": "panel-2",
+            "minimumHeight": 60,
+            "minimumWidth": 80,
+          },
+          "size": 60,
+          "type": "leaf",
+        },
+        {
+          "data": [
+            {
+              "data": {
+                "component": "cell",
+                "id": "panel-8",
+                "minimumHeight": 60,
+                "minimumWidth": 80,
+              },
+              "size": 20,
+              "type": "leaf",
+            },
+            {
+              "data": {
+                "component": "cell",
+                "id": "panel-9",
+                "minimumHeight": 60,
+                "minimumWidth": 80,
+              },
+              "size": 19,
+              "type": "leaf",
+            },
+          ],
+          "size": 59,
+          "type": "branch",
+        },
+      ],
+      "size": 40,
+      "type": "branch",
+    },
+    "width": 120,
+  },
+}
+`;
+
+exports[`vertical, unavailable panes and invalid layouts retain safe complete viewers 1`] = `
+{
+  "grid": {
+    "height": 40,
+    "orientation": "HORIZONTAL",
+    "root": {
+      "data": [
+        {
+          "data": [
+            {
+              "data": {
+                "component": "cell",
+                "id": "panel-8",
+                "minimumHeight": 60,
+                "minimumWidth": 80,
+              },
+              "size": 20,
+              "type": "leaf",
+            },
+            {
+              "data": {
+                "component": "cell",
+                "id": "panel-9",
+                "minimumHeight": 60,
+                "minimumWidth": 80,
+              },
+              "size": 19,
+              "type": "leaf",
+            },
+          ],
+          "size": 59,
+          "type": "branch",
+        },
+      ],
+      "size": 40,
+      "type": "branch",
+    },
+    "width": 120,
+  },
+}
+`;

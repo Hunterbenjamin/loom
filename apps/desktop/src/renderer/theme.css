@@ -739,6 +739,13 @@ ul.plain {
 
 /* FitAddon measures its parent without subtracting parent padding. Keep this box padding-free
    and size-contained so the canvas can never set the size used by the next fit. */
+.terminal-crop {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  contain: strict;
+}
+
 .terminal-viewport {
   width: 100%;
   height: 100%;

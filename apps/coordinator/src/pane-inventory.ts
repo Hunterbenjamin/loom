@@ -62,6 +62,8 @@ export function assemblePanes(
       id: paneKey(p.ref),
       sessionId: p.sessionId ?? null,
       windowName: p.windowName ?? null,
+      windowIndex: p.windowIndex,
+      windowLayout: p.windowLayout,
       title: p.title ?? null,
       command: p.command,
       startCwd: p.startCwd,

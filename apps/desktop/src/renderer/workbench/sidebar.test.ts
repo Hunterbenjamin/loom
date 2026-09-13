@@ -74,8 +74,20 @@ test("renders spaces and agents, independent collapses, filtering and pinned con
     const space = element.querySelector<HTMLElement>(
       '[aria-label="t-1 · Fix delivery race"]',
     );
-    expect(space?.textContent).toContain("implementer · codex");
-    expect(space?.textContent).toContain("Working");
+    expect(space?.textContent).toContain("implementer");
+    expect(space?.querySelectorAll(".wb-tree-pane")).toHaveLength(0);
+    expect(
+      [...element.querySelectorAll(".wb-terminal-list .wb-tree-row")].map(
+        (row) => ({
+          name: row.getAttribute("aria-label"),
+          text: row.querySelector(".wb-tree-name")?.textContent,
+          branch: row.querySelector(".wb-space-branch")?.textContent ?? null,
+        }),
+      ),
+    ).toMatchSnapshot();
+    expect(space?.querySelector(".wb-status")?.getAttribute("aria-label")).toBe(
+      "Working",
+    );
     expect(space?.querySelector(".wb-space-branch")?.textContent).toBe(
       "fix/delivery-race",
     );
@@ -132,40 +144,17 @@ test("renders spaces and agents, independent collapses, filtering and pinned con
     expect(element.querySelector(".wb-spaces-footer")?.textContent).toBe(
       "newmenu",
     );
-    const paneButton = () =>
-      element.querySelector<HTMLButtonElement>(
-        '[aria-label="Open implementer implementer · codex %3"]',
-      );
-    await act(async () => paneButton()?.click());
-    expect(choose).toHaveBeenLastCalledWith(linked);
-    await act(async () =>
-      paneButton()?.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Enter",
-          bubbles: true,
-          cancelable: true,
-        }),
-      ),
-    );
-    expect(choose).toHaveBeenLastCalledWith(linked, true);
-    const tabButton = space?.querySelector<HTMLButtonElement>(".wb-disclosure");
-    await act(async () => tabButton?.click());
-    expect(tabButton?.getAttribute("aria-expanded")).toBe("false");
-    expect(paneButton()).toBeNull();
+    const disclosure =
+      space?.querySelector<HTMLButtonElement>(".wb-disclosure");
+    await act(async () => disclosure?.click());
+    expect(disclosure?.getAttribute("aria-expanded")).toBe("false");
+    expect(space?.querySelector(".wb-tree-tab")).toBeNull();
     await act(async () => publish(true));
-    expect(tabButton?.getAttribute("aria-expanded")).toBe("false");
     expect(space?.querySelector(".wb-status")?.textContent).toBe("●");
     await act(async () => render("cdx"));
-    expect(paneButton()).not.toBeNull();
+    expect(space?.querySelector(".wb-tree-tab")).not.toBeNull();
     expect(element.querySelector('[aria-label="research"]')).toBeNull();
     await act(async () => render());
-    expect(paneButton()).toBeNull();
-    expect(
-      element.querySelector('[aria-label="research"] .wb-tree-pane'),
-    ).not.toBeNull();
-    const spaceButton = space?.querySelector<HTMLButtonElement>(".wb-space");
-    await act(async () => spaceButton?.click());
-    expect(spaceButton?.getAttribute("aria-expanded")).toBe("false");
     expect(space?.querySelector(".wb-tree-tab")).toBeNull();
     await act(async () =>
       element
@@ -196,7 +185,7 @@ test("renders spaces and agents, independent collapses, filtering and pinned con
       ),
     );
     expect(
-      second.querySelector(".wb-space")?.getAttribute("aria-expanded"),
+      second.querySelector(".wb-disclosure")?.getAttribute("aria-expanded"),
     ).toBe("true");
     await act(async () => secondRoot.unmount());
   } finally {
@@ -274,9 +263,9 @@ test("grouping changes agent order without hiding dead agents or altering the tr
     expect(dead?.classList.contains("dead")).toBe(true);
     await act(async () => dead?.click());
     expect(choose).not.toHaveBeenCalled();
-    const treeBefore = [...element.querySelectorAll(".wb-space strong")].map(
-      (row) => row.textContent,
-    );
+    const treeBefore = [
+      ...element.querySelectorAll(".wb-space .wb-tree-name"),
+    ].map((row) => row.textContent);
     await act(async () =>
       element
         .querySelector<HTMLButtonElement>(
@@ -290,7 +279,7 @@ test("grouping changes agent order without hiding dead agents or altering the tr
       ),
     ).toEqual(["Working", "Ended", "Idle"]);
     expect(
-      [...element.querySelectorAll(".wb-space strong")].map(
+      [...element.querySelectorAll(".wb-space .wb-tree-name")].map(
         (row) => row.textContent,
       ),
     ).toEqual(treeBefore);

@@ -236,16 +236,16 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   terminal a minimum width (about 100 columns), and resize only when the panel resizes, debounced.
 - **Scrollback lives in tmux.** The mouse wheel enters copy mode and reaches tmux history; search
   and history still read provider transcripts, not the terminal buffer.
-- Closing a human terminal explicitly ends its native pane through `close_terminal`, then refreshes
-  the inventory. Selecting an existing terminal only attaches; it never creates or resurrects a shell.
-  Native exits remove terminal rows and their views. Closing the app or switching modes only detaches
-  clients. Pinned and supervised agents use a separately labelled **Hide agent view** action; their
-  existing stop controls own stopping work, so a terminal close cannot accidentally trigger recovery.
-  A host restart kills every pane process, and Loom relaunches runs from stored recipes.
-- The terminal sidebar is a projection of live native panes, independent of issue history and local
-  view layout. No default shell is recreated on render or navigation. New Terminal and Split are the
-  explicit Workbench shell-creation paths, and capture the native identity before mounting a viewer. This follows
-  [Herdr's pane close/runtime lifecycle](https://github.com/herdrdev/herdr/blob/d184b41fa36923c132629af725ff98bb02aa1b61/src/app/api/panes.rs#L1853).
+- Workbench shows exactly one native space at a time, with windows in native index order and
+  panes laid out from tmux's `window_layout`. These are disposable native facts in the inventory.
+  Workbench clients use the native window size and crop their screen to the target pane rectangle;
+  Dockview resizing scales the view without changing the native window layout.
+  Closing a Workbench panel only detaches its client; it never ends a shell or agent. Explicit
+  stop controls and `close_terminal` remain separate native lifecycle operations.
+- Workbench New tab and Split use the idempotent scratch-shell path: a generation-scoped target
+  resolves the selected space, and Split creates a pane in that target's window. Stale or dead
+  targets fail; they never create a replacement space. With no selection, New terminal creates
+  a window in the standalone Workbench space. No shell is created during render or navigation.
 - Issue detail's Terminal tab resolves through `open_task_terminal`: a live recorded agent pane
   takes precedence; otherwise an issue-keyed human shell opens in the surviving worktree or the
   configured project root. Reopening reuses that shell. The coordinator reads and displays the

@@ -63,36 +63,28 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
 
 ## Workbench
 
-- **Sidebar:** a 375 px dark panel in the terminal's 13 px monospace font, with two sections.
-  The lowercase `spaces` heading and a dim, unboxed filter line sit above the native
-  space → tab → pane tree, grouped by host generation/session and window identity. Spaces
-  use a bold name with the dim Git branch on a second line aligned under it. Tabs and panes
-  indent by two characters per level; each row has a one-character indicator column.
-  Full-width subtle background bands mark the focused pane and its space/tab ancestors.
-  Spaces use their content height up to half of the sidebar, with an independently scrolling
-  tree and plain `new` and `menu` footer actions (new terminal and command palette).
-  The lower `agents` section fills the remaining height. Main and Operator are pinned at its
-  top, above an independently scrolling list of panes with recorded provider/run metadata.
-  Agent rows show `space · tab` (tab dimmer), then the provider on a second line; the focused
-  agent uses the same selection band. `grouped` toggles native space/tab order versus indicator
-  priority order. A bottom-left `«` collapses the sidebar; `»` expands it, and fuzzy jump also
-  expands it before focusing the filter. Grouping and collapse are per-window memory only.
-  Issue spaces show the recorded issue key/title; unlinked spaces show the session name.
-  Tabs show native window names; panes show their command or recorded role · provider and state.
-  Expansion is per-window memory; fuzzy filtering
-  reveals matching descendants and their ancestors without changing saved expansion. Native dead
-  panes remain dimmed and disabled. Run linkage is only by a unique recorded generation + pane ID,
-  never cwd, title, command or native run tags. Clicking a pane replaces the focused viewer; Enter
-  opens an independent Workbench tab. Pinned agent tabs retain their identity, so selecting another
-  pane from one opens a regular tab. Space rows toggle expansion; tab disclosure arrows independently toggle their pane lists.
-  Clicking a tab row opens all its live, available panes as side-by-side splits in a new Workbench
-  tab, including siblings hidden by filtering. No native panes are created.
-  Right-click or Shift+F10 on a native space, tab or pane row opens its menu: Open follows the
-  row's click behavior; Open in new tab opens its live panes as independent viewers; Copy attach
-  command copies the coordinator's shell-quoted attach argv and environment for the first live
-  pane in native order. Close panel hides matching viewers in the current Workbench tab only,
-  leaving other tabs and all native processes running. It remains available while the host is
-  unavailable. Rename uses the inline editor on space/tab rows (double-click or F2); the menu entry remains unavailable.
+- **Sidebar:** a 260 px panel using Loom's theme colors and normal sans-serif typography,
+  with spaces above agents. The tree has exactly two levels: space and tab (tmux window).
+  Space names use normal weight with a dim Git branch on the next line. Tabs are indented,
+  with a one-character status indicator on each row. Panes and process names are never tree rows.
+  Selection highlights the open space and active tab. Spaces occupy up to half of the sidebar;
+  both sections scroll independently. The filter, new/menu actions, collapse control and grouped
+  agent ordering remain available. Main and Operator stay pinned above the agents list.
+  Agents show space and tab, then provider; recorded run identity owns their status.
+  Space disclosure controls collapse its tabs; filtering reveals matches without changing saved
+  expansion. Double-click or F2 renames a space or tab using the native inline editor.
+- **Space view:** the right panel shows exactly one selected space at a time. Its tab bar is that
+  space's tmux windows in native window-index order. Clicking a space activates its first tab;
+  clicking a tab or agent opens its space with that window active. Each window shows its live
+  panes as splits, following the native horizontal/vertical layout and proportions as closely as
+  Dockview permits. Each terminal client keeps the full native window size and crops/scales its
+  screen to that pane's native cell rectangle, so sibling output and borders are not duplicated.
+  Filtering never removes panes from the selected window. Selecting another
+  space replaces the right panel; there are no free-floating or mixed-space viewer tabs.
+  Right-click or Shift+F10 offers Open/Open space, Copy attach command and Close panel. Copy uses
+  the coordinator's quoted attach argv for the first live pane. Close panel only detaches viewers,
+  including human shells, and never stops a native pane. It remains available during outages.
+  Rename is available inline; its menu entry remains unavailable.
 - **Branch:** space rows show the coordinator's `panes.branch`: the linked issue's branch, or Git's
   `rev-parse --abbrev-ref HEAD` at the first native pane's start cwd for an unlinked space.
   Reads are cached per cwd within each serialized inventory refresh, including failures, and
@@ -103,7 +95,7 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   through ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏ every 80 ms on one shared renderer interval for all
   visible working indicators, including rollups and pinned rows. The clock stops when the
   document is hidden or no working indicators remain. Reduced motion uses static ◌ and no
-  interval. Other glyphs inherit the row's text color. Tabs and spaces roll up needs-you > failed > unknown > working >
+  interval. Working uses the accent color, finished uses green, and unknown uses violet. Tabs and spaces roll up needs-you > failed > unknown > working >
   done > idle across all descendants, including ones hidden by filtering. Only published provider
   status and coordinator attention determine indicators; native process exit alone is not agent
   completion. Branch display and inline rename follow their separate Workbench v2 slices.
@@ -117,15 +109,15 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   mute state across mode switches. Muting also stops a chime already playing. The window listens
   in both modes; hidden rows do not replay flashes when revealed. No terminal render or attach
   lifecycle changes are needed for either feedback effect.
-- **Tabs and splits:** each outer tab owns a Dockview 4.13.1 Gridview. Splitting names and creates
-  an independent terminal, then adds its viewer next to the focused panel; the library handles sizing. Drag a
-  panel header to an edge of another panel in the same tab to move it. Terminal mounts live as
-  stable siblings over the library's cells, so moving cells, switching tabs and zooming do not
-  dispose attach clients. Layout never leaves the window.
-- **Panel types in this slice:** terminal and issue scratch shell. Scratch resolves the stored
-  worktree and existing workspace in the coordinator and creates an idempotent native shell pane.
-  It is not a provider run. Close terminal ends its native session and removes it from the list. Plan, diff, activity and
-  code panels are deferred; Tracker retains its existing review surface.
+- **Tabs and splits:** each native window owns a Dockview Gridview. New tab names and creates a
+  scratch-shell window in the selected native space. Split names and creates a scratch pane in the
+  active native window, to the right or below the focused pane. With no selected space, New terminal
+  opens the standalone Workbench space. Creation goes through the idempotent scratch-shell path,
+  with a generation-scoped native target. Stale targets fail rather than creating another space.
+  Terminal mounts remain stable over grid cells during resizing, metadata updates, tab switching
+  and zoom. Layout is a disposable projection of tmux metadata; no layout is stored in the UI.
+- **Panel types in this slice:** native terminal panes, including agents and issue scratch shells.
+  Plan, diff, activity and code panels are deferred; Tracker retains its existing review surface.
 - **Bindings:** Main reads and watches `<LOOM_DATA_ROOT>/<instance>/keybindings.json`.
   First launch writes the complete defaults. Zod validates the whole file; invalid JSON,
   unknown/missing actions, invalid chords, duplicate bindings or an invalid timeout activate
@@ -153,7 +145,7 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   navigation clears any hiding filter and selects the first flagged pane in sidebar order.
   The Main toggle retains Tracker's existing inbox reason count and restart behavior.
 - **Terminals:** each panel owns an independent authenticated attach client. Mode/window teardown
-  kills only that client. Explicit Close terminal also asks the coordinator to end the native pane. Electron keys resources by webContents and panel/client identity,
+  kills only that client. Close panel only detaches the viewer. Electron keys resources by webContents and panel/client identity,
   including pending spawns and late exit callbacks. Metadata patches update labels without
   rendering or remounting terminal components; theme changes update xterm options in place.
 
@@ -258,18 +250,15 @@ Editing code, drag-and-drop between windows, a third mode, plugins, themes beyon
 
 ### Workbench terminals and agent status
 
-Workbench restores a viewer of an existing live terminal from native inventory on open. It never
-creates a shell during mounting or navigation. New Terminal and Split name and create a native
-shell before mounting a viewer with its exact identity. Closing a terminal ends that pane; native
-exit and close updates remove all its views. Dead panes retained by the host remain dimmed in the tree.
-Closing the last terminal leaves an empty Workbench with a New terminal action. Selecting an existing row never opens a naming modal.
-The standalone `loom-workbench` session has no issue or provider run; tmux owns it, and no spare
-shell is launched to hold the session open.
+Workbench restores a view of an existing native space on open. Mounting and navigation never
+create shells. Native exits remove their viewers; dead panes remain represented only in tab/space
+rollups and the agents list. Closing a panel detaches it and leaves the native window in the tab bar;
+selecting the sidebar row reopens its viewers. The standalone `loom-workbench` session has no issue
+or provider run and never launches a spare shell to hold the session open.
 
-The sidebar uses the space → tab → pane tree described above. Recorded agent status appears on
-its pane row and rolls up to its ancestors, with no duplicate agent list. Headless runs and issue
-history without native panes are excluded. A quiet or disconnected terminal is never proof of
-completion. Clicking a pane attaches in Workbench without switching to Tracker.
+The sidebar has a space → tab tree and a separate agents list. Only recorded provider status and
+coordinator attention determine status. Headless runs and issue history without native panes are
+excluded. A quiet or disconnected terminal is never proof of completion.
 
 New Tab (including the prefix shortcut) asks for a terminal name in a modal before creating a
 shell. Cancel creates nothing. Names are stored as native tmux window names and survive viewer
@@ -280,7 +269,7 @@ finished-turn icon while the agent terminal stays open. Idle and unknown status 
 ### Pinned terminal navigation
 
 Main and Operator stay pinned below the scrollable space tree. Main attaches the selected repository's `lead` identity; Operator attaches its interactive session, with the same durable queue and policy
-checks as before. Both reuse their pinned tabs. Their Hide agent view button only detaches the viewer;
+checks as before. Both open their native space and windows in the right panel. Close panel only detaches the viewer;
 stopping an agent uses its existing agent/issue controls. Opening a workspace reserves its tmux
 session name without creating a shell; a session is created only when a real agent or explicitly
 requested human terminal needs a pane. The brief bootstrap process used while setting its environment

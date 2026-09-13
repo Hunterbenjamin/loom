@@ -92,6 +92,8 @@ export const command = z.union([
   z.strictObject({ kind: z.literal("open_task_terminal"), taskId }),
   z.strictObject({
     kind: z.literal("open_workbench_terminal"),
+    target: paneIdentity.optional(),
+    split: z.enum(["right", "below"]).optional(),
     key: z.string().uuid(),
     label: z
       .string()

@@ -122,16 +122,19 @@ export function spaces(
   panes: readonly PaneView[],
   filter = "",
   runs: readonly Run[] = [],
+  includePinned = false,
 ): TreeSpace[] {
   const byRun = new Map(runs.map((run) => [run.id, run]));
   const groups = new Map<string, TreeSpace>();
   const tabs = new Map<string, TreeTab>();
   const sorted = [...panes]
-    .filter((pane) => !pinned(pane))
+    .filter((pane) => includePinned || !pinned(pane))
     .sort(
       (a, b) =>
         a.sessionName.localeCompare(b.sessionName) ||
         a.hostGeneration.localeCompare(b.hostGeneration) ||
+        (a.windowIndex ?? Number.MAX_SAFE_INTEGER) -
+          (b.windowIndex ?? Number.MAX_SAFE_INTEGER) ||
         (a.windowId ?? "").localeCompare(b.windowId ?? "", undefined, {
           numeric: true,
         }) ||
