@@ -5,6 +5,7 @@ import {
   mergeDisabledReason,
 } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { terminalsForTask } from "../store/selectors.js";
 import type { UiState } from "../store/store.js";
 import {
   PULL_REQUEST_ACTION_EVENT,
@@ -42,14 +43,16 @@ export function PullRequestDetail({
   const task = useStore((s) =>
     s.snapshot.tasks.find((t) => t.id === (row?.taskId ?? summary?.taskId)),
   );
+  const branchTask = useStore((s) => {
+    const tasks = s.snapshot.tasks.filter(
+      (t) =>
+        t.repoId === selection.repoId &&
+        t.branch === (row?.detail.head ?? summary?.head),
+    );
+    return tasks.length === 1 ? tasks[0] : undefined;
+  });
   const agent = useStore((s) =>
-    s.snapshot.runs.find(
-      (r) =>
-        r.taskId === task?.id &&
-        r.status !== "ended" &&
-        r.endedAt === null &&
-        r.mode === "interactive",
-    ),
+    branchTask ? terminalsForTask(s.snapshot, branchTask)[0] : undefined,
   );
   const [fullscreen, setFullscreen] = useState(false);
   const [file, setFile] = useState<string | null>(null);
@@ -285,10 +288,10 @@ export function PullRequestDetail({
           className="pr-run-agent"
           aria-label="Open branch agent"
           title={agent ? "Open branch agent" : "No Loom agent on this branch"}
-          disabled={!agent || !task}
+          disabled={!agent || !branchTask}
           onClick={() => {
-            if (task && agent) {
-              store.open(task.id);
+            if (branchTask && agent) {
+              store.open(branchTask.id);
               store.setRun(agent.id);
               store.setTab("terminal");
             }

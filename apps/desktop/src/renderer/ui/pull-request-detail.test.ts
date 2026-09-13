@@ -12,6 +12,7 @@ import { toSnapshot } from "../fixtures/protocol.js";
 import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
 import { pullRequestSubscriptions } from "../store/pull-requests.js";
 import { StoreProvider } from "../store/react.js";
+import { terminalsForTask } from "../store/selectors.js";
 import { createStore } from "../store/store.js";
 import { Detail } from "./detail.js";
 import { useShortcuts } from "./keys.js";
@@ -678,4 +679,34 @@ test("file selection scrolls the existing viewer after a delayed patch arrives",
     id: "0:example.ts",
     align: "start",
   });
+});
+
+test("manually linking another issue never opens an agent on that issue's different branch", async () => {
+  const h = setup({ head: "feat/no-agent" });
+  const issue = h.fixture.tasks.find(
+    (task) =>
+      task.repoId === h.row.repoId &&
+      task.branch &&
+      terminalsForTask(h.fixture, task).length > 0,
+  );
+  if (!issue) throw new Error("Missing agent fixture");
+  act(() => {
+    h.row.taskId = issue.id;
+    h.update();
+  });
+  expect(
+    h.host.querySelector<HTMLButtonElement>('[aria-label="Open branch agent"]')
+      ?.disabled,
+  ).toBe(true);
+  act(() => {
+    h.row.detail.head = issue.branch ?? "";
+    h.update();
+  });
+  const button = h.host.querySelector<HTMLButtonElement>(
+    '[aria-label="Open branch agent"]',
+  );
+  expect(button?.disabled).toBe(false);
+  await act(async () => button?.click());
+  expect(h.store.getState().ui.openTask).toBe(issue.id);
+  expect(h.store.getState().ui.tab).toBe("terminal");
 });
