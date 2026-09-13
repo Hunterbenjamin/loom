@@ -12,7 +12,11 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "typecheck": "pnpm -r --if-present typecheck",
-    "loom": "tsx apps/coordinator/src/cli.ts"
+    "loom": "tsx apps/coordinator/src/cli.ts",
+    "dev": "scripts/dev.sh up",
+    "dev:restart": "scripts/dev.sh restart",
+    "dev:down": "scripts/dev.sh down",
+    "dev:status": "scripts/dev.sh status"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
