@@ -91,23 +91,17 @@ test("concurrent open commands are idempotent, private, and separate from task r
     { sessionId: saved.sessionId, model: "fake-lead-model" },
   ]);
   expect(saved.cwd).toBe(h.repo.root);
-  expect(
-    saved.args[saved.args.indexOf("--disallowedTools") + 1].split(","),
-  ).toEqual([
-    "Bash",
-    "Edit",
-    "Write",
-    "NotebookEdit",
-    "WebFetch",
-    "WebSearch",
-    "Task",
-  ]);
-  expect(saved.args[saved.args.indexOf("--tools") + 1]).toBe("Read,Glob,Grep");
-  expect(saved.args).toContain("--strict-mcp-config");
-  expect(saved.args).not.toContain("bypassPermissions");
+  // Main is the brain with hands: no tool allowlist, no restricted mode, no strict MCP config.
+  expect(saved.args).not.toContain("--disallowedTools");
+  expect(saved.args).not.toContain("--tools");
+  expect(saved.args).not.toContain("--restricted");
+  expect(saved.args).not.toContain("--strict-mcp-config");
+  expect(saved.args[saved.args.indexOf("--permission-mode") + 1]).toBe(
+    "bypassPermissions",
+  );
   expect(saved.args.at(-2)).toBe("--");
   expect(h.paneHost.launches[0]?.args).toEqual(saved.args);
-  expect(saved.args.join(" ")).toContain("Always create Loom issues");
+  expect(saved.args.join(" ")).toContain("with hands");
   expect(saved.args.join(" ")).not.toContain(saved.token);
   expect(
     (await stat(join(h.store.dataDirectory, `lead/${h.repo.id}/recipe.json`)))

@@ -308,8 +308,8 @@ export class LeadSession {
       resume,
       model: recipe.model,
       settingsPath: recipe.settingsPath,
-      readOnly: true,
-      conversationOnly: true,
+      // Main is the brain with hands (decision 2026-09-13): the same access the human has.
+      readOnly: false,
     });
     args.push(
       "--name",

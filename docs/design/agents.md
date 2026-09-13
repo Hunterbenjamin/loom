@@ -24,7 +24,7 @@ The fix is a separation the human named: the agent you talk to must never be the
 | Layer | Kind | Job | May be busy? |
 |---|---|---|---|
 | **Human** | | Direction, approvals that are theirs, questions only they can answer | |
-| **Main** | Interactive Claude session, one per repository, behind the bottom-bar toggle | The conversation: understand intent, turn it into issues, summarize what is going on, ask the human what is actually theirs | Never: no action longer than a few seconds |
+| **Main** | Interactive Claude session, one per repository, behind the bottom-bar toggle | The brain, with hands: understand intent, do what the human asks (anything on the machine), turn larger work into issues, summarize what is going on, ask the human what is actually theirs | Yes, when the human asks it to |
 | **Coordinator** | Code (`apps/coordinator`, `packages/core`) | Stages, launches, review rounds, merges on approval, recovery | Always; it is a process |
 | **Issue agents** | Planner, implementer, reviewer runs (unchanged) | The work of one issue, one role at a time | Yes |
 
@@ -50,7 +50,16 @@ merge. A successful submission may return `next: in_review` while publication is
 completed reviewer work, not a request to submit again. Only an explicit escalation invokes the
 implementer's automatic fix-round path; the cap and nonconvergence checks still apply.
 
-### Main has no hands
+### Main is the brain, and has hands
+
+Decision 2026-09-13 (after the "brain and hands" pattern: one agent that can do anything, and
+issue agents as its hands): Main has the same access the human has on the machine. It launches
+like a full-access implementer, `--permission-mode bypassPermissions`, with no tool allowlist, no
+restricted mode and no strict MCP configuration, in the repository root. It can run shell and git,
+edit any file on disk, use the web and subagents, read the coordinator's log and store, and repair a
+stuck pipeline itself. The two things that stay the human's are merging and pushing to a base
+branch; Main's prompt says so and code enforces it for Loom's own commands. The paragraphs below
+describe how Main is scoped and recovered per repository; the earlier "no hands" rules are gone.
 
 The selected project determines the Main shown in the bottom panel. Each repository owns a
 separate session, recipe, settings, token and notes under `<instance data>/lead/<repoId>/`, with
@@ -62,21 +71,13 @@ to the first registered repository, keeping its persisted session ID and token.
 Main's authenticated tools default to and enforce its repository: list/inspect/create/move/approval
 and other task commands cannot reach another project's tasks. Its introduction names the repository.
 
-Main's availability is enforced by what it cannot do, not by asking it to be quick:
-
-- No shell, no terminal attach, no test runner; only read-only file tools within its repository.
-- Only Loom tools, each answering in under a second: list and inspect issues, create and move
-  them, approve or reject a plan, approve a merge the human has delegated, request changes, answer a
-  question, answer a provider request, retry, cancel, list repositories.
-- Anything longer becomes an issue. "Can you look into why the reviewer is
-  stuck" is an issue or an escalation, never something Main does itself.
-
-Main launches with only `Read`, `Glob`, `Grep` and Loom MCP tools. `--disallowedTools` denies
-`Bash`, `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `WebFetch`, `WebSearch` and `Task`;
-restricted mode confines file reads to the repository, and strict MCP configuration
-excludes other servers (including terminal attach tools). The panel remains a human view of
-Main's conversation. Its first response is a two-sentence introduction, then it waits; it never
-starts drills or resumes work on its own. Internal `lead` identifiers remain for compatibility.
+Main's Loom tools each answer in under a second: list and inspect issues, create and move them,
+approve or reject a plan, approve a merge the human has delegated, request changes, answer a
+question, answer a provider request, retry, cancel, list repositories, push an issue branch, open
+a PR. Larger or parallel work becomes an issue; "look into why the reviewer is stuck" is something
+Main may simply do. The panel remains a human view of Main's conversation. Its first response is
+a two-sentence introduction, then it waits; it never starts drills or resumes work on its own.
+Internal `lead` identifiers remain for compatibility.
 
 ### The Coordinator stays code
 

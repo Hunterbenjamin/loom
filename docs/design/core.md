@@ -667,7 +667,7 @@ sessionId}`) that only enqueue passes; nothing parses terminal output.
 
 | Adapter | Reads (observations) | Writes (actions) |
 |---|---|---|
-| `GitAdapter` | `realpath`, `readWorktree`, `changedFiles` (NUL-delimited metadata, renames, hunks), `readBlob` | `createWorktree`, `push` (refuses any head except the expected one; never forces), `writeTaskFiles` (and `.git/info/exclude`) |
+| `GitAdapter` | `realpath`, `readWorktree`, `changedFiles` (NUL-delimited metadata, renames, hunks), `readBlob` | `createWorktree`, `push` (refuses any head except the expected one; forces only with a lease on the remote head Loom last observed, for rebased branches), `writeTaskFiles` (and `.git/info/exclude`) |
 | `GitHubAdapter` | `findPullRequest` (conditional, ETag) | `openPullRequest` (idempotent), `mergePullRequest` (squash, `--match-head-commit`, optional `--auto`), `disableAutoMerge` |
 | `PaneHost` | `getPane`, `listPanes`, `listClients`, `subscribe` | `ensureWorkspace`, `ensurePane` (allowlisted environment, no shell), `pasteText` (refuses `/` and `!`; returns only `"written"`), `sendKey` (Escape), `attachArgs`, `closePane` |
 | `CodexAdapter` | `readThread`, `resumeThread`, `readRateLimits`, `generation`, `subscribe` | `startThread`, `startTurn`, `steerTurn`, `interruptTurn`, `answerRequest` (rejects a stale generation), `unsubscribe`, `attachArgs` |

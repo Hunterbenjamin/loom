@@ -83,11 +83,16 @@ export interface GitAdapter {
     branch: string;
     baseBranch: string;
   }): Promise<ActionOutputs["create_worktree"]>;
-  /** Refuses unless the local branch head equals `expectedHeadSha`. Never forces. */
+  /**
+   * Refuses unless the local branch head equals `expectedHeadSha`. Never forces blindly: with
+   * `leaseSha`, the remote head Loom last observed, the push is `--force-with-lease` on exactly
+   * that head, so a rebased branch (a rebase round) replaces only what Loom has already seen.
+   */
   push(req: {
     worktreePath: WorktreePath;
     branch: string;
     expectedHeadSha: Sha;
+    leaseSha?: Sha | null;
   }): Promise<ActionOutputs["push_branch"]>;
   /** Writes `<worktree>/.task/` and keeps `.task/` in `.git/info/exclude`. */
   writeTaskFiles(
@@ -471,8 +476,6 @@ export interface ClaudeAdapter {
    * `--settings` file with HTTP hooks, the SessionStart command hook and Loom's MCP server.
    */
   interactiveArgs(req: {
-    /** Conversation sessions: only Loom MCP and read-only file tools, confined to cwd. */
-    conversationOnly?: boolean;
     sessionId: ProviderSessionId;
     resume: boolean;
     model: string;

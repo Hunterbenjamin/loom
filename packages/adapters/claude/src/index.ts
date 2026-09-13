@@ -138,7 +138,6 @@ export async function createClaudeAdapter(
       settingsPath,
       readOnly,
       approvalGated,
-      conversationOnly,
     }) => [
       "--settings",
       settingsPath,
@@ -148,28 +147,13 @@ export async function createClaudeAdapter(
       sessionId,
       "--model",
       model,
-      // Main is confined to conversation and file reads. Task planners retain
-      // their edit restrictions while keeping the tools needed to inspect and test the repo.
-      ...(conversationOnly
-        ? [
-            "--permission-mode",
-            "dontAsk",
-            "--restricted",
-            "--tools",
-            "Read,Glob,Grep",
-            "--allowedTools",
-            "Read,Glob,Grep",
-            "--disallowedTools",
-            "Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,Task",
-            "--strict-mcp-config",
-            "--disable-slash-commands",
-            "--no-chrome",
-          ]
-        : readOnly
-          ? ["--disallowedTools", ...READ_ONLY_DISALLOWED_TOOLS]
-          : approvalGated
-            ? []
-            : ["--permission-mode", "bypassPermissions"]),
+      // Task planners keep their edit restrictions while keeping the tools needed to inspect
+      // and test the repo. Main and full-access implementers run unrestricted.
+      ...(readOnly
+        ? ["--disallowedTools", ...READ_ONLY_DISALLOWED_TOOLS]
+        : approvalGated
+          ? []
+          : ["--permission-mode", "bypassPermissions"]),
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {

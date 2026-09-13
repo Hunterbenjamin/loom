@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { leadBrief, mainPanelBrief } from "./prompts.js";
 
-test("Main introduces itself in two sentences, waits and delegates longer work", () => {
+test("Main introduces itself in two sentences, waits, and has full access", () => {
   const prompt = leadBrief();
   expect(prompt).not.toMatch(/\bLead\b/);
   const introduction = prompt.match(
@@ -11,12 +11,15 @@ test("Main introduces itself in two sentences, waits and delegates longer work",
   expect(prompt).toContain("Make no tool calls before your introduction");
   expect(prompt).toContain("Never start work on your own");
   expect(prompt).toContain("restart drills");
+  expect(prompt).toContain("the brain of this workspace, with hands");
   expect(prompt).toContain(
-    "Anything longer than a few seconds must become a Loom issue via create_task",
+    "Create a Loom issue via create_task when the work is large",
   );
-  expect(prompt).toContain("issue agents will handle");
   expect(prompt).toContain("Never poll");
-  expect(prompt).toContain("No shell, terminal attach");
+  expect(prompt).toContain(
+    "merging, and pushing to a base branch. Never do either yourself",
+  );
+  expect(prompt).not.toContain("No shell");
 });
 
 test("Main reads its bounded memory as context, and panel summaries do not start work", () => {
