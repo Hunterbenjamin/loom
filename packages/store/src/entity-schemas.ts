@@ -463,6 +463,7 @@ export const contextSchema = contract<TaskContext>()(
         role,
         round: count,
         resume: z.boolean(),
+        fresh: z.boolean().optional(),
         replacement: z
           .object({
             runId: id,
