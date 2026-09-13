@@ -357,7 +357,9 @@ export function submission(
             commitSha:
               verdict.status === "fixed"
                 ? (verdict.commitSha ?? null)
-                : review.reviewedSha,
+                : verdict.status === "escalate"
+                  ? null
+                  : review.reviewedSha,
             at: c.now,
           };
           finding.updatedAt = c.now;

@@ -661,9 +661,11 @@ it("persists inline-review publication and fixing/escalation evidence across res
       at: now,
     },
   });
+  artifact(state, "findings", state.findings);
   expect(store.commit(taskId, result(state), 0).ok).toBe(true);
   store.close();
   const restored = (await open()).loadTaskState(taskId);
   expect(restored.review).toEqual(state.review);
-  expect(restored.findings).toEqual(state.findings);
+  expect(restored.findings).toEqual(expect.arrayContaining(state.findings));
+  expect(restored.findings).toHaveLength(state.findings.length);
 });

@@ -104,7 +104,7 @@ export interface GetTaskContextOutput {
   /** The full append-only decisions log. */
   decisions: string;
   handoff: Handoff | null;
-  /** Implementer: open, addressed and disputed. Reviewer: every finding from earlier rounds. */
+  /** Implementer: open, escalated, addressed and disputed. Reviewer: prior rounds and current external findings. */
   findings: FindingView[];
   testResults: TestResult[];
   answeredQuestions: { id: QuestionId; question: string; answer: string }[];
@@ -211,7 +211,7 @@ export interface SubmitReviewInput {
   reviewerCommits: Sha[];
   summary: string;
   findings: FindingInput[];
-  /** One verdict per finding that was `addressed` or `disputed` at the start of the round. */
+  /** One verdict per addressed/disputed finding and every remaining open blocker. */
   verdicts: FindingVerdictInput[];
   testResults: TestResultInput[];
 }
