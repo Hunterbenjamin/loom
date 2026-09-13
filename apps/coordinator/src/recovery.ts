@@ -228,19 +228,22 @@ export async function recover(
         }
       }
       if (run.mode !== "interactive" || !run.pane) continue;
-      // Decision 21: an interactive run is never relaunched just because it vanished. Only a pane
-      // the host itself reports dead, whose run Loom still owns, is put back from its recipe.
-      const pane = await deps.adapters.paneHost
-        .getPane(run.pane)
-        .catch(() => null);
       const recipe = deps.recipes.get(run.id);
-      if (pane !== null && !pane.dead) continue;
       if (!recipe || !state.worktree?.paneWorkspaceId) continue;
       try {
+        // Only a confirmed missing/dead recorded pane permits relaunch. An observation error
+        // is uncertainty, not permission to launch a second agent.
+        const pane = await deps.adapters.paneHost.getPane(run.pane);
+        if (pane && !pane.dead) continue;
+        const { workspaceId } = await deps.adapters.paneHost.ensureWorkspace({
+          taskId: task.id,
+          cwd: state.worktree.path,
+          label: task.title,
+        });
         const newPane = await relaunchFromRecipe(
           deps.launch,
           recipe,
-          state.worktree.paneWorkspaceId,
+          workspaceId,
         );
         // Persist the new pane info before any pane operation targets it.
         deps.store.updateRunPane(task.id, run.id, newPane);

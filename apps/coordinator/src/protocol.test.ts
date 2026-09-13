@@ -35,6 +35,29 @@ const served = async () => {
   return h;
 };
 
+test("retry reports the reconciler rejection instead of a successful queue acknowledgement", async () => {
+  const h = await served();
+  const task = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "No retryable run",
+    description: "",
+  });
+  const client = await connect(h, "retry-refusal");
+  expect(
+    await client.command({
+      kind: "human",
+      taskId: task.task.id,
+      command: { type: "retry" },
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: {
+      code: "invalid_input",
+      message: "retry is not allowed in backlog",
+    },
+  });
+}, 30_000);
+
 test("a client connects, takes a snapshot and sees its repo", async () => {
   const h = await served();
   const client = await connect(h, "window-1");

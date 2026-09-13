@@ -21,6 +21,7 @@ import { StoreProvider } from "./store/react.js";
 import { createStore } from "./store/store.js";
 import { WindowModeContext } from "./window-mode.js";
 import "./theme.css";
+import { PaneChime } from "./workbench/chime.js";
 
 const initialMode = await window.loomHost.mode();
 const config = connectionConfig.parse(await window.loomHost.connection());
@@ -87,6 +88,7 @@ function Boot() {
   const app = (
     <StoreProvider store={store}>
       <WindowModeContext value={mode}>
+        <PaneChime />
         <Suspense fallback={<div>Opening {mode}…</div>}>
           {visited.has("tracker") && (
             <Activity mode={mode === "tracker" ? "visible" : "hidden"}>

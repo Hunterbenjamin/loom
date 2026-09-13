@@ -87,7 +87,16 @@ export function createGitAdapter(
       return pathSchema.parse(await realpath(pathSchema.parse(path)));
     },
     async currentBranch(path) {
-      return branchAt(await rootPath(path));
+      const branch = refName.parse(
+        (
+          await textGit(pathSchema.parse(path), [
+            "rev-parse",
+            "--abbrev-ref",
+            "HEAD",
+          ])
+        ).replace(/\n$/, ""),
+      );
+      return branch === "HEAD" ? null : branch;
     },
     async readWorktree(path, baseBranch, reachableCandidates = []) {
       pathSchema.parse(path);

@@ -359,26 +359,94 @@ export function human(
       )
         return wrong();
       const failedId = task.failed?.runId;
-      const run = state.runs.find(
-        (r) =>
-          r.origin === "loom" &&
-          r.endReason !== "superseded" &&
-          (failedId
-            ? r.id === failedId
-            : r.endReason === "vanished" || r.status === "failed"),
+      const role =
+        task.stage === "planning"
+          ? "planner"
+          : task.stage === "in_progress"
+            ? "implementer"
+            : task.stage === "in_review"
+              ? "reviewer"
+              : null;
+      const pendingReplacement =
+        state.desiredRun?.replacement || state.desiredRun?.fresh;
+      const run = pendingReplacement
+        ? undefined
+        : state.runs.findLast(
+            (r) =>
+              r.origin === "loom" &&
+              r.endReason !== "superseded" &&
+              (failedId
+                ? r.id === failedId
+                : r.role === role &&
+                  (!r.endedAt ||
+                    r.endReason === "vanished" ||
+                    r.status === "failed")),
+          );
+      const failedActions = state.outbox.filter(
+        (row) =>
+          row.status === "failed" &&
+          row.action &&
+          !row.retryAt &&
+          !row.retriedBy,
       );
-      if (!task.failed && !run)
-        return guard("There is no failed action or run to retry");
+      if (!run && !failedActions.length)
+        return guard(
+          pendingReplacement
+            ? "A run replacement or retry is already pending"
+            : "There is no failed action or run to retry",
+        );
+      const fresh = run && !run.endedAt && run.status !== "failed";
+      if (task.blocked)
+        return guard("Resolve the task's blocked reason before retrying");
+      if (fresh && run) {
+        if (
+          !state.worktree ||
+          !c.git?.exists ||
+          c.git.path !== state.worktree.path ||
+          c.git.branch !== task.branch
+        )
+          return guard("Read the recorded worktree and branch before retrying");
+        if (state.runs.some((r) => r.id !== run.id && !r.endedAt))
+          return guard("Another run is still active in this worktree");
+        if (
+          state.outbox.some(
+            (row) =>
+              row.status === "running" &&
+              row.action &&
+              "runId" in row.action &&
+              row.action.runId === run.id,
+          )
+        )
+          return guard(
+            "An agent action is still in flight; retry after it finishes",
+          );
+      }
       c.change("Human reset retry budget", () => {
         task.failed = null;
       });
       if (run) {
+        if (fresh) {
+          const pending = state.messages.filter(
+            (m) => m.runId === run.id && m.status === "pending",
+          );
+          c.end(run, "failed", false, true);
+          // Explicit human retry authorizes redelivery. New message IDs keep old transport
+          // receipts/outbox rows from confirming or blocking this session's messages.
+          for (const message of pending)
+            c.message(
+              run,
+              message.purpose,
+              `${sequence}:${message.id}`,
+              message.text,
+            );
+        }
         run.retryBaseAttempt = run.attempts;
         run.retryAt = null;
         run.endedAt = c.now;
         run.endReason = "failed";
         run.observedAttempt = undefined;
         c.requestRun(run.role, run.round);
+        if (fresh && state.desiredRun) state.desiredRun.fresh = true;
       }
       for (const row of state.outbox)
         if (

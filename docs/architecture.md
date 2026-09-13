@@ -306,6 +306,12 @@ findings and review round. Old run records and provider transcripts remain avail
 command for the superseded ID cannot launch another replacement. Unknown retirement state blocks
 launch rather than allowing two agents to edit the same worktree.
 
+Human `retry` also accepts an unfinished run whose observation is unknown, or which is still
+starting, working, idle or blocked by provider input. It retires that attempt before rotating
+the session epoch and launching again on the same run row with a higher attempt count. Pending
+messages are copied to new delivery identities for the fresh session; old transport receipts
+cannot confirm them. Retry replies wait for the reconciler's acceptance or explicit rejection.
+
 Agents hand off through artifacts, not transcripts. Each task's artifacts live in the coordinator's data directory.
 Agents reach them through `get_task_context`, and as files in `<worktree>/.task/`, which is kept out of git via `.git/info/exclude`.
 

@@ -112,6 +112,8 @@ export interface TaskState {
     role: Role;
     round: number;
     resume: boolean;
+    /** Human retry: retire this attempt before rotating its session and launching again. */
+    fresh?: boolean;
     replacement?: {
       runId: RunId;
       previousRunId: RunId;

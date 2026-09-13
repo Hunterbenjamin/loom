@@ -10,6 +10,7 @@ export const pane = paneView.parse({
   title: "research",
   command: "sh",
   startCwd: "/tmp",
+  branch: null,
   dead: false,
   exitStatus: null,
   attachedClients: 2,

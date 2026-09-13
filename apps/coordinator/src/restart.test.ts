@@ -134,4 +134,17 @@ test("the recipes a restart reads back can relaunch an interactive run", async (
   expect(after?.args).toEqual(before?.args);
   expect(after?.env).toEqual(before?.env);
   expect(after?.token).toBe(before?.token);
+  const run = second.store
+    .loadTaskState(taskId)
+    .runs.find((r) => r.id === before?.runId);
+  expect(run?.pane).toBeTruthy();
+  expect(await second.paneHost.getPane(run?.pane as never)).toMatchObject({
+    dead: false,
+  });
+  expect(second.logs.some((line) => line.includes("Could not relaunch"))).toBe(
+    false,
+  );
+  expect(
+    second.paneHost.launches.filter((r) => r.runId === before?.runId),
+  ).toHaveLength(1);
 }, 30_000);

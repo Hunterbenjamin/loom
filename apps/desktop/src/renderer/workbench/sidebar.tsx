@@ -1,6 +1,7 @@
 import type { PaneView } from "@loom/protocol";
-import { useEffect, useMemo, useState } from "react";
-import { useStore } from "../store/react.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { paneKey } from "../store/pane-transitions.js";
+import { useStore, useStoreApi } from "../store/react.js";
 import { type Indicator, spaces } from "./selectors.js";
 
 function Status({ state }: { state: Indicator }) {
@@ -28,6 +29,49 @@ export function Sidebar({
   newTerminal: () => void;
   openPinned: (target: "main" | "operator") => void;
 }) {
+  const store = useStoreApi();
+  const sidebar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const animations = new Set<Animation>();
+    const stop = store.subscribePaneTransitions((pane) => {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const pinned = ["loom-lead", "loom-main"].includes(pane.sessionName)
+        ? "main"
+        : pane.sessionName === "loom-operator"
+          ? "operator"
+          : null;
+      const row = [
+        ...(sidebar.current?.querySelectorAll<HTMLElement>(
+          "[data-pane-key], [data-pinned]",
+        ) ?? []),
+      ].find((element) =>
+        pinned
+          ? element.dataset.pinned === pinned
+          : element.dataset.paneKey === paneKey(pane),
+      );
+      if (!row) return;
+      const animation = row.animate(
+        [
+          {
+            backgroundColor:
+              getComputedStyle(row).getPropertyValue("--accent-dim").trim() ||
+              "transparent",
+          },
+          { backgroundColor: "transparent" },
+        ],
+        { duration: 600, iterations: 1 },
+      );
+      animations.add(animation);
+      void animation.finished.then(
+        () => animations.delete(animation),
+        () => animations.delete(animation),
+      );
+    });
+    return () => {
+      stop();
+      for (const animation of animations) animation.cancel();
+    };
+  }, [store]);
   const panes = useStore((s) => s.panes);
   const unavailable = useStore((s) => s.panesUnavailable);
   const runs = useStore((s) => s.snapshot.runs);
@@ -50,7 +94,11 @@ export function Sidebar({
     window.loomHost.interactive();
   }, []);
   return (
-    <aside className="wb-sidebar" aria-label="Spaces and terminals">
+    <aside
+      ref={sidebar}
+      className="wb-sidebar"
+      aria-label="Spaces and terminals"
+    >
       <input
         id="agent-filter"
         aria-label="Find space, tab or pane"
@@ -85,6 +133,12 @@ export function Sidebar({
                 </span>
                 <Status state={space.indicator} />
                 <span className="wb-tree-name">{space.label}</span>
+                <small
+                  className="wb-space-branch"
+                  title={space.branch ?? "Branch unavailable"}
+                >
+                  {space.branch ?? "—"}
+                </small>
               </button>
               {expanded(space.key) &&
                 space.tabs.map((tab) => (
@@ -110,6 +164,7 @@ export function Sidebar({
                         <button
                           type="button"
                           key={pane.id}
+                          data-pane-key={paneKey(pane)}
                           className={`wb-tree-row wb-tree-pane ${pane.dead ? "dead" : ""}`}
                           aria-label={`Open ${tab.name} ${name} ${pane.paneId}`}
                           disabled={
@@ -150,6 +205,7 @@ export function Sidebar({
         <button
           type="button"
           className="wb-tree-pane"
+          data-pinned="main"
           onClick={() => openPinned("main")}
           title="Open Main terminal"
         >
@@ -160,6 +216,7 @@ export function Sidebar({
         <button
           type="button"
           className="wb-tree-pane"
+          data-pinned="operator"
           onClick={() => openPinned("operator")}
           title="Open Operator terminal"
         >

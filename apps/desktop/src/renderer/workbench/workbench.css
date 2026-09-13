@@ -121,6 +121,9 @@
   background: #17191e;
   padding: 24px;
   max-width: 600px;
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  overflow-wrap: anywhere;
 }
 .wb-help p {
   margin: 8px;
@@ -180,6 +183,16 @@
 }
 .wb-tree-tab {
   padding-left: 12px;
+}
+.wb-space-branch {
+  margin-left: auto;
+  max-width: 45%;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  opacity: 0.6;
 }
 .wb-tree-tab .wb-tree-pane {
   padding-left: 24px;
@@ -316,4 +329,12 @@
 .wb-terminal-list {
   overflow: auto;
   min-height: 0;
+}
+
+.wb-keybinding-status {
+  max-width: 320px;
+  min-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

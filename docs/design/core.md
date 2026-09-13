@@ -289,7 +289,12 @@ no retries for the task. MCP submissions from the current run and human commands
 **Retrying automatically is for headless runs only.** A failed or crashed headless run keeps its row,
 gets `retryAt` and a `schedule` action, and relaunches as `attempts + 1` against the same session ID
 (§1 "Run"): `start_run` with `resume: true` while the provider still has the session, otherwise
-`sessionEpoch + 1` and a fresh one. Retries within `retry.maxAttempts` (3) set no flag; exhausting them
+`sessionEpoch + 1` and a fresh one. An explicit human retry of a still-active run (including
+`unknown`) instead records a terminating `stop_run`, waits for its successful receipt, and starts
+a fresh session on the same run row with a higher epoch and attempt count. The durable desired
+run carries `fresh: true` across retirement, capacity waits and coordinator restarts. Pending
+messages receive new delivery identities; sent messages remain historical and are not replayed.
+Retries within `retry.maxAttempts` (3) set no flag; exhausting them
 sets `failed: retries_exhausted`.
 
 **Explicit replacement.** Human `restart_run {runId}` applies only to the current planning,
@@ -870,7 +875,7 @@ Resume attempts remain bounded by `retry.maxAttempts` (3 by default).
 | 7 | `merge_pr` succeeding never moves a task; only an observed merge does. | Done is derived from GitHub. |
 | 8 | Cancel leaves the PR and branch alone. | GitHub owns them. The human closes the PR if they want it closed. |
 | 9 | The git adapter creates worktrees; the pane host only opens a session on the path. | Git owns branches, and headless runs shouldn't need a terminal at all. |
-| 10 | IDs are derived: run ID `<task>/<role>/<round>`, Claude session = UUIDv5 of `<runId>#<sessionEpoch>`. A retry keeps the row and the session ID; only a session the provider can't resume bumps the epoch. | Keeps reconcile pure, lets a retry actually resume, and makes `start_run` idempotent: a repeat targets the same session. |
+| 10 | IDs are derived: run ID `<task>/<role>/<round>`, Claude session = UUIDv5 of `<runId>#<sessionEpoch>`. A retry keeps the row. Automatic retries preserve the session unless the provider cannot resume it; a human retry of an active run explicitly retires it and bumps the epoch. | Keeps reconcile pure, preserves resumable history, and makes `start_run` idempotent: a repeat targets the same session. |
 | 11 | `ReconcileResult` also returns `transitions` and `inputs`. | The audit log and MCP replies must commit atomically with the state. |
 | 12 | Inbox and outbox tables. | Inputs are consumed exactly once; actions run at least once and survive a crash. |
 | 13 | Capacity is compare-and-set on a global version. | Reconcile is per task, but caps are global. |
