@@ -15,10 +15,16 @@ vi.mock("dockview", () => ({
   Orientation: { HORIZONTAL: "horizontal" },
 }));
 vi.mock("../ui/lead.js", () => ({ LeadBar: () => null }));
-vi.mock("../ui/terminal.js", () => ({
-  TerminalSession: ({ pane }: { pane?: PaneIdentity }) =>
-    createElement("div", { "data-attached-pane": pane?.paneId }),
-}));
+const terminalRenders = vi.hoisted(() => vi.fn());
+vi.mock("../ui/terminal.js", async () => {
+  const { memo } = await import("react");
+  return {
+    TerminalSession: memo(({ pane }: { pane?: PaneIdentity }) => {
+      terminalRenders();
+      return createElement("div", { "data-attached-pane": pane?.paneId });
+    }),
+  };
+});
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -135,8 +141,8 @@ test("close ends the host terminal and removes its row; selecting from an empty 
       h.native.set(next.id, next);
       h.publish();
     });
-    await act(async () => h.button("⌁Existing terminal").click());
-    await act(async () => h.button("⌁Existing terminal").click());
+    await act(async () => h.button("Open Existing terminal sh %8").click());
+    await act(async () => h.button("Open Existing terminal sh %8").click());
     expect(h.element.querySelector("dialog")).toBeNull();
     expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
     expect(h.send).toHaveBeenCalledTimes(1);
@@ -146,9 +152,10 @@ test("close ends the host terminal and removes its row; selecting from an empty 
       h.publish();
     });
     expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(0);
-    expect(
-      h.element.querySelector(".wb-terminal-list")?.textContent,
-    ).not.toContain("Existing terminal");
+    expect(h.element.querySelector(".wb-terminal-list")?.textContent).toContain(
+      "Existing terminal",
+    );
+    expect(h.button("Open Existing terminal sh %8").disabled).toBe(true);
   } finally {
     await h.close();
   }
@@ -171,7 +178,7 @@ test("failed close retains the terminal and explains failure; unavailable invent
       h.publish();
     });
     expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
-    expect(h.button("⌁shell").disabled).toBe(true);
+    expect(h.button("Open shell sh %2").disabled).toBe(true);
   } finally {
     await h.close();
   }
@@ -208,6 +215,48 @@ test("New terminal creates once before attachment and remount never recreates it
         .querySelector("[data-attached-pane]")
         ?.getAttribute("data-attached-pane"),
     ).toBe("%99");
+  } finally {
+    await h.close();
+  }
+});
+
+test("pane clicks replace the focused viewer, Enter opens an independent tab, and patches preserve terminals", async () => {
+  const next = {
+    ...pane,
+    id: JSON.stringify([pane.hostGeneration, "%8"]),
+    paneId: "%8",
+    windowId: "@8",
+    windowName: "Build",
+  };
+  const h = await harness([pane, next]);
+  try {
+    await act(async () => h.button("Open Build sh %8").click());
+    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
+    expect(
+      h.element
+        .querySelector("[data-attached-pane]")
+        ?.getAttribute("data-attached-pane"),
+    ).toBe("%8");
+    await act(async () =>
+      h.button("Open Build sh %8").dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(2);
+    expect(h.send).not.toHaveBeenCalled();
+    const renders = terminalRenders.mock.calls.length;
+    await act(async () => {
+      h.native.set(next.id, { ...next, attention: true, status: "blocked" });
+      h.publish();
+    });
+    expect(h.element.querySelector(".wb-space .wb-status")?.textContent).toBe(
+      "◐",
+    );
+    expect(terminalRenders).toHaveBeenCalledTimes(renders);
   } finally {
     await h.close();
   }
