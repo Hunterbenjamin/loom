@@ -121,6 +121,9 @@
   background: #17191e;
   padding: 24px;
   max-width: 600px;
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  overflow-wrap: anywhere;
 }
 .wb-help p {
   margin: 8px;
@@ -326,4 +329,12 @@
 .wb-terminal-list {
   overflow: auto;
   min-height: 0;
+}
+
+.wb-keybinding-status {
+  max-width: 320px;
+  min-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

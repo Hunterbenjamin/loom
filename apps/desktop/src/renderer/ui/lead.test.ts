@@ -85,6 +85,8 @@ for (const live of [false, true])
       off: vi.fn(),
     };
     window.loomHost = {
+      keybindings: vi.fn(),
+      onKeybindingsChanged: vi.fn(() => () => {}),
       mode: vi.fn(),
       setMode: vi.fn(),
       onModeChanged: vi.fn(() => () => {}),

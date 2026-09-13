@@ -19,7 +19,7 @@ export const ptySpawnRequest = z.strictObject({
     .optional(),
   pane: paneIdentity.optional(),
 });
-/** The contract between the renderer and the Electron main process. Terminals only. */
+/** The contract between the renderer and the Electron main process. */
 
 export interface PtySpawnRequest {
   id: string;
@@ -60,6 +60,10 @@ export const windowMode = z.enum(["tracker", "workbench"]);
 export type WindowMode = z.output<typeof windowMode>;
 
 export interface HostBridge {
+  keybindings(): Promise<import("./keybindings.js").KeybindingsState>;
+  onKeybindingsChanged(
+    listener: (state: import("./keybindings.js").KeybindingsState) => void,
+  ): () => void;
   notify?(request: { id: string; title: string; body: string }): void;
   mode(): Promise<WindowMode>;
   setMode(mode: WindowMode): Promise<void>;
