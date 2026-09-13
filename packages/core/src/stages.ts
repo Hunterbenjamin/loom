@@ -76,6 +76,13 @@ export function reconcileStages(c: Context): void {
         });
       c.stage("in_review", "PR head changed");
       c.review(pr.headSha);
+    } else if (pr.mergeable === "conflicting" && state.worktree) {
+      c.voidApprovals("stage_left");
+      c.stage(
+        "in_progress",
+        `Branch conflicts with ${state.worktree.baseBranch}`,
+      );
+      c.rebase(state.worktree.baseBranch, pr.headSha);
     } else if (pr.ci.headSha === pr.headSha && pr.ci.conclusion === "failure") {
       c.voidApprovals("ci_failed");
       for (const check of pr.ci.checks.filter(

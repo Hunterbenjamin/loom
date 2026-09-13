@@ -87,6 +87,31 @@ test("inline fixes persist attribution and wait for the pushed reviewed PR head 
   expect(published.next.review?.publicationPending).toBe(false);
 });
 
+test("a reviewed branch that conflicts with base goes back to the implementer to rebase", () => {
+  const f = inline();
+  const result = fixed(f.state, f.observations);
+  if (!f.observations.github?.ok || !f.observations.github.value)
+    throw new Error("fixture");
+  const push = result.actions.find((a) => a.kind === "push_branch");
+  if (!push) throw new Error("Missing push");
+  f.observations.inputs = [actionInput(push, { remoteHeadSha: fix })];
+  f.observations.github.value.headSha = fix;
+  f.observations.github.value.ci.headSha = fix;
+  f.observations.github.value.mergeable = "conflicting";
+  const rebased = fixed(result.next, f.observations);
+  expect(rebased.next.task.stage).toBe("in_progress");
+  expect(rebased.next.review?.publicationPending).toBe(false);
+  expect(
+    rebased.next.messages.find((m) => m.purpose === "fix_round")?.text,
+  ).toMatch(/conflicts with/);
+  // Reconciling again changes nothing: one message, one stage change.
+  const again = fixed(rebased.next, f.observations);
+  expect(again.next.task.stage).toBe("in_progress");
+  expect(
+    again.next.messages.filter((m) => m.purpose === "fix_round"),
+  ).toHaveLength(1);
+});
+
 describe("inline review guards reject atomically", () => {
   test.each([
     "dirty",

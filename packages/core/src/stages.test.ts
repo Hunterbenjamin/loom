@@ -600,7 +600,21 @@ describe("transition guards fail independently", () => {
           if (mutation === "unknown-mergeability") pr.mergeable = "unknown";
         }
       },
+      // A conflicting PR has already sent the task back for a rebase (#17b).
+      mutation === "conflict" ? "wrong_stage" : undefined,
     );
+  it("#17b a conflicting PR while awaiting approval starts a rebase round", () => {
+    const f = fixture("awaiting_approval");
+    if (!f.observations.github?.ok || !f.observations.github.value)
+      throw new Error("fixture");
+    f.observations.github.value.mergeable = "conflicting";
+    const r = fixed(f.state, f.observations);
+    expect(r.next.task.stage).toBe("in_progress");
+    expect(r.next.approvals.every((a) => a.voidedAt)).toBe(true);
+    expect(
+      r.next.messages.find((m) => m.purpose === "fix_round")?.text,
+    ).toMatch(/conflicts with/);
+  });
   reject(
     "#18 needs findings",
     "awaiting_approval",

@@ -405,6 +405,18 @@ export class Context {
         `Address the findings and submit for review.\n${JSON.stringify(this.state.findings)}`,
       );
   }
+  /** A fix round with no findings: the branch must be rebased onto base before it can merge. */
+  rebase(base: string, head: Sha): void {
+    const run = this.current("implementer");
+    this.requestRun("implementer");
+    if (run)
+      this.message(
+        run,
+        "fix_round",
+        `rebase:${head}`,
+        `The branch now conflicts with ${base}. Rebase onto ${base} (or merge it in) and resolve the conflicts, keeping the reviewed changes intact; run the tests, then submit for review again.`,
+      );
+  }
   review(head: Sha): void {
     this.task.reviewRound++;
     this.state.review = {
