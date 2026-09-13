@@ -12,7 +12,7 @@ export function reconcileStages(c: Context): void {
     c.cancelPending();
     c.block(null);
     c.stage("done", "PR merged on GitHub");
-    c.notify("Task done", "done");
+    c.notify("Issue done", "done");
     return;
   }
   if (task.stage === "done" || task.stage === "canceled") return;

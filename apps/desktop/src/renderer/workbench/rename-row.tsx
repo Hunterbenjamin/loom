@@ -11,11 +11,15 @@ export function RenameRow({
   toggle,
   children,
   className = "",
+  ariaLabel,
+  disabled,
 }: {
   kind: "space" | "tab";
   pane: PaneView | undefined;
   name: string;
-  expanded: boolean;
+  expanded?: boolean;
+  ariaLabel?: string;
+  disabled?: boolean;
   toggle: () => void;
   children: ReactNode;
   className?: string;
@@ -133,8 +137,13 @@ export function RenameRow({
       type="button"
       className={`wb-tree-row ${className}`}
       aria-expanded={expanded}
+      aria-label={ariaLabel}
+      disabled={disabled}
       title={name}
-      onClick={toggle}
+      onClick={(event) => {
+        // The second click starts editing; it must not open a second split group.
+        if (event.detail < 2) toggle();
+      }}
       onDoubleClick={begin}
       onKeyDown={(event) => {
         if (event.key === "F2") {

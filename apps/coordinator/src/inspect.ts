@@ -140,7 +140,7 @@ export function formatInspection(data: Inspection): string {
     for (const [key, value] of Object.entries(record))
       lines.push(`  ${`${key}:`.padEnd(23)} ${oneLine(value)}`);
   };
-  lines.push("Task");
+  lines.push("Issue");
   const taskDisplay = { ...data.task };
   facts(taskDisplay);
   lines.push("", `Runs (${data.runs.length}, newest last)`);

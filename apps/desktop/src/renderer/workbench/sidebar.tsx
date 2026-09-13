@@ -1,9 +1,10 @@
 import type { PaneView } from "@loom/protocol";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { paneKey } from "../store/pane-transitions.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { RenameRow } from "./rename-row.js";
-import { type Indicator, spaces } from "./selectors.js";
+import { RowMenu } from "./row-menu.js";
+import { type Indicator, spaceKey, spaces, tabKey } from "./selectors.js";
 
 function Status({ state }: { state: Indicator }) {
   return (
@@ -23,10 +24,18 @@ export function Sidebar({
   choose,
   newTerminal,
   openPinned,
+  openGroup,
+  hidePanels,
+  hasPanels,
+  copyAttach,
 }: {
   filter: string;
   setFilter: (value: string) => void;
   choose: (pane: PaneView, newTab?: boolean) => void;
+  openGroup: (panes: PaneView[], name: string) => void;
+  hidePanels: (panes: PaneView[]) => void;
+  hasPanels: (panes: PaneView[]) => boolean;
+  copyAttach: (pane: PaneView) => void;
   newTerminal: () => void;
   openPinned: (target: "main" | "operator") => void;
 }) {
@@ -91,6 +100,69 @@ export function Sidebar({
       else next.add(key);
       return next;
     });
+  const [menu, setMenu] = useState<{
+    kind: "space" | "tab" | "pane";
+    key: string;
+    x: number;
+    y: number;
+    trigger: HTMLElement;
+  } | null>(null);
+  const dismiss = useCallback(() => setMenu(null), []);
+  // Resolve against the full inventory, never the filtered descendants or a stale row object.
+  const rowPanes = (kind: "space" | "tab" | "pane", key: string) =>
+    panes
+      .filter(
+        (pane) =>
+          (kind === "space"
+            ? spaceKey(pane)
+            : kind === "tab"
+              ? tabKey(pane)
+              : paneKey(pane)) === key,
+      )
+      .sort(
+        (a, b) =>
+          (a.windowId ?? "").localeCompare(b.windowId ?? "", undefined, {
+            numeric: true,
+          }) || a.paneId.localeCompare(b.paneId, undefined, { numeric: true }),
+      );
+  const menuRows = menu ? rowPanes(menu.kind, menu.key) : [];
+  const liveRows = menuRows.filter(
+    (pane) => !unavailable && !pane.unavailable && !pane.dead,
+  );
+  const menuName =
+    menu?.kind === "space" ? menuRows[0]?.sessionName : menuRows[0]?.windowName;
+  const rowMenu = (kind: "space" | "tab" | "pane", key: string) => ({
+    onContextMenu: (event: React.MouseEvent<HTMLElement>) => {
+      event.preventDefault();
+      setMenu({
+        kind,
+        key,
+        x: event.clientX,
+        y: event.clientY,
+        trigger:
+          (event.target as HTMLElement).closest("button") ??
+          event.currentTarget,
+      });
+    },
+    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+      if (
+        event.key !== "ContextMenu" &&
+        !(event.shiftKey && event.key === "F10")
+      )
+        return;
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      setMenu({
+        kind,
+        key,
+        x: rect.left,
+        y: rect.bottom,
+        trigger:
+          (event.target as HTMLElement).closest("button") ??
+          event.currentTarget,
+      });
+    },
+  });
   useEffect(() => {
     window.loomHost.interactive();
   }, []);
@@ -122,26 +194,28 @@ export function Sidebar({
         <div className="wb-terminal-list">
           {tree.map((space) => (
             <section key={space.key} aria-label={space.label}>
-              <RenameRow
-                kind="space"
-                pane={space.tabs[0]?.panes[0]?.pane}
-                name={space.name}
-                className="wb-space"
-                expanded={expanded(space.key)}
-                toggle={() => toggle(space.key)}
-              >
-                <span aria-hidden="true">
-                  {expanded(space.key) ? "▾" : "▸"}
-                </span>
-                <Status state={space.indicator} />
-                <span className="wb-tree-name">{space.label}</span>
-                <small
-                  className="wb-space-branch"
-                  title={space.branch ?? "Branch unavailable"}
+              <div {...rowMenu("space", space.key)}>
+                <RenameRow
+                  kind="space"
+                  pane={space.tabs[0]?.panes[0]?.pane}
+                  name={space.name}
+                  className="wb-space"
+                  expanded={expanded(space.key)}
+                  toggle={() => toggle(space.key)}
                 >
-                  {space.branch ?? "—"}
-                </small>
-              </RenameRow>
+                  <span aria-hidden="true">
+                    {expanded(space.key) ? "▾" : "▸"}
+                  </span>
+                  <Status state={space.indicator} />
+                  <span className="wb-tree-name">{space.label}</span>
+                  <small
+                    className="wb-space-branch"
+                    title={space.branch ?? "Branch unavailable"}
+                  >
+                    {space.branch ?? "—"}
+                  </small>
+                </RenameRow>
+              </div>
               {expanded(space.key) &&
                 space.tabs.map((tab) => (
                   <section
@@ -149,19 +223,35 @@ export function Sidebar({
                     key={tab.key}
                     aria-label={tab.name}
                   >
-                    <RenameRow
-                      kind="tab"
-                      pane={tab.panes[0]?.pane}
-                      name={tab.name}
-                      expanded={expanded(tab.key)}
-                      toggle={() => toggle(tab.key)}
-                    >
-                      <span aria-hidden="true">
+                    <div className="wb-tab-row" {...rowMenu("tab", tab.key)}>
+                      <button
+                        type="button"
+                        className="wb-disclosure"
+                        aria-label={`Toggle ${tab.name} panes`}
+                        aria-expanded={expanded(tab.key)}
+                        onClick={() => toggle(tab.key)}
+                      >
                         {expanded(tab.key) ? "▾" : "▸"}
-                      </span>
-                      <Status state={tab.indicator} />
-                      <span className="wb-tree-name">{tab.name}</span>
-                    </RenameRow>
+                      </button>
+                      <RenameRow
+                        kind="tab"
+                        pane={tab.panes[0]?.pane}
+                        name={tab.name}
+                        ariaLabel={`Open tab ${tab.name}`}
+                        disabled={
+                          !rowPanes("tab", tab.key).some(
+                            (pane) =>
+                              !unavailable && !pane.unavailable && !pane.dead,
+                          )
+                        }
+                        toggle={() =>
+                          openGroup(rowPanes("tab", tab.key), tab.name)
+                        }
+                      >
+                        <Status state={tab.indicator} />
+                        <span className="wb-tree-name">{tab.name}</span>
+                      </RenameRow>
+                    </div>
                     {expanded(tab.key) &&
                       tab.panes.map(({ pane, name, indicator }) => (
                         <button
@@ -173,8 +263,10 @@ export function Sidebar({
                           disabled={
                             unavailable || pane.unavailable || pane.dead
                           }
+                          {...rowMenu("pane", paneKey(pane))}
                           onClick={() => choose(pane)}
                           onKeyDown={(e) => {
+                            rowMenu("pane", paneKey(pane)).onKeyDown(e);
                             if (e.key === "Enter") {
                               e.preventDefault();
                               choose(pane, true);
@@ -204,6 +296,54 @@ export function Sidebar({
           )}
         </div>
       </section>
+      {menu && (
+        <RowMenu
+          {...menu}
+          dismiss={dismiss}
+          actions={[
+            {
+              label: "Open",
+              disabled: menu.kind !== "space" && !liveRows.length,
+              run: () => {
+                if (menu.kind === "space") toggle(menu.key);
+                else if (menu.kind === "pane" && liveRows[0])
+                  choose(liveRows[0]);
+                else openGroup(menuRows, menuName ?? "Tab");
+              },
+            },
+            {
+              label: "Open in new tab",
+              disabled: !liveRows.length,
+              run: () => {
+                if (menu.kind === "pane" && liveRows[0])
+                  choose(liveRows[0], true);
+                else openGroup(menuRows, menuName ?? "Tab");
+              },
+            },
+            {
+              label: "Rename",
+              disabled: true,
+              reason: "Native rename is provided by Workbench v2 slice 3",
+              run: () => {},
+            },
+            {
+              label: "Copy attach command",
+              disabled: !liveRows.length,
+              reason: "Attach to the first live pane in this row",
+              run: () => {
+                if (liveRows[0]) copyAttach(liveRows[0]);
+              },
+            },
+            {
+              label: "Close panel",
+              disabled: !hasPanels(menuRows),
+              reason:
+                "Hide this row’s viewers in the current tab; processes keep running",
+              run: () => hidePanels(menuRows),
+            },
+          ]}
+        />
+      )}
       <section className="wb-pinned" aria-label="Pinned terminals">
         <button
           type="button"

@@ -1,5 +1,7 @@
 # Agent layers
 
+Terminology: an “issue” in the UI is a “task” in the code; internal identifiers and MCP tool names retain `task`.
+
 Who talks to whom, who decides what, and who is allowed to be busy. This note records the direction
 agreed on 2026-09-12 after the first day of self-hosted use; the Operator brief and the Lead PR
 follow-ups derive from it. It builds on the principles in [`AGENTS.md`](../../AGENTS.md) and the
@@ -23,21 +25,21 @@ The fix is a separation the human named: the agent you talk to must never be the
 | Layer | Kind | Job | May be busy? |
 |---|---|---|---|
 | **Human** | | Direction, approvals that are theirs, questions only they can answer | |
-| **Main** | Interactive Claude session, one per instance, behind the bottom-bar toggle | The conversation: understand intent, turn it into tasks, summarize what is going on, ask the human what is actually theirs | Never: no action longer than a few seconds |
+| **Main** | Interactive Claude session, one per instance, behind the bottom-bar toggle | The conversation: understand intent, turn it into issues, summarize what is going on, ask the human what is actually theirs | Never: no action longer than a few seconds |
 | **Coordinator** | Code (`apps/coordinator`, `packages/core`) | Stages, launches, review rounds, merges on approval, recovery | Always; it is a process |
 | **Operator** | Headless agent session, one per instance, coordinator-owned | Everything that needs judgement but not the human: consume Needs-you rows under a policy, act through Loom commands, escalate the rest | Yes, for minutes, unnoticed |
-| **Task agents** | Planner, implementer, reviewer runs (unchanged) | The work of one task, one role at a time | Yes |
+| **Issue agents** | Planner, implementer, reviewer runs (unchanged) | The work of one issue, one role at a time | Yes |
 
 ### Main has no hands
 
 Main's availability is enforced by what it cannot do, not by asking it to be quick:
 
 - No shell, no terminal attach, no test runner; only read-only file tools within its instance data directory.
-- Only Loom tools, each answering in under a second: list and inspect tasks, create and move
+- Only Loom tools, each answering in under a second: list and inspect issues, create and move
   them, approve or reject a plan, approve a merge the human has delegated, request changes, answer a
   question, answer a provider request, retry, cancel, list repositories.
-- Anything longer becomes a task or a note for the Operator. "Can you look into why the reviewer is
-  stuck" is a task or an escalation, never something Main does itself.
+- Anything longer becomes an issue or a note for the Operator. "Can you look into why the reviewer is
+  stuck" is an issue or an escalation, never something Main does itself.
 
 Main launches with only `Read`, `Glob`, `Grep` and Loom MCP tools. `--disallowedTools` denies
 `Bash`, `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `WebFetch`, `WebSearch` and `Task`;
@@ -50,9 +52,9 @@ starts drills or resumes work on its own. Internal `lead` identifiers remain for
 
 The orchestrator the human described, "planning agents → implementer agents → review agents → back
 to the orchestrator", is the reconciler. It is deterministic, restart-safe and tested; an LLM in its
-place would be slower and less reliable, and principle 3 ("code moves tasks between stages") exists
+place would be slower and less reliable, and principle 3 ("code moves issues between stages") exists
 for exactly this reason. Auto-merge is therefore a **policy flag on the coordinator**, per
-repository with a per-task override:
+repository with a per-issue override:
 
 | `merge.approval` | Meaning |
 |---|---|
@@ -61,7 +63,7 @@ repository with a per-task override:
 | `never` | Loom never merges; the human merges on GitHub and Loom observes it. |
 
 No agent decides to merge. The Operator and Main can only *approve* within what the human has
-delegated to them, and every approval is an input on the task like any other.
+delegated to them, and every approval is an input on the issue like any other.
 
 ### The Operator
 
@@ -71,10 +73,10 @@ and available for a human to inspect:
 - **Trigger:** a Needs-you row appears or changes (attention reasons, design §3), a run ends with
   committed work and no submission, a review round closes, a PR's checks change.
 - **Acts only through Loom commands**, the same ones the CLI sends, so every action is an input
-  recorded on the task and visible in its activity. It never touches tmux, git or GitHub directly.
-- **Reviews the task, not the code.** The reviewer run judges the diff. The Operator judges the
+  recorded on the issue and visible in its activity. It never touches tmux, git or GitHub directly.
+- **Reviews the issue, not the code.** The reviewer run judges the diff. The Operator judges the
   loop: did the rounds converge, is the PR mergeable, is the plan still what was approved, should
-  the human look. Its verdict is a note on the task and, when needed, an escalation.
+  the human look. Its verdict is a note on the issue and, when needed, an escalation.
 - **Escalates per policy** by tagging a Needs-you row `for human`. Rows without the tag are its
   own queue.
 
@@ -88,16 +90,16 @@ hints, and the coordinator validates and deduplicates every resulting action und
 
 ## How the layers communicate
 
-Main and the Operator never talk to each other directly, and neither talks to a task agent outside a
-task. Everything goes through Loom, so it is persisted and visible:
+Main and the Operator never talk to each other directly, and neither talks to an issue agent outside an
+issue. Everything goes through Loom, so it is persisted and visible:
 
 | From | To | Channel |
 |---|---|---|
 | Human | Main | The bottom-bar panel |
 | Main | Coordinator | Loom commands (create, move, approve, answer) |
-| Main | Operator | A note on a task ("look at why the reviewer keeps raising this") |
-| Operator | Task agents | Loom commands: answer a request, send a message, retry |
-| Operator | Human | A Needs-you row tagged `for human`; a note on the task with its reasoning |
+| Main | Operator | A note on an issue ("look at why the reviewer keeps raising this") |
+| Operator | Issue agents | Loom commands: answer a request, send a message, retry |
+| Operator | Human | A Needs-you row tagged `for human`; a note on the issue with its reasoning |
 | Operator | Main | Nothing direct; Main reads the same rows and notes when the human opens the panel |
 | Coordinator | Everyone | Snapshot and patches (protocol) |
 
@@ -115,26 +117,26 @@ under-eager one asks the human everything. It starts narrow and widens as trust 
 | Prompt for any other command | Escalate `for human` with the command text | Answer yes for read-only commands |
 | Codex approval request for a workflow command | Accept | Same |
 | Headless run failed | Retry once; second failure escalates | Retry up to the configured cap |
-| Run vanished with work committed and no submission | Push the branch, open the PR as Loom would have, note the task | Same |
+| Run vanished with work committed and no submission | Push the branch, open the PR as Loom would have, note the issue | Same |
 | Run vanished with uncommitted work | Escalate `for human` | Relaunch from recipe when the pane host reports the pane dead |
 | Reviewer raises the same finding twice | Escalate `for human` with both rounds' summaries | Request changes with a consolidated note |
-| Review round closes with no findings | Note "ready for approval" on the task; escalate `for human` | Approve the merge when `merge.approval` is `clean-review` |
+| Review round closes with no findings | Note "ready for approval" on the issue; escalate `for human` | Approve the merge when `merge.approval` is `clean-review` |
 | Merge approval | Never | Within a human-delegated scope (repo, label, size) |
-| Plan submitted | Never approves | Approve plans for tasks the human marked routine |
+| Plan submitted | Never approves | Approve plans for issues the human marked routine |
 | Anything unlisted | Escalate `for human` | |
 
-Every decision the Operator takes is a note on the task naming the policy row it applied, so the
+Every decision the Operator takes is a note on the issue naming the policy row it applied, so the
 human can audit it and widen or narrow the row.
 
 ## Consequences for existing work
 
 - **Main (formerly Lead, PR #56):** keep the Loom command boundary, restrict inherited Claude
-  tools at launch, and use Main in the panel and prompt. Longer work becomes tasks.
+  tools at launch, and use Main in the panel and prompt. Longer work becomes issues.
 - **Operator:** a coordinator-owned interactive session, launched and recovered like the Lead's
   (recipe, per-session settings, stable MCP registration), with a lead-style MCP identity of its
   own so its tools are the human commands and nothing else. It gets the `provider_input` /
   `provider_permission` rows first, since those are what a human answered by hand all day.
-- **Notes on tasks:** a small addition to core and the protocol, an authored text entry on a task
+- **Notes on issues:** a small addition to core and the protocol, an authored text entry on an issue
   from Main, the Operator or a human, shown in activity. This is the only new entity the design
   needs.
 - **Needs-you rows** gain a `for human` tag; the inbox shows tagged rows first and lets the human
@@ -152,7 +154,7 @@ human can audit it and widen or narrow the row.
 - An Operator that plans work on its own initiative. It reacts to rows; Main and the human decide
   what to build.
 - More than one Main per instance, or a Main shared across instances.
-- Agent-to-agent chat of any kind outside a task's recorded channels.
+- Agent-to-agent chat of any kind outside an issue's recorded channels.
 
 ## Operator implementation contract
 
@@ -176,8 +178,8 @@ Policy row identifiers are `permission.allowed`, `permission.other`, `headless.r
 `headless.exhausted`, `vanished.rescue`, `vanished.uncertain`, `review.escalate`, `plan.approval`,
 `merge.approval`, `bug.file`, and `fallback`. The coordinator chooses command arguments from fresh
 owner observations. Operator cannot choose a different branch, approval request, epoch or response.
-Approval and generic task-creation/move tools remain visible but are refused. `append_note` records
-an enforced escalation decision; it is not a general-purpose task-editing escape hatch.
+Approval and generic issue-creation/move tools remain visible but are refused. `append_note` records
+an enforced escalation decision; it is not a general-purpose issue-editing escape hatch.
 
 Rescue uses the `push_branch` and `open_pr` human-command/outbox path, with clean recorded HEAD,
 vanished implementation, no live run, no accepted submission and confirmed push guards. It never
@@ -188,8 +190,8 @@ identity; generic PreToolUse, trust and question signals are not sufficient evid
 
 `file_task` accepts a persisted event ID, title, observed-failure description and acceptance test.
 The coordinator adds bounded sanitized event/inspection evidence and a versioned normalized
-signature, deduplicates across affected tasks, and atomically creates backlog work plus any autoFix
-`todo` input. The description must state a failure and acceptance test, not a proposed fix. New-task
+signature, deduplicates across affected issues, and atomically creates backlog work plus any autoFix
+`todo` input. The description must state a failure and acceptance test, not a proposed fix. New-issue
 quota accounting happens after dedupe. Suppressed filings update one stable escalation note.
 Runtime repository routing is explicit (`operator.repoId`); unresolved/taskless incidents remain
 visible rather than being silently assigned to an affected repository.
@@ -198,7 +200,7 @@ Notes include authenticated author, policy row, event/action correlation, outcom
 Tracker shows Operator status and decisions, prioritizes/filter human-tagged rows, and Activity
 shows notes. Tags project only while their attention occurrence remains current. Notification
 claims are persisted in SQLite to prevent duplicate notifications across windows and restarts.
-General task-note editing and broader approval policies remain separate work; the Operator cannot
+General issue-note editing and broader approval policies remain separate work; the Operator cannot
 update Main's memory or expand Main's built-in capabilities.
 
 

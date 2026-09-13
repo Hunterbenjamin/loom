@@ -1,5 +1,5 @@
-import type { TaskId } from "@loom/core";
 // @vitest-environment happy-dom
+import type { TaskId } from "@loom/core";
 import {
   type AckOutcome,
   emptySnapshotBody,
@@ -86,6 +86,10 @@ test("inline rename validates, cancels, reports errors and waits for native patc
             filter: "",
             setFilter: vi.fn(),
             choose: vi.fn(),
+            openGroup: vi.fn(),
+            hidePanels: vi.fn(),
+            copyAttach: vi.fn(),
+            hasPanels: () => false,
             newTerminal: vi.fn(),
             openPinned: vi.fn(),
           }),
@@ -140,7 +144,10 @@ test("inline rename validates, cancels, reports errors and waits for native patc
       "Accepted space",
     );
     expect(element.textContent).toContain(linked.taskLabel);
-    await key(element.querySelector(".wb-tree-tab > button") as Element, "F2");
+    await key(
+      element.querySelector(".wb-tab-row > .wb-tree-row") as Element,
+      "F2",
+    );
     await change("Tab: v2.0");
     await submit();
     expect(send).toHaveBeenLastCalledWith({
@@ -154,13 +161,16 @@ test("inline rename validates, cancels, reports errors and waits for native patc
       resolve({ ok: true, result: { kind: "renamed" } });
     });
     expect(
-      element.querySelector(".wb-tree-tab > button")?.textContent,
+      element.querySelector(".wb-tab-row > .wb-tree-row")?.textContent,
     ).toContain("Tab: v2.0");
-    await key(element.querySelector(".wb-tree-tab > button") as Element, "F2");
+    await key(
+      element.querySelector(".wb-tab-row > .wb-tree-row") as Element,
+      "F2",
+    );
     await change("Canceled tab");
     await key(input(), "Escape");
     expect(
-      element.querySelector(".wb-tree-tab > button")?.textContent,
+      element.querySelector(".wb-tab-row > .wb-tree-row")?.textContent,
     ).toContain("Tab: v2.0");
     expect(send).toHaveBeenCalledTimes(3);
   } finally {

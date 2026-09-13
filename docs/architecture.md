@@ -1,11 +1,13 @@
 # Loom architecture
 
+Terminology: an “issue” in the UI is a “task” in the code; internal identifiers and MCP tool names retain `task`.
+
 This is the baseline design from 2026-09-11. Anything marked *(spike NN)* is an assumption that spike has to confirm.
 
 ## Goal
 
 One fast place to:
-- create tasks;
+- create issues;
 - watch agents work on them;
 - step into their terminals;
 - review and approve the results.
@@ -22,10 +24,10 @@ Backlog →(human) Todo →(auto) Planning →[valid plan] (optional plan approv
 →[human approves head SHA, CI green] Merging →[PR merged on GitHub] Done
 ```
 
-Tasks can also be Canceled. Three things are tracked separately and must not be merged:
+Issues can also be Canceled. Three things are tracked separately and must not be merged:
 - the **issue stage** (the board column);
 - the **agent run status** (working, idle, blocked, failed);
-- **attention**: whether the task needs the human right now.
+- **attention**: whether the issue needs the human right now.
 
 ## Components
 
@@ -48,27 +50,27 @@ carry for them are in [`docs/design/ui.md`](design/ui.md).
 
 | Fact | Owner | Loom's copy |
 |---|---|---|
-| Task fields, stage, plans, findings, test results, approvals, run records | Coordinator (SQLite + artifact files) | Authoritative |
-| Branches, PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time; repository PR lists and subscribed detail/patch projections are disposable, including PRs without tasks |
+| Issue fields, stage, plans, findings, test results, approvals, run records | Coordinator (SQLite + artifact files) | Authoritative |
+| Branches, PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time; repository PR lists and subscribed detail/patch projections are disposable, including PRs without issues |
 | Diffs | The worktree or the PR | Computed on demand |
 | Session transcripts and live status | Codex daemon / Claude Code | Cache + references |
 | Terminal processes | tmux, only while its server is alive | References (`{hostGeneration, sessionName, windowId, paneId}`), plus each run's intended command line and environment, so Loom can relaunch it. Pane IDs restart at `%0` after a server death, so every ref is scoped to a host generation |
 
-Done is derived from GitHub: a task is Done only once its PR is merged.
+Done is derived from GitHub: an issue is Done only once its PR is merged.
 
 ## Synchronization
 
 - **Reconcile from current state.** Every event enqueues `reconcile(taskId)`: hooks, app-server
   notifications, pane-host hints, and changes found by polling GitHub. Reconcile re-reads from each owner,
   compares that with the desired state, and takes idempotent actions. A full resync runs about every 60 seconds.
-- **One reconcile at a time per task.** Stage transitions are compare-and-set on a version column
+- **One reconcile at a time per issue.** Stage transitions are compare-and-set on a version column
   and are logged in a `transitions` table.
 - **Join key: the worktree path.**
   - Claude hooks, Codex threads, tmux panes and `claude agents --json` all report their working directory (`cwd`).
-    A pane's `pane_start_path` survives its process, so a dead pane still joins to its task.
+    A pane's `pane_start_path` survives its process, so a dead pane still joins to its issue.
   - Compare real paths: macOS reports the same folder as both `/var/…` and `/private/var/…`.
   - A branch maps to its PR.
-  - Sessions started by hand inside a task's worktree attach to that task.
+  - Sessions started by hand inside an issue's worktree attach to that issue.
   - Any other session goes to an Unassigned inbox.
 - **Actions taken outside Loom:**
 
@@ -85,7 +87,7 @@ Done is derived from GitHub: a task is Done only once its PR is merged.
   detail and capped patches refresh every 30 seconds while the PR is open in a window. Identical
   scopes share one poll, and disconnect/unsubscribe cancels it when the last viewer leaves.
   PR commands run through the executor, always refresh their owner after success or failure, and
-  invalidate linked tasks' observations. Failed reads retain the last good projection and read time.
+  invalidate linked issues' observations. Failed reads retain the last good projection and read time.
   A detail read brackets its patch read with head/base checks to reject a concurrent push.
 
 ## Agent integration
@@ -136,33 +138,33 @@ Rules:
 - The pane host has no agent awareness, and must never be given any. It reports native pane facts
   only: pid, foreground command name, `pane_dead`, exit status, start path. Loom owns the link from a
   pane to a run, and records it before launch (principle 7).
-- Run one Codex app-server per task as a Loom child process, never in a pane. Outside the pane host a
+- Run one Codex app-server per issue as a Loom child process, never in a pane. Outside the pane host a
   mid-flight turn completes through a host restart; in a pane it ends interrupted (spike 05).
-  On coordinator recovery, reconnect to the task's private socket and verify the reported
-  `CODEX_HOME`. Persist its PID and process birth time in the private task directory; verify both
-  birth time and the exact task socket in its command before signaling a recovered process.
+  On coordinator recovery, reconnect to the issue's private socket and verify the reported
+  `CODEX_HOME`. Persist its PID and process birth time in the private issue directory; verify both
+  birth time and the exact issue socket in its command before signaling a recovered process.
   Pre-pidfile servers are identified with a query scoped to that socket. Reap a verified stale
   owner before replacing its record; refuse a foreign home or a non-socket path. Explicit shutdown
   terminates adopted servers as well as children. Never discover or signal the shared daemon.
 - A pane is not evidence of a session. `pane_current_command` was `2.1.269` for Claude and `node` for
-  Codex's launcher, and cwd identifies the task, not the session (spike 06 §4). Reject an ambiguous
+  Codex's launcher, and cwd identifies the issue, not the session (spike 06 §4). Reject an ambiguous
   match instead of guessing.
 - `--settings` is part of a Claude session's identity. Whatever relaunches a Claude agent must pass it
   again; a session running without it is unobservable even though it has the right ID.
 
 ### Main session
 
-The coordinator also owns one interactive Claude Main session per instance, outside the task/run
+The coordinator also owns one interactive Claude Main session per instance, outside the issue/run
 model. Its recipe and per-session credentials live under the instance data directory; its pane is
 in the fixed `loom-lead` workspace on the same private server. Main uses a separate MCP identity
 with human-command tools and `set_note`, which atomically replaces the instance-local
 `main-notes` document (at most 2,000 characters). Each launch includes that note as context.
 The Claude launch restricts Main to Loom MCP and read-only file tools within the instance
 directory; the agent has no terminal attach capability. Human viewers still attach to its panel.
-This conversation-only policy is separate from task planners' and reviewers' edit restrictions,
-so those task roles retain the tools needed to inspect the repository and run tests.
+This conversation-only policy is separate from issue planners' and reviewers' edit restrictions,
+so those issue roles retain the tools needed to inspect the repository and run tests.
 The human-command tools enqueue the same guarded inputs as the CLI; they do not
-change stage ownership. Task-run tools and Main tools reject each other's identities. See
+change stage ownership. Issue-run tools and Main tools reject each other's identities. See
 [Main](design/ui.md#main) for its lifecycle, recovery and bottom-bar UI.
 
 ### Claude Code
@@ -214,7 +216,7 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   rendered with xterm.js. Keystroke to glyph was 5–6 ms p95.
 - **Any number of clients may attach.** Two Loom windows and a native Ghostty window showed the
   same agent at once, with no eviction and no takeover flow. Detaching one never stops the agent.
-- **One session per task, one window per run, and no idle windows**: the session exists only
+- **One session per issue, one window per run, and no idle windows**: the session exists only
   while a run or scratch pane does. There is also a *grouped* session per attach target: clients
   on the same session share its current window, so each view gets its own grouped session and picks
   its window independently. Workbench also uses tmux's `active-pane` client flag and initializes
@@ -236,12 +238,12 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   clients. Pinned and supervised agents use a separately labelled **Hide agent view** action; their
   existing stop controls own stopping work, so a terminal close cannot accidentally trigger recovery.
   A host restart kills every pane process, and Loom relaunches runs from stored recipes.
-- The terminal sidebar is a projection of live native panes, independent of task history and local
+- The terminal sidebar is a projection of live native panes, independent of issue history and local
   view layout. No default shell is recreated on render or navigation. New Terminal and Split are the
   explicit Workbench shell-creation paths, and capture the native identity before mounting a viewer. This follows
   [Herdr's pane close/runtime lifecycle](https://github.com/herdrdev/herdr/blob/d184b41fa36923c132629af725ff98bb02aa1b61/src/app/api/panes.rs#L1853).
-- Task detail's Terminal tab resolves through `open_task_terminal`: a live recorded agent pane
-  takes precedence; otherwise a task-keyed human shell opens in the surviving worktree or the
+- Issue detail's Terminal tab resolves through `open_task_terminal`: a live recorded agent pane
+  takes precedence; otherwise an issue-keyed human shell opens in the surviving worktree or the
   configured project root. Reopening reuses that shell. The coordinator reads and displays the
   actual Git branch, including detached HEAD, and never checks out a branch when opening a terminal.
   Native lookup failures are errors rather than permission to launch a competing shell.
@@ -278,16 +280,16 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
 
 ## Parallel work
 
-- One task = one branch = one worktree = one pane-host session, with one window per run.
+- One issue = one branch = one worktree = one pane-host session, with one window per run.
 - A `WORKFLOW.md` owned by each repo lists its setup, env bootstrap, test, lint, dev-server and teardown
   commands, plus its prompt templates.
-- **Ports:** each task gets a slot (`PORT = base + slot*10`), written into the worktree's env. Dev servers run
-  in panes of the task's session.
-- **Services and databases:** each task gets its own compose project or database name. If a repo can't
+- **Ports:** each issue gets a slot (`PORT = base + slot*10`), written into the worktree's env. Dev servers run
+  in panes of the issue's session.
+- **Services and databases:** each issue gets its own compose project or database name. If a repo can't
   support that, it's marked serial-tests and a lock guards its test step.
-- **Dependencies:** "blocked by" links. A task starts only after its blockers are merged. No stacked PRs in v1.
+- **Dependencies:** "blocked by" links. An issue starts only after its blockers are merged. No stacked PRs in v1.
 - **Overlapping changes:**
-  - The planner lists the areas it expects to touch, and the coordinator warns about overlap with active tasks.
+  - The planner lists the areas it expects to touch, and the coordinator warns about overlap with active issues.
   - After each merge, `git merge-tree --write-tree` flags branches that now conflict.
   - The agent rebases and re-runs tests before Awaiting approval.
   - Merges happen in approval order.
@@ -295,9 +297,9 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
 
 ## Context handoffs
 
-Task agent routing can be overridden per role with the instance's `LOOM_PROVIDER_PLANNER`,
+Issue agent routing can be overridden per role with the instance's `LOOM_PROVIDER_PLANNER`,
 `LOOM_PROVIDER_IMPLEMENTER`, and `LOOM_PROVIDER_REVIEWER` settings. Overrides apply to new
-runs, including later roles on existing tasks; they never migrate an existing provider session.
+runs, including later roles on existing issues; they never migrate an existing provider session.
 Models remain configurable per provider, with explicit `LOOM_CODEX_REASONING_EFFORT` for Codex.
 The coordinator captures model and reasoning in durable run/action/recipe records before launch;
 retries preserve them, and Codex turns and the private TUI config receive the captured settings.
@@ -306,7 +308,7 @@ A human can explicitly replace the current planning, implementation or review ru
 `restart_run`, naming the current run ID. The coordinator snapshots the current provider/model/
 reasoning settings, supersedes the old run, and durably requests its retirement. Only after
 retirement succeeds does it launch a new run/session with a distinct ID in the same worktree.
-Retries retain the selected run's settings; replacement retains the task's stage, artifacts,
+Retries retain the selected run's settings; replacement retains the issue's stage, artifacts,
 findings and review round. Old run records and provider transcripts remain available. A repeated
 command for the superseded ID cannot launch another replacement. Unknown retirement state blocks
 launch rather than allowing two agents to edit the same worktree.
@@ -317,7 +319,7 @@ the session epoch and launching again on the same run row with a higher attempt 
 messages are copied to new delivery identities for the fresh session; old transport receipts
 cannot confirm them. Retry replies wait for the reconciler's acceptance or explicit rejection.
 
-Agents hand off through artifacts, not transcripts. Each task's artifacts live in the coordinator's data directory.
+Agents hand off through artifacts, not transcripts. Each issue's artifacts live in the coordinator's data directory.
 Agents reach them through `get_task_context`, and as files in `<worktree>/.task/`, which is kept out of git via `.git/info/exclude`.
 
 - `brief.md`
@@ -353,13 +355,13 @@ that crosses providers goes only through artifacts.
   line disappeared.
 - The coordinator records an approval against three things: the head commit, a snapshot of the findings, and the CI state.
   Any new commit voids it. "Request changes" turns the human's comments into blocking findings.
-- Repository PR commands also go through the executor, independently of task stages. They re-read
+- Repository PR commands also go through the executor, independently of issue stages. They re-read
   the head the human named and refuse open draft PRs, unknown/conflicting mergeability and pending
   or failed CI; zero checks is allowed. They always request squash and the matching head, with no
-  auto-merge or override. Adapter precondition errors have the same classification as task `merge_pr`.
-  A merge initiated from a PR view reaches task Done only through the existing GitHub observation
+  auto-merge or override. Adapter precondition errors have the same classification as issue `merge_pr`.
+  A merge initiated from a PR view reaches issue Done only through the existing GitHub observation
   path. Close and remote branch deletion re-read the owner and are idempotent; no local checkout is
-  changed. No durable task or approval is invented for an off-pipeline PR.
+  changed. No durable issue or approval is invented for an off-pipeline PR.
 - Merging runs `gh pr merge --squash --match-head-commit <approvedSHA>`, or adds `--auto` while CI is still
   running. GitHub won't let you approve your own PR. If you want approvals to count on GitHub itself,
   have agents push as a bot or GitHub App identity.
@@ -372,11 +374,11 @@ that crosses providers goes only through artifacts.
 | Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, panes, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts). |
 | Pane host stop, crash or kill | Every pane process dies, shells included (spikes 05 and 06). The host has no restore feature and needs none: Loom recreates the server, its sessions and each run's pane from stored state — session or thread ID, cwd, full command line and environment. Pane IDs restart at `%0`, so stale refs name nothing and every ref carries its host generation. Measured at about 30 s to a fresh reply from both providers. A Codex turn in flight completes because its app-server runs outside the pane host; Claude's is lost and re-sent. |
 | Codex app-server restart | Runs are `unknown` until `thread/resume`; the interrupted turn is a failed attempt and is re-sent (spike 01). |
-| Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, flag the task failed and notify the human (see `docs/design/core.md` §3). |
+| Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, flag the issue failed and notify the human (see `docs/design/core.md` §3). |
 | Stall | No events for N minutes → set the attention flag. Don't kill it; the human may be typing. |
 | Rate limits | Codex `account/rateLimits/updated` or Claude StopFailure → the provider is cooling down until its reset. Queue new work, and offer to switch providers only for runs that haven't started. |
-| Duplicate or out-of-order events | Idempotent handlers, compare-and-set transitions, one reconcile at a time per task. |
-| Review loops | At most 3 rounds. Escalate when a finding is reopened or the number of findings stops dropping. Each task has a time and cost budget. |
+| Duplicate or out-of-order events | Idempotent handlers, compare-and-set transitions, one reconcile at a time per issue. |
+| Review loops | At most 3 rounds. Escalate when a finding is reopened or the number of findings stops dropping. Each issue has a time and cost budget. |
 
 Out of scope: message brokers, event-sourcing frameworks, sync engines, and multi-machine support in v1
 (one machine runs everything, but the coordinator binds to a configurable address with token
@@ -436,12 +438,12 @@ guarantees that a command did not run. The broader restart matrix remains spike 
 ### Operator integration
 
 One coordinator-owned interactive Claude Operator consumes durable structured hints outside the
-per-task run/capacity model. SQLite owns its queue, decisions, notes, processing receipts, retry
+per-issue run/capacity model. SQLite owns its queue, decisions, notes, processing receipts, retry
 ledger and bug-filing accounting. A private recipe under the instance's `operator` directory owns
 its launch identity and recorded pane. Its terminal lives on the private tmux server and survives
 coordinator and viewer restarts. MCP-only capability
 configuration (`--tools ""`, strict MCP config and per-process settings) and a separate authenticated
-identity prevent the Operator agent from using task-run, shell and attach tools. Humans can attach
+identity prevent the Operator agent from using issue-run, shell and attach tools. Humans can attach
 its terminal through the pinned Workbench entry. Native Claude status gates queued input: busy,
 waiting and unknown sessions receive no paste. A durable prompt hash is recorded before paste;
 UserPromptSubmit confirms delivery and the matching Stop receipt finishes a turn. Uncertain
