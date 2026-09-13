@@ -262,19 +262,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.wb-status {
-  display: inline-block;
-  flex: none;
-  width: 1ch;
-  text-align: center;
-  font: inherit;
-}
-.wb-status.waiting {
-  color: var(--danger);
-}
-.wb-status.failed {
-  color: var(--danger);
-}
+
 .wb-muted,
 .wb-terminals > [role="status"] {
   color: var(--wb-dim);
@@ -392,16 +380,4 @@
 }
 .wb-space {
   flex: 1;
-}
-.wb-status.working {
-  color: var(--good);
-}
-.wb-status.finished {
-  color: var(--accent);
-}
-.wb-status.unknown {
-  color: var(--violet);
-}
-.wb-status.idle {
-  color: var(--text-dim);
 }

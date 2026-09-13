@@ -392,53 +392,6 @@ kbd {
   flex: none;
 }
 
-/* Animated progress indicator for working status */
-.dot.dot-animated {
-  background: conic-gradient(
-    var(--good) 0deg,
-    var(--good) 270deg,
-    transparent 270deg
-  );
-  animation: dot-rotate 1.5s linear infinite;
-  contain: paint;
-}
-
-/* Attention glyph for blocked/waiting status */
-.dot.dot-attention {
-  background: var(--warn);
-}
-
-/* Stage glyph for idle/ended status */
-.dot.dot-stage {
-  background: var(--text-dim);
-}
-
-/* Failed glyph */
-.dot.dot-failed {
-  background: var(--danger);
-}
-
-/* Unknown glyph */
-.dot.dot-unknown {
-  background: var(--violet);
-}
-
-@keyframes dot-rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dot.dot-animated {
-    animation: none;
-    background: var(--good);
-  }
-}
-
 /* ------------------------------------------------------------------ board */
 
 .board {
@@ -1282,4 +1235,31 @@ ul.plain {
 }
 .pr-detail .tab-body[data-tab-body="Files"] {
   overflow: hidden;
+}
+
+/* Status glyphs shared by the Workbench sidebar and the issue list: one character wide. */
+.wb-status {
+  display: inline-block;
+  flex: none;
+  width: 1ch;
+  text-align: center;
+  font: inherit;
+}
+.wb-status.waiting {
+  color: var(--danger);
+}
+.wb-status.failed {
+  color: var(--danger);
+}
+.wb-status.working {
+  color: var(--good);
+}
+.wb-status.finished {
+  color: var(--accent);
+}
+.wb-status.unknown {
+  color: var(--violet);
+}
+.wb-status.idle {
+  color: var(--text-dim);
 }
