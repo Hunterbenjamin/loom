@@ -344,6 +344,10 @@ export class FakeGitHub implements GitHubAdapter {
     return structuredClone({
       number,
       title: this.title,
+      viewerDidAuthor: true,
+      viewerReviewRequested: false,
+      reviewRequired: false,
+      completedAt: null,
       author: "human",
       head: this.branch,
       createdAt: this.createdAt,
@@ -438,6 +442,11 @@ export class FakeGitHub implements GitHubAdapter {
           pullRequests: {
             nodes: page.map((row) => ({
               number: row.number,
+              viewerDidAuthor: row.viewerDidAuthor,
+              viewerLatestReviewRequest: row.viewerReviewRequested
+                ? { id: "request" }
+                : null,
+              closedAt: row.completedAt,
               title: row.title,
               author: row.author ? { login: row.author } : null,
               headRefName: row.head,
@@ -446,8 +455,11 @@ export class FakeGitHub implements GitHubAdapter {
               baseRefOid: row.baseSha,
               isDraft: row.draft,
               mergeable: row.mergeable.toUpperCase(),
-              reviewDecision:
-                row.review === "none" ? null : row.review.toUpperCase(),
+              reviewDecision: row.reviewRequired
+                ? "REVIEW_REQUIRED"
+                : row.review === "none"
+                  ? null
+                  : row.review.toUpperCase(),
               updatedAt: row.updatedAt,
               createdAt: row.createdAt,
               url: row.url,

@@ -35,14 +35,13 @@ opened by hand or by off-pipeline agents.
 
 ## What the human sees
 
-**Sidebar.** A new Tracker view, *Pull requests*, under the existing views, with the count of
-open PRs for the selected repository.
-
-**List.** One row per PR: number, title, head branch → base, author, age, and three badges: checks
-(pass / pending / fail), review (approved / changes requested / none), and mergeability
-(mergeable / conflicts / unknown). A PR whose head branch is a Loom task's branch shows the task
-key, and clicking that opens the task. Filters: open (default), merged, closed; a text filter.
-Sorted newest first. Keyboard as in the task list.
+**Sidebar and list.** Superseded by Reviews slice 2 in `docs/briefs/reviews.md`: the
+sidebar entry is **Reviews**, with the count needing the human. **For you** and **Created**
+replace the state tabs. Collapsible Ready to merge, Needs attention, Waiting, Created by you
+and Completed sections replace the field table. Completed starts collapsed and reveals the
+newest merged/closed PRs in pages of 20. Rows show a state glyph, title, one check/working
+glyph and age; the linked issue key appears on hover or keyboard focus. Existing detail and
+actions below remain unchanged.
 
 **Detail.** Opens in place of the task detail, same frame:
 
@@ -111,6 +110,16 @@ both requested SHAs and may be null while loading. GitHub diff responses contain
 so the REST diff uses an immutable base/head compare endpoint. Cached list SHAs allow parallel
 reads; a direct open without cached metadata fetches detail before the diff. An outdated list
 range is never attached to a new head. Coordinator logs record read durations.
+
+## Superseded by Reviews slice 2
+
+List and detail summaries carry GitHub's `viewerDidAuthor`, `viewerReviewRequested`,
+`reviewRequired` and `completedAt` (GitHub `closedAt`). No identity is inferred from local
+Git configuration or a task link. Required/pending review prevents the Reviews ready group;
+existing merge action guards and bottom-bar semantics are unchanged. The Reviews sidebar
+count includes ready PRs, viewer review requests, and the viewer's PRs with failing checks,
+conflicts or requested changes. Reviews subscribes to open, merged and closed lists while
+visible; history uses the existing shared list reads, with 20-row presentation pages.
 
 ## Superseded by Reviews slice 3
 

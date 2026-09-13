@@ -108,6 +108,10 @@ export interface GitAdapter {
 export type PullRequestState = "open" | "closed" | "merged";
 
 export interface PullRequestSummary {
+  viewerDidAuthor: boolean;
+  viewerReviewRequested: boolean;
+  reviewRequired: boolean;
+  completedAt: IsoTime | null;
   number: number;
   title: string;
   author: string | null;

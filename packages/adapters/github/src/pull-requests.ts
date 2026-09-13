@@ -19,6 +19,7 @@ const LIST_QUERY = `query($owner: String!, $name: String!, $state: PullRequestSt
   repository(owner: $owner, name: $name) {
     pullRequests(first: 100, states: [$state], after: $cursor, orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes {
+        viewerDidAuthor viewerLatestReviewRequest { id } closedAt
         number title author { login } headRefName baseRefName headRefOid baseRefOid
         isDraft mergeable reviewDecision updatedAt createdAt url
         commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
@@ -106,6 +107,10 @@ export function pullRequestReads(
             number: pull.number,
             title: pull.title,
             author: pull.author?.login ?? null,
+            viewerDidAuthor: pull.viewerDidAuthor,
+            viewerReviewRequested: pull.viewerLatestReviewRequest !== null,
+            reviewRequired: pull.reviewDecision === "REVIEW_REQUIRED",
+            completedAt: pull.closedAt,
             state,
             head: pull.headRefName,
             base: pull.baseRefName,

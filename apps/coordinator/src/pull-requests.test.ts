@@ -23,6 +23,10 @@ const detail = (
   overrides: Partial<PullRequestDetail> = {},
 ): PullRequestDetail => ({
   branchExists: true,
+  viewerDidAuthor: true,
+  viewerReviewRequested: false,
+  reviewRequired: false,
+  completedAt: null,
   number,
   title: `PR ${number}`,
   author: "human",

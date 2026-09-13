@@ -127,6 +127,7 @@ const metadata = s.graphqlPullRequest.omit({ commits: true }).extend({
 const full = metadata.extend(content);
 export const DETAIL_QUERY = `query($owner: String!, $name: String!, $number: Int!, $content: Boolean!) {
  repository(owner: $owner, name: $name) { pullRequest(number: $number) {
+  viewerDidAuthor viewerLatestReviewRequest { id } closedAt
   number title author { login } state headRefName baseRefName headRefOid baseRefOid
   headRef { name } headRepository { nameWithOwner }
   isDraft mergeable reviewDecision updatedAt createdAt url mergedAt mergeCommit { oid }
@@ -349,6 +350,10 @@ export async function readDetail(
     number: meta.number,
     title: meta.title,
     author: meta.author?.login ?? null,
+    viewerDidAuthor: meta.viewerDidAuthor,
+    viewerReviewRequested: meta.viewerLatestReviewRequest !== null,
+    reviewRequired: meta.reviewDecision === "REVIEW_REQUIRED",
+    completedAt: meta.closedAt,
     state:
       meta.state === "OPEN"
         ? "open"

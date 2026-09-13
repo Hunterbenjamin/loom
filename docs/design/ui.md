@@ -329,22 +329,41 @@ This slice adds no sidebar, list/detail components, confirmations, shortcuts or 
 The existing desktop fixture merely supplies empty collections for the extended protocol.
 
 
-## Pull request list (slice 3)
+## Reviews list (Reviews slice 2)
 
-Tracker's Pull requests sidebar entry shows the cached open count for the selected repository.
-The selected repository's open list stays subscribed for the bottom-bar count (slice 5); choosing
-Merged or Closed additionally subscribes to that state. Switching repository, leaving the view or
-hiding Tracker releases the unused detail and non-open list scopes.
-The existing coordinator polling and read ownership are unchanged.
+Tracker's **Reviews** entry replaces Pull requests. Its count includes open PRs ready to merge,
+review requested of the GitHub viewer, and the viewer's PRs with failing checks, conflicts or
+changes requested. This count is independent of the selected tab, collapsed sections and search.
+GitHub supplies viewer authorship and review-request facts in both list and detail reads.
 
-The virtualized list orders PRs by creation time, newest first. Rows show number, title, head →
-base, author, age, checks, review and mergeability; no checks and unknown facts remain explicit.
-State defaults to Open, and the text filter matches number, title, branches, author and linked task key.
-Filters and cursor live only in the window and survive view/mode switches. J/K moves the cursor,
-/ focuses the filter, and Escape clears it. Rows are focusable and Enter/Space selects them;
-the task-key button opens the existing task detail and supports native keyboard activation.
-Rows open PR detail on click or Enter/Space; palette additions and action shortcuts are described in slice 5.
-Fixture mode includes linked and off-pipeline PRs in every state and badge condition.
+**For you** groups relevant PRs in this order: Ready to merge (non-draft, mergeable, passing or
+no checks, no required or outstanding viewer review and no requested changes); Needs attention
+(the viewer's or review-requested PRs with failures, conflicts or changes requested); Waiting
+(the viewer's or review-requested PRs with pending checks or review); Created by you (remaining
+open PRs authored by the viewer); Completed (merged and closed). **Created** shows only the
+viewer's authored PRs under Created by you and Completed. Unrelated failing or pending PRs
+are not silently treated as requests for this human. Empty open sections are omitted.
+
+Section bars are collapsible buttons with counts. Completed starts collapsed and sorts by
+GitHub completion time, newest first, revealing 20 rows and then Load N more. Open sections
+sort by creation time, newest first. Tabs, filter, collapse settings, page size and cursor are
+per-window presentation state, retained across view/mode switches. J/K skips collapsed and
+unloaded rows; Enter opens the PR. Native buttons also support Enter/Space. / focuses the
+compact search control; Escape clears it. Search matches title, number, branches, author and
+linked issue key.
+
+Rows follow the Linear reference: green open, purple merged or red closed PR glyph, title,
+one trailing status glyph (green check, red cross, amber pending dot, or lightning while a
+linked issue has a provider-confirmed working run), and age. No checks leaves the status slot
+empty. The linked issue key appears on hover or keyboard focus and opens the issue separately.
+No native terminal output or process state determines whether an agent is working.
+
+The selected repository's open scope remains subscribed in both modes for the bottom bar.
+Reviews additionally subscribes to merged and closed while visible, using existing shared
+60-second polls and cached projections. Switching repository/view or hiding Tracker releases
+unused history/detail scopes. Completed pagination limits rendered rows; the existing GitHub
+adapter retains its bounded cursor pagination. No durable renderer state or detail-page redesign
+is introduced by this slice.
 
 
 ## Pull request detail and actions (slice 4)

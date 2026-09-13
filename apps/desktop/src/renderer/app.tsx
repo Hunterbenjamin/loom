@@ -93,10 +93,12 @@ export function App() {
         <header className="topbar">
           <h1>
             {view === "pull-requests"
-              ? "Pull requests"
+              ? "Reviews"
               : VIEWS.find((item) => item.id === view)?.label}
           </h1>
-          <span className="faint nums">{count}</span>
+          {view === "pull-requests" ? null : (
+            <span className="faint nums">{count}</span>
+          )}
           <span className="spacer" />
           {view === "pull-requests" ? null : searching ? (
             <input

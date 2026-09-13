@@ -15,6 +15,10 @@ export const pullRequestKey = (repo: string, number: number): string =>
   JSON.stringify([repo, number]);
 
 export const pullRequestSummary = z.strictObject({
+  viewerDidAuthor: z.boolean().default(false),
+  viewerReviewRequested: z.boolean().default(false),
+  reviewRequired: z.boolean().default(false),
+  completedAt: isoTime.nullable().default(null),
   number: pullRequestNumber,
   title: z.string(),
   author: z.string().nullable(),
