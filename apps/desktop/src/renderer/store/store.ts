@@ -61,10 +61,13 @@ export type SortKey =
 export type Theme = "dark" | "light";
 
 /** Initial limit and each subsequent page for terminal list sections. */
-export const LIST_PAGE_SIZE = 20;
+export const LIST_PAGE_SIZE = 10;
 export type ListSections = Partial<
   Record<Stage, { collapsed?: boolean; visibleCount?: number }>
 >;
+/** Canceled starts collapsed; every other section starts open until the human toggles it. */
+export const sectionCollapsed = (sections: ListSections, stage: Stage) =>
+  sections[stage]?.collapsed ?? stage === "canceled";
 
 export interface UiState {
   /** Presentation only; owned by this window and never persisted. */
@@ -245,7 +248,7 @@ export function createStore(
 
   const revealStage = (id: TaskId) => {
     const stage = state.snapshot.tasks.find((task) => task.id === id)?.stage;
-    if (stage && state.ui.listSections[stage]?.collapsed) {
+    if (stage && sectionCollapsed(state.ui.listSections, stage)) {
       state = {
         ...state,
         ui: {
@@ -578,7 +581,10 @@ export function createStore(
       setUi({
         listSections: {
           ...state.ui.listSections,
-          [stage]: { ...section, collapsed: !section?.collapsed },
+          [stage]: {
+            ...section,
+            collapsed: !sectionCollapsed(state.ui.listSections, stage),
+          },
         },
         cursor: 0,
       });

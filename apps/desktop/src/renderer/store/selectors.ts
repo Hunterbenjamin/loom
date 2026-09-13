@@ -12,6 +12,7 @@ import {
   matchesView,
   type SortKey,
   type State,
+  sectionCollapsed,
   type ViewId,
 } from "./store.js";
 
@@ -209,7 +210,7 @@ export const groupRows = memo1(
     for (const stage of STAGES) {
       const group = byStage.get(stage);
       if (!group || group.length === 0) continue;
-      const collapsed = sections[stage]?.collapsed ?? false;
+      const collapsed = sectionCollapsed(sections, stage);
       items.push({ kind: "header", stage, count: group.length, collapsed });
       if (collapsed) continue;
       if (stage === "done" || stage === "canceled") {

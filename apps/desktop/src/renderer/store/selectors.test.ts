@@ -318,19 +318,34 @@ describe("list section paging", () => {
     });
   }
 
+  test("starts canceled collapsed and done open; one toggle opens canceled", () => {
+    const canceled = setup("canceled", 3);
+    const rows = rowsFor(canceled.getState().snapshot, "all", "repo-loom", "");
+    expect(groupRows(rows)).toEqual([
+      { kind: "header", stage: "canceled", count: 3, collapsed: true },
+    ]);
+    expect(cursorRows(canceled.getState())).toEqual([]);
+    canceled.toggleListSection("canceled");
+    expect(cursorRows(canceled.getState())).toHaveLength(3);
+    const done = setup("done", 3);
+    expect(cursorRows(done.getState())).toHaveLength(3);
+  });
+
   test.each(["done", "canceled"] as const)(
     "pages %s by exact transition time regardless of column sort",
     (stage) => {
-      const store = setup(stage, 46);
+      const store = setup(stage, 26);
+      if (stage === "canceled") store.toggleListSection(stage);
+      const sections = store.getState().ui.listSections;
       const rows = rowsFor(store.getState().snapshot, "all", "repo-loom", "");
       const before = [...rows];
       for (const sort of ["title", "age", "stage"] as const) {
         for (const descending of [false, true]) {
-          const items = groupRows(sortRows(rows, sort, descending));
+          const items = groupRows(sortRows(rows, sort, descending), sections);
           expect(items[0]).toEqual({
             kind: "header",
             stage,
-            count: 46,
+            count: 26,
             collapsed: false,
           });
           expect(
@@ -338,7 +353,7 @@ describe("list section paging", () => {
               .filter((item) => item.kind === "row")
               .map((item) => item.row.task.id),
           ).toEqual(
-            Array.from({ length: LIST_PAGE_SIZE }, (_, i) => `task-${45 - i}`),
+            Array.from({ length: LIST_PAGE_SIZE }, (_, i) => `task-${25 - i}`),
           );
           expect(items.at(-1)).toEqual({
             kind: "load-more",
@@ -349,14 +364,14 @@ describe("list section paging", () => {
       }
       expect(rows).toEqual(before);
       store.loadMoreListSection(stage);
-      expect(cursorRows(store.getState())).toHaveLength(40);
+      expect(cursorRows(store.getState())).toHaveLength(20);
       expect(groupRows(rows, store.getState().ui.listSections).at(-1)).toEqual({
         kind: "load-more",
         stage,
         count: 6,
       });
       store.loadMoreListSection(stage);
-      expect(cursorRows(store.getState())).toHaveLength(46);
+      expect(cursorRows(store.getState())).toHaveLength(26);
       expect(
         groupRows(rows, store.getState().ui.listSections).filter(
           (item) => item.kind === "load-more",
@@ -365,7 +380,7 @@ describe("list section paging", () => {
     },
   );
 
-  test.each([0, 19, 20, 21, 40])("handles a section with %s tasks", (count) => {
+  test.each([0, 9, 10, 11, 25])("handles a section with %s tasks", (count) => {
     const store = setup("done", count);
     const rows = rowsFor(store.getState().snapshot, "all", "repo-loom", "");
     const items = groupRows(rows);
