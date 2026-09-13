@@ -607,7 +607,7 @@ export class Executor {
         d.command !== expected.command
       )
         throw new PreconditionFailed(
-          "Operator permission occurrence is no longer current",
+          "Automatic permission occurrence is no longer current",
         );
     }
     // Handle different choice types

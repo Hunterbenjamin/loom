@@ -417,7 +417,7 @@ describe("every attention reason", () => {
     [
       "provider_permission",
       (f) => {
-        const o = f.observations.runs[1];
+        const o = f.observations.runs[0];
         if (o?.provider.ok && o.provider.value?.provider === "codex") {
           o.provider.value.status = "active";
           o.provider.value.activeFlags = ["waitingOnApproval"];

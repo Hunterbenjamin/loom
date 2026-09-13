@@ -196,7 +196,6 @@ export const TerminalSession = memo(function TerminalSession({
   label,
   runId = null,
   lead,
-  operator = false,
   theme,
   live,
 }: {
@@ -209,7 +208,6 @@ export const TerminalSession = memo(function TerminalSession({
   label: string;
   runId?: RunId | null;
   lead?: string;
-  operator?: boolean;
   theme: "dark" | "light";
   live: boolean;
 }) {
@@ -240,7 +238,7 @@ export const TerminalSession = memo(function TerminalSession({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    if (live && !runId && !lead && !operator && !pane && !shellKey) {
+    if (live && !runId && !lead && !pane && !shellKey) {
       setStatus("Select a run to attach");
       return;
     }
@@ -353,7 +351,6 @@ export const TerminalSession = memo(function TerminalSession({
         shellKey,
         shellName,
         lead,
-        operator,
         runId,
       })
       .then((result) => {
@@ -408,7 +405,7 @@ export const TerminalSession = memo(function TerminalSession({
       void window.loomTerminal.kill(id);
       terminal.dispose();
     };
-  }, [panelId, pane, live, runId, lead, operator, shellKey, shellName]);
+  }, [panelId, pane, live, runId, lead, shellKey, shellName]);
 
   return (
     <div className="terminal-wrap">

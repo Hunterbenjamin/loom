@@ -15,7 +15,6 @@ export function resolveAttach(
   runId:
     | RunId
     | { lead: string }
-    | "operator"
     | PaneIdentity
     | { shellKey: string; shellName?: string },
 ): Promise<RunTarget | LeadTarget | PaneAttachTarget> {
@@ -49,9 +48,7 @@ export function resolveAttach(
                       label: runId.shellName,
                     }
                   : { kind: "open_pane_session", target: runId }
-              : runId === "operator"
-                ? { kind: "open_operator_terminal" }
-                : { kind: "open_attach_session", runId },
+              : { kind: "open_attach_session", runId },
           )
           .then((outcome) => {
             clearTimeout(timer);
@@ -77,11 +74,7 @@ export function resolveAttach(
                       target.pane.hostGeneration !== runId.hostGeneration ||
                       target.pane.windowId !== runId.windowId ||
                       target.pane.paneId !== runId.paneId
-                : runId === "operator"
-                  ? !("identity" in target) ||
-                    target.identity !== "pane" ||
-                    target.target.sessionName !== "loom-operator"
-                  : !("runId" in target) || target.runId !== runId) ||
+                : !("runId" in target) || target.runId !== runId) ||
               target.attach?.kind !== "pane_host" ||
               !target.pane ||
               target.pane.dead ||

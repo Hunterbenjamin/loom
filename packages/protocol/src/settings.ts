@@ -40,16 +40,7 @@ export const settingsValues = z.strictObject({
     baseBranch: z.string().min(1),
     serialTests: z.boolean(),
   }),
-  operator: z.strictObject({
-    policy: z.literal("v1"),
-    model: z.string().min(1).nullable(),
-    leadModel: z.string().min(1).nullable(),
-    repoId: z.string().min(1).nullable(),
-    autoFix: z.array(
-      z.enum(["pass_failed", "publish_failed", "stale_process"]),
-    ),
-    maxFiledPerHour: z.number().int().positive(),
-  }),
+  main: z.strictObject({ model: z.string().min(1).nullable() }),
   runtime: z.strictObject({
     capTotal: z.number().int().positive(),
     capCodex: z.number().int().positive(),
@@ -89,7 +80,7 @@ export const settingsPatch = z.strictObject({
     .optional(),
   workflow: settingsValues.shape.workflow.partial().optional(),
   repository: settingsValues.shape.repository.partial().optional(),
-  operator: settingsValues.shape.operator.partial().optional(),
+  main: settingsValues.shape.main.partial().optional(),
   runtime: settingsValues.shape.runtime.partial().optional(),
   appearance: settingsValues.shape.appearance.partial().optional(),
 });
@@ -113,7 +104,7 @@ export const storedSettingsPatch = z
       .partial()
       .passthrough()
       .optional(),
-    operator: settingsValues.shape.operator.partial().passthrough().optional(),
+    main: settingsValues.shape.main.partial().passthrough().optional(),
     runtime: settingsValues.shape.runtime.partial().passthrough().optional(),
     appearance: settingsValues.shape.appearance
       .partial()
@@ -129,7 +120,7 @@ export const settingDefinition = z.strictObject({
     "Workflow & approvals",
     "Repositories",
     "Access & safety",
-    "Operator & Main",
+    "Main",
     "Terminals & keybindings",
     "GitHub",
     "Appearance",

@@ -575,7 +575,7 @@ describe("diagnostic readers", () => {
 });
 
 describe("schema drift detection", () => {
-  it("retains the Operator permission occurrence when decoding an outbox action", () => {
+  it("retains the Automatic permission occurrence when decoding an outbox action", () => {
     const expectedDialog = {
       requestId: "request-1",
       at: "2026-09-12T00:00:00.000Z",
@@ -583,7 +583,7 @@ describe("schema drift detection", () => {
       sessionEpoch: 3,
     };
     const action = {
-      key: "operator-permission",
+      key: "automatic-permission",
       taskId: "task-1",
       kind: "answer_pane_prompt",
       runId: "run-1",

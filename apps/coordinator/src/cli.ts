@@ -23,7 +23,6 @@ import { registerRepo } from "./repos.js";
 const USAGE = `loom — Loom's coordinator and its client
 
   loom serve                            run the coordinator for this instance
-  loom operator status [--json]         Operator session, queue, actions and quota
   loom status                           what every issue is doing
   loom repo add <root> <owner/name>     register a repository with this instance
   loom issue create <repo> <title> [description] [--summary <text>] [--small]
@@ -337,23 +336,6 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
   const config = configFromEnvironment();
-  if (group === "operator") {
-    if (args[0] !== "status") throw new Error("loom operator status [--json]");
-    const client = await connect(config);
-    try {
-      const state = client.state?.collections.operator.get("operator");
-      process.stdout.write(
-        has(argv, "json")
-          ? `${JSON.stringify(state ?? null, null, 2)}\n`
-          : state
-            ? `Operator: ${state.status}\nQueue: ${state.queueLength}\nFiled this hour: ${state.filedThisHour}\n${state.actions.map((a) => `${a.at} ${a.outcome}: ${a.body}`).join("\n")}\n${state.escalation ?? state.error ?? ""}\n`
-            : "Operator unavailable\n",
-      );
-    } finally {
-      client.close();
-    }
-    return;
-  }
   if (group === "serve") return serve(config);
   if (group === "status") return status(config, flag(argv, "view"));
   if (group === "attach") {

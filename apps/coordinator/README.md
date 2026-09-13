@@ -138,14 +138,14 @@ or review run, use **Agents → Restart with current agent settings**, or
 `pnpm loom issue restart <issue> <runId>`. This retires the selected agent and creates a fresh
 session on the same issue/worktree, preserving its plan, findings and review round. It does not
 transfer the old provider's conversation. Use `loom issue show <issue>` to find the current run ID.
-The replacement waits for confirmed retirement; a stale run ID is rejected. Main and Operator retain their separate model settings.
+The replacement waits for confirmed retirement; a stale run ID is rejected. Main retains its separate model settings.
 Reasoning is persisted with the run, outbox action, and launch recipe and passed to both the
 Codex thread and subsequent turns; the issue's private TUI configuration receives it too.
 Older runs without a reasoning field retain provider defaults. These are instance environment
 settings. The desktop Settings page now stores global defaults and sparse per-repository overrides,
 shows environment precedence, and labels whether changes apply immediately, to the next task/run,
 or after coordinator restart. Repository overrides are limited to agent roles, workflow defaults,
-base branch and serialized tests; supervisor capacity/timing, executables, Operator/Main, GitHub and
+base branch and serialized tests; supervisor capacity/timing, executables, Main, GitHub and
 desktop preferences are instance-wide and can only be edited in Global defaults.
 
 `LOOM_RUN_MODES` is a comma-separated per-role override such as
@@ -232,7 +232,7 @@ Small issues auto-generate a plan from the title (goal) and description (steps),
 **Qualifying scope:** ~200 lines or fewer, single file, no architectural decisions. Docs, typos, comments, config updates, simple refactors.
 
 **How it works:**
-1. Issue created with `--small` flag or `size: 'small'` via Main/Operator tools.
+1. Issue created with `--small` flag or `size: 'small'` via Main tools.
 2. On first reconcile, a plan is auto-generated from issue title (goal) and description (steps split by newlines).
 3. Issue transitions directly: `todo` → `in_progress` (no planning stage).
 4. Implementer fixes it; reviewer runs only tests for affected packages.
@@ -444,8 +444,7 @@ sessions keep their launch permissions until the human restarts Main.
 
 Each token scopes all Main tools to its repository. `create_task` may omit `repoId`; explicit foreign
 repositories, task IDs and dependencies are rejected. Switching the desktop picker retargets the
-Main viewer without stopping another project's session. Operator remains instance-wide and
-`LOOM_OPERATOR_REPO` is unchanged.
+Main viewer without stopping another project's session.
 
 Startup loads and recovers every per-repository recipe. A legacy `lead/recipe.json` migrates once
 to the first registered repository, preserving session/token, copying settings and `main-notes`,
@@ -460,46 +459,28 @@ The Main-only `set_note({note})` tool atomically replaces `<instance data>/lead/
 characters; empty clears it). Every launch includes this note as context, including session rotation.
 See [the UI design](../../docs/design/ui.md#main) for controls and tool scope.
 
-### Operator
+### Coordinator automation
 
-The coordinator owns one event-driven Claude Operator, separate from issue capacity and Main.
-It starts lazily when attention, terminal run failures, pass/publish failures, or owned adapter
-stale-process diagnostics arrive. It has only Loom MCP tools: no built-in tools or terminal.
-`loom operator status [--json]` shows its session, queue, last ten decisions and rolling-hour count.
-Protocol clients can send `open_operator_session` and `stop_operator_session`; stopping retains
-queued events and persists stop intent. Opening enables event delivery, without a human chat turn.
+The Operator was removed by user decision on 2026-09-13. Two narrow behaviours remain in
+plain core code, using fresh provider/git observations and the existing guarded outbox:
 
-Configuration accepts `operatorModel` (environment `LOOM_MODEL_OPERATOR`), defaulting to
-`models.claude`. `operator.policy` accepts `"v1"`; its stable row IDs are in
-`src/operator-policy.ts`. `operator.autoFix` defaults to `[]` and accepts `pass_failed`,
-`publish_failed`, and `stale_process` (`LOOM_OPERATOR_AUTO_FIX`, comma separated).
-`operator.maxFiledPerHour` defaults to 5 (`LOOM_OPERATOR_MAX_FILED_PER_HOUR`).
+- A Loom-launched implementer's native permission request is accepted for an exact command
+  from its registered repository's validated `WORKFLOW.md`, or a conservative simple `git add`,
+  `git commit -m` or `pnpm install` command. Extra install flags require an exact workflow entry.
+  Claude requires a waiting native Bash PermissionRequest with an occurrence ID; Codex requires
+  a command approval on the current connection generation. Questions, trust dialogs and all
+  other commands retain `provider_input` attention for the human. Actions are deduplicated by
+  request identity and revalidated immediately before execution.
+- A vanished Loom-launched interactive implementation with no accepted submission, review,
+  replacement or live run can have its clean committed branch pushed through `push_branch`.
+  The exact recorded HEAD must be ahead of base and its remote (or the remote branch absent);
+  git proves remote ancestry and the executor rechecks worktree, branch and HEAD. Push is never
+  forced. The coordinator retains `run_vanished` attention, never opens a PR automatically and
+  never fabricates a submission or changes the stage. Reconciliation and recovery reuse the
+  same commit-keyed outbox intent.
 
-Set `operator.repoId` / `LOOM_OPERATOR_REPO` to the registered repository where runtime bugs belong.
-No destination is inferred from the affected issue. Without an explicit registered destination,
-incidents remain queued and visible in Operator status until routing is configured. Bugs default
-to backlog. Matching autoFix kinds receive a durable `todo` input in the same transaction as
-creation; ordinary reconciliation starts their planners.
-
-SQLite stores event hints, delivery attempts, processing receipts, command/retry ledgers, notes,
-normalized signatures and quota records. Private session identity/settings live under
-`<data>/<instance>/operator`. Repeated identical failures within an hour share an occurrence count;
-separate events with equivalent normalized messages append evidence to one open bug. Terminal bugs
-allow later recurrence. The sixth distinct new filing is suppressed and updates one instance
-escalation note; duplicate signatures remain usable at quota.
-
-Policy v1 never approves plans or merges. It only accepts freshly observed implementer permissions
-for exact validated repository WORKFLOW commands or conservative simple `git add`, `git commit -m`
-and `pnpm install` forms. Claude requires native permission command/request evidence; trust,
-questions and unknown prompts escalate. A headless failure waits for core's retries, then permits
-one `retry` command per issue/role/round. That command resets the existing attempt budget; it does
-not mean exactly one additional provider attempt.
-
-Vanished clean committed implementation work can be rescued through guarded `push_branch` then
-`open_pr` inputs. Both command evaluation and execution verify owner state. Rescue neither submits
-an implementation nor changes its stage. Human escalation tags expire with their exact attention
-occurrence. Tracker prioritizes tagged rows, offers a human-only filter, and displays authored notes
-in Activity. Electron notification claims are deduplicated durably by the coordinator.
+Existing headless retry limits and human plan/merge approvals remain unchanged. Runtime failures
+are logged for the human; no agent files bugs or resets retry budgets automatically.
 
 For constrained test hosts, `LOOM_TEST_SLOW_GIT=1 pnpm test --maxWorkers=1 --testTimeout=30000`
 allows up to two minutes for coordinator Git scenarios. Normal deadlines, fake-clock assertions,

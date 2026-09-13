@@ -1,4 +1,3 @@
-import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { ProviderSessionId, WorktreePath } from "@loom/core";
 import { expect, test, vi } from "vitest";
 
@@ -28,15 +27,14 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 
 import { HeadlessRun } from "./headless.js";
 
-test("MCP-only disables built-ins and native result is a turn receipt, not child exit", async () => {
+test("native result is a turn receipt, not child exit", async () => {
   const run = new HeadlessRun(
     {
       sessionId: "00000000-0000-4000-8000-000000000000" as ProviderSessionId,
-      cwd: "/tmp/loom-test-operator" as WorktreePath,
+      cwd: "/tmp/loom-test-headless" as WorktreePath,
       model: "fake",
-      settingsPath: "/tmp/loom-test-operator/settings.json",
+      settingsPath: "/tmp/loom-test-headless/settings.json",
       readOnly: true,
-      mcpOnly: true,
       resume: false,
       prompt: "event",
     },
@@ -44,29 +42,6 @@ test("MCP-only disables built-ins and native result is a turn receipt, not child
   );
   await vi.waitFor(() => expect(run.state.completedTurns).toBe(1));
   expect(run.state.exited).toBe(false);
-  const options = fake.options as Options;
-  expect(options.tools).toEqual([]);
-  expect(options.settingSources).toEqual([]);
-  expect(options.allowedTools).toEqual(["mcp__loom"]);
-  const check = options.canUseTool;
-  if (!check) throw new Error("Missing capability gate");
-  const context = {
-    signal: new AbortController().signal,
-    toolUseID: "tool",
-    requestId: "permission",
-  };
-  expect(await check("Bash", { command: "id" }, context)).toMatchObject({
-    behavior: "deny",
-  });
-  expect(
-    await check("Read", { file_path: "/tmp/secret" }, context),
-  ).toMatchObject({ behavior: "deny" });
-  expect(await check("mcp__other__tool", {}, context)).toMatchObject({
-    behavior: "deny",
-  });
-  expect(await check("mcp__loom__file_task", {}, context)).toMatchObject({
-    behavior: "allow",
-  });
   run.close();
   expect(fake.close).toHaveBeenCalledOnce();
   fake.release();
@@ -81,11 +56,10 @@ test("a failed native result is observable before the streaming child exits", as
   const run = new HeadlessRun(
     {
       sessionId: "00000000-0000-4000-8000-000000000001" as ProviderSessionId,
-      cwd: "/tmp/loom-test-operator" as WorktreePath,
+      cwd: "/tmp/loom-test-headless" as WorktreePath,
       model: "fake",
-      settingsPath: "/tmp/loom-test-operator/settings.json",
+      settingsPath: "/tmp/loom-test-headless/settings.json",
       readOnly: true,
-      mcpOnly: true,
       resume: false,
       prompt: "event",
     },

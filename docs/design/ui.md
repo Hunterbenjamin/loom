@@ -69,7 +69,7 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   with a one-character status indicator on each row. Panes and process names are never tree rows.
   Selection highlights the open space and active tab. Spaces occupy up to half of the sidebar;
   both sections scroll independently. The filter, new/menu actions, collapse control and grouped
-  agent ordering remain available. Main and Operator stay pinned above the agents list.
+  agent ordering remain available. Main stays pinned above the agents list.
   Agents show space and tab, then provider; recorded run identity owns their status.
   Space disclosure controls collapse its tabs; filtering reveals matches without changing saved
   expansion. Double-click or F2 renames a space or tab using the native inline editor.
@@ -272,9 +272,9 @@ finished-turn icon while the agent terminal stays open. Idle and unknown status 
 
 ### Pinned terminal navigation
 
-Main and Operator stay pinned below the scrollable space tree. Main attaches the selected repository's `lead` identity; Operator attaches its interactive session, with the same durable queue and policy
-checks as before. Both open their native space and windows in the right panel. Close panel only detaches the viewer;
-stopping an agent uses its existing agent/issue controls. Opening a workspace reserves its tmux
+Main stays pinned below the scrollable space tree and attaches the selected repository's `lead`
+identity, opening its native space and windows in the right panel. Closing a panel only detaches
+the viewer; stopping an agent uses its existing agent/issue controls. Opening a workspace reserves its tmux
 session name without creating a shell; a session is created only when a real agent or explicitly
 requested human terminal needs a pane. The brief bootstrap process used while setting its environment
 is removed before launch returns, leaving no spare terminal.
@@ -298,7 +298,7 @@ The coordinator executes `rename_space` / `rename_tab` against generation-scoped
 and window IDs. Labels change only with the next `panes` patch. Tab automatic renaming stays off.
 Native pane identity keeps open viewers mounted across renames; reconnect resolves the current
 name. A tmux session option retains its original workspace key, preserving task links and later
-scratch/run creation across coordinator restarts. Main and Operator retain their pinned identities.
+scratch/run creation across coordinator restarts. Main retains its pinned identity.
 
 ## Pull request protocol (slice 2)
 

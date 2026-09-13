@@ -13,7 +13,7 @@ const sections: SettingDefinition["section"][] = [
   "Workflow & approvals",
   "Repositories",
   "Access & safety",
-  "Operator & Main",
+  "Main",
   "Terminals & keybindings",
   "GitHub",
   "Appearance",

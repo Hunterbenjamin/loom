@@ -218,7 +218,10 @@ export function createGitAdapter(
         // Exit 1 means conflicts, not a command failure; still require a valid result tree.
         sha.parse(nulFields(merge.output)[0]);
         result.conflictsWithBase = merge.code === 1;
-        for (const candidate of candidates) {
+        for (const candidate of new Set([
+          ...candidates,
+          ...(remoteHeadSha ? [remoteHeadSha] : []),
+        ])) {
           // Missing objects are collection failures, not evidence of non-reachability.
           await commit(canonical, candidate);
           if (

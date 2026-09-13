@@ -289,7 +289,7 @@ Notes on the rules:
 - **Moving a card by hand.** Only the moves in the table are allowed. Anything else is rejected with
   `wrong_stage`, rather than guessed at.
 
-- **Small task fast path.** Tasks with `size: 'small'` auto-generate a plan from the task title (goal) and description (steps) and skip the planning stage entirely, routing directly from `todo` to `in_progress`. The auto-generated plan has `accepted: true`, so no plan approval is needed. This path reduces latency for docs, typos, and single-file fixes (target: ≤5 minutes). Small tasks are created with the `--small` CLI flag or via Lead/Operator tools with `size: 'small'`.
+- **Small task fast path.** Tasks with `size: 'small'` auto-generate a plan from the task title (goal) and description (steps) and skip the planning stage entirely, routing directly from `todo` to `in_progress`. The auto-generated plan has `accepted: true`, so no plan approval is needed. This path reduces latency for docs, typos, and single-file fixes (target: ≤5 minutes). Small tasks are created with the `--small` CLI flag or via Main tools with `size: 'small'`.
 
 ## 3. Flags and attention
 
@@ -340,7 +340,7 @@ while any of these reasons holds:
 | `plan_needs_approval` | Stage `plan_approval` |
 | `needs_approval` | Stage `awaiting_approval` |
 | `question` | An unanswered `ask_human` question (blocking or not) |
-| `provider_permission` / `provider_input` | A live run's `blockedOn` is `permission` / `input` |
+| `provider_permission` / `provider_input` | A live run's `blockedOn` is `permission` / `input`; implementer permission waits use `provider_input` so unhandled requests reach the human directly |
 | `blocked` | `blocked` is set, except for `dependencies` and `provider_cooling_down`, which just wait |
 | `failed` | `failed` is set |
 | `run_vanished` | An interactive run's session disappeared. Loom won't relaunch it; the human does. |
@@ -654,15 +654,6 @@ attempt metadata prevents an old session or run attempt's send from being confir
 into its replacement. For ambiguous timeout delivery, notify and set existing `provider_input` attention.
 Native executor idempotence checks remain necessary: core never infers delivery from transport success.
 
-The instance Operator uses the same session/hash/attempt receipt rule outside task runs. Its
-startup and every pump also re-read the native Claude transcript when UserPromptSubmit was lost;
-a timestamped user submission in that session is equivalent delivery evidence. Native idle can
-finish a confirmed turn whose Stop hook was lost. An unconfirmed Operator attempt may retry after
-30 seconds once native idle and no pending dialog permit the paste. Busy sessions keep the attempt
-for further checks; waiting/unknown sessions cannot receive input. Genuine turn failures remain
-visible until an explicit Retry. Main chat-delivery receipts are separate from `main_message`
-processing, so an early tool reply cannot hide the human-visible prompt or double-process the event.
-
 ## 6. Adapter interfaces
 
 The TypeScript is in [`adapters.ts`](../../packages/core/src/adapters.ts). It has only the methods
@@ -927,39 +918,48 @@ These notes were raised during design review. Resolutions below are part of the 
 |---|---|
 | 1 | **Resolved:** exclude idle implementers from capacity and re-acquire a reservation on their next message. Pending fix messages are the wait state; starts, sends and releases use capacity CAS (§5.4). |
 | 2 | **Resolved:** clean means no tracked or non-ignored untracked changes; `dirtyPaths` is required and appears in failed-guard details (§5.2). |
-| 3 | **Assigned to the future coordinator/MCP boundary:** load and validate `WORKFLOW.md` for read-only `get_task_context`; it is not a reconcile input or a core I/O action. Cache location and missing/malformed-file policy must be settled in that phase before exposing commands. |
+| 3 | **Assigned to the future coordinator/MCP boundary:** load and validate `WORKFLOW.md` for `get_task_context` and exact permission automation. The coordinator supplies commands as observations; core performs no I/O. Missing/malformed files expose no commands. |
 | 4 | **`packages/protocol` is still undrafted.** It's Phase 1's fifth deliverable, and the Phase 4 UI work depends on it. Its snapshot is mostly these entities plus derived views: attention, and the review shell state from spike 04. |
 
-### Operator commands and persistence
+### Coordinator automation
 
-The instance Operator is outside task runs and capacity. It cannot call task-run MCP tools.
-Its mutation boundary rechecks policy v1 and records an authored TaskNote and durable event/action
-receipt. Generic create/move and plan/merge approvals are refused. The `push_branch` and `open_pr`
-human commands require the exact clean committed HEAD of vanished implementation work, no live
-run or submission, and confirmed push before PR creation. They emit existing outbox actions and
-never produce a synthetic submission or stage transition. Executor guards repeat those owner
-checks; recovery may recognize an existing remote head or PR.
+The Operator was removed by user decision on 2026-09-13. Two narrow behaviours remain in
+plain core code, using fresh provider/git observations and the existing guarded outbox:
 
-Task `signature` is an additive nullable/optional field for older records. Operator notes, events,
-retry ledger, signatures, filings and quota live in additive SQLite tables. File creation,
-deduplicated evidence notes, quota accounting and optional autoFix `todo` input are one transaction.
-Tags reference a particular attention occurrence and disappear from the projection when it changes.
-The Operator retry allowance is one existing human `retry` input per role/round, not a change to
-core's automatic attempt budget.
+- A Loom-launched implementer's native permission request is accepted for an exact command
+  from its registered repository's validated `WORKFLOW.md`, or a conservative simple `git add`,
+  `git commit -m` or `pnpm install` command. Extra install flags require an exact workflow entry.
+  Claude requires a waiting native Bash PermissionRequest with an occurrence ID; Codex requires
+  a command approval on the current connection generation. Questions, trust dialogs and all
+  other commands retain `provider_input` attention for the human. Actions are deduplicated by
+  request identity and revalidated immediately before execution.
+- A vanished Loom-launched interactive implementation with no accepted submission, review,
+  replacement or live run can have its clean committed branch pushed through `push_branch`.
+  The exact recorded HEAD must be ahead of base and its remote (or the remote branch absent);
+  git proves remote ancestry and the executor rechecks worktree, branch and HEAD. Push is never
+  forced. The coordinator retains `run_vanished` attention, never opens a PR automatically and
+  never fabricates a submission or changes the stage. Reconciliation and recovery reuse the
+  same commit-keyed outbox intent.
+
+Existing headless retry limits and human plan/merge approvals remain unchanged. Runtime failures
+are logged for the human; no agent files bugs or resets retry budgets automatically.
+
+### Retired persistence (2026-09-13)
+
+Migrations only add. Migration `0003_operator.sql` and its `operator_events`, `operator_notes`,
+`operator_ledger` and `operator_filings` tables remain in place, with existing data untouched.
+Runtime code no longer reads or writes any of them. Legacy Operator recipes, tokens and settings
+are ignored; startup neither launches nor manages that session. No destructive cleanup runs.
+Task `signature` remains optional for older records but is no longer populated by a filing agent.
+Migration `0006_main_messages.sql` adds `main_message_notes` and `main_message_receipts` for
+Main's remaining message path; it does not copy or read retired Operator data.
 
 ### Main messages (2026-09-13)
 
-Main's `message_agent` accepts an Operator destination, an exact task/run, or a task/role,
-plus 1–4,000 characters and an optional `idempotencyKey`. The coordinator scopes destinations
-and durable key receipts to Main's repository. A reused key returns the original queued/refused
-result; different content under that key is refused. Task notes authored `main`, receipts and
-accepted human `send_message` inbox inputs commit atomically. The input pins the run epoch and
-attempt; reconciliation refuses a replacement run. Fresh provider admission is bounded to 600 ms
-so unavailable status refuses promptly. The existing core action, capacity rules, executor send
-gate and native delivery receipts still apply; `queued` never claims delivery. Main never waits.
-
-Operator messages reuse `operator_events` (`main_message`) and `operator_notes`. The next pump
-consumes them. `append_note` acknowledges once, optionally recording a reply on a scoped issue or
-as an instance note. Additive note fields `repoId`, `addressedTo: main` and `readAt` preserve routing
-and unread state across restart. Main's first prompt includes unread replies; panel summaries use
-`read_agent_replies` to retrieve and mark them read. No provider or terminal is a reply channel.
+Main's `message_agent` accepts an exact task/run or task/role, 1–4,000 characters, and an optional
+idempotency key scoped to its repository. Replays return the persisted result; different payloads
+with the same key are refused. Authenticated Main messages are recorded as notes in Activity.
+The coordinator checks the native send gate, then atomically stores the note, receipt and guarded
+`send_message` input. Core rechecks the run epoch/attempt and owns provider-confirmed delivery.
+Waiting, unavailable, ended, ambiguous and foreign targets are refused promptly. Main never waits
+for replies. Operator destinations and the `read_agent_replies` tool no longer exist.

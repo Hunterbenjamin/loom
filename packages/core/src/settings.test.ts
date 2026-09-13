@@ -3,6 +3,7 @@ import {
   DEFAULT_SETTINGS,
   mergeSettings,
   resolveSettings,
+  SETTINGS_CATALOG,
   validateSettings,
 } from "./settings.js";
 
@@ -112,4 +113,24 @@ describe("settings validation", () => {
       ]),
     );
   });
+});
+
+it("the catalog and effective settings expose only Main, ignoring retired fields", () => {
+  const legacy = {
+    operator: { policy: "v1" },
+    main: { model: "claude-opus-5" },
+  };
+  const effective = resolveSettings(legacy, null, {
+    main: { model: "claude-opus-4-6" },
+  }).effective;
+  expect(effective.main.model).toBe("claude-opus-4-6");
+  expect(effective).not.toHaveProperty("operator");
+  expect(
+    SETTINGS_CATALOG.some((setting) => setting.key.startsWith("operator.")),
+  ).toBe(false);
+  expect(
+    SETTINGS_CATALOG.filter((setting) => setting.section === "Main").map(
+      (setting) => setting.key,
+    ),
+  ).toEqual(["main.model"]);
 });

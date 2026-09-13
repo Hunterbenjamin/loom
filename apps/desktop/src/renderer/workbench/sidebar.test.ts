@@ -287,78 +287,7 @@ test("grouping changes agent order without hiding dead agents or altering the tr
       [...element.querySelectorAll(".wb-pinned strong")].map(
         (row) => row.textContent,
       ),
-    ).toEqual(["Main", "Operator"]);
-  } finally {
-    await act(async () => root.unmount());
-  }
-});
-
-test("Operator error is visible on hover and Retry sends the retry command without opening a terminal", async () => {
-  const store = createStore(undefined, true, "test");
-  const send = vi
-    .fn()
-    .mockResolvedValue({ ok: true, result: { kind: "accepted" } });
-  store.setSender(send);
-  const error =
-    "Operator input delivery is unconfirmed; waiting for the session to accept a retry.";
-  store.applyProtocol(
-    stateFromSnapshot(meta, {
-      ...emptySnapshotBody(),
-      operators: [
-        {
-          id: "operator",
-          sessionId: "operator-session",
-          status: "error",
-          queueLength: 1,
-          lastAction: null,
-          lastActionAt: null,
-          actions: [],
-          filedThisHour: 0,
-          error,
-          escalation: null,
-        },
-      ],
-    }),
-  );
-  const openPinned = vi.fn();
-  const element = document.createElement("div");
-  const root = createRoot(element);
-  try {
-    await act(async () =>
-      root.render(
-        createElement(StoreProvider, {
-          store,
-          // biome-ignore lint/correctness/noChildrenProp: Provider requires typed children.
-          children: createElement(Sidebar, {
-            filter: "",
-            setFilter: vi.fn(),
-            choose: vi.fn(),
-            openGroup: vi.fn(),
-            hidePanels: vi.fn(),
-            hasPanels: () => false,
-            copyAttach: vi.fn(),
-            newTerminal: vi.fn(),
-            openPinned,
-          }),
-        }),
-      ),
-    );
-    const row = element.querySelector<HTMLButtonElement>(
-      '[data-pinned="operator"]',
-    );
-    expect(row?.title).toBe(error);
-    const retry = element.querySelector<HTMLButtonElement>(
-      '[aria-label="Retry Operator"]',
-    );
-    expect(retry?.textContent).toBe("Retry");
-    await act(async () => retry?.click());
-    expect(send).toHaveBeenCalledExactlyOnceWith({
-      kind: "retry_operator_session",
-    });
-    expect(openPinned).not.toHaveBeenCalled();
-    expect(store.getState().operator?.error).toBe(error);
-    await act(async () => row?.click());
-    expect(openPinned).toHaveBeenCalledWith("operator");
+    ).toEqual(["Main"]);
   } finally {
     await act(async () => root.unmount());
   }

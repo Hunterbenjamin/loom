@@ -46,7 +46,7 @@ export interface GitWorktreeObservation {
   remoteHeadSha: Sha | null;
   /** Git adapter: complete tracked/non-ignored untracked dirty paths; [] means clean. */
   dirtyPaths: string[];
-  /** Git boundary: queried commits proven reachable from this HEAD; [] means none. */
+  /** Git boundary: queried commits and remote head proven reachable from this HEAD; [] means none. */
   reachableCommits: Sha[];
   /** Complete oldest-first range, only when the requested round head is an ancestor of HEAD. */
   reviewCommits?: { baseSha: Sha; headSha: Sha; commits: Sha[] } | null;
@@ -322,6 +322,8 @@ export type Input =
 // ---------------------------------------------------------------- the bundle
 
 export interface Observations {
+  /** Validated commands read from the registered repository WORKFLOW.md. */
+  workflowCommands?: Record<string, string>;
   now: IsoTime;
   /** Null: the task has no worktree yet. */
   git: Reading<GitWorktreeObservation> | null;

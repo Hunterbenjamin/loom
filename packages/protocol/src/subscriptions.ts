@@ -90,7 +90,6 @@ const ALWAYS: CollectionName[] = [
   "repo",
   "inbox",
   "lead",
-  "operator",
   "project",
 ];
 
@@ -158,7 +157,6 @@ export function ownerTask(change: Change): string | null {
     change.collection === "project" ||
     change.collection === "settings" ||
     change.collection === "lead" ||
-    change.collection === "operator" ||
     change.collection === "pane_inventory"
   )
     return null;

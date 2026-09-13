@@ -1,6 +1,6 @@
 // Design note 13.3, settled here: the repo's `WORKFLOW.md` is loaded and validated at the
-// coordinator/MCP boundary, for the read-only `get_task_context` only. It is never a reconcile
-// input and no guard depends on it, so a missing or malformed file must not stop a run.
+// coordinator/MCP boundary for `get_task_context` and exact implementer permission automation.
+// Missing or malformed files expose no commands and never authorize a workflow allowance.
 //
 // Policy:
 //   - Location: `<repo root>/WORKFLOW.md`, read from the repository the task belongs to.
