@@ -64,7 +64,7 @@ afterEach(() => {
 });
 
 for (const live of [false, true])
-  test(`Lead bottom bar and attach/detach leave list render count unchanged (${live ? "live" : "fixtures"})`, async () => {
+  test(`Main bottom bar and attach/detach leave list render count unchanged (${live ? "live" : "fixtures"})`, async () => {
     const fixture = buildSnapshot(20);
     const store = createStore(fixture, live, live ? "dev" : "fixtures");
     if (live) store.setConnection("connected");
@@ -111,6 +111,8 @@ for (const live of [false, true])
     expect(host.querySelector(".bottom-bar")?.textContent).toContain(
       live ? "connected · dev" : "fixtures · fixtures",
     );
+    expect(host.querySelector(".lead-toggle")?.textContent).toContain("Main");
+    expect(host.textContent).not.toMatch(/\bLead\b/);
     const initial = renders.list.mock.calls.length;
     const beforeTasks = store.getState().snapshot.tasks;
     await act(async () =>
@@ -126,8 +128,12 @@ for (const live of [false, true])
       });
       expect(spawn).toHaveBeenCalledTimes(1);
     });
+    expect(host.querySelector(".lead-header")?.textContent).toContain("Main");
+    expect(host.querySelector(".lead-panel")?.getAttribute("aria-label")).toBe(
+      "Main panel",
+    );
     expect(spawn.mock.calls[0]).toMatchObject([
-      { label: "Lead", lead: true, runId: null },
+      { label: "Main", lead: true, runId: null },
     ]);
     const request = spawn.mock.calls[0]?.[0];
     if (!request) throw new Error("No terminal spawned");
@@ -144,6 +150,7 @@ for (const live of [false, true])
         new KeyboardEvent("keydown", { key: "j", metaKey: true }),
       ),
     );
+    await act(async () => window.dispatchEvent(new Event("loom:open-main")));
     expect(spawn).toHaveBeenCalledTimes(2);
     expect(renders.list).toHaveBeenCalledTimes(initial);
     expect(store.getState().snapshot.tasks).toBe(beforeTasks);
@@ -188,4 +195,18 @@ for (const live of [false, true])
       });
       expect(spawn).toHaveBeenCalledTimes(3);
     }
+    await act(async () =>
+      host
+        .querySelector<HTMLButtonElement>('[aria-label="Close Main"]')
+        ?.click(),
+    );
+    await act(async () => store.setPalette(true));
+    const openMain = [
+      ...host.querySelectorAll<HTMLElement>("[cmdk-item]"),
+    ].find((item) => item.textContent === "Open Main");
+    expect(openMain).toBeDefined();
+    await act(async () => openMain?.click());
+    expect(store.getState().ui.palette).toBe(false);
+    expect(host.querySelector('[aria-label="Main panel"]')).not.toBeNull();
+    expect(host.textContent).not.toMatch(/\bLead\b/);
   });

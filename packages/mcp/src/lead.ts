@@ -1,4 +1,5 @@
-// Lead tools reuse the protocol boundary and the human command path. No stage rules live here.
+// Main retains the internal `lead` identity for persisted sessions and clients.
+// Tools reuse the protocol boundary and human command path. No stage rules live here.
 
 import type { Command } from "@loom/protocol";
 import { command, humanCommand, taskId } from "@loom/protocol";
@@ -29,7 +30,9 @@ const create = command.options.find(
   (option) => option.shape.kind.value === "create_task",
 );
 if (!create) throw new Error("Missing create_task command");
+export const mainNoteSchema = z.string().max(2000);
 export const leadInputSchemas = {
+  set_note: z.strictObject({ note: mainNoteSchema }),
   list_tasks: z.strictObject({}),
   inspect_task: z.strictObject({ taskId }),
   list_repos: z.strictObject({}),
@@ -46,7 +49,7 @@ export function leadCommand(
 ): Command {
   if (name === "create_task") return command.parse({ kind: name, ...input });
   const type = humanTypes[name as keyof typeof humanTypes];
-  if (!type) throw new Error("Not a Lead command");
+  if (!type) throw new Error("Not a Main command");
   const { taskId, ...fields } = input;
   return command.parse({ kind: "human", taskId, command: { type, ...fields } });
 }

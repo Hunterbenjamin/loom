@@ -13,6 +13,14 @@ Claude Code, and every one of those keeps working on its own.
 - `apps/desktop/`: the window (Phase 1 shell, rendered from fixtures)
 - `AGENTS.md`: instructions for agents working in this repo
 
+## Main
+
+Main is the conversation agent behind the bottom-bar toggle (⌘J) and **Open Main** in the
+command palette. It introduces itself and waits for you, turns longer work into Loom tasks,
+and summarizes Needs-you escalations. It has only Loom MCP tools and read-only file tools in
+its instance directory, with no shell or terminal attach capability. Its `set_note` tool keeps
+up to 2,000 characters in the instance's `main-notes` document across session restarts and rotation.
+
 ## Development
 
 ```sh

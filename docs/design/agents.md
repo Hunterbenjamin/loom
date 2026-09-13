@@ -32,16 +32,19 @@ The fix is a separation the human named: the agent you talk to must never be the
 
 Main's availability is enforced by what it cannot do, not by asking it to be quick:
 
-- No shell, no terminal attach, no test runner, no file system outside its own data directory.
+- No shell, no terminal attach, no test runner; only read-only file tools within its instance data directory.
 - Only Loom tools, each answering in under a second: list and inspect tasks, create and move
   them, approve or reject a plan, approve a merge the human has delegated, request changes, answer a
   question, answer a provider request, retry, cancel, list repositories.
 - Anything longer becomes a task or a note for the Operator. "Can you look into why the reviewer is
   stuck" is a task or an escalation, never something Main does itself.
 
-The Lead PR's tool set already matches this list. What it must lose is every other capability the
-session inherits from Claude Code: the per-session settings deny `Bash`, `Edit`, `Write` and the
-attach path, so the panel cannot drift into work even when asked.
+Main launches with only `Read`, `Glob`, `Grep` and Loom MCP tools. `--disallowedTools` denies
+`Bash`, `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `WebFetch`, `WebSearch` and `Task`;
+restricted mode confines file reads to the instance directory, and strict MCP configuration
+excludes other servers (including terminal attach tools). The panel remains a human view of
+Main's conversation. Its first response is a two-sentence introduction, then it waits; it never
+starts drills or resumes work on its own. Internal `lead` identifiers remain for compatibility.
 
 ### The Coordinator stays code
 
@@ -74,6 +77,14 @@ and available for a human to inspect:
   the human look. Its verdict is a note on the task and, when needed, an escalation.
 - **Escalates per policy** by tagging a Needs-you row `for human`. Rows without the tag are its
   own queue.
+
+### Pluggable event sources
+
+Operator event sources are pluggable adapters: Needs-you changes, provider lifecycle hints,
+GitHub checks and coordinator diagnostics feed the same structured event boundary. New sources
+can be added without changing the Operator's role or giving it direct access to external tools.
+Each source supplies a stable identity and enough references to re-read its owner; events remain
+hints, and the coordinator validates and deduplicates every resulting action under policy.
 
 ## How the layers communicate
 
@@ -117,10 +128,8 @@ human can audit it and widen or narrow the row.
 
 ## Consequences for existing work
 
-- **Lead PR (#56):** keep the tool set; deny `Bash`, `Edit`, `Write` and attach in the Lead's
-  generated settings; rename the session and panel from Lead to Main in the next UI pass. The Lead
-  brief's rule "always create tasks rather than editing repositories" becomes enforced rather than
-  requested.
+- **Main (formerly Lead, PR #56):** keep the Loom command boundary, restrict inherited Claude
+  tools at launch, and use Main in the panel and prompt. Longer work becomes tasks.
 - **Operator:** a coordinator-owned interactive session, launched and recovered like the Lead's
   (recipe, per-session settings, stable MCP registration), with a lead-style MCP identity of its
   own so its tools are the human commands and nothing else. It gets the `provider_input` /
@@ -131,8 +140,10 @@ human can audit it and widen or narrow the row.
 - **Needs-you rows** gain a `for human` tag; the inbox shows tagged rows first and lets the human
   filter to them.
 - **Main's memory:** the Claude session resumes across restarts, which covers days. For longer,
-  Main keeps one Loom-held summary note per instance, rewritten when the human's priorities change,
-  and reads it on start.
+  Main keeps one Loom-held `main-notes` document per instance, rewritten through the Main-only
+  `set_note({note})` tool when priorities change (max 2,000 characters; empty clears it). Every launch
+  includes the saved note, including a new session after rotation; it is context, never an instruction
+  to continue work automatically.
 - **Restarts:** Main and the Operator survive a coordinator restart the way runs do (stable ports,
   settings rewritten in recovery); neither holds state the coordinator does not.
 
@@ -187,8 +198,8 @@ Notes include authenticated author, policy row, event/action correlation, outcom
 Tracker shows Operator status and decisions, prioritizes/filter human-tagged rows, and Activity
 shows notes. Tags project only while their attention occurrence remains current. Notification
 claims are persisted in SQLite to prevent duplicate notifications across windows and restarts.
-The Lead-to-Main rename, general note editing, memory and broader approval policies remain separate
-work; the Operator does not expand Lead's built-in capabilities.
+General task-note editing and broader approval policies remain separate work; the Operator cannot
+update Main's memory or expand Main's built-in capabilities.
 
 
 Claude permission occurrence IDs come from persisted hook receipts (session ID and sequence),
