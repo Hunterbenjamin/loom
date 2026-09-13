@@ -1,0 +1,8 @@
+diff --git a/example.ts b/example.ts
+index 1234567..abcdef0 100644
+--- a/example.ts
++++ b/example.ts
+@@ -1 +1,2 @@
+-export const value = 1;
++export const value = 2;
++export const ready = true;
