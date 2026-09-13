@@ -218,7 +218,22 @@ try {
         .keybindings()
         .then((s) => s.config.bindings.help[0] === "Ctrl+Shift+H"),
     );
-    await target.keyboard.press("Control+Shift+H");
+    await target.bringToFront();
+    await target.locator("#agent-filter").focus();
+    const targetNative = await app.browserWindow(target);
+    await targetNative.evaluate((window) => {
+      window.focus();
+      window.webContents.sendInputEvent({
+        type: "keyDown",
+        keyCode: "H",
+        modifiers: ["control", "shift"],
+      });
+      window.webContents.sendInputEvent({
+        type: "keyUp",
+        keyCode: "H",
+        modifiers: ["control", "shift"],
+      });
+    });
     await target.locator(".wb-help").waitFor();
     assert.match(
       await target.locator(".wb-help").textContent(),

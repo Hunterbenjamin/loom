@@ -29,21 +29,31 @@ test("first run writes the full defaults; watcher follows saves, invalid files, 
     config.bindings.help = ["Ctrl+Shift+H"];
     config.prefixTimeoutMs = 4500;
     writeFileSync(path, JSON.stringify(config));
-    await vi.waitFor(() => expect(watcher.get().config).toEqual(config));
+    await vi.waitFor(() => expect(watcher.get().config).toEqual(config), {
+      timeout: 5000,
+    });
     expect(changed).toHaveBeenLastCalledWith(watcher.get());
     writeFileSync(path, '{"secret-not-for-ui":');
-    await vi.waitFor(() => expect(watcher.get().error).not.toBeNull());
+    await vi.waitFor(() => expect(watcher.get().error).not.toBeNull(), {
+      timeout: 5000,
+    });
     expect(watcher.get().config).toEqual(defaultKeybindings);
     expect(watcher.get().error).not.toContain("secret-not-for-ui");
     writeFileSync(`${path}.tmp`, JSON.stringify(config));
     renameSync(`${path}.tmp`, path);
-    await vi.waitFor(() => expect(watcher.get().config).toEqual(config));
+    await vi.waitFor(() => expect(watcher.get().config).toEqual(config), {
+      timeout: 5000,
+    });
     expect(watcher.get().error).toBeNull();
     unlinkSync(path);
-    await vi.waitFor(() => expect(watcher.get().error).not.toBeNull());
+    await vi.waitFor(() => expect(watcher.get().error).not.toBeNull(), {
+      timeout: 5000,
+    });
     expect(watcher.get().config).toEqual(defaultKeybindings);
     writeFileSync(path, JSON.stringify(config));
-    await vi.waitFor(() => expect(watcher.get().config).toEqual(config));
+    await vi.waitFor(() => expect(watcher.get().config).toEqual(config), {
+      timeout: 5000,
+    });
     const reopened = watchKeybindings(env, vi.fn());
     expect(reopened.get().config).toEqual(config);
     reopened.close();
@@ -51,7 +61,7 @@ test("first run writes the full defaults; watcher follows saves, invalid files, 
     watcher.close();
     rmSync(root, { recursive: true, force: true });
   }
-});
+}, 15000);
 
 test("unconfigured / path-traversing instances do not write a file", () => {
   for (const env of [

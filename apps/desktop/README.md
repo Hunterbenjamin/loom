@@ -190,8 +190,9 @@ remain available. The [Electron menu arbitration API](https://www.electronjs.org
 keeps the DOM event intact. Closing a human terminal ends its session; closing a supervised agent panel
 hides that view. Cmd+J and the Main toggle/restart are shared with Tracker.
 
-Scratch shell creates a native shell in the selected task's recorded worktree/session. Closing a
-panel or window only detaches. Plan, diff, activity and code panels are deferred in this slice.
+Scratch shell creates a native shell in the selected task's recorded worktree/session. Closing its
+terminal panel ends the shell; closing the window only detaches viewers. Plan, diff, activity and code
+panels are deferred in this slice.
 Client counts mean session-group attachments, not exact pane viewers.
 
 `pnpm --filter @loom/desktop build` then `node apps/desktop/scripts/keybindings-smoke.mjs` verifies

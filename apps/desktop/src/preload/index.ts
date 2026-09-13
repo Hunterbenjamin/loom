@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("loomTerminal", {
 });
 
 contextBridge.exposeInMainWorld("loomHost", {
+  // IPC callbacks can run under the renderer CSP; validation must not use eval.
   keybindings: async () =>
     keybindingsState.parse(await ipcRenderer.invoke("app:keybindings"), {
       jitless: true,
