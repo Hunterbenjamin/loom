@@ -263,17 +263,25 @@ export const TerminalSession = memo(function TerminalSession({
     terminal.loadAddon(new UnicodeGraphemesAddon());
     terminal.unicode.activeVersion = "15-graphemes";
     terminal.open(element);
-    // Copy on select, as Ghostty and Herdr do: once the selection settles it is on the
-    // clipboard. The selection stays visible; Cmd+V pastes as usual.
-    let copyTimer: number | undefined;
-    const copyDisposable = terminal.onSelectionChange?.(() => {
-      window.clearTimeout(copyTimer);
-      copyTimer = window.setTimeout(() => {
+    // Copy on release, as Herdr does: a drag selects, releasing the mouse copies the selection
+    // to the clipboard and clears the highlight. The release can land anywhere in the window.
+    let selecting = false;
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.button === 0) selecting = true;
+    };
+    const onMouseUp = () => {
+      if (!selecting) return;
+      selecting = false;
+      // xterm finalises the selection in its own mouseup handler; read it after that has run.
+      window.setTimeout(() => {
         const selected = terminal.getSelection?.();
-        if (selected)
-          void navigator.clipboard?.writeText(selected).catch(() => {});
-      }, 120);
-    });
+        if (!selected) return;
+        void navigator.clipboard?.writeText(selected).catch(() => {});
+        terminal.clearSelection?.();
+      }, 0);
+    };
+    element.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("mouseup", onMouseUp);
     // Mouse tracking requested by the pane host (tmux `mouse on`) is intercepted: xterm never
     // enters tracking mode, so a plain drag selects locally, and only wheel events are forwarded
     // to tmux as SGR mouse reports, so scrolling inside panes keeps working.
@@ -554,8 +562,8 @@ export const TerminalSession = memo(function TerminalSession({
       observer.disconnect();
       fitViewport.current = null;
       element.removeEventListener("wheel", onWheel, { capture: true });
-      window.clearTimeout(copyTimer);
-      copyDisposable?.dispose();
+      element.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("mouseup", onMouseUp);
       if (window.loom.term === terminal) window.loom.term = null;
       delete window.loom.terms?.[panelId ?? id];
       instance.current = null;
