@@ -277,19 +277,23 @@ test("renders markdown safely, every check with duration/link, commits, and read
   expect(first.renderAnnotation).toBeUndefined();
   expect(first.items).toHaveLength(1);
   act(() => {
+    if (!h.row.patch) throw new Error("Expected patch");
     h.row.patch.patch = h.row.patch.patch.replace(`= ${h.row.number}`, "= 999");
     h.update();
   });
   const second = viewer.mock.lastCall?.[0] as typeof first;
   expect(second.items[0]?.version).not.toBe(first.items[0]?.version);
   act(() => {
+    if (!h.row.patch) throw new Error("Expected patch");
     h.row.patch.truncated = true;
     h.update();
   });
   expect(h.host.textContent).toContain("truncated");
   expect(h.host.textContent).toContain("No complete file diff");
   act(() => {
+    if (!h.row.patch) throw new Error("Expected patch");
     h.row.patch.truncated = false;
+    if (!h.row.patch) throw new Error("Expected patch");
     h.row.patch.patch = "invalid patch";
     h.update();
   });
@@ -475,4 +479,25 @@ test("opening a linked issue retains issue palette commands over the PR list", (
   expect(
     h.host.querySelector('[data-value^="pull-request-merge "]'),
   ).toBeNull();
+});
+
+test("description renders while the diff is loading, and a diff error leaves it readable", async () => {
+  const h = setup({ body: "Overview arrives first" });
+  act(() => {
+    h.row.patch = null;
+    h.row.patchLoading = true;
+    h.update();
+  });
+  expect(h.host.textContent).toContain("Overview arrives first");
+  await h.click("Files");
+  expect(h.host.textContent).toContain("Loading diff…");
+  expect(viewer).not.toHaveBeenCalled();
+  act(() => {
+    h.row.patchLoading = false;
+    h.row.patchError = "Could not load the diff. Refresh to retry.";
+    h.update();
+  });
+  expect(h.host.textContent).toContain("Refresh to retry");
+  await h.click("Description");
+  expect(h.host.textContent).toContain("Overview arrives first");
 });

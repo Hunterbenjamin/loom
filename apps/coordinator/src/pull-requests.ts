@@ -1,5 +1,12 @@
 // Disposable GitHub projections. Windows own subscriptions; GitHub owns every PR fact.
-import type { GitHubAdapter, Repo, RepoId, Task } from "@loom/core";
+import type {
+  GitHubAdapter,
+  PullRequestDetail,
+  PullRequestPatch,
+  Repo,
+  RepoId,
+  Task,
+} from "@loom/core";
 import {
   type PullRequestCommand,
   type PullRequestDetailRow,
@@ -31,6 +38,7 @@ export interface PullRequestViewsDeps {
   action(command: PullRequestCommand): Promise<void>;
   changed(repo: Repo): void;
   onError(error: unknown): void;
+  log?(message: string): void;
 }
 
 export class PullRequestViews {
@@ -104,7 +112,7 @@ export class PullRequestViews {
     ]);
   }
 
-  private refresh(scope: PrScope): Promise<void> {
+  private refresh(scope: PrScope, force = false): Promise<void> {
     if (this.stopped) return Promise.resolve();
     const key = scopeKey(scope);
     const pending = this.reads.get(key);
@@ -112,7 +120,7 @@ export class PullRequestViews {
     const initial = scope.kind === "pull_requests" && !this.listStates.has(key);
     if (initial) this.publishLoading(scope, true);
     const result = Promise.resolve()
-      .then(() => this.read(scope))
+      .then(() => this.read(scope, force))
       .finally(() => {
         this.reads.delete(key);
         if (initial) this.publishLoading(scope, false);
@@ -162,7 +170,7 @@ export class PullRequestViews {
             try {
               // A read started before the action cannot confirm that action's outcome.
               await this.reads.get(scopeKey(scope))?.catch(() => {});
-              await this.refresh(scope);
+              await this.refresh(scope, true);
             } catch (error) {
               refreshError = error;
               this.deps.onError(error);
@@ -226,13 +234,12 @@ export class PullRequestViews {
     );
   }
 
-  private async read(scope: PrScope): Promise<void> {
+  private async read(scope: PrScope, force: boolean): Promise<void> {
     const repo = this.deps.repo(scope.repoId);
 
     if (scope.kind === "pull_requests") {
-      const list = await this.deps.github.listPullRequests(
-        repo.github,
-        scope.state,
+      const list = await this.timed("list", repo, scope.state, () =>
+        this.deps.github.listPullRequests(repo.github, scope.state),
       );
       const parsed = list.map((pr) =>
         pullRequestRow.parse({
@@ -258,39 +265,73 @@ export class PullRequestViews {
         if (previous.state === scope.state) rows.delete(number);
       for (const row of parsed) rows.set(row.number, row);
     } else {
-      const detail = await this.deps.github.readPullRequest(
-        repo.github,
-        scope.number,
-      );
-      const patch = await this.deps.github.readPullRequestPatch(
-        repo.github,
-        scope.number,
-      );
-      const after = await this.deps.github.readPullRequest(
-        repo.github,
-        scope.number,
-      );
-      if (
-        detail.headSha !== after.headSha ||
-        detail.base !== after.base ||
-        detail.updatedAt !== after.updatedAt
-      )
-        throw new Error(
-          "PR changed while reading its patch; refresh to read a consistent head",
+      const key = pullRequestKey(repo.id, scope.number);
+      const previous = this.details.get(key);
+      const known =
+        this.lists.get(repo.id)?.get(scope.number) ?? previous?.detail;
+      const readPatch = (
+        range: Pick<PullRequestDetail, "baseSha" | "headSha">,
+      ) => {
+        if (
+          previous?.patch?.headSha === range.headSha &&
+          previous.patch.baseSha === range.baseSha
+        )
+          return Promise.resolve(previous.patch);
+        return this.timed("diff", repo, scope.number, () =>
+          this.deps.github.readPullRequestPatch(
+            repo.github,
+            scope.number,
+            range,
+          ),
         );
+      };
+      // Attach both handlers immediately: either network read can fail or finish first.
+      const pendingPatch = known
+        ? readPatch(known).then(
+            (patch) => ({ patch, error: null }),
+            (error) => ({ patch: null, error }),
+          )
+        : null;
+      let after: PullRequestDetail;
+      try {
+        after = await this.timed("detail/checks", repo, scope.number, () =>
+          this.deps.github.readPullRequest(repo.github, scope.number, {
+            cached:
+              !force &&
+              (!previous ||
+                !known ||
+                (previous.detail.headSha === known.headSha &&
+                  previous.detail.baseSha === known.baseSha &&
+                  previous.detail.updatedAt === known.updatedAt)),
+          }),
+        );
+      } catch (error) {
+        await pendingPatch;
+        throw error;
+      }
+      const matches = (patch: PullRequestPatch | null | undefined) =>
+        patch?.headSha === after.headSha && patch.baseSha === after.baseSha;
       const value = pullRequestDetailRow.parse({
         repoId: repo.id,
         number: scope.number,
         taskId: this.taskId(repo.id, after.head),
         detail: after,
-        patch,
+        patch: matches(previous?.patch) ? previous?.patch : null,
+        patchLoading: !matches(previous?.patch),
+        patchError: null,
       });
-      const key = pullRequestKey(repo.id, scope.number);
-      this.details.set(key, value);
-      this.deps.replace(`pull_request:${key}`, [
-        { collection: "pull_request_detail", key, value },
-      ]);
+      const publish = () => {
+        value.taskId = this.taskId(repo.id, after.head);
+        this.details.set(key, { ...value });
+        this.deps.replace(`pull_request:${key}`, [
+          { collection: "pull_request_detail", key, value: { ...value } },
+        ]);
+      };
+      publish();
       const {
+        files: _fileDetails,
+        reviews: _reviews,
+        comments: _comments,
         branchExists: _branchExists,
         body: _body,
         mergedAt: _at,
@@ -312,9 +353,54 @@ export class PullRequestViews {
           taskId: value.taskId,
         }),
       );
+      this.publishList(repo.id);
+      try {
+        // A stale cached list may have started an old immutable comparison. It can
+        // never be displayed against the new detail; fetch the freshly observed range.
+        let result = pendingPatch ? await pendingPatch : null;
+        if (
+          !known ||
+          known.headSha !== after.headSha ||
+          known.baseSha !== after.baseSha
+        )
+          result = { patch: await readPatch(after), error: null };
+        if (result?.error) throw result.error;
+        if (!result?.patch || !matches(result.patch))
+          throw new Error(
+            "PR diff does not match the observed head and base; refresh to retry",
+          );
+        value.patch = result.patch;
+        value.patchLoading = false;
+        publish();
+      } catch (error) {
+        value.patchLoading = false;
+        value.patchError = "Could not load the diff. Refresh to retry.";
+        publish();
+        throw error;
+      }
     }
     this.publishList(repo.id);
     this.loaded.add(scopeKey(scope));
+  }
+
+  private async timed<T>(
+    kind: string,
+    repo: Repo,
+    number: number | string,
+    read: () => Promise<T>,
+  ): Promise<T> {
+    const start = performance.now();
+    let outcome = "ok";
+    try {
+      return await read();
+    } catch (error) {
+      outcome = "failed";
+      throw error;
+    } finally {
+      this.deps.log?.(
+        `GitHub PR ${repo.id}#${number} ${kind}: ${Math.round(performance.now() - start)}ms (${outcome})`,
+      );
+    }
   }
 
   async stop(): Promise<void> {

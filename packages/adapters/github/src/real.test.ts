@@ -10,8 +10,9 @@ it.skipIf(process.env.LOOM_REAL_PROVIDERS !== "1")(
       run: async (args, input, options) => {
         if (
           args[0] !== "api" ||
-          !args.includes("GET") ||
-          !args.some((arg) => arg.startsWith("repos/vuejs/core/"))
+          (!args.includes("GET") && args[1] !== "graphql") ||
+          (args[1] !== "graphql" &&
+            !args.some((arg) => arg.startsWith("repos/vuejs/core/")))
         )
           throw new Error("Real test permits only GET requests to vuejs/core");
         return runGh(args, input, options);
@@ -37,6 +38,7 @@ it.skipIf(process.env.LOOM_REAL_PROVIDERS !== "1")(
     const patch = await adapter.readPullRequestPatch(
       req.repo,
       first.value.number,
+      detail,
     );
     expect(patch.patch).toMatch(/^diff --git /);
     expect(Buffer.byteLength(patch.patch)).toBeLessThanOrEqual(8 * 1024 * 1024);

@@ -30,6 +30,10 @@ const detail = (
   head: `feat/pr-${number}`,
   base: "main",
   headSha: head,
+  baseSha: sha.parse("0".repeat(40)),
+  files: [],
+  reviews: [],
+  comments: [],
   createdAt: at,
   updatedAt: at,
   draft: false,
@@ -98,7 +102,11 @@ test("repository lists include off-pipeline PRs, join only this repo's task bran
   );
   const reader = await connect(h, [listScope(h), detailScope(h)]);
   await vi.waitFor(() =>
-    expect(reader.state?.collections.pull_request_detail.size).toBe(1),
+    expect(
+      reader.state?.collections.pull_request_detail.get(
+        pullRequestKey(h.repo.id, 1),
+      )?.patch?.headSha,
+    ).toBe(head),
   );
   const rows = [...(reader.state?.collections.pull_request.values() ?? [])];
   expect(rows.map((r) => r.number)).toEqual([2, 1]);
@@ -319,52 +327,79 @@ test("polling deduplicates windows, uses 60/30 seconds, and cancels on unsubscri
   await new Promise<void>((resolve) => setImmediate(resolve));
   expect(patches).toHaveBeenCalledTimes(1);
   h.clock.advance(1);
-  await vi.waitFor(() => expect(patches).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(patches).toHaveBeenCalledTimes(1));
   await new Promise<void>((resolve) => setImmediate(resolve));
   h.clock.advance(30_000);
   await vi.waitFor(() => expect(lists).toHaveBeenCalledTimes(2));
-  await vi.waitFor(() => expect(patches).toHaveBeenCalledTimes(3));
+  await vi.waitFor(() => expect(patches).toHaveBeenCalledTimes(1));
   await one.subscribe([], true, [listScope(h), detailScope(h)]);
   two.close();
   await vi.waitFor(() => expect(h.coordinator.protocol.clients).toBe(1));
   h.clock.advance(120_000);
   await new Promise<void>((resolve) => setImmediate(resolve));
   expect(lists).toHaveBeenCalledTimes(2);
-  expect(patches).toHaveBeenCalledTimes(3);
+  expect(patches).toHaveBeenCalledTimes(1);
   await one.subscribe([listScope(h)]);
   expect(lists).toHaveBeenCalledTimes(3);
 });
 
-test("a patch read racing a push retains the previous complete detail", async () => {
-  const clock = new FakeClock();
-  const github = new FakeGitHub(clock, "example/repo", "feat/pr-1");
-  github.setPullRequest(detail(), "old patch");
-  const id = repoId.parse("repo");
-  const replace = vi.fn();
-  const onError = vi.fn();
-  const views = new PullRequestViews({
-    github,
-    repo: () => ({ id, github: "example/repo" }) as never,
-    tasks: () => [],
-    replace,
-    after: clock.after.bind(clock),
-    action: async () => {},
-    changed: () => {},
-    onError,
+test("detail publishes before a blocked diff, then a second patch delivers the matching diff", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail(), "diff --git a/a b/a\n");
+  const gate = deferred();
+  const read = h.adapters.github.readPullRequestPatch;
+  vi.spyOn(h.adapters.github, "readPullRequestPatch").mockImplementation(
+    async (...args) => {
+      await gate.promise;
+      return read(...args);
+    },
+  );
+  try {
+    const client = await connect(h, [listScope(h), detailScope(h)]);
+    const key = pullRequestKey(h.repo.id, 1);
+    await vi.waitFor(() =>
+      expect(
+        client.state?.collections.pull_request_detail.get(key),
+      ).toMatchObject({
+        detail: { body: "A description" },
+        patch: null,
+        patchLoading: true,
+      }),
+    );
+    gate.release();
+    await vi.waitFor(() =>
+      expect(
+        client.state?.collections.pull_request_detail.get(key),
+      ).toMatchObject({ patch: { headSha: head }, patchLoading: false }),
+    );
+  } finally {
+    gate.release();
+  }
+});
+
+test("a mismatched diff is rejected without hiding the early overview", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail());
+  vi.spyOn(h.adapters.github, "readPullRequestPatch").mockResolvedValue({
+    headSha: nextHead,
+    baseSha: detail().baseSha,
+    patch: "new patch",
+    truncated: false,
+    observedAt: at,
   });
-  const scope: Subscription = { kind: "pull_request", repoId: id, number: 1 };
-  views.subscriptions([scope]);
-  await views.ensure([scope]);
-  await vi.waitFor(() => expect(replace).toHaveBeenCalledTimes(2));
-  replace.mockClear();
-  vi.spyOn(github, "readPullRequestPatch").mockImplementation(async () => {
-    github.setPullRequest(detail(1, { headSha: nextHead }));
-    return { patch: "new patch", truncated: false, observedAt: at };
-  });
-  clock.advance(30_000);
-  await vi.waitFor(() => expect(onError).toHaveBeenCalled());
-  expect(replace).not.toHaveBeenCalled();
-  await views.stop();
+  const client = await connect(h, [detailScope(h)]);
+  await vi.waitFor(() =>
+    expect(
+      client.state?.collections.pull_request_detail.get(
+        pullRequestKey(h.repo.id, 1),
+      ),
+    ).toMatchObject({
+      detail: { headSha: head, body: "A description" },
+      patch: null,
+      patchLoading: false,
+      patchError: expect.stringContaining("Refresh"),
+    }),
+  );
 });
 
 function deferred() {
@@ -515,4 +550,52 @@ test("unchanged GraphQL polls publish no patch and failed reads retain cached ro
   expect(published.rows()).toEqual(initial);
   expect(patches).not.toHaveBeenCalled();
   await views.stop();
+});
+
+test("cached list SHAs start detail and diff together; a pushed head gets its own range", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail(), "diff --git a/a b/a\n");
+  const client = await connect(h, [listScope(h)]);
+  const key = pullRequestKey(h.repo.id, 1);
+  await vi.waitFor(() =>
+    expect(client.state?.collections.pull_request.has(key)).toBe(true),
+  );
+  const gate = deferred();
+  const read = h.adapters.github.readPullRequest;
+  const details = vi
+    .spyOn(h.adapters.github, "readPullRequest")
+    .mockImplementation(async (...args) => {
+      await gate.promise;
+      return read(...args);
+    });
+  const patches = vi.spyOn(h.adapters.github, "readPullRequestPatch");
+  h.github.setPullRequest(
+    detail(1, { headSha: nextHead }),
+    "diff --git a/b b/b\n",
+  );
+  try {
+    await client.subscribe([detailScope(h)]);
+    await vi.waitFor(() => {
+      expect(details).toHaveBeenCalledTimes(1);
+      expect(patches).toHaveBeenCalledTimes(1);
+    });
+    expect(client.state?.collections.pull_request_detail.has(key)).toBe(false);
+    gate.release();
+    await vi.waitFor(() =>
+      expect(
+        client.state?.collections.pull_request_detail.get(key),
+      ).toMatchObject({
+        detail: { headSha: nextHead },
+        patch: { headSha: nextHead },
+        patchLoading: false,
+      }),
+    );
+    expect(patches).toHaveBeenCalledTimes(2);
+    expect(h.logs.some((line) => /detail\/checks: \d+ms/.test(line))).toBe(
+      true,
+    );
+    expect(h.logs.some((line) => /diff: \d+ms/.test(line))).toBe(true);
+  } finally {
+    gate.release();
+  }
 });

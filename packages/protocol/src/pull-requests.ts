@@ -22,6 +22,7 @@ export const pullRequestSummary = z.strictObject({
   head: z.string().min(1),
   base: z.string().min(1),
   headSha: sha,
+  baseSha: sha,
   createdAt: isoTime,
   updatedAt: isoTime,
   draft: z.boolean(),
@@ -32,6 +33,47 @@ export const pullRequestSummary = z.strictObject({
   observedAt: isoTime,
 });
 export const pullRequestDetail = pullRequestSummary.extend({
+  files: z.array(
+    z.strictObject({
+      path: z.string(),
+      additions: count,
+      deletions: count,
+      changeType: z.enum([
+        "ADDED",
+        "DELETED",
+        "MODIFIED",
+        "RENAMED",
+        "COPIED",
+        "CHANGED",
+        "UNCHANGED",
+      ]),
+    }),
+  ),
+  reviews: z.array(
+    z.strictObject({
+      id: z.string(),
+      author: z.string().nullable(),
+      body: z.string(),
+      state: z.enum([
+        "APPROVED",
+        "CHANGES_REQUESTED",
+        "COMMENTED",
+        "DISMISSED",
+        "PENDING",
+      ]),
+      submittedAt: isoTime.nullable(),
+      url: z.url(),
+    }),
+  ),
+  comments: z.array(
+    z.strictObject({
+      id: z.string(),
+      author: z.string().nullable(),
+      body: z.string(),
+      createdAt: isoTime,
+      url: z.url(),
+    }),
+  ),
   branchExists: z.boolean().nullable().default(null),
   body: z.string(),
   mergedAt: isoTime.nullable(),
@@ -56,6 +98,8 @@ export const pullRequestDetail = pullRequestSummary.extend({
   changedFiles: count,
 });
 export const pullRequestPatch = z.strictObject({
+  headSha: sha,
+  baseSha: sha,
   patch: z
     .string()
     .refine(
@@ -73,9 +117,18 @@ export const pullRequestDetailRow = z
     ...linkage,
     number: pullRequestNumber,
     detail: pullRequestDetail,
-    patch: pullRequestPatch,
+    patch: pullRequestPatch.nullable(),
+    patchLoading: z.boolean().default(false),
+    patchError: z.string().nullable().default(null),
   })
-  .refine((v) => v.number === v.detail.number, "PR number must match detail");
+  .refine((v) => v.number === v.detail.number, "PR number must match detail")
+  .refine(
+    (v) =>
+      !v.patch ||
+      (v.patch.headSha === v.detail.headSha &&
+        v.patch.baseSha === v.detail.baseSha),
+    "PR patch must match detail SHAs",
+  );
 export type PullRequestRow = z.output<typeof pullRequestRow>;
 export type PullRequestDetailRow = z.output<typeof pullRequestDetailRow>;
 

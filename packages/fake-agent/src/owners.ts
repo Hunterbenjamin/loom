@@ -354,6 +354,10 @@ export class FakeGitHub implements GitHubAdapter {
       additions: 0,
       deletions: 0,
       changedFiles: 0,
+      baseSha: "0".repeat(40) as Sha,
+      files: [],
+      reviews: [],
+      comments: [],
       ...detail,
       branchExists: this.branches.has(detail?.head ?? this.branch),
       state: pr.state,
@@ -384,6 +388,9 @@ export class FakeGitHub implements GitHubAdapter {
     for (const pr of prs) {
       if (pr.state !== state) continue;
       const {
+        files: _fileDetails,
+        reviews: _reviews,
+        comments: _comments,
         branchExists: _branchExists,
         body: _body,
         commits: _commits,
@@ -435,6 +442,7 @@ export class FakeGitHub implements GitHubAdapter {
               headRefName: row.head,
               baseRefName: row.base,
               headRefOid: row.headSha,
+              baseRefOid: row.baseSha,
               isDraft: row.draft,
               mergeable: row.mergeable.toUpperCase(),
               reviewDecision:
@@ -467,15 +475,20 @@ export class FakeGitHub implements GitHubAdapter {
   readPullRequestPatch: GitHubAdapter["readPullRequestPatch"] = async (
     repo,
     number,
+    range,
   ) => {
     this.scope(repo);
-    this.requirePr(number);
+    const pr = this.pullRequestDetail(number);
+    if (range.headSha !== pr.headSha || range.baseSha !== pr.baseSha)
+      throw new Error("Fake diff range is unavailable");
     const bytes = Buffer.from(this.patches.get(number) ?? "");
     const limit = 8 * 1024 * 1024;
     let end = Math.min(limit, bytes.length);
     while (end < bytes.length && end > 0 && ((bytes[end] ?? 0) & 0xc0) === 0x80)
       end--;
     return {
+      headSha: range.headSha,
+      baseSha: range.baseSha,
       patch: bytes.subarray(0, end).toString("utf8"),
       truncated: bytes.length > limit,
       observedAt: this.clock.now(),
