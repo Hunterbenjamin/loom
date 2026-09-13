@@ -13,7 +13,11 @@ import type {
   TaskState,
 } from "@loom/core";
 import { expect, test } from "vitest";
-import { configFromEnvironment, configSchema } from "./config.js";
+import {
+  applyStoredSettingsToConfig,
+  configFromEnvironment,
+  configSchema,
+} from "./config.js";
 import { deriveClaudeSessionId, newToken, uuidV5 } from "./derive.js";
 import { deriveBashPrefixes, FIXED_BASH_PREFIXES } from "./launch.js";
 import { indexChanges, mapFindings, mapRange } from "./mapping.js";
@@ -554,10 +558,45 @@ test("task provider overrides and explicit Codex reasoning are validated", () =>
   });
   expect(config.models.codex).toBe("gpt-5.6-sol");
   expect(config.codexReasoningEffort).toBe("medium");
+  expect(config.settingsEnvironment.roles?.implementer?.model).toBeUndefined();
+  expect(config.providerEnvironment).toEqual({
+    models: { codex: "gpt-5.6-sol" },
+    codexReasoningEffort: "medium",
+  });
   expect(() =>
     configFromEnvironment({ ...env, LOOM_PROVIDER_PLANNER: "sol" }),
   ).toThrow();
   expect(() =>
     configFromEnvironment({ ...env, LOOM_CODEX_REASONING_EFFORT: "medum" }),
   ).toThrow();
+});
+
+test("stored restart settings are resolved before adapter construction", () => {
+  const baseline = configFromEnvironment({
+    LOOM_INSTANCE: "dev",
+    LOOM_DATA_ROOT: "/tmp/loom",
+    LOOM_TOKEN: "0123456789abcdef0123",
+  });
+  const runtime = structuredClone(baseline);
+  applyStoredSettingsToConfig(
+    runtime,
+    baseline,
+    {
+      runtime: {
+        worktreeRoot: "/tmp/custom-worktrees",
+        tmuxExecutable: "/opt/loom/tmux",
+        codexExecutable: "/opt/loom/codex",
+        claudeExecutable: "/opt/loom/claude",
+        heartbeatMs: 9000,
+      },
+    },
+    true,
+  );
+  expect(runtime).toMatchObject({
+    worktreeRoot: "/tmp/custom-worktrees",
+    tmuxExecutable: "/opt/loom/tmux",
+    codexExecutable: "/opt/loom/codex",
+    claudeExecutable: "/opt/loom/claude",
+    heartbeatMs: 9000,
+  });
 });

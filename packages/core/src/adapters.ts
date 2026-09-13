@@ -196,6 +196,8 @@ export interface PullRequestPatch {
 }
 
 export interface GitHubAdapter {
+  /** Update observation filtering without rebuilding the adapter or losing its caches. */
+  setExcludedAuthors?(authors: readonly string[]): void;
   readPullRequestCommit(
     repo: string,
     number: number,
@@ -382,6 +384,7 @@ export interface CodexAdapter {
     sandbox: "read-only" | "workspace-write" | "danger-full-access";
     developerInstructions: string;
     config: Record<string, unknown>;
+    approvalPolicy?: "never" | "on-request";
   }): Promise<{ threadId: ProviderSessionId; generation: number }>;
   startTurn(req: {
     threadId: ProviderSessionId;
@@ -465,6 +468,7 @@ export interface ClaudeAdapter {
     settingsPath: string;
     /** Planners and reviewers must not inherit implementer edit/bypass permissions. */
     readOnly: boolean;
+    approvalGated?: boolean;
   }): string[];
   /** Agent SDK. Loom chooses the session ID. */
   startHeadless(req: {

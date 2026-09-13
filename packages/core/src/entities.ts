@@ -145,6 +145,10 @@ export interface Task {
   blocked: BlockedFlag | null;
   failed: FailedFlag | null;
   requirePlanApproval: boolean;
+  /** Captured at task creation. Automatic modes only remove the final human click. */
+  mergePolicy?: import("./settings.js").MergePolicy;
+  /** Role launch defaults captured when the task is created. */
+  roleProfiles?: Partial<Record<Role, import("./settings.js").RoleProfile>>;
   /** Reviewer rounds started so far; 0 before the first review. */
   reviewRound: number;
   /** Default 3. Only a human raises it. */
@@ -273,6 +277,8 @@ export interface Run {
   model: string;
   /** Captured at creation; retries and recovery retain the same reasoning setting. */
   reasoningEffort?: string;
+  /** Captured semantic access policy; legacy rows use full. */
+  access?: import("./settings.js").AccessPreset;
   /**
    * (ref: provider) Claude: UUIDv5 of `<runId>#<sessionEpoch>`, chosen before launch, so never null,
    * and reused by every attempt of that epoch.
@@ -593,6 +599,8 @@ export type Approval =
       headSha: Sha;
       findings: FindingsSnapshot;
       ci: CiState;
+      /** Who authorized the exact-head approval. Legacy rows are human. */
+      approvedBy?: "human" | "policy";
       createdAt: IsoTime;
       voidedAt: IsoTime | null;
       voidReason: ApprovalVoidReason | null;

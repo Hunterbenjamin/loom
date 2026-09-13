@@ -907,6 +907,15 @@ export function Workbench() {
                 >
                   Switch to issue tracker
                 </Command.Item>
+                <Command.Item
+                  onSelect={() => {
+                    setPalette(false);
+                    store.setView("settings");
+                    void window.loomHost.setMode("tracker");
+                  }}
+                >
+                  Settings
+                </Command.Item>
               </Command.List>
             </Command>
           </div>

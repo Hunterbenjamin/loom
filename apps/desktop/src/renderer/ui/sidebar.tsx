@@ -112,6 +112,16 @@ export function Sidebar() {
         <span className="count">{reviewCount}</span>
       </button>
 
+      <button
+        type="button"
+        className="view-item"
+        data-view="settings"
+        aria-current={view === "settings" ? "page" : undefined}
+        onClick={() => store.setView("settings")}
+      >
+        <span>Settings</span>
+      </button>
+
       <div className="pad faint" role="status">
         {connection === "connected"
           ? ""

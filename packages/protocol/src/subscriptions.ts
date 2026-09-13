@@ -86,6 +86,7 @@ export function taskInView(task: Task, view: ViewName): boolean {
 
 /** Collections that reach every client, whatever it subscribed to. */
 const ALWAYS: CollectionName[] = [
+  "settings",
   "repo",
   "inbox",
   "lead",
@@ -155,6 +156,7 @@ export function ownerTask(change: Change): string | null {
     change.collection === "pull_request_detail" ||
     change.collection === "repo" ||
     change.collection === "project" ||
+    change.collection === "settings" ||
     change.collection === "lead" ||
     change.collection === "operator" ||
     change.collection === "pane_inventory"

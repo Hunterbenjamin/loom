@@ -44,6 +44,7 @@ import {
   worktreePath,
 } from "./ids.js";
 import { operatorState, taskNote } from "./operator.js";
+import { settingsDocument } from "./settings.js";
 import {
   commentThread,
   leadState,
@@ -72,6 +73,11 @@ export const collections = {
     value: projectState,
     key: z.literal("project"),
     keyOf: (v: z.output<typeof projectState>) => v.id,
+  },
+  settings: {
+    value: settingsDocument,
+    key: z.string().min(1),
+    keyOf: (v: z.output<typeof settingsDocument>) => v.id,
   },
   pull_requests: {
     value: pullRequestListState,
@@ -193,6 +199,7 @@ export function keyOf<N extends CollectionName>(
 }
 
 export const snapshotBody = z.strictObject({
+  settings: z.array(settingsDocument).default([]),
   projects: z.array(projectState).default([]),
   pullRequestLists: z.array(pullRequestListState).default([]),
   pullRequests: z.array(pullRequestRow).default([]),
@@ -222,6 +229,7 @@ export const snapshotBody = z.strictObject({
 
 /** Which snapshot collection each patch collection lands in. */
 export const COLLECTION_FIELDS = {
+  settings: "settings",
   project: "projects",
   pull_requests: "pullRequestLists",
   pull_request: "pullRequests",
@@ -252,6 +260,7 @@ export const COLLECTION_FIELDS = {
 export type SnapshotBody = z.output<typeof snapshotBody>;
 
 export const emptySnapshotBody = (): SnapshotBody => ({
+  settings: [],
   projects: [],
   pullRequestLists: [],
   pullRequests: [],

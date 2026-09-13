@@ -58,6 +58,12 @@ export interface TerminalBridge {
 
 export const windowMode = z.enum(["tracker", "workbench"]);
 export type WindowMode = z.output<typeof windowMode>;
+export interface NativeSettings {
+  version: 1;
+  windowMode: WindowMode;
+  terminalHistoryLimit: number;
+  keybindings: import("./keybindings.js").KeybindingsConfig;
+}
 
 export interface HostBridge {
   chooseRepository(): Promise<{ root: string; github: string } | null>;
@@ -65,6 +71,7 @@ export interface HostBridge {
   onKeybindingsChanged(
     listener: (state: import("./keybindings.js").KeybindingsState) => void,
   ): () => void;
+  applyNativeSettings?(settings: NativeSettings): Promise<void>;
   notify?(request: { id: string; title: string; body: string }): void;
   mode(): Promise<WindowMode>;
   setMode(mode: WindowMode): Promise<void>;

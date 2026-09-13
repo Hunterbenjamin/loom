@@ -25,6 +25,7 @@ import type {
   PullRequestDetailRow,
   PullRequestRow,
   RunTarget,
+  SettingsDocument,
   TaskInbox,
 } from "@loom/protocol";
 import { command as commandSchema } from "@loom/protocol";
@@ -46,7 +47,8 @@ export type ViewId =
   | "in-progress"
   | "awaiting-approval"
   | "done"
-  | "pull-requests";
+  | "pull-requests"
+  | "settings";
 export type Pane = "list" | "board";
 export type TabId = "activity" | "plan" | "agents" | "terminal" | "review";
 export type SortKey =
@@ -114,6 +116,7 @@ export interface State {
   operator: OperatorState | null;
   notes: Entities["note"][];
   instance: string;
+  settings: SettingsDocument[];
 }
 
 export const VIEWS: { id: ViewId; label: string; hint: string }[] = [
@@ -145,6 +148,7 @@ const IN_PROGRESS: Stage[] = [
 
 export function matchesView(task: Task, view: ViewId): boolean {
   switch (view) {
+    case "settings":
     case "pull-requests":
       return false;
     case "all":
@@ -229,6 +233,7 @@ export function createStore(
     panesUnavailable: false,
     runTargets: [],
     instance,
+    settings: [],
     lead: {
       id: parseRepoId.parse("lead"),
       sessionId: null,
@@ -340,6 +345,9 @@ export function createStore(
     toggleChimeMuted() {
       setUi({ chimeMuted: !state.ui.chimeMuted });
     },
+    setChimeMuted(chimeMuted: boolean) {
+      setUi({ chimeMuted });
+    },
     setConnection(connection: string) {
       if (connection !== "connected") paneTransitions.reset();
       state = { ...state, connection };
@@ -419,6 +427,10 @@ export function createStore(
           !patch || patch.changes.some((c) => c.collection === "note")
             ? [...client.collections.note.values()]
             : state.notes,
+        settings:
+          !patch || patch.changes.some((c) => c.collection === "settings")
+            ? [...client.collections.settings.values()]
+            : state.settings,
         panes:
           !patch || patch.changes.some((c) => c.collection === "pane")
             ? [...client.collections.pane.values()]

@@ -23,16 +23,28 @@ export function CreateIssue() {
 function CreateIssueDialog() {
   const store = useStoreApi();
   const repos = useStore((s) => s.snapshot.repos);
+  const settings = useStore((s) => s.settings);
   const [sidebarRepo] = useState(() => store.getState().ui.repo);
   const initialRepo =
     repos.find((r) => r.id === sidebarRepo)?.id ?? repos[0]?.id ?? "";
   const [chosenRepo, setRepoId] = useState<string | null>(null);
   const repoId = chosenRepo ?? initialRepo;
+  const defaultsFor = (id: string) =>
+    settings.find((item) => item.id === `repo:${id}`)?.effective.workflow ??
+    settings.find((item) => item.id === "global")?.effective.workflow;
+  const initialDefaults = defaultsFor(initialRepo);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"backlog" | "todo">("backlog");
-  const [size, setSize] = useState<"normal" | "small">("normal");
-  const [requirePlanApproval, setRequirePlanApproval] = useState(true);
+  const [size, setSize] = useState<"normal" | "small">(
+    initialDefaults?.size ?? "normal",
+  );
+  const [requirePlanApproval, setRequirePlanApproval] = useState(
+    initialDefaults?.requirePlanApproval ?? true,
+  );
+  const [budgetMinutes, setBudgetMinutes] = useState<number | null>(
+    initialDefaults?.budgetMinutes ?? null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [discard, setDiscard] = useState(false);
@@ -48,8 +60,9 @@ function CreateIssueDialog() {
     description !== "" ||
     repoId !== initialRepo ||
     status !== "backlog" ||
-    size !== "normal" ||
-    !requirePlanApproval;
+    size !== (initialDefaults?.size ?? "normal") ||
+    requirePlanApproval !== (initialDefaults?.requirePlanApproval ?? true) ||
+    budgetMinutes !== (initialDefaults?.budgetMinutes ?? null);
   const valid =
     title.trim().length > 0 &&
     title.trim().length <= 200 &&
@@ -118,7 +131,7 @@ function CreateIssueDialog() {
               providers: null,
               requirePlanApproval,
               blockedBy: [],
-              budgetMinutes: null,
+              budgetMinutes,
               size,
             }),
           );
@@ -220,7 +233,16 @@ function CreateIssueDialog() {
                 id="issue-repo"
                 required
                 value={repoId}
-                onChange={(e) => setRepoId(e.target.value)}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setRepoId(id);
+                  const next = defaultsFor(id);
+                  if (next) {
+                    setSize(next.size);
+                    setRequirePlanApproval(next.requirePlanApproval);
+                    setBudgetMinutes(next.budgetMinutes);
+                  }
+                }}
               >
                 {!repos.some((r) => r.id === repoId) && (
                   <option value="">Select a repository</option>
@@ -254,6 +276,21 @@ function CreateIssueDialog() {
                 <option value="normal">Normal</option>
                 <option value="small">Small</option>
               </select>
+            </div>
+            <div>
+              <label htmlFor="issue-budget">Budget (minutes)</label>
+              <input
+                id="issue-budget"
+                type="number"
+                min="1"
+                placeholder="No limit"
+                value={budgetMinutes ?? ""}
+                onChange={(e) =>
+                  setBudgetMinutes(
+                    e.target.value ? Number(e.target.value) : null,
+                  )
+                }
+              />
             </div>
           </div>
           <p id="issue-size-hint" className="faint">
