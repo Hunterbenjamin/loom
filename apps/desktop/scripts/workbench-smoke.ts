@@ -86,7 +86,7 @@ try {
   Object.assign(h.paneHost, host);
   const state = h.coordinator.createTask({
     repoId: h.repo.id,
-    title: "Workbench fixture task",
+    title: "Workbench fixture issue",
     description: "No real agents",
   });
   await h.coordinator.settle();

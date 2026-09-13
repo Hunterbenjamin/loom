@@ -108,7 +108,7 @@ test("concurrent open commands are idempotent, private, and separate from task r
   expect(saved.args).not.toContain("bypassPermissions");
   expect(saved.args.at(-2)).toBe("--");
   expect(h.paneHost.launches[0]?.args).toEqual(saved.args);
-  expect(saved.args.join(" ")).toContain("Always create Loom tasks");
+  expect(saved.args.join(" ")).toContain("Always create Loom issues");
   expect(saved.args.join(" ")).not.toContain(saved.token);
   expect(
     (await stat(join(h.store.dataDirectory, `lead/${h.repo.id}/recipe.json`)))

@@ -220,7 +220,7 @@ test("empty and completed tasks automatically attach their resolved shell", asyn
     await Promise.resolve();
   });
   expect(empty.host.textContent).toContain(
-    "Task worktree · feat/current-branch",
+    "Issue worktree · feat/current-branch",
   );
   expect(empty.spawn).toHaveBeenCalledWith(
     expect.objectContaining({

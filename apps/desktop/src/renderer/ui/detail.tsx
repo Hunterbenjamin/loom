@@ -449,7 +449,7 @@ function RestartRun({ task, run }: { task: Task; run: Run }) {
         Restart with current agent settings
       </button>
       <div className="faint">
-        Starts a fresh session. Keeps this task’s worktree, plan and findings.
+        Starts a fresh session. Keeps this issue’s worktree, plan and findings.
       </div>
       {outcome ? <div role="status">{outcome}</div> : null}
     </div>

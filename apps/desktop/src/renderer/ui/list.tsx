@@ -13,7 +13,7 @@ import { age, stageLabel } from "./format.js";
 const COLUMNS = "1fr 128px 210px 160px 52px 44px";
 
 const HEADINGS: { key: SortKey; label: string }[] = [
-  { key: "title", label: "Task" },
+  { key: "title", label: "Issue" },
   { key: "stage", label: "Stage" },
   { key: "attention", label: "Attention" },
   { key: "provider", label: "Agent" },
