@@ -139,7 +139,7 @@ This is the user decision of 2026-09-13. Everything goes through Loom, so it is 
 | Coordinator | Everyone | Snapshot and patches (protocol) |
 
 When the human is not looking, a `for human` row raises a desktop notification. When they open the
-panel, Main summarizes the rows since they last looked, in its own words, from the same snapshot.
+panel, nothing is sent to Main (decision 2026-09-13: opening a terminal is looking, not asking). Main summarizes the rows when the human asks, from the same snapshot.
 
 ## Operator policy v1
 

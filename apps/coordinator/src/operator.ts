@@ -163,7 +163,8 @@ export class OperatorSession {
       this.ready = true;
       if (!this.recipe) await this.initialize();
       await this.ensureTerminal();
-    }).then(() => this.pump());
+    });
+    // No pump here: opening the terminal is looking, not asking. The interval and hints pump.
   }
   stop() {
     return this.exclusive(async () => {

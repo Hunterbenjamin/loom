@@ -470,6 +470,23 @@ export function Workbench() {
       );
       if (existing && !existing.dead) return openGroup([existing], system);
     }
+    // A live Main is just opened, like any pane: no command, so nothing is asked of it. The
+    // coordinator is only involved when there is no live pane or Main is stopped.
+    if (system === "main" && state.lead.status !== "stopped") {
+      const existing = state.panes.find(
+        (pane) =>
+          pane.sessionName === `loom-lead-${state.ui.repo}` && !pane.dead,
+      );
+      if (existing) {
+        if (state.lead.sessionId)
+          setMainTarget({
+            repo: state.ui.repo,
+            sessionId: state.lead.sessionId,
+            pane: identity(existing),
+          });
+        return openGroup([existing], system);
+      }
+    }
     const requestedRepo = state.ui.repo;
     const request = ++pinnedRequest.current;
     void store

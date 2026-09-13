@@ -478,7 +478,7 @@ test("Main note is bounded, private, instance-scoped and survives rotation and c
   expect(await second.leadFor(h.repo.id).note()).toBe("");
 });
 
-test("opening Main requests a brief summary only when native status permits input", async () => {
+test("opening a live Main sends it nothing, whatever its native status", async () => {
   const { h } = await setup();
   const paste = vi.spyOn(h.paneHost, "pasteText").mockResolvedValue("written");
   const target = await h.coordinator.leadFor(h.repo.id).open();
@@ -497,34 +497,12 @@ test("opening Main requests a brief summary only when native status permits inpu
     kind: "interactive" as const,
     pid: 1,
   };
-  h.adapters.claude.listSessions = async () => [entry];
-  await h.coordinator.leadFor(h.repo.id).open();
-  expect(paste).toHaveBeenCalledExactlyOnceWith(
-    expect.anything(),
-    expect.stringContaining("Needs-you"),
-  );
-  paste.mockClear();
-  for (const status of ["busy", "waiting"] as const) {
+  for (const status of ["idle", "busy", "waiting"] as const) {
     h.adapters.claude.listSessions = async () => [{ ...entry, status }];
-    await h.coordinator.leadFor(h.repo.id).open();
+    expect((await h.coordinator.leadFor(h.repo.id).open()).sessionId).toBe(
+      target.sessionId,
+    );
   }
-  h.adapters.claude.listSessions = async () => [
-    { ...entry, cwd: "/unrelated" as never },
-  ];
-  await h.coordinator.leadFor(h.repo.id).open();
-  expect(paste).not.toHaveBeenCalled();
-  h.adapters.claude.listSessions = async () => [entry];
-  const hooks = await h.adapters.claude.hookSummary(entry.sessionId);
-  h.adapters.claude.hookSummary = async () => ({
-    ...hooks,
-    pendingDialog: {
-      kind: "permission",
-      tool: "Read",
-      at: hooks.lastEventAt ?? ("2026-09-12T00:00:00.000Z" as never),
-    },
-  });
-  await h.coordinator.leadFor(h.repo.id).open();
-  expect(paste).not.toHaveBeenCalled();
   h.adapters.claude.listSessions = async () => {
     throw new Error("Provider unavailable");
   };

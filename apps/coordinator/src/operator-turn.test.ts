@@ -81,6 +81,7 @@ test("failed native turn pauses the durable queue until explicit open, including
       sessionId,
     });
     await operator.open();
+    await operator.pump(); // open no longer pumps; the interval does in production
     expect(launch).not.toHaveBeenCalled();
     expect(send).toHaveBeenCalledOnce();
     expect(operator.state()).toMatchObject({
