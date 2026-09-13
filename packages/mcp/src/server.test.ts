@@ -48,6 +48,7 @@ const progress = {
 };
 const review: McpTools["submit_review"]["input"] = {
   reviewedSha: head,
+  reviewerCommits: [],
   summary: "Reviewed",
   findings: [],
   verdicts: [],
@@ -141,6 +142,8 @@ test("submit_review assigns unique IDs and full anchors, preserving task-level f
   const findings = ["new", "old"].map((side) => ({
     severity: "major",
     title: "Bug",
+    status: "escalate",
+    reason: "Requires a design change",
     body: "Fix",
     location: { path: "src/example.ts", side, startLine: 1, endLine: 1 },
   }));
@@ -345,3 +348,30 @@ test("a host cannot accidentally answer with another input's disposition", async
     client.callTool({ name: "report_progress", arguments: progress }),
   ).rejects.toThrow("Loom host could not complete");
 });
+
+test.each([
+  { status: "fixed" },
+  { status: "fixed", commitSha: head },
+  { status: "escalate" },
+  { status: "escalate", reason: "  " },
+  { status: "open", commitSha: head },
+])(
+  "submit_review rejects incomplete disposition %j at the MCP boundary",
+  async (disposition) => {
+    const { call } = await connect(setup("in_review", "reviewer"));
+    expect(
+      await call("submit_review", {
+        ...review,
+        findings: [
+          {
+            severity: "major",
+            title: "Problem",
+            body: "Details",
+            location: null,
+            ...disposition,
+          },
+        ],
+      }),
+    ).toMatchObject({ ok: false, error: { code: "invalid_input" } });
+  },
+);

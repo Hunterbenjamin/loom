@@ -456,6 +456,8 @@ export const contextSchema = contract<TaskContext>()(
         lastReviewedHead: sha.nullable(),
         previousBlocking: count.nullable(),
         verdictIds: z.array(id),
+        publicationPending: z.boolean().optional(),
+        reviewerCommits: z.array(sha).optional(),
       })
       .nullable(),
     desiredRun: z

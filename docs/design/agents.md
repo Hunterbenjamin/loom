@@ -5,7 +5,7 @@ Terminology: an “issue” in the UI is a “task” in the code; internal iden
 Who talks to whom, who decides what, and who is allowed to be busy. This note records the direction
 agreed on 2026-09-12 after the first day of self-hosted use; the Operator brief and the Lead PR
 follow-ups derive from it. It builds on the principles in [`AGENTS.md`](../../AGENTS.md) and the
-contract in [`core.md`](core.md); nothing here changes a stage rule.
+contract in [`core.md`](core.md); core owns the stage rules.
 
 ## What the first day showed
 
@@ -29,6 +29,28 @@ The fix is a separation the human named: the agent you talk to must never be the
 | **Coordinator** | Code (`apps/coordinator`, `packages/core`) | Stages, launches, review rounds, merges on approval, recovery | Always; it is a process |
 | **Operator** | Headless agent session, one per instance, coordinator-owned | Everything that needs judgement but not the human: consume Needs-you rows under a policy, act through Loom commands, escalate the rest | Yes, for minutes, unnoticed |
 | **Issue agents** | Planner, implementer, reviewer runs (unchanged) | The work of one issue, one role at a time | Yes |
+
+### Reviewers fix actual problems inline
+
+Reviewers have worktree write access, including commits on the task branch, in both launch modes
+and for both providers. Run the tests and read the diff against the accepted plan and AGENTS.md.
+Most reviews should find nothing to change. Do not fix things just because you can; never restyle,
+refactor or expand scope. Fix only an actual bug, a failing or missing test required by the plan,
+or an AGENTS.md violation. Commit each fix separately with a message naming the finding, and rerun
+the relevant tests.
+
+Submit the clean HEAD through `submit_review`, listing every commit after the round head in
+`reviewerCommits`. A fixed finding/verdict uses `status: fixed` and its `commitSha`. Escalate only
+what cannot be fixed safely inline: a design change, unanticipated work, or work across many files.
+Use `status: escalate` and explain why in `reason`. Everything else is fixed or reported as
+non-blocking; severity alone never requests an implementer fix round. Provide verdicts for earlier
+addressed/disputed findings and any remaining open blockers.
+
+The coordinator validates ancestry and the complete commit list, records the authenticated
+submission, and pushes the reviewed head before opening the PR. Reviewers do not move cards or
+merge. A successful submission may return `next: in_review` while publication is pending; this is
+completed reviewer work, not a request to submit again. Only an explicit escalation invokes the
+implementer's automatic fix-round path; the cap and nonconvergence checks still apply.
 
 ### Main has no hands
 

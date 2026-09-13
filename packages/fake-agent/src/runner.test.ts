@@ -8,8 +8,8 @@ const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((fn) => fn()));
 });
-async function environment(name: string, stage: Stage = "todo") {
-  const env = await setup(stage);
+async function environment(name: string, stage: Stage = "todo", withPr = true) {
+  const env = await setup(stage, withPr);
   cleanup.push(env.cleanup);
   const scenarios = await loadScenarios(
     new URL(`./fixtures/${name}.json`, import.meta.url),
@@ -348,3 +348,80 @@ test("tool error expectations use the real MCP schema and per-run token checks",
   });
   expect(result.dispositions.filter((d) => d.accepted && d.reply)).toEqual([]);
 }, 30000);
+
+test.each([true, false])(
+  "reviewer fixes inline and publishes the reviewed head (existing PR: %s)",
+  async (existingPr) => {
+    const env = await environment("reviewer-inline", "todo", existingPr);
+    const result = await runScenario({
+      ...env.options,
+      scenarios: env.scenarios,
+    });
+    const head = await env.git("rev-parse", "HEAD");
+    expect(result.state.task.stage).toBe("awaiting_approval");
+    expect(result.state.task.reviewRound).toBe(1);
+    expect(result.state.findings).toMatchObject([
+      {
+        status: "fixed",
+        blocking: false,
+        resolution: { by: "reviewer", commitSha: head },
+      },
+    ]);
+    expect(result.state.review).toMatchObject({
+      lastReviewedHead: head,
+      reviewerCommits: [head],
+      publicationPending: false,
+    });
+    expect(result.state.artifactContents.handoff).toMatchObject({
+      reviewerSubmission: { input: { reviewerCommits: [head] } },
+    });
+    expect(env.adapters.github.snapshot()?.headSha).toBe(head);
+    expect(
+      result.state.messages.filter((m) => m.purpose === "fix_round"),
+    ).toEqual([]);
+    const pushes = result.actions.filter((a) => a.kind === "push_branch");
+    expect(pushes).toHaveLength(2);
+    expect(pushes[1]).toMatchObject({ expectedHeadSha: head });
+    expect(result.dispositions.every((d) => d.accepted)).toBe(true);
+    if (!existingPr) {
+      const open = result.state.outbox.find((r) => r.kind === "open_pr");
+      expect(open?.dependsOn).toContain(pushes[1]?.key);
+      const reviewPush = pushes[1];
+      if (!reviewPush) throw new Error("Missing reviewer push");
+      expect(result.actions.indexOf(reviewPush)).toBeLessThan(
+        result.actions.findIndex((a) => a.kind === "open_pr"),
+      );
+    }
+  },
+  60000,
+);
+
+test.each(["reviewer-dirty", "reviewer-nondescendant"])(
+  "%s is refused through fake provider, MCP and real Git",
+  async (name) => {
+    const env = await environment(name);
+    const result = await runScenario({
+      ...env.options,
+      scenarios: env.scenarios,
+      commit: async (step, runner) => {
+        if (step.message === "Unrelated history")
+          await env.git("reset", "--hard", "main");
+        await env.options.commit?.(step, runner);
+      },
+    });
+    expect(result.state.task.stage).toBe("in_review");
+    expect(result.state.findings).toEqual([]);
+    expect(result.actions.filter((a) => a.kind === "push_branch")).toHaveLength(
+      1,
+    );
+    expect(result.dispositions.filter((d) => !d.accepted)).toMatchObject([
+      { error: { code: "guard_failed" } },
+    ]);
+    const rejected = result.dispositions.find((d) => !d.accepted);
+    if (rejected && !rejected.accepted)
+      expect(rejected.error.details.join(" ")).toContain(
+        name === "reviewer-dirty" ? "Clean the worktree" : "descendant",
+      );
+  },
+  60000,
+);

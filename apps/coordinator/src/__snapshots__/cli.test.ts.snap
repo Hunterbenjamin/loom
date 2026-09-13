@@ -25,6 +25,8 @@ Findings
   addressed:              0
   disputed:               0
   resolved:               0
+  fixed:                  0
+  escalate:               0
   waived:                 0
 "
 `;
@@ -226,6 +228,8 @@ Findings
   addressed:              0
   disputed:               0
   resolved:               1
+  fixed:                  0
+  escalate:               0
   waived:                 0
 
   title:                  Fix bug

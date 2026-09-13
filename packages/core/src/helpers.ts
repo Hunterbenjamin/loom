@@ -19,7 +19,11 @@ export const normalizeText = (text: string): string =>
   text.replace(/\r\n/g, "\n").replace(/\t/g, "    ");
 export const openBlocking = (findings: Finding[]): number =>
   findings.filter(
-    (f) => f.blocking && f.status !== "resolved" && f.status !== "waived",
+    (f) =>
+      f.blocking &&
+      f.status !== "resolved" &&
+      f.status !== "waived" &&
+      f.status !== "fixed",
   ).length;
 export const clone = <T>(value: T): T => {
   if (Array.isArray(value)) return value.map((item) => clone(item)) as T;

@@ -59,6 +59,8 @@ export const findingStatus = z.enum([
   "addressed",
   "disputed",
   "resolved",
+  "fixed",
+  "escalate",
   "waived",
 ]);
 export const requestKind = z.enum([

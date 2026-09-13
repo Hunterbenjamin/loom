@@ -316,9 +316,12 @@ export function reviewCall(findings: Finding[] = []): McpCall {
     tool: "submit_review",
     input: {
       reviewedSha: head,
+      reviewerCommits: [],
       summary: "Reviewed",
       findings: findings.map((f) => ({
         severity: f.severity,
+        status: f.blocking ? "escalate" : "open",
+        ...(f.blocking ? { reason: "Requires a design change" } : {}),
         title: f.title,
         body: f.body,
         location: null,

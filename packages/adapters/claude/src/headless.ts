@@ -17,7 +17,7 @@ import type { McpServerEntry } from "./settings.js";
 
 export type HeadlessState = NonNullable<ClaudeSessionObservation["headless"]>;
 
-/** A reviewer works read-only: the session may look, but not write (`readOnly` on the contract). */
+/** Read-only planner sessions may inspect but cannot use edit tools. */
 export const READ_ONLY_DISALLOWED_TOOLS = [
   "Edit",
   "Write",

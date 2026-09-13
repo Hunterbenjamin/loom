@@ -259,6 +259,12 @@ export async function observe(
           worktree,
           repo?.baseBranch ?? deps.config.baseBranch,
           [...candidates],
+          inputs.some(
+            (input) =>
+              input.type === "mcp" && input.call.tool === "submit_review",
+          )
+            ? state.review?.headSha
+            : undefined,
         ),
       )
     : null;
