@@ -127,6 +127,10 @@ describe("repository pull request reads", () => {
       const values = await fake.adapter.listPullRequests("vuejs/core", state);
       expect(values).toEqual([
         {
+          viewerDidAuthor: false,
+          viewerReviewRequested: false,
+          reviewRequired: false,
+          completedAt: null,
           number: detail.number,
           title: detail.title,
           author: "contributor",
@@ -663,3 +667,41 @@ it.each([false, true])(
     expect(calls).toBe(2);
   },
 );
+
+it("maps viewer review facts and completion time without guessing from author or branch", async () => {
+  const fake = setup();
+  fake.set(
+    "graphql:OPEN:",
+    graphqlPage([
+      {
+        ...graphqlNode,
+        viewerDidAuthor: true,
+        viewerLatestReviewRequest: { id: "request-1" },
+        reviewDecision: "REVIEW_REQUIRED",
+        closedAt: null,
+      },
+    ]),
+  );
+  const [row] = await fake.adapter.listPullRequests("vuejs/core", "open");
+  expect(row).toMatchObject({
+    viewerDidAuthor: true,
+    viewerReviewRequested: true,
+    reviewRequired: true,
+    completedAt: null,
+  });
+  fake.set(
+    "graphql:CLOSED:",
+    graphqlPage([{ ...graphqlNode, closedAt: "2026-09-12T00:00:00Z" }]),
+  );
+  expect(
+    (await fake.adapter.listPullRequests("vuejs/core", "closed"))[0]
+      ?.completedAt,
+  ).toBe("2026-09-12T00:00:00Z");
+  fake.set(
+    "graphql:OPEN:",
+    graphqlPage([{ ...graphqlNode, viewerDidAuthor: "true" }]),
+  );
+  await expect(
+    fake.adapter.listPullRequests("vuejs/core", "open"),
+  ).rejects.toThrow();
+});

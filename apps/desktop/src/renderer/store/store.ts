@@ -68,7 +68,11 @@ export interface UiState {
   /** Presentation only; owned by this window and never persisted. */
   listSections: ListSections;
   trackerVisible: boolean;
-  prState: PullRequestRow["state"];
+  prTab: "for-you" | "created";
+  prSections: Partial<
+    Record<import("./pull-requests.js").ReviewSection, boolean>
+  >;
+  prCompletedCount: number;
   prQuery: string;
   prCursor: number;
   openPr: { repoId: PullRequestRow["repoId"]; number: number } | null;
@@ -161,7 +165,9 @@ export function matchesView(task: Task, view: ViewId): boolean {
 const initialUi: UiState = {
   listSections: {},
   trackerVisible: false,
-  prState: "open",
+  prTab: "for-you",
+  prSections: {},
+  prCompletedCount: 20,
   prQuery: "",
   prCursor: 0,
   openPr: null,
@@ -500,8 +506,18 @@ export function createStore(
     setTrackerVisible(trackerVisible: boolean) {
       setUi({ trackerVisible });
     },
-    setPrState(prState: PullRequestRow["state"]) {
-      setUi({ prState, prCursor: 0 });
+    setPrTab(prTab: UiState["prTab"]) {
+      setUi({ prTab, prCursor: 0 });
+    },
+    togglePrSection(section: import("./pull-requests.js").ReviewSection) {
+      const collapsed = state.ui.prSections[section] ?? section === "completed";
+      setUi({
+        prSections: { ...state.ui.prSections, [section]: !collapsed },
+        prCursor: 0,
+      });
+    },
+    loadMoreCompletedPrs() {
+      setUi({ prCompletedCount: state.ui.prCompletedCount + 20 });
     },
     setPrQuery(prQuery: string) {
       setUi({ prQuery, prCursor: 0 });

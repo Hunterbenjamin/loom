@@ -4,7 +4,13 @@ import { minutesBefore } from "../fixtures/ids.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
 import { emptySnapshot } from "../live/snapshot.js";
-import { readyToMergeCount, selectedPullRequests } from "./pull-requests.js";
+import {
+  readyToMergeCount,
+  reviewAgentWorking,
+  reviewGroups,
+  reviewNeedsHuman,
+  selectedPullRequests,
+} from "./pull-requests.js";
 import { createStore } from "./store.js";
 
 test("live snapshots and PR patches update rows and retain the selected repo/number", () => {
@@ -38,7 +44,11 @@ test("live snapshots and PR patches update rows and retain the selected repo/num
   const applied = applyPatch(client, patch);
   if (!applied.ok) throw new Error("patch rejected");
   store.applyProtocol(client, patch);
-  expect(selectedPullRequests(store.getState())[0]?.title).toBe("Just opened");
+  expect(
+    selectedPullRequests(store.getState()).some(
+      (pr) => pr.title === "Just opened",
+    ),
+  ).toBe(true);
   expect(
     selectedPullRequests(store.getState())[store.getState().ui.prCursor],
   ).toEqual(selected);
@@ -84,6 +94,8 @@ test("PR lists, counts and subscriptions follow exactly one selected repository"
     ).toBe(rows.length);
     expect(pullRequestSubscriptions(store.getState())).toEqual([
       { kind: "pull_requests", repoId: repo.id, state: "open" },
+      { kind: "pull_requests", repoId: repo.id, state: "merged" },
+      { kind: "pull_requests", repoId: repo.id, state: "closed" },
     ]);
   }
 });
@@ -123,7 +135,7 @@ test("readiness follows GitHub patches and the selected repository, independent 
   const store = createStore(fixture);
   expect(readyToMergeCount(store.getState())).toBe(2);
   store.setPrQuery("nothing matches");
-  store.setPrState("closed");
+  store.setPrTab("created");
   expect(readyToMergeCount(store.getState())).toBe(2);
   const wire = toSnapshot(fixture);
   const client = stateFromSnapshot(wire.meta, wire.body);
@@ -152,4 +164,76 @@ test("readiness follows GitHub patches and the selected repository, independent 
   if (!other) throw new Error("Missing repository");
   await store.setRepo(other.id);
   expect(readyToMergeCount(store.getState())).toBe(0);
+});
+
+test("For you distinguishes required reviews and unrelated failures; Created follows viewer identity", () => {
+  const fixture = buildSnapshot();
+  const first = fixture.pullRequests[0];
+  if (!first) throw new Error("Missing PR");
+  fixture.pullRequests = [
+    {
+      ...first,
+      number: 1,
+      taskId: null,
+      viewerDidAuthor: false,
+      review: "none",
+      reviewRequired: true,
+    },
+    { ...first, number: 2, viewerDidAuthor: false, checks: "failure" },
+    { ...first, number: 3, viewerDidAuthor: true, review: "changes_requested" },
+    {
+      ...first,
+      number: 4,
+      viewerDidAuthor: false,
+      viewerReviewRequested: true,
+      review: "none",
+      reviewRequired: true,
+    },
+    { ...first, number: 5, viewerDidAuthor: true, checks: "pending" },
+    {
+      ...first,
+      number: 6,
+      viewerDidAuthor: false,
+      review: "none",
+      reviewRequired: false,
+    },
+    { ...first, number: 7, viewerDidAuthor: true, draft: true },
+  ];
+  const store = createStore(fixture);
+  expect(
+    reviewGroups(store.getState()).map((g) => [
+      g.id,
+      g.rows.map((pr) => pr.number),
+    ]),
+  ).toEqual([
+    ["ready", [6]],
+    ["attention", [3]],
+    ["waiting", [5, 4]],
+    ["created", [7]],
+    ["completed", []],
+  ]);
+  expect(
+    fixture.pullRequests.filter(reviewNeedsHuman).map((pr) => pr.number),
+  ).toEqual([3, 4, 6]);
+  store.setPrTab("created");
+  expect(selectedPullRequests(store.getState()).map((pr) => pr.number)).toEqual(
+    [7, 5, 3],
+  );
+});
+
+test("working glyph follows provider run state, never a stage or native terminal process", () => {
+  const fixture = buildSnapshot();
+  const pr = fixture.pullRequests[0];
+  const run = fixture.runs[0];
+  if (!pr?.taskId || !run) throw new Error("Missing fixture link");
+  fixture.runs = [{ ...run, taskId: pr.taskId, status: "working" }];
+  const store = createStore(fixture);
+  expect(reviewAgentWorking(store.getState(), pr)).toBe(true);
+  for (const status of ["idle", "unknown", "failed"] as const) {
+    fixture.runs = [{ ...run, taskId: pr.taskId, status }];
+    expect(reviewAgentWorking(createStore(fixture).getState(), pr)).toBe(false);
+  }
+  expect(reviewAgentWorking(store.getState(), { ...pr, taskId: null })).toBe(
+    false,
+  );
 });

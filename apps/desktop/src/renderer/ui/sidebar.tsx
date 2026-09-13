@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { reviewNeedsHuman } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { viewCounts } from "../store/selectors.js";
 import { VIEWS } from "../store/store.js";
+import { PullRequestGlyph } from "./pull-request-glyph.js";
 
 export function Sidebar() {
   const store = useStoreApi();
@@ -31,6 +33,12 @@ export function Sidebar() {
   const repo = useStore((s) => s.ui.repo);
   const view = useStore((s) => s.ui.view);
   const theme = useStore((s) => s.ui.theme);
+  const reviewCount = useStore(
+    (s) =>
+      s.snapshot.pullRequests.filter(
+        (pr) => pr.repoId === s.ui.repo && reviewNeedsHuman(pr),
+      ).length,
+  );
   const counts = useStore((s) => viewCounts(s.snapshot, s.ui.repo));
 
   return (
@@ -97,8 +105,11 @@ export function Sidebar() {
         aria-current={view === "pull-requests" ? "page" : undefined}
         onClick={() => store.setView("pull-requests")}
       >
-        <span>Pull requests</span>
-        <span className="count">{counts["pull-requests"]}</span>
+        <span className="reviews-nav-label">
+          <PullRequestGlyph state="open" />
+          Reviews
+        </span>
+        <span className="count">{reviewCount}</span>
       </button>
 
       <div className="pad faint" role="status">

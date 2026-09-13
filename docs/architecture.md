@@ -86,6 +86,9 @@ Done is derived from GitHub: an issue is Done only once its PR is merged.
   request including check/review/mergeability summaries every 60 seconds while a window subscribes
   to that repo/state (cursor pagination above 100 rows, capped at 1,000 pages). GraphQL has no ETag;
   compare mapped rows and preserve unchanged observations so identical refreshes publish no patch.
+  Reviews list/detail summaries include GitHub viewer authorship, outstanding viewer review
+  requests, required-review status and completion time. These are disposable owner facts used
+  for inbox grouping; the renderer never guesses the human identity from a local Git author.
   First snapshots use cached rows immediately with an initial loading flag, then receive patches.
   Reads run concurrently across scopes, with at most one in flight per key.
   Each window subscribes to its selected repository's open list for the bottom-bar readiness count
