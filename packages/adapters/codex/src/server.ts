@@ -60,6 +60,10 @@ export class TaskServer {
      */
     readonly credentialsSource: string = join(homedir(), ".codex", "auth.json"),
     readonly onDiagnostic?: (event: AdapterDiagnostic) => void,
+    /** Authoritative coordinator-owned sessions which may still depend on this task server. */
+    readonly liveSessionOwners: () => Promise<
+      readonly string[]
+    > = async () => [],
   ) {
     if (!isAbsolute(directory))
       throw new Error("Codex task directory must be absolute");
@@ -182,13 +186,19 @@ export class TaskServer {
           ? await socketOwner(this.socket)
           : null;
     if (stale) {
-      this.onDiagnostic?.({
-        kind: "stale_process",
-        resource: "codex_server",
-        sessionId: null,
-        message: "Recovering a verified stale private task app-server process",
+      await terminateOwned(stale, this.socket, async () => {
+        const sessions = await this.liveSessionOwners();
+        if (!sessions.length) return;
+        const sessionId = sessions[0] ?? null;
+        const message = `Refusing to recover the private task app-server: ${sessions.length} unended Codex run${sessions.length === 1 ? "" : "s"} still own${sessions.length === 1 ? "s" : ""} a recorded session`;
+        this.onDiagnostic?.({
+          kind: "stale_process",
+          resource: "codex_server",
+          sessionId,
+          message,
+        });
+        throw new Error(message);
       });
-      await terminateOwned(stale, this.socket);
     }
     await this.removeFiles();
     this.owner = null;

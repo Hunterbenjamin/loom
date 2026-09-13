@@ -223,6 +223,26 @@ describe("idle runs awaiting submission", () => {
     });
   }
 
+  it("flags an interrupted idle reviewer that never submitted", () => {
+    const f = idleFixture("in_review");
+    f.run.lastTurn = {
+      id: "interrupted-review",
+      outcome: "interrupted",
+      error: null,
+    };
+    f.observations.now = at(f.state.config.stallAfterMs);
+    const expired = fixed(f.state, f.observations);
+    expect(expired.next.task.stage).toBe("in_review");
+    expect(expired.next.runs[0]).toMatchObject({
+      status: "idle",
+      endedAt: null,
+      lastTurn: { id: "interrupted-review", outcome: "interrupted" },
+    });
+    expect(expired.next.task.attention.reasons).toContain(
+      "idle_without_submission",
+    );
+  });
+
   it("starts a full grace period when work stops, and clears/restarts it when work resumes", () => {
     const f = idleFixture();
     f.run.status = "working";

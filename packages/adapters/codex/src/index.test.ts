@@ -192,13 +192,15 @@ describe("Codex app-server adapter", () => {
       StaleCodexRequestError,
     );
   });
-  it("increments generation on reconnect, rejects old approval IDs, and requires rehydration", async () => {
+  it("increments generation, rehydrates subscriptions, and rejects old approval IDs", async () => {
     replayApproval = true;
     await adapter.resumeThread(threadId);
     await adapter.reconnect();
     expect(adapter.generation()).toBe(2);
-    await expect(adapter.readThread(threadId)).rejects.toThrow("Resume thread");
-    await adapter.resumeThread(threadId);
+    await expect(adapter.readThread(threadId)).resolves.toMatchObject({
+      threadId,
+      generation: 2,
+    });
     await expect(adapter.answerRequest(answer(1))).rejects.toThrow("Stale");
     await adapter.answerRequest(answer(2));
   });
@@ -352,6 +354,26 @@ describe("Codex app-server adapter", () => {
           (entry.message as { method?: string }).method === "turn/interrupt",
       ),
     ).toHaveLength(1);
+  });
+  it("reconnects by resuming subscribed threads before retrying their reads", async () => {
+    await adapter.resumeThread(threadId);
+    fake.disconnect();
+    await vi.waitFor(() => expect(adapter.generation()).toBeNull());
+
+    expect(await adapter.readThread(threadId)).toMatchObject({
+      threadId,
+      status: "active",
+    });
+    const replacementMethods = fake.messages
+      .filter((entry) => entry.connection === 2)
+      .map((entry) => (entry.message as { method?: string }).method);
+    expect(replacementMethods).toEqual([
+      "initialize",
+      "initialized",
+      "thread/resume",
+      "thread/read",
+    ]);
+    expect(adapter.generation()).toBe(2);
   });
   it("rejects malformed messages, incomplete histories, and wrong-thread responses", async () => {
     thread.turns[0].itemsView = "summary";

@@ -345,7 +345,7 @@ while any of these reasons holds:
 | `failed` | `failed` is set |
 | `run_vanished` | An interactive run's session disappeared. Loom won't relaunch it; the human does. |
 | `stalled` | A run is `working` with no provider activity for `stallAfterMs`. Nothing is killed. |
-| `idle_without_submission` | A live Loom run stays idle for `stallAfterMs` (15 minutes by default) while its role owes a submission: planner in `planning`, implementer in `in_progress`, reviewer in `in_review`. Suppressed while the task is blocked/failed, a message to that run is pending/sent, or its question is unanswered. Nothing is killed or relaunched. |
+| `idle_without_submission` | A live Loom run stays idle for `stallAfterMs` (15 minutes by default) while its role owes a submission: planner in `planning`, implementer in `in_progress`, reviewer in `in_review`. This includes a final provider turn reported `completed` or `interrupted`: only an accepted Loom submission ends the run. Suppressed while the task is blocked/failed, a message to that run is pending/sent, or its question is unanswered. Nothing is killed or relaunched. |
 | `status_unknown` | A run has been `unknown` for longer than `unknownGraceMs` |
 | `over_budget` | Time in stages `planning` through `awaiting_approval` exceeds `budgetMinutes` |
 
@@ -488,7 +488,10 @@ Do not prune an outbox receipt while a live intent/dependency or a replayable re
 | `inputs: Input[]` | Coordinator inbox | Human commands, validated MCP calls, action results |
 
 `Reading.ok: false` means the owner couldn't be read. Reconcile treats that fact as unknown: no
-transition whose guard needs it, and runs whose provider can't be read become `unknown`.
+transition whose guard needs it, and runs whose provider can't be read become `unknown`. Codex
+connection replacement resumes and hydrates every previously subscribed recorded thread before
+retrying its read; a successful native snapshot clears `unknownSince`, while persistent failure
+reaches `observability_failure` at `unknownGraceMs`.
 
 Required evidence is appended after the original fields in each observation interface:
 

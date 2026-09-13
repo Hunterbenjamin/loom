@@ -707,6 +707,32 @@ describe("bounded pending delivery", () => {
     );
   });
 
+  it("bounds a message selected before its fresh send gate becomes unknown", () => {
+    const f = queuedReviewer();
+    const selected = fixed(f.state, f.observations);
+    expect(selected.actions.some((a) => a.kind === "send_message")).toBe(true);
+    const observation = f.observations.runs[2] as RunObservation;
+    observation.provider = {
+      ok: false,
+      reason: "connection lost before transport",
+      at: now,
+    };
+    const unknown = fixed(selected.next, f.observations);
+    expect(unknown.next.runs.find((run) => run.id === f.run.id)?.status).toBe(
+      "unknown",
+    );
+    expect(unknown.next.messages[0]).toMatchObject({
+      status: "pending",
+      pendingSince: now,
+    });
+    expect(unknown.next.messages[0]?.deliveryAttention).not.toBe(true);
+    f.observations.now = deadline;
+    const expired = fixed(unknown.next, f.observations);
+    expectAttention(expired, f.run, "transport action is pending");
+    expect(expired.next.messages[0]?.deliveryAttention).toBe(true);
+    expect(expired.actions.some((a) => a.kind === "send_message")).toBe(false);
+  });
+
   it("sends once when capacity returns before the deadline", () => {
     const f = queuedReviewer();
     f.observations.capacity.caps.total = 0;
