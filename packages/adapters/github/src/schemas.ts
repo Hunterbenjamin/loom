@@ -53,6 +53,8 @@ export const check = z.object({
   ]),
   conclusion: z.string().nullable(),
   html_url: z.url().nullable(),
+  started_at: time.nullable().optional(),
+  completed_at: time.nullable().optional(),
 });
 export const checks = z.object({
   total_count: z.number().int().nonnegative(),
@@ -91,3 +93,52 @@ export const reviewComment = issueComment.extend({
   side: z.enum(["LEFT", "RIGHT"]).nullable(),
   commit_id: sha,
 });
+
+export const pullState = z.enum(["open", "closed", "merged"]);
+export const pullDetail = pull.extend({
+  title: z.string(),
+  user: author,
+  body: z.string().nullable(),
+  created_at: time,
+  updated_at: time,
+  draft: z.boolean(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  changed_files: z.number().int().nonnegative(),
+  commits: z.number().int().nonnegative(),
+});
+export const commit = z.object({
+  sha,
+  html_url: z.url(),
+  author,
+  commit: z.object({
+    message: z.string(),
+    committer: z.object({ date: time.nullable() }).nullable(),
+  }),
+});
+export const headRepository = z.object({
+  head: z.object({
+    ref: branch,
+    repo: z.object({ full_name: repo }).nullable(),
+  }),
+});
+export const ref = z.object({ ref: z.string(), object: z.object({ sha }) });
+export const apiError = z.object({ message: z.string() });
+
+/** Literal remote branch, without the fork-owner syntax accepted by PR lookup. */
+export const remoteBranch = branch.refine(
+  (v) =>
+    !v.includes(":") &&
+    !v.includes("..") &&
+    !v.includes("@{") &&
+    !v.startsWith("/") &&
+    !v.endsWith("/") &&
+    !v.endsWith(".") &&
+    v !== "@" &&
+    v
+      .split("/")
+      .every(
+        (part) =>
+          part.length > 0 && !part.startsWith(".") && !part.endsWith(".lock"),
+      ),
+);

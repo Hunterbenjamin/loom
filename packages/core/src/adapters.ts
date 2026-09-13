@@ -3,7 +3,7 @@
 // Subscriptions deliver hints: a reason to re-read, never a fact to act on.
 
 import type { ActionOutputs } from "./actions.js";
-import type { PaneRef } from "./entities.js";
+import type { CiState, PaneRef } from "./entities.js";
 import type {
   BlobOid,
   IsoTime,
@@ -103,7 +103,65 @@ export interface GitAdapter {
 
 // ---------------------------------------------------------------- GitHub
 
+export type PullRequestState = "open" | "closed" | "merged";
+
+export interface PullRequestSummary {
+  number: number;
+  title: string;
+  author: string | null;
+  state: PullRequestState;
+  head: string;
+  base: string;
+  headSha: Sha;
+  createdAt: IsoTime;
+  updatedAt: IsoTime;
+  draft: boolean;
+  mergeable: PullRequestObservation["mergeable"];
+  checks: CiState["conclusion"];
+  review: "approved" | "changes_requested" | "none";
+  url: string;
+  observedAt: IsoTime;
+}
+
+export interface PullRequestDetail extends PullRequestSummary {
+  body: string;
+  mergedAt: IsoTime | null;
+  mergeCommitSha: Sha | null;
+  commits: {
+    sha: Sha;
+    message: string;
+    author: string | null;
+    committedAt: IsoTime | null;
+    url: string;
+  }[];
+  checkRuns: (CiState["checks"][number] & {
+    startedAt: IsoTime | null;
+    completedAt: IsoTime | null;
+  })[];
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+}
+
+export interface PullRequestPatch {
+  patch: string;
+  /** At most 8 MiB of UTF-8; never treat a truncated patch as a complete diff. */
+  truncated: boolean;
+  observedAt: IsoTime;
+}
+
 export interface GitHubAdapter {
+  /** All pages, newest first. Closed excludes merged. Reads use disposable native ETags. */
+  listPullRequests(
+    repo: string,
+    state: PullRequestState,
+  ): Promise<PullRequestSummary[]>;
+  readPullRequest(repo: string, number: number): Promise<PullRequestDetail>;
+  readPullRequestPatch(repo: string, number: number): Promise<PullRequestPatch>;
+  /** Idempotent, with a fresh owner read before and after a mutation. */
+  closePullRequest(repo: string, number: number): Promise<void>;
+  /** Remote heads only; never deletes a local branch or changes a checkout. */
+  deleteBranch(repo: string, branch: string): Promise<void>;
   /** The PR whose head is `branch`, open or not. `value: null`: none. */
   findPullRequest(req: {
     repo: string;
@@ -124,6 +182,8 @@ export interface GitHubAdapter {
     number: number;
     matchHeadSha: Sha;
     auto: boolean;
+    /** Delete the remote head branch only after a confirmed merge, including on retry. */
+    deleteBranch?: boolean;
   }): Promise<ActionOutputs["merge_pr"]>;
   /** Idempotent: succeeds when auto-merge is already off. */
   disableAutoMerge(req: { repo: string; number: number }): Promise<void>;

@@ -17,10 +17,15 @@ export interface GhResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+  truncated?: boolean;
 }
-export type GhRunner = (args: string[], input?: string) => Promise<GhResult>;
+export type GhRunner = (
+  args: string[],
+  input?: string,
+  options?: { stdoutLimit: number },
+) => Promise<GhResult>;
 
-export const runGh: GhRunner = (args, input) =>
+export const runGh: GhRunner = (args, input, options) =>
   new Promise((resolve, reject) => {
     // Keep the user's existing authentication; suppress prompts, debug dumps and pagers.
     const env = { ...process.env };
@@ -33,6 +38,8 @@ export const runGh: GhRunner = (args, input) =>
     let stderr = "";
     let size = 0;
     let stopped = false;
+    let truncated = false;
+    let stdoutBytes = 0;
     const stop = () => {
       stopped = true;
       child.kill("SIGKILL");
@@ -44,6 +51,14 @@ export const runGh: GhRunner = (args, input) =>
     ] as const) {
       stream.setEncoding("utf8");
       stream.on("data", (chunk: string) => {
+        if (isOutput && options) {
+          const bytes = Buffer.from(chunk);
+          const remaining = Math.max(0, options.stdoutLimit - stdoutBytes);
+          if (bytes.length > remaining) truncated = true;
+          stdout += utf8Prefix(bytes, remaining);
+          stdoutBytes += Math.min(bytes.length, remaining);
+          return;
+        }
         size += Buffer.byteLength(chunk);
         if (size > 16 * 1024 * 1024) return stop();
         if (isOutput) stdout += chunk;
@@ -59,7 +74,13 @@ export const runGh: GhRunner = (args, input) =>
       clearTimeout(timer);
       if (stopped || code === null)
         reject(new GitHubError("retryable", "GitHub CLI did not complete"));
-      else resolve({ stdout, stderr, exitCode: code });
+      else
+        resolve({
+          stdout,
+          stderr,
+          exitCode: code,
+          ...(truncated ? { truncated } : {}),
+        });
     });
     child.stdin.end(input);
   });
@@ -112,7 +133,7 @@ export function json(text: string): unknown {
   }
 }
 
-export function response(result: GhResult) {
+export function response(result: GhResult, accepted = [200, 304]) {
   const match =
     /^HTTP\/\S+ (\d{3})[^\r\n]*\r?\n([\s\S]*?)\r?\n\r?\n([\s\S]*)$/.exec(
       result.stdout,
@@ -130,7 +151,19 @@ export function response(result: GhResult) {
       .slice(separator + 1)
       .trim();
   }
-  if (status !== 304 && (status !== 200 || result.exitCode !== 0))
+  if (
+    !accepted.includes(status) ||
+    (status >= 200 && status < 300 && result.exitCode !== 0)
+  )
     throw failure(result, status, headers);
   return { status, headers, body: match[3] ?? "" };
+}
+
+/** Do not split a multi-byte code point at the byte cap. */
+export function utf8Prefix(bytes: Buffer, limit: number): string {
+  let end = Math.min(bytes.length, limit);
+  if (end < bytes.length) {
+    while (end > 0 && ((bytes[end] ?? 0) & 0xc0) === 0x80) end--;
+  }
+  return bytes.subarray(0, end).toString("utf8");
 }
