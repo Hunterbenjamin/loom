@@ -61,6 +61,17 @@ export function Sidebar() {
         </button>
       ))}
 
+      <button
+        type="button"
+        className="view-item"
+        data-view="pull-requests"
+        aria-current={view === "pull-requests" ? "page" : undefined}
+        onClick={() => store.setView("pull-requests")}
+      >
+        <span>Pull requests</span>
+        <span className="count">{counts["pull-requests"]}</span>
+      </button>
+
       <div className="pad faint" role="status">
         {connection === "connected"
           ? ""

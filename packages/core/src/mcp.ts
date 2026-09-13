@@ -104,7 +104,7 @@ export interface GetTaskContextOutput {
   /** The full append-only decisions log. */
   decisions: string;
   handoff: Handoff | null;
-  /** Implementer: open, addressed and disputed. Reviewer: every finding from earlier rounds. */
+  /** Implementer: open, escalated, addressed and disputed. Reviewer: prior rounds and current external findings. */
   findings: FindingView[];
   testResults: TestResult[];
   answeredQuestions: { id: QuestionId; question: string; answer: string }[];
@@ -188,22 +188,30 @@ export interface FindingInput {
   severity: Severity;
   title: string;
   body: string;
+  /** Open reviewer reports are non-blocking regardless of severity. */
+  status?: "open" | "fixed" | "escalate";
+  commitSha?: Sha;
+  reason?: string;
   /** Lines in `reviewedSha`'s blob. Null for a task-level finding. */
   location: FindingLocationInput | null;
 }
 
 export interface FindingVerdictInput {
   findingId: FindingId;
-  status: "resolved" | "reopened";
+  status: "resolved" | "reopened" | "fixed" | "escalate";
   note: string;
+  commitSha?: Sha;
+  reason?: string;
 }
 
 export interface SubmitReviewInput {
-  /** Must equal the head the review round started on. */
+  /** Clean worktree HEAD, equal to or descended from the immutable round head. */
   reviewedSha: Sha;
+  /** Complete ordered round-head..reviewedSha range attributed to this reviewer run. */
+  reviewerCommits: Sha[];
   summary: string;
   findings: FindingInput[];
-  /** One verdict per finding that was `addressed` or `disputed` at the start of the round. */
+  /** One verdict per addressed/disputed finding and every remaining open blocker. */
   verdicts: FindingVerdictInput[];
   testResults: TestResultInput[];
 }
@@ -211,7 +219,7 @@ export interface SubmitReviewInput {
 export interface SubmitReviewOutput {
   round: number;
   openBlocking: number;
-  next: "in_progress" | "awaiting_approval" | "blocked";
+  next: "in_review" | "in_progress" | "awaiting_approval" | "blocked";
 }
 
 // ---------------------------------------------------------------- resolve_finding

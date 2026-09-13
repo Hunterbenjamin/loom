@@ -56,12 +56,16 @@ const callSchema = z.discriminatedUnion("tool", [
     tool: z.literal("submit_review"),
     input: z.object({
       reviewedSha: sha,
+      reviewerCommits: z.array(sha).default([]),
       summary: text,
       findings: z.array(
         z.object({
           severity,
           title: text,
           body: text,
+          status: z.enum(["open", "fixed", "escalate"]).optional(),
+          commitSha: sha.optional(),
+          reason: text.optional(),
           location: z
             .object({
               path: text,
@@ -75,7 +79,9 @@ const callSchema = z.discriminatedUnion("tool", [
       verdicts: z.array(
         z.object({
           findingId: id,
-          status: z.enum(["resolved", "reopened"]),
+          status: z.enum(["resolved", "reopened", "fixed", "escalate"]),
+          commitSha: sha.optional(),
+          reason: text.optional(),
           note: text,
         }),
       ),
@@ -199,7 +205,12 @@ const replySchema = z.discriminatedUnion("tool", [
     value: z.object({
       round: positive,
       openBlocking: count,
-      next: z.enum(["in_progress", "awaiting_approval", "blocked"]),
+      next: z.enum([
+        "in_review",
+        "in_progress",
+        "awaiting_approval",
+        "blocked",
+      ]),
     }),
   }),
   z.object({

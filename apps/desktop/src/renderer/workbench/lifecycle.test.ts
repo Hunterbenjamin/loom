@@ -301,7 +301,7 @@ test("pane clicks replace the focused viewer, Enter opens an independent tab, an
       h.publish();
     });
     expect(h.element.querySelector(".wb-space .wb-status")?.textContent).toBe(
-      "◐",
+      "●",
     );
     expect(terminalRenders).toHaveBeenCalledTimes(renders);
     await act(async () => {

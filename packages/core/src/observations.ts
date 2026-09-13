@@ -48,6 +48,8 @@ export interface GitWorktreeObservation {
   dirtyPaths: string[];
   /** Git boundary: queried commits proven reachable from this HEAD; [] means none. */
   reachableCommits: Sha[];
+  /** Complete oldest-first range, only when the requested round head is an ancestor of HEAD. */
+  reviewCommits?: { baseSha: Sha; headSha: Sha; commits: Sha[] } | null;
 }
 
 // ---------------------------------------------------------------- GitHub

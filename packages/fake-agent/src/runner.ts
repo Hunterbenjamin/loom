@@ -66,7 +66,12 @@ export interface ScenarioOptions {
     runner: ScenarioRunner,
   ): Promise<ActionResult | undefined>;
   commit?(
-    step: { files: Record<string, string>; message: string; human: boolean },
+    step: {
+      files: Record<string, string>;
+      message: string;
+      human: boolean;
+      writeOnly?: boolean;
+    },
     runner: ScenarioRunner,
   ): Promise<void>;
   /** Supply a store-backed host/anchor reader when testing the future coordinator. */
@@ -425,6 +430,7 @@ export class ScenarioRunner {
           files: step.files,
           message: "message" in step ? step.message : "Human push",
           human: "github" in step,
+          writeOnly: "git" in step && step.git === "write",
         },
         this,
       );
@@ -532,8 +538,8 @@ export class ScenarioRunner {
       findings: this.state.findings
         .filter((f) =>
           run.role === "reviewer"
-            ? f.round < run.round
-            : ["open", "addressed", "disputed"].includes(f.status),
+            ? f.round < run.round || f.source !== "reviewer"
+            : ["open", "escalate", "addressed", "disputed"].includes(f.status),
         )
         .map((f) => ({
           id: f.id,

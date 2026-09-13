@@ -1,0 +1,78 @@
+[
+  {
+    "name": "implementation before inline review",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "headless"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "status": "working"
+      },
+      {
+        "git": "commit",
+        "files": {
+          "example.txt": "first implementation"
+        },
+        "message": "first implementation"
+      },
+      {
+        "tool": "submit_for_review",
+        "input": {
+          "headSha": "$HEAD",
+          "summary": "Ready",
+          "testResults": [],
+          "handoff": {
+            "summary": "Ready",
+            "nextSteps": []
+          }
+        }
+      },
+      {
+        "status": "idle"
+      }
+    ]
+  },
+  {
+    "name": "reviewer refuses a dirty tree",
+    "agent": {
+      "provider": "claude",
+      "role": "reviewer",
+      "mode": "headless"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "git": "write",
+        "files": {
+          "example.txt": "correct value\n"
+        },
+        "message": "Fix finding: wrong value"
+      },
+      {
+        "tool": "submit_review",
+        "input": {
+          "reviewedSha": "$HEAD",
+          "reviewerCommits": [],
+          "summary": "Fixed wrong value and tested",
+          "findings": [],
+          "verdicts": [],
+          "testResults": [
+            {
+              "command": "fixture assertion",
+              "outcome": "passed",
+              "summary": "Correct value"
+            }
+          ]
+        },
+        "expectError": "guard_failed"
+      }
+    ]
+  }
+]

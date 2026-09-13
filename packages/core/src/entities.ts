@@ -22,6 +22,8 @@ import type {
   WorktreePath,
 } from "./ids.js";
 
+import type { SubmitReviewInput } from "./mcp.js";
+
 export type Provider = "codex" | "claude";
 export type Role = "planner" | "implementer" | "reviewer";
 
@@ -441,6 +443,11 @@ export interface TestResult {
 }
 
 export interface Handoff {
+  reviewerSubmission?: {
+    runId: RunId;
+    round: number;
+    input: SubmitReviewInput;
+  };
   from: Role;
   to: Role;
   headSha: Sha | null;
@@ -460,6 +467,10 @@ export type FindingStatus =
   /** The implementer disagrees; the next reviewer or the human decides. */
   | "disputed"
   | "resolved"
+  /** Reviewer committed an inline fix. */
+  | "fixed"
+  /** Reviewer requires an implementer fix round; resolution.note records why. */
+  | "escalate"
   /** A human accepted it as is. */
   | "waived";
 /** Where the anchor points on the current head. `outdated` never resolves a finding. */

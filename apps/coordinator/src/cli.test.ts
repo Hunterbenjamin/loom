@@ -287,6 +287,8 @@ test("task inspect --json includes histories, receipts and pending approvals", a
     addressed: 0,
     disputed: 0,
     resolved: 1,
+    fixed: 0,
+    escalate: 0,
     waived: 0,
   });
 });

@@ -322,6 +322,7 @@ export function Workbench() {
     [store, tabs, active, focused],
   );
   const [zoom, setZoom] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [filter, setFilter] = useState("");
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
@@ -678,7 +679,10 @@ export function Workbench() {
     }
     if (action === "new") return newTab();
     if (action === "jump") {
-      document.getElementById("agent-filter")?.focus();
+      setSidebarCollapsed(false);
+      requestAnimationFrame(() =>
+        document.getElementById("agent-filter")?.focus(),
+      );
       return;
     }
     if (action === "help") {
@@ -791,6 +795,9 @@ export function Workbench() {
     }
     setPendingTab({ taskId });
   };
+  const selectedPanel = tabs
+    .find((tab) => tab.id === active)
+    ?.panels.find((panel) => panel.id === focused);
   return (
     <div className="workbench">
       <div className="wb-titlebar" aria-hidden="true" />
@@ -803,6 +810,10 @@ export function Workbench() {
       )}
       <div className="wb-body">
         <Sidebar
+          selected={selectedPanel?.target ?? selectedPanel?.system}
+          collapsed={sidebarCollapsed}
+          toggleSidebar={() => setSidebarCollapsed((value) => !value)}
+          showMenu={() => setPalette(true)}
           filter={filter}
           setFilter={setFilter}
           choose={choose}

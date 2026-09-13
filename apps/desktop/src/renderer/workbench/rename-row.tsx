@@ -12,6 +12,7 @@ export function RenameRow({
   children,
   className = "",
   ariaLabel,
+  current,
   disabled,
 }: {
   kind: "space" | "tab";
@@ -19,6 +20,7 @@ export function RenameRow({
   name: string;
   expanded?: boolean;
   ariaLabel?: string;
+  current?: boolean;
   disabled?: boolean;
   toggle: () => void;
   children: ReactNode;
@@ -138,6 +140,7 @@ export function RenameRow({
       className={`wb-tree-row ${className}`}
       aria-expanded={expanded}
       aria-label={ariaLabel}
+      aria-current={current ? "true" : undefined}
       disabled={disabled}
       title={name}
       onClick={(event) => {
