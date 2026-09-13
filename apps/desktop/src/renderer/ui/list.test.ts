@@ -122,12 +122,14 @@ function key(key: string, target: EventTarget = window) {
 
 test("collapses to the total header, expands again, and retains window-only settings on remount", () => {
   const h = setup();
-  expect(h.rows("done")).toHaveLength(20);
+  expect(h.rows("done")).toHaveLength(10);
   expect(h.button("Done · 46").getAttribute("aria-expanded")).toBe("true");
+  // Canceled starts collapsed.
+  expect(h.rows("canceled")).toHaveLength(0);
+  expect(h.button("Canceled · 46").getAttribute("aria-expanded")).toBe("false");
   act(() => h.button("Done · 46").click());
   expect(h.rows("done")).toHaveLength(0);
   expect(h.button("Done · 46").getAttribute("aria-expanded")).toBe("false");
-  expect(h.rows("canceled")).toHaveLength(20);
   expect(h.host.textContent).toContain("Keep this summary");
   expect(
     h.host.querySelector('[data-task="active"] .wb-status.working'),
@@ -139,9 +141,9 @@ test("collapses to the total header, expands again, and retains window-only sett
   h.render();
   expect(h.button("Done · 46").getAttribute("aria-expanded")).toBe("false");
   // A second window starts expanded independently.
-  expect(setup().rows("done")).toHaveLength(20);
+  expect(setup().rows("done")).toHaveLength(10);
   act(() => h.button("Done · 46").click());
-  expect(h.rows("done")).toHaveLength(20);
+  expect(h.rows("done")).toHaveLength(10);
 });
 
 test.each(["Enter", " "])(
@@ -165,27 +167,30 @@ test.each(["Enter", " "])(
 
 test("loads successive pages independently and retains totals and loaded rows across collapse", () => {
   const h = setup();
-  act(() => h.button("Load 20 more").click());
-  expect(h.rows("done")).toHaveLength(40);
-  expect(h.rows("canceled")).toHaveLength(20);
+  act(() => h.button("Load 10 more").click());
+  expect(h.rows("done")).toHaveLength(20);
+  expect(h.rows("canceled")).toHaveLength(0);
   expect(h.button("Done · 46")).toBeTruthy();
   act(() => h.button("Done · 46").click());
   expect(h.rows("done")).toHaveLength(0);
   act(() => h.button("Done · 46").click());
-  expect(h.rows("done")).toHaveLength(40);
+  expect(h.rows("done")).toHaveLength(20);
+  act(() => h.button("Load 10 more").click());
+  act(() => h.button("Load 10 more").click());
   act(() => h.button("Load 6 more").click());
   expect(h.rows("done")).toHaveLength(46);
-  expect(h.host.querySelectorAll(".list-load-more")).toHaveLength(1);
-  act(() => h.button("Load 20 more").click());
-  expect(h.rows("canceled")).toHaveLength(40);
-  act(() => h.button("Load 6 more").click());
-  expect(h.rows("canceled")).toHaveLength(46);
   expect(h.host.querySelectorAll(".list-load-more")).toHaveLength(0);
+  act(() => h.button("Canceled · 46").click());
+  expect(h.rows("canceled")).toHaveLength(10);
+  act(() => h.button("Load 10 more").click());
+  expect(h.rows("canceled")).toHaveLength(20);
+  expect(h.host.querySelectorAll(".list-load-more")).toHaveLength(1);
 });
 
 test("j/k and Enter use only expanded, loaded rows in displayed order", () => {
   const h = setup();
   act(() => h.button("Done · 46").click());
+  act(() => h.button("Canceled · 46").click());
   key("j");
   expect(
     h.host.querySelector('[data-cursor="true"]')?.getAttribute("data-task"),
@@ -199,7 +204,7 @@ test("j/k and Enter use only expanded, loaded rows in displayed order", () => {
   ).toBe("active");
   for (let i = 0; i < 30; i++) key("j");
   key("Enter");
-  expect(h.store.getState().ui.openTask).toBe("canceled-19");
+  expect(h.store.getState().ui.openTask).toBe("canceled-9");
   key("Escape");
   act(() => h.button("Canceled · 46").click());
   act(() => h.button("In progress · 1").click());
