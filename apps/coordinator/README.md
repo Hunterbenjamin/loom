@@ -407,23 +407,48 @@ run, so editing WORKFLOW.md in a worktree takes effect without restarting the co
 **Note:** If WORKFLOW.md is malformed or missing, the run receives only the fixed allowlist and
 continues without error. See [WORKFLOW.md policy](./README.md#workflowmd-design-note-133-settled-here) for details.
 
+## Projects
+
+`select_repo({repoId})` stores the per-instance last-opened repository in SQLite metadata. Snapshots
+include `projects: [{id: "project", repoId}]`; `project` patches keep every window synchronized.
+Unknown IDs are rejected. The first registered repository is the initial default; with none the
+selection is null and Tracker offers Open repository.
+
+`add_repo({root, github, baseBranch?})` shares `loom repo add` registration: canonical root, owner/name
+ID and provider defaults. Repeated identical registration reuses the row and preserves configuration;
+a conflicting root/origin is refused. It selects the registered project and publishes registry and
+selection changes immediately. Electron's native folder chooser derives root and GitHub owner/name
+from Git's origin before sending this command. Errors remain inline in the picker.
+
 ## Main
 
-`open_lead_session` opens the instance's interactive Claude Main; `stop_lead_session` stops it and
+`open_lead_session({repoId})` opens that repository's interactive Claude Main; `stop_lead_session({repoId})` stops it and
 revokes its token. `LOOM_MODEL_LEAD` defaults to `LOOM_MODEL_CLAUDE`. Its private recipe and settings
-are in `<instance data>/lead/`, with cwd at the instance data directory. No task or run is created.
+are in `<instance data>/lead/<repoId>/`, with cwd at the repository root and tmux workspace
+`lead-<repoId>` (`loom-lead-<repoId>` on the instance server). No task or run is created.
 The configured stable MCP port takes precedence over the recipe; ephemeral instances reuse the
 saved Main port across coordinator restarts. Recovery rewrites Main settings to the current
 endpoint and relaunches only confirmed dead Main panes; absence requires an explicit open.
 The internal `lead` identity and configuration names stay compatible. Main launches with Loom MCP
-and only `Read`, `Glob`, `Grep` within its instance directory; shell, editing, web and subagent tools
+and only `Read`, `Glob`, `Grep` within its repository; shell, editing, web and subagent tools
 are denied. Other MCP servers and terminal attach tools are unavailable to Main. Existing live
 sessions keep their launch permissions until the human restarts Main.
 
-Main introduces itself in two sentences and waits. On a subsequent panel open, the coordinator
+Each token scopes all Main tools to its repository. `create_task` may omit `repoId`; explicit foreign
+repositories, task IDs and dependencies are rejected. Switching the desktop picker retargets the
+Main viewer without stopping another project's session. Operator remains instance-wide and
+`LOOM_OPERATOR_REPO` is unchanged.
+
+Startup loads and recovers every per-repository recipe. A legacy `lead/recipe.json` migrates once
+to the first registered repository, preserving session/token, copying settings and `main-notes`,
+and retiring the source only after the destination is committed. A recorded legacy pane is closed
+before moving the same session into its repository workspace. Missing panes still require an
+explicit open. No repositories means migration waits until a repository is registered.
+
+Main introduces its repository in two sentences and waits. On a subsequent panel open, the coordinator
 requests a brief Needs-you summary only if native status is idle with no pending dialog. It never
 pastes into a busy or waiting session, polls for a turn, or retries an uncertain summary delivery.
-The Main-only `set_note({note})` tool atomically replaces `<instance data>/main-notes` (max 2,000
+The Main-only `set_note({note})` tool atomically replaces `<instance data>/lead/<repoId>/main-notes` (max 2,000
 characters; empty clears it). Every launch includes this note as context, including session rotation.
 See [the UI design](../../docs/design/ui.md#main) for controls and tool scope.
 

@@ -2,7 +2,7 @@
 // Tools reuse the protocol boundary and human command path. No stage rules live here.
 
 import type { Command } from "@loom/protocol";
-import { command, humanCommand, taskId } from "@loom/protocol";
+import { command, humanCommand, repoId, taskId } from "@loom/protocol";
 import { z } from "zod";
 
 const humanTypes = {
@@ -36,7 +36,9 @@ export const leadInputSchemas = {
   list_tasks: z.strictObject({}),
   inspect_task: z.strictObject({ taskId }),
   list_repos: z.strictObject({}),
-  create_task: (create as z.ZodObject).omit({ kind: true }),
+  create_task: (create as z.ZodObject)
+    .omit({ kind: true })
+    .extend({ repoId: repoId.optional() }),
   ...Object.fromEntries(
     Object.entries(humanTypes).map(([name, type]) => [name, humanSchema(type)]),
   ),
@@ -54,5 +56,9 @@ export function leadCommand(
   return command.parse({ kind: "human", taskId, command: { type, ...fields } });
 }
 export interface LeadHost {
-  invoke(name: string, input: Record<string, unknown>): Promise<unknown>;
+  invoke(
+    name: string,
+    input: Record<string, unknown>,
+    repoId?: string,
+  ): Promise<unknown>;
 }

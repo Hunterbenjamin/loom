@@ -35,11 +35,13 @@ export function Sidebar({
     const animations = new Set<Animation>();
     const stop = store.subscribePaneTransitions((pane) => {
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      const pinned = ["loom-lead", "loom-main"].includes(pane.sessionName)
-        ? "main"
-        : pane.sessionName === "loom-operator"
-          ? "operator"
-          : null;
+      const pinned =
+        pane.sessionName === `loom-lead-${store.getState().ui.repo}` ||
+        ["loom-lead", "loom-main"].includes(pane.sessionName)
+          ? "main"
+          : pane.sessionName === "loom-operator"
+            ? "operator"
+            : null;
       const row = [
         ...(sidebar.current?.querySelectorAll<HTMLElement>(
           "[data-pane-key], [data-pinned]",
@@ -80,6 +82,7 @@ export function Sidebar({
     [panes, filter, runs],
   );
   const lead = useStore((s) => s.lead);
+  const repo = useStore((s) => s.ui.repo);
   const operator = useStore((s) => s.operator);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const expanded = (key: string) => !!filter.trim() || !collapsed.has(key);
@@ -205,6 +208,7 @@ export function Sidebar({
         <button
           type="button"
           className="wb-tree-pane"
+          disabled={!repo}
           data-pinned="main"
           onClick={() => openPinned("main")}
           title="Open Main terminal"

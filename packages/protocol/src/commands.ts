@@ -95,8 +95,15 @@ export const command = z.union([
     taskId,
     key: z.string().uuid(),
   }),
-  z.strictObject({ kind: z.literal("open_lead_session") }),
-  z.strictObject({ kind: z.literal("stop_lead_session") }),
+  z.strictObject({ kind: z.literal("open_lead_session"), repoId }),
+  z.strictObject({ kind: z.literal("stop_lead_session"), repoId }),
+  z.strictObject({ kind: z.literal("select_repo"), repoId }),
+  z.strictObject({
+    kind: z.literal("add_repo"),
+    root: z.string().min(1),
+    github: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+    baseBranch: z.string().min(1).optional(),
+  }),
   /** A `HumanCommand` for one task. Validated here, then queued as an input. */
   z.strictObject({ kind: z.literal("human"), taskId, command: humanCommand }),
   /**
@@ -180,6 +187,8 @@ export const ackResult = z.union([
   z.strictObject({ kind: z.literal("scratch_created"), pane: paneView }),
   z.strictObject({ kind: z.literal("terminal_closed"), target: paneIdentity }),
   z.strictObject({ kind: z.literal("lead_stopped") }),
+  z.strictObject({ kind: z.literal("repo_selected"), repoId }),
+  z.strictObject({ kind: z.literal("repo_added"), repoId }),
   /**
    * The command was validated and recorded as an input. It has not run yet: watch the patches and
    * the transition log for what reconcile did with it.

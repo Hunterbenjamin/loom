@@ -185,7 +185,7 @@ export const TerminalSession = memo(function TerminalSession({
   onKey,
   label,
   runId = null,
-  lead = false,
+  lead,
   operator = false,
   theme,
   live,
@@ -197,7 +197,7 @@ export const TerminalSession = memo(function TerminalSession({
   onKey?: (event: KeyboardEvent, literal: () => void) => boolean;
   label: string;
   runId?: RunId | null;
-  lead?: boolean;
+  lead?: string;
   operator?: boolean;
   theme: "dark" | "light";
   live: boolean;

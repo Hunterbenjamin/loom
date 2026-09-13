@@ -223,6 +223,7 @@ export function toSnapshot(fixture: Snapshot): {
       panes: [],
       paneInventory: [],
       leads: [],
+      projects: [{ id: "project", repoId: fixture.repos[0]?.id ?? null }],
       inbox: [],
       repos: fixture.repos.map((repo) => ({
         ...repo,

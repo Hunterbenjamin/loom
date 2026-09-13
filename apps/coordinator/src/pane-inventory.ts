@@ -18,6 +18,7 @@ export function assemblePanes(
   now: string,
   leadPane: string | null,
   leadWaiting: boolean,
+  leadPanes: ReadonlySet<string> = new Set(),
 ): PaneView[] {
   return observations.map((p) => {
     const matches = states.flatMap((state) =>
@@ -32,7 +33,9 @@ export function assemblePanes(
     const task =
       match?.state.task ??
       (workspaces.length === 1 ? workspaces[0]?.task : undefined);
-    let attention = leadPane === paneKey(p.ref) && leadWaiting;
+    let attention =
+      (leadPane === paneKey(p.ref) && leadWaiting) ||
+      leadPanes.has(paneKey(p.ref));
     if (match) {
       const s = match.state;
       const derived = deriveAttention({
@@ -90,8 +93,9 @@ export class PaneInventory {
     private metadata: () => {
       states: TaskState[];
       now: string;
-      leadPane: string | null;
-      leadWaiting: boolean;
+      leadPane?: string | null;
+      leadWaiting?: boolean;
+      leadPanes?: ReadonlySet<string>;
     },
     private publish: (rows: PaneView[], unavailable: boolean) => void,
   ) {}
@@ -126,8 +130,9 @@ export class PaneInventory {
           m.states,
           counts,
           m.now,
-          m.leadPane,
-          m.leadWaiting,
+          m.leadPane ?? null,
+          m.leadWaiting ?? false,
+          m.leadPanes,
         );
         // Share each cwd read (including failures) for this refresh only. The next
         // poll or hint must observe branch switches and recover unreadable paths.

@@ -36,6 +36,7 @@ test("renders linked and unlinked spaces, independent collapses, filtering and p
     );
   publish();
   window.loomHost = {
+    chooseRepository: vi.fn(),
     interactive: vi.fn(),
   } as unknown as typeof window.loomHost;
   const choose = vi.fn();

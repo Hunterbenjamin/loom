@@ -40,6 +40,7 @@ test("audio obeys window/pane focus and mute; flash is once per transition with 
   const oldAnimate = HTMLElement.prototype.animate;
   HTMLElement.prototype.animate = animate as unknown as typeof oldAnimate;
   window.loomHost = {
+    chooseRepository: vi.fn(),
     interactive: vi.fn(),
   } as unknown as typeof window.loomHost;
   const element = document.createElement("div");

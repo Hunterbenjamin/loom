@@ -60,7 +60,17 @@ import {
  * Every collection a client holds, with its key schema and the key of a value. `task` is
  * task-list level and reaches every client; the rest follow subscriptions.
  */
+export const projectState = z.strictObject({
+  id: z.literal("project"),
+  repoId: repoId.nullable(),
+});
+
 export const collections = {
+  project: {
+    value: projectState,
+    key: z.literal("project"),
+    keyOf: (v: z.output<typeof projectState>) => v.id,
+  },
   pull_request: {
     value: pullRequestRow,
     key: z.string().min(1),
@@ -95,7 +105,7 @@ export const collections = {
   },
   lead: {
     value: leadState,
-    key: z.literal("lead"),
+    key: repoId,
     keyOf: (v: z.output<typeof leadState>) => v.id,
   },
   inbox: {
@@ -175,6 +185,7 @@ export function keyOf<N extends CollectionName>(
 }
 
 export const snapshotBody = z.strictObject({
+  projects: z.array(projectState).default([]),
   pullRequests: z.array(pullRequestRow).default([]),
   pullRequestDetails: z.array(pullRequestDetailRow).default([]),
   operators: z.array(operatorState).default([]),
@@ -202,6 +213,7 @@ export const snapshotBody = z.strictObject({
 
 /** Which snapshot collection each patch collection lands in. */
 export const COLLECTION_FIELDS = {
+  project: "projects",
   pull_request: "pullRequests",
   pull_request_detail: "pullRequestDetails",
   operator: "operators",
@@ -230,6 +242,7 @@ export const COLLECTION_FIELDS = {
 export type SnapshotBody = z.output<typeof snapshotBody>;
 
 export const emptySnapshotBody = (): SnapshotBody => ({
+  projects: [],
   pullRequests: [],
   pullRequestDetails: [],
   operators: [],

@@ -107,6 +107,7 @@ const TabGrid = memo(function TabGrid({
   const api = useRef<GridviewApi | null>(null);
   const [rects, setRects] = useState<Record<string, Rect>>({});
   const live = useStore((s) => s.live);
+  const repo = useStore((s) => s.ui.repo);
   const theme = useStore((s) => s.ui.theme);
   const runs = useStore((s) => s.snapshot.runs);
   const measure = useCallback(() => {
@@ -282,7 +283,7 @@ const TabGrid = memo(function TabGrid({
           <TerminalSession
             panelId={p.id}
             pane={p.target}
-            lead={p.system === "main"}
+            lead={p.system === "main" ? repo || undefined : undefined}
             operator={p.system === "operator"}
             live={live}
             theme={theme}

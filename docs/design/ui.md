@@ -26,10 +26,21 @@ Closing a window closes only its viewers; the coordinator owns durable task stat
 
 ## Tracker
 
+The top-left picker opens exactly one registered repository; there is no All repositories option.
+Every Tracker view, list, board, search and attention count is scoped to that project. Selection
+is coordinator-owned: `select_repo({repoId})` persists the per-instance last-opened repository in
+SQLite and publishes the `project` row in snapshots and patches to all windows. A new window opens
+on that selection; the first registered repository is the initial default, including single-repo
+instances. With none, Tracker shows **Open repository**.
+
+**Add repository…** opens Electron's native folder chooser. The main process reads the folder's
+Git root and origin, derives GitHub owner/name, and the renderer sends `add_repo({root, github})`.
+Registration shares the CLI's defaults and canonical root handling, selects the added repository,
+and publishes it to all windows. Cancel creates nothing; chooser, Git and command errors stay inline.
+
 Create issue opens from `C`, the command palette, or **+** beside the repository picker. A native
 modal keeps keyboard focus inside it and autofocuses the required title. The Markdown description
-grows with its content; Command+Enter submits. Repository defaults to the sidebar selection, or
-the first repository for All. Status offers Backlog and Todo (starts the workflow); size offers
+grows with its content; Command+Enter submits. Repository defaults to the selected project. Status offers Backlog and Todo (starts the workflow); size offers
 Normal and Small (skips planning, for one-file fixes), alongside Require plan approval.
 
 The live window sends `create_task` and waits for its assigned key. Todo then sends a separate
@@ -170,32 +181,43 @@ Needs-you summary. The palette command **Open Main** opens the same panel. Toggl
 state belong to the bar component, so neither updates the task store nor re-renders the task list.
 The terminal module loads only when first opened, preserving the cold-start path.
 
+Switching projects retargets an open panel to that repository's Main, opening it lazily on first use.
+Only the viewer detaches; the other repository's session continues. Attach targets carry `repoId`.
+
 The header shows working, idle or waiting from the coordinator's `claude agents --json` observation.
 An absent or unavailable provider observation is unknown, never inferred from terminal output.
 Restart stops the session, revokes its token and opens a fresh session through the same attach flow.
 Fixture mode previews the bar and terminal without contacting a coordinator or launching an agent.
 
-Main is one interactive Claude session per instance, not a task run. The coordinator persists its
-session ID, private token, launch recipe and per-session settings under `<instance data>/lead/`
-before launching in the instance data directory. Its fixed pane workspace is `lead` (`loom-lead`
+Main is one interactive Claude session per repository, not a task run. The coordinator persists its
+session ID, private token, launch recipe and per-session settings under `<instance data>/lead/<repoId>/`
+before launching at the repository root. Its pane workspace is `lead-<repoId>` (`loom-lead-<repoId>`
 on the instance's private tmux server). `LOOM_MODEL_LEAD` overrides the configured Claude model.
-`open_lead_session` is serialized and idempotent; it returns the existing live attach target or
-creates the pane. `stop_lead_session` records the stop before closing the pane. Startup recovery
+`open_lead_session({repoId})` is serialized and idempotent; it returns the existing live attach target or
+creates the pane. `stop_lead_session({repoId})` records the stop before closing the pane. Startup recovery
 relaunches a confirmed dead pane from the recipe, resumes a session with a provider-confirmed
 transcript, and leaves a missing pane alone until an explicit open. The configured stable MCP port
 takes precedence; an instance using ephemeral ports rebinds the saved Main port on restart so an
 existing process keeps its endpoint. Main settings are rewritten during recovery to use the current
 endpoint. A conflicting listener causes startup to fail rather than silently changing that endpoint.
 
-Main's token selects a separate MCP tool set on the coordinator's existing host: `list_tasks`,
+Startup recovery applies the same live/dead/absent/stopped rules to every saved per-repository Main.
+An existing single `lead/recipe.json` migrates once to the first registered repository, preserving its
+session ID and token and copying settings and notes. The atomic destination recipe makes retry
+idempotent. A recorded legacy pane is retired before relaunch in the repository workspace; no
+unrecorded pane is adopted or stopped.
+
+Main's token binds every tool call to its repository: task lists and repository lists are filtered,
+`create_task` defaults to it, and inspections, dependencies and mutations reject foreign task IDs.
+Its first introduction names the repository. Main's token selects a separate MCP tool set on the coordinator's existing host: `list_tasks`,
 `inspect_task`, `create_task`, `move_task`, `approve_plan`, `reject_plan`, `approve_merge`,
 `request_changes`, `answer_question`, `answer_provider_request`, `retry_task`, `cancel_task`, and
-`list_repos`, plus `set_note` for its bounded instance memory. Inspection uses the same view as `loom task inspect --json`. Mutations use the CLI's
+`list_repos`, plus `set_note` for its bounded repository memory. Inspection uses the same view as `loom task inspect --json`. Mutations use the CLI's
 human-command path and keep every core guard; an input acknowledgement means queued, not approved.
 Task-run tokens cannot call these tools, and Main cannot call task-run result tools. Its first
 message includes `main-notes` as context and requires a two-sentence introduction followed by waiting.
 Work longer than a few seconds becomes a task. The launch denies shell, editing, web and subagent
-tools, exposes only Loom MCP plus read-only file tools in the instance directory, and grants no
+tools, exposes only Loom MCP plus read-only file tools in the repository, and grants no
 terminal attach capability to Main. The human can still attach to Main through this panel. The task model, core stages and reconciler are unchanged.
 
 ## Performance
@@ -231,8 +253,7 @@ finished-turn icon while the agent terminal stays open. Idle and unknown status 
 
 ### Pinned terminal navigation
 
-Main and Operator stay pinned below the scrollable space tree. Main attaches the existing `lead`
-identity; Operator attaches its interactive session, with the same durable queue and policy
+Main and Operator stay pinned below the scrollable space tree. Main attaches the selected repository's `lead` identity; Operator attaches its interactive session, with the same durable queue and policy
 checks as before. Both reuse their pinned tabs. Their Hide agent view button only detaches the viewer;
 stopping an agent uses its existing agent/task controls. Opening a workspace reserves its tmux
 session name without creating a shell; a session is created only when a real agent or explicitly

@@ -44,7 +44,7 @@ import {
 import { classify, Executor } from "./executor.js";
 import { inspectTask } from "./inspect.js";
 import type { LaunchDeps } from "./launch.js";
-import { LeadSession } from "./lead.js";
+import { LeadSession, migrateLead } from "./lead.js";
 import { Loop } from "./loop.js";
 import { createMcpHost } from "./mcp-host.js";
 import { observe as observeOwners, PullRequestCache } from "./observe.js";
@@ -52,6 +52,7 @@ import { OperatorSession } from "./operator.js";
 import { attentionOccurrence } from "./operator-policy.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
+import { registerRepo } from "./repos.js";
 import { ProtocolServer } from "./server.js";
 import { openTaskTerminal } from "./task-terminal.js";
 import {
@@ -101,7 +102,54 @@ export class Coordinator {
   readonly store: Store;
   readonly adapters: Adapters;
   readonly recipes: RecipeStore;
-  readonly lead: LeadSession;
+  readonly leads = new Map<string, LeadSession>();
+  leadFor(repoId: string): LeadSession {
+    const repo = this.store.repos().find((repo) => repo.id === repoId);
+    if (!repo) throw new Error("Unknown registered repository");
+    let lead = this.leads.get(repoId);
+    if (!lead) {
+      lead = new LeadSession({
+        adapters: this.adapters,
+        config: this.config,
+        dataDirectory: this.store.dataDirectory,
+        repo,
+        mcpEntry: (token) => this.launchDeps().mcpEntry(token),
+        now: () => this.now(),
+      });
+      this.leads.set(repoId, lead);
+    }
+    return lead;
+  }
+  private async leadRows(): Promise<Row[]> {
+    return Promise.all(
+      this.store.repos().map(async (repo) => ({
+        collection: "lead" as const,
+        key: repo.id,
+        value: await this.leadFor(repo.id).state(),
+      })),
+    );
+  }
+  private projectRows(): Row[] {
+    return [
+      {
+        collection: "project",
+        key: "project",
+        value: { id: "project", repoId: this.store.selectedRepo() },
+      },
+    ];
+  }
+  private publishRepos(): void {
+    this.protocol.publish([
+      ...this.published.replace(
+        "repos",
+        null,
+        this.store
+          .repos()
+          .map((repo) => ({ collection: "repo", key: repo.id, value: repo })),
+      ),
+      ...this.published.replace("project", null, this.projectRows()),
+    ]);
+  }
   readonly operator: OperatorSession;
   private leadPoll: NodeJS.Timeout | null = null;
   private pollingLead = false;
@@ -148,13 +196,6 @@ export class Coordinator {
     this.startedAt = this.now();
     this.epoch = epochOf(this.startedAt);
     this.recipes = new RecipeStore(this.store.dataDirectory);
-    this.lead = new LeadSession({
-      adapters: this.adapters,
-      config: this.config,
-      dataDirectory: this.store.dataDirectory,
-      mcpEntry: (token) => this.launchDeps().mcpEntry(token),
-      now: () => this.now(),
-    });
 
     this.operator = new OperatorSession({
       store: this.store,
@@ -242,14 +283,21 @@ export class Coordinator {
       () => ({
         states: this.store.tasks().map((t) => this.store.loadTaskState(t.id)),
         now: this.now(),
-        leadPane: this.lead.paneRef ? paneKey(this.lead.paneRef) : null,
-        leadWaiting: this.published
-          .rows()
-          .some(
-            (r) =>
-              r.collection === "lead" &&
-              (r.value as { status: string }).status === "waiting",
+        leadPanes: new Set(
+          [...this.leads.entries()].flatMap(([id, lead]) =>
+            lead.paneRef &&
+            this.published
+              .rows()
+              .some(
+                (r) =>
+                  r.collection === "lead" &&
+                  r.key === id &&
+                  (r.value as { status: string }).status === "waiting",
+              )
+              ? [paneKey(lead.paneRef)]
+              : [],
           ),
+        ),
       }),
       (panes, unavailable) => {
         this.protocol.publish(
@@ -305,11 +353,16 @@ export class Coordinator {
 
   async start(): Promise<RecoveryReport> {
     await this.recipes.load();
-    await this.lead.load();
+    await migrateLead(this.store.dataDirectory, this.store.repos()[0]);
+    for (const repo of this.store.repos()) await this.leadFor(repo.id).load();
+    const selected = this.store.selectedRepo();
+    if (selected) this.store.selectRepo(selected);
     await this.operator.load();
     // Stable instance configuration wins; only ephemeral instances reuse the Main recipe's port.
     const mcpPort =
-      this.config.mcpPort || this.lead.mcpPort || this.operator.mcpPort;
+      this.config.mcpPort ||
+      [...this.leads.values()].find((lead) => lead.mcpPort)?.mcpPort ||
+      this.operator.mcpPort;
     try {
       this.mcp = await serveHttp(this.mcpOptions(), mcpPort);
     } catch (error) {
@@ -321,7 +374,7 @@ export class Coordinator {
       }
       throw error;
     }
-    await this.lead.recover();
+    for (const lead of this.leads.values()) await lead.recover();
     const report = await recover(
       {
         store: this.store,
@@ -502,18 +555,49 @@ export class Coordinator {
       buildAnchor,
       resolveToken: (token: string) =>
         this.operator.resolve(token) ??
-        this.lead.resolve(token) ??
+        [...this.leads.values()]
+          .map((lead) => lead.resolve(token))
+          .find(Boolean) ??
         resolveToken(token),
       operatorHost: {
         invoke: (name: string, input: Record<string, unknown>) =>
           this.operator.invoke(name, input),
       },
       leadHost: {
-        invoke: async (name: string, input: Record<string, unknown>) => {
-          if (name === "set_note")
-            return this.lead.setNote(input.note as string);
-          if (name === "list_tasks") return this.store.tasks();
-          if (name === "list_repos") return this.store.repos();
+        invoke: async (
+          name: string,
+          input: Record<string, unknown>,
+          repoId?: string,
+        ) => {
+          if (!repoId) throw new Error("Main repository identity is required");
+          const lead = this.leadFor(repoId);
+          if (name === "set_note") return lead.setNote(input.note as string);
+          if (name === "list_tasks")
+            return this.store.tasks().filter((task) => task.repoId === repoId);
+          if (name === "list_repos")
+            return this.store.repos().filter((repo) => repo.id === repoId);
+          if (
+            input.taskId &&
+            !this.store
+              .tasks()
+              .some(
+                (task) => task.id === input.taskId && task.repoId === repoId,
+              )
+          )
+            throw new Error("Task is outside Main's repository");
+          if (input.repoId && input.repoId !== repoId)
+            throw new Error("Repository is outside Main's scope");
+          if (name === "create_task") input = { ...input, repoId };
+          if (
+            Array.isArray(input.blockedBy) &&
+            input.blockedBy.some(
+              (id) =>
+                !this.store
+                  .tasks()
+                  .some((task) => task.id === id && task.repoId === repoId),
+            )
+          )
+            throw new Error("Dependency is outside Main's repository");
           if (name === "inspect_task")
             return inspectTask(
               this.store,
@@ -579,9 +663,10 @@ export class Coordinator {
               .all()
               .flatMap((recipe) => (recipe.sessionId ? [recipe.sessionId] : []))
               .concat(
-                [this.lead.sessionId, this.operator.sessionId].filter(
-                  Boolean,
-                ) as never[],
+                [...this.leads.values()]
+                  .map((lead) => lead.sessionId)
+                  .concat(this.operator.sessionId)
+                  .filter(Boolean) as never[],
               ),
           ),
         coolingDownUntil: () => ({
@@ -694,10 +779,11 @@ export class Coordinator {
     if (this.pollingLead) return;
     this.pollingLead = true;
     try {
-      const value = await this.lead.state();
-      const changes = this.published.replace("lead", null, [
-        { collection: "lead", key: "lead", value },
-      ]);
+      const changes = this.published.replace(
+        "lead",
+        null,
+        await this.leadRows(),
+      );
       this.protocol.publish(changes);
       if (changes.length) void this.inventory.refresh();
     } catch {
@@ -712,9 +798,8 @@ export class Coordinator {
     this.published.replace("operator", null, [
       { collection: "operator", key: "operator", value: this.operator.state() },
     ]);
-    this.published.replace("lead", null, [
-      { collection: "lead", key: "lead", value: await this.lead.state() },
-    ]);
+    this.published.replace("lead", null, await this.leadRows());
+    this.published.replace("project", null, this.projectRows());
     this.published.replace(
       "repos",
       null,
@@ -918,6 +1003,7 @@ export class Coordinator {
           if (!ref.hostGeneration.startsWith(`loom-${this.config.instance}#`))
             throw new Error("Pane belongs to another instance");
           if (
+            ref.sessionName.startsWith("loom-lead-") ||
             ["loom-lead", "loom-main", "loom-operator"].includes(
               ref.sessionName,
             )
@@ -964,13 +1050,35 @@ export class Coordinator {
             throw new Error("Scratch created but inventory unavailable");
           return { ok: true, result: { kind: "scratch_created", pane } };
         }
+        case "select_repo": {
+          this.store.selectRepo(command.repoId as string);
+          this.publishRepos();
+          return {
+            ok: true,
+            result: { kind: "repo_selected", repoId: command.repoId },
+          };
+        }
+        case "add_repo": {
+          const repo = await registerRepo(
+            this.store,
+            command.root as string,
+            command.github as string,
+            (command.baseBranch as string | undefined) ??
+              this.config.baseBranch,
+          );
+          this.store.selectRepo(repo.id);
+          this.leadFor(repo.id);
+          this.publishRepos();
+          await this.publishLead();
+          return { ok: true, result: { kind: "repo_added", repoId: repo.id } };
+        }
         case "open_lead_session": {
-          const target = await this.lead.open();
+          const target = await this.leadFor(command.repoId as string).open();
           await this.publishLead();
           return { ok: true, result: { kind: "attach_session", target } };
         }
         case "stop_lead_session": {
-          await this.lead.stop();
+          await this.leadFor(command.repoId as string).stop();
           await this.publishLead();
           return { ok: true, result: { kind: "lead_stopped" } };
         }

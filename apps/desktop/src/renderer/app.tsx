@@ -11,12 +11,13 @@ import { useShortcuts } from "./ui/keys.js";
 import { LeadBar } from "./ui/lead.js";
 import { ListView } from "./ui/list.js";
 import { Palette, StagePicker } from "./ui/palette.js";
-import { Sidebar } from "./ui/sidebar.js";
+import { OpenRepository, Sidebar } from "./ui/sidebar.js";
 
 export function App() {
   const store = useStoreApi();
   useShortcuts(store);
 
+  const repo = useStore((s) => s.ui.repo);
   const theme = useStore((s) => s.ui.theme);
   const waiting = useStore(
     (s) =>
@@ -36,7 +37,9 @@ export function App() {
   }, [needsYou]);
   const task = useStore((s) =>
     s.ui.openTask
-      ? (s.snapshot.tasks.find((t) => t.id === s.ui.openTask) ?? null)
+      ? (s.snapshot.tasks.find(
+          (t) => t.id === s.ui.openTask && t.repoId === s.ui.repo,
+        ) ?? null)
       : null,
   );
   const search = useRef<HTMLInputElement>(null);
@@ -115,6 +118,8 @@ export function App() {
         >
           {waiting ? (
             <div className="pad faint">Waiting for the coordinator…</div>
+          ) : !repo ? (
+            <OpenRepository />
           ) : view === "needs-you" ? (
             <InboxView />
           ) : pane === "list" ? (

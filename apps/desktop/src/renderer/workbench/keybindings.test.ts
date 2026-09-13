@@ -83,6 +83,7 @@ async function harness() {
   let changed: (state: KeybindingsState) => void = () => {};
   const unsubscribe = vi.fn();
   window.loomHost = {
+    chooseRepository: vi.fn(),
     interactive: vi.fn(),
     keybindings: async () => ({
       config: defaultKeybindings,

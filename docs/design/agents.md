@@ -23,16 +23,27 @@ The fix is a separation the human named: the agent you talk to must never be the
 | Layer | Kind | Job | May be busy? |
 |---|---|---|---|
 | **Human** | | Direction, approvals that are theirs, questions only they can answer | |
-| **Main** | Interactive Claude session, one per instance, behind the bottom-bar toggle | The conversation: understand intent, turn it into tasks, summarize what is going on, ask the human what is actually theirs | Never: no action longer than a few seconds |
+| **Main** | Interactive Claude session, one per repository, behind the bottom-bar toggle | The conversation: understand intent, turn it into tasks, summarize what is going on, ask the human what is actually theirs | Never: no action longer than a few seconds |
 | **Coordinator** | Code (`apps/coordinator`, `packages/core`) | Stages, launches, review rounds, merges on approval, recovery | Always; it is a process |
 | **Operator** | Headless agent session, one per instance, coordinator-owned | Everything that needs judgement but not the human: consume Needs-you rows under a policy, act through Loom commands, escalate the rest | Yes, for minutes, unnoticed |
 | **Task agents** | Planner, implementer, reviewer runs (unchanged) | The work of one task, one role at a time | Yes |
 
 ### Main has no hands
 
+The selected project determines the Main shown in the bottom panel. Each repository owns a
+separate session, recipe, settings, token and notes under `<instance data>/lead/<repoId>/`, with
+cwd at its root and workspace `lead-<repoId>` (`loom-lead-<repoId>`). Open/stop commands and attach
+targets carry `repoId`. Switching projects opens Main lazily and detaches only the old viewer.
+The coordinator recovers every recipe on startup. The legacy single recipe migrates idempotently
+to the first registered repository, keeping its persisted session ID and token.
+
+Main's authenticated tools default to and enforce its repository: list/inspect/create/move/approval
+and other task commands cannot reach another project's tasks. Its introduction names the repository.
+The Operator stays instance-wide, including its explicit `LOOM_OPERATOR_REPO` filing target.
+
 Main's availability is enforced by what it cannot do, not by asking it to be quick:
 
-- No shell, no terminal attach, no test runner; only read-only file tools within its instance data directory.
+- No shell, no terminal attach, no test runner; only read-only file tools within its repository.
 - Only Loom tools, each answering in under a second: list and inspect tasks, create and move
   them, approve or reject a plan, approve a merge the human has delegated, request changes, answer a
   question, answer a provider request, retry, cancel, list repositories.
@@ -41,7 +52,7 @@ Main's availability is enforced by what it cannot do, not by asking it to be qui
 
 Main launches with only `Read`, `Glob`, `Grep` and Loom MCP tools. `--disallowedTools` denies
 `Bash`, `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `WebFetch`, `WebSearch` and `Task`;
-restricted mode confines file reads to the instance directory, and strict MCP configuration
+restricted mode confines file reads to the repository, and strict MCP configuration
 excludes other servers (including terminal attach tools). The panel remains a human view of
 Main's conversation. Its first response is a two-sentence introduction, then it waits; it never
 starts drills or resumes work on its own. Internal `lead` identifiers remain for compatibility.
@@ -140,7 +151,7 @@ human can audit it and widen or narrow the row.
 - **Needs-you rows** gain a `for human` tag; the inbox shows tagged rows first and lets the human
   filter to them.
 - **Main's memory:** the Claude session resumes across restarts, which covers days. For longer,
-  Main keeps one Loom-held `main-notes` document per instance, rewritten through the Main-only
+  Main keeps one Loom-held `main-notes` document per repository under `lead/<repoId>/`, rewritten through the Main-only
   `set_note({note})` tool when priorities change (max 2,000 characters; empty clears it). Every launch
   includes the saved note, including a new session after rotation; it is context, never an instruction
   to continue work automatically.
@@ -151,7 +162,7 @@ human can audit it and widen or narrow the row.
 
 - An Operator that plans work on its own initiative. It reacts to rows; Main and the human decide
   what to build.
-- More than one Main per instance, or a Main shared across instances.
+- A Main shared across repositories or instances.
 - Agent-to-agent chat of any kind outside a task's recorded channels.
 
 ## Operator implementation contract

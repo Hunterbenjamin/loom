@@ -5,6 +5,7 @@ import type {
   PaneIdentity,
   RunTarget,
 } from "@loom/protocol";
+import { repoId } from "@loom/protocol";
 import { TrackerClient } from "../shared/client.js";
 import type { ConnectionConfig } from "../shared/connection.js";
 
@@ -13,7 +14,7 @@ export function resolveAttach(
   config: ConnectionConfig,
   runId:
     | RunId
-    | "lead"
+    | { lead: string }
     | "operator"
     | PaneIdentity
     | { shellKey: string; shellName?: string },
@@ -36,18 +37,21 @@ export function resolveAttach(
         void client
           .command(
             typeof runId === "object"
-              ? "shellKey" in runId
+              ? "lead" in runId
                 ? {
-                    kind: "open_workbench_terminal",
-                    key: runId.shellKey,
-                    label: runId.shellName,
+                    kind: "open_lead_session",
+                    repoId: repoId.parse(runId.lead),
                   }
-                : { kind: "open_pane_session", target: runId }
+                : "shellKey" in runId
+                  ? {
+                      kind: "open_workbench_terminal",
+                      key: runId.shellKey,
+                      label: runId.shellName,
+                    }
+                  : { kind: "open_pane_session", target: runId }
               : runId === "operator"
                 ? { kind: "open_operator_terminal" }
-                : runId === "lead"
-                  ? { kind: "open_lead_session" }
-                  : { kind: "open_attach_session", runId },
+                : { kind: "open_attach_session", runId },
           )
           .then((outcome) => {
             clearTimeout(timer);
@@ -58,24 +62,26 @@ export function resolveAttach(
             const target = outcome.result.target;
             if (
               (typeof runId === "object"
-                ? "shellKey" in runId
+                ? "lead" in runId
                   ? !("identity" in target) ||
-                    target.identity !== "pane" ||
-                    target.target.sessionName !== "loom-workbench"
-                  : !("identity" in target) ||
-                    target.identity !== "pane" ||
-                    JSON.stringify(target.target) !== JSON.stringify(runId) ||
-                    target.pane.hostGeneration !== runId.hostGeneration ||
-                    target.pane.sessionName !== runId.sessionName ||
-                    target.pane.windowId !== runId.windowId ||
-                    target.pane.paneId !== runId.paneId
+                    target.identity !== "lead" ||
+                    target.repoId !== runId.lead
+                  : "shellKey" in runId
+                    ? !("identity" in target) ||
+                      target.identity !== "pane" ||
+                      target.target.sessionName !== "loom-workbench"
+                    : !("identity" in target) ||
+                      target.identity !== "pane" ||
+                      JSON.stringify(target.target) !== JSON.stringify(runId) ||
+                      target.pane.hostGeneration !== runId.hostGeneration ||
+                      target.pane.sessionName !== runId.sessionName ||
+                      target.pane.windowId !== runId.windowId ||
+                      target.pane.paneId !== runId.paneId
                 : runId === "operator"
                   ? !("identity" in target) ||
                     target.identity !== "pane" ||
                     target.target.sessionName !== "loom-operator"
-                  : runId === "lead"
-                    ? !("identity" in target) || target.identity !== "lead"
-                    : !("runId" in target) || target.runId !== runId) ||
+                  : !("runId" in target) || target.runId !== runId) ||
               target.attach?.kind !== "pane_host" ||
               !target.pane ||
               target.pane.dead ||

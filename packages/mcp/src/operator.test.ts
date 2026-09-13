@@ -21,6 +21,7 @@ test.each(["run", "lead", "operator", "stopped", "unknown"])(
               : {
                   kind: kind === "lead" ? "lead" : "operator",
                   active: kind !== "stopped",
+                  repoId: "repo-loom",
                 },
       },
       "test-token",

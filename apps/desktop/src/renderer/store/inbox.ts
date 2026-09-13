@@ -62,7 +62,7 @@ export function inboxRows(state: State): InboxRow[] {
   const needle = query.trim().toLowerCase();
   const rows = tasks
     .flatMap((task) => {
-      if (repo !== "all" && task.repoId !== repo) return [];
+      if (task.repoId !== repo) return [];
       if (needle && !`${task.id} ${task.title}`.toLowerCase().includes(needle))
         return [];
       const info = metadata.get(task.id);
@@ -86,8 +86,7 @@ export function inboxRows(state: State): InboxRow[] {
   return rows;
 }
 export function attentionCount(state: State): number {
-  return state.snapshot.tasks.reduce(
-    (sum, task) => sum + task.attention.reasons.length,
-    0,
-  );
+  return state.snapshot.tasks
+    .filter((task) => task.repoId === state.ui.repo)
+    .reduce((sum, task) => sum + task.attention.reasons.length, 0);
 }

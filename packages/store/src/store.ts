@@ -92,6 +92,24 @@ export class Store {
   close(): void {
     this.db.close();
   }
+  /** Coordinator-owned per-instance project selection, persisted in the existing metadata table. */
+  selectedRepo(): Repo["id"] | null {
+    const saved = this.db
+      .prepare("SELECT value FROM meta WHERE key = 'last_opened_repo'")
+      .pluck()
+      .get();
+    const repos = this.repos();
+    return repos.find((repo) => repo.id === saved)?.id ?? repos[0]?.id ?? null;
+  }
+  selectRepo(id: string): void {
+    if (!this.repos().some((repo) => repo.id === id))
+      throw new Error("Unknown registered repository");
+    this.db
+      .prepare(
+        "INSERT INTO meta(key, value) VALUES ('last_opened_repo', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run(id);
+  }
   putRepo(repo: Repo): void {
     const value = repoSchema.parse(repo);
     this.db
@@ -682,7 +700,7 @@ export class Store {
   /** Every registered repo. The coordinator's snapshot needs the list, and nothing else owns it. */
   repos(): Repo[] {
     return this.db
-      .prepare("SELECT data FROM repos ORDER BY id")
+      .prepare("SELECT data FROM repos ORDER BY rowid")
       .all()
       .map((r) => decode(repoSchema, dataRow.parse(r).data));
   }

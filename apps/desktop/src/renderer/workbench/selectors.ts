@@ -81,6 +81,7 @@ export const spaceKey = (pane: PaneView) =>
 export const tabKey = (pane: PaneView) =>
   JSON.stringify([pane.hostGeneration, pane.sessionName, pane.windowId]);
 const pinned = (pane: PaneView) =>
+  pane.sessionName.startsWith("loom-lead-") ||
   ["loom-lead", "loom-main", "loom-operator"].includes(pane.sessionName);
 const rollup = (states: Indicator[]) =>
   states.reduce(

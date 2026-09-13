@@ -17,7 +17,7 @@ function must<T>(value: T | undefined): T {
 describe("views", () => {
   it("counts the same tasks the view shows", () => {
     const snapshot = buildSnapshot();
-    const counts = viewCounts(snapshot, "all");
+    const counts = viewCounts(snapshot, "repo-loom");
     for (const view of [
       "all",
       "needs-you",
@@ -26,7 +26,9 @@ describe("views", () => {
       "done",
     ] as const) {
       expect(counts[view]).toBe(
-        snapshot.tasks.filter((task) => matchesView(task, view)).length,
+        snapshot.tasks.filter(
+          (task) => matchesView(task, view) && task.repoId === "repo-loom",
+        ).length,
       );
     }
   });
@@ -41,7 +43,7 @@ describe("views", () => {
 
   it("searches on id and title", () => {
     const snapshot = buildSnapshot();
-    const rows = rowsFor(snapshot, "all", "all", "worktree");
+    const rows = rowsFor(snapshot, "all", "repo-loom", "worktree");
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       expect(`${row.task.id} ${row.task.title}`.toLowerCase()).toContain(
@@ -53,7 +55,7 @@ describe("views", () => {
 
 describe("the list", () => {
   it("sorts by age and reverses", () => {
-    const rows = rowsFor(buildSnapshot(), "all", "all", "");
+    const rows = rowsFor(buildSnapshot(), "all", "repo-loom", "");
     const oldest = sortRows(rows, "age", false);
     const newest = sortRows(rows, "age", true);
     expect(must(oldest[0]).ageMinutes).toBeGreaterThanOrEqual(
@@ -66,7 +68,7 @@ describe("the list", () => {
 
   it("groups by stage without losing or duplicating a row", () => {
     const rows = sortRows(
-      rowsFor(buildSnapshot(), "all", "all", ""),
+      rowsFor(buildSnapshot(), "all", "repo-loom", ""),
       "stage",
       false,
     );
@@ -156,4 +158,77 @@ describe("actions", () => {
     expect(must(state.snapshot.tasks[0]).stage).toBe("backlog");
     expect(state.ui.openTask).toBe(must(state.snapshot.tasks[0]).id as TaskId);
   });
+});
+
+it("all selectors, counts, inbox and board stay within the selected project", async () => {
+  const { inboxRows, attentionCount } = await import("./inbox.js");
+  const { selectedRows, cursorRows } = await import("./selectors.js");
+  const api = store();
+  const snapshot = api.getState().snapshot;
+  for (const repo of snapshot.repos) {
+    api.open(must(snapshot.tasks[0]).id);
+    await api.setRepo(repo.id);
+    expect(api.getState().ui.openTask).toBeNull();
+    for (const view of [
+      "all",
+      "needs-you",
+      "in-progress",
+      "awaiting-approval",
+      "done",
+    ] as const) {
+      api.setView(view);
+      expect(
+        selectedRows(api.getState()).every(
+          (row) => row.task.repoId === repo.id,
+        ),
+      ).toBe(true);
+      expect(viewCounts(snapshot, repo.id)[view]).toBe(
+        snapshot.tasks.filter(
+          (task) => task.repoId === repo.id && matchesView(task, view),
+        ).length,
+      );
+      for (const pane of ["list", "board"] as const) {
+        api.setPane(pane);
+        expect(
+          cursorRows(api.getState()).every(
+            (row) => row.task.repoId === repo.id,
+          ),
+        ).toBe(true);
+      }
+    }
+    expect(
+      inboxRows(api.getState()).every((row) => row.task.repoId === repo.id),
+    ).toBe(true);
+    expect(attentionCount(api.getState())).toBe(
+      snapshot.tasks
+        .filter((task) => task.repoId === repo.id)
+        .reduce((sum, task) => sum + task.attention.reasons.length, 0),
+    );
+  }
+  expect(rowsFor(snapshot, "all", "all", "")).toEqual([]);
+  expect(rowsFor(snapshot, "all", "", "")).toEqual([]);
+});
+
+it("live selection changes only when the coordinator publishes it", async () => {
+  const { stateFromSnapshot } = await import("@loom/protocol");
+  const { toSnapshot } = await import("../fixtures/protocol.js");
+  const fixture = buildSnapshot(20);
+  const { body, meta } = toSnapshot(fixture);
+  const api = createStore(fixture, true);
+  api.applyProtocol(stateFromSnapshot(meta, body));
+  const next = must(fixture.repos[1]);
+  const commands: unknown[] = [];
+  api.setSender(async (command) => {
+    commands.push(command);
+    return { ok: true, result: { kind: "repo_selected", repoId: next.id } };
+  });
+  await api.setRepo(next.id);
+  expect(commands).toEqual([{ kind: "select_repo", repoId: next.id }]);
+  expect(api.getState().ui.repo).toBe(body.projects[0]?.repoId);
+  body.projects = [{ id: "project", repoId: next.id }];
+  api.applyProtocol(stateFromSnapshot(meta, body));
+  expect(api.getState().ui.repo).toBe(next.id);
+  const secondWindow = createStore(fixture, true);
+  secondWindow.applyProtocol(stateFromSnapshot(meta, body));
+  expect(secondWindow.getState().ui.repo).toBe(next.id);
 });
