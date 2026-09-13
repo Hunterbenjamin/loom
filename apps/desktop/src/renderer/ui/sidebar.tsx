@@ -55,16 +55,6 @@ export function Sidebar() {
           ))}
           <option value="__add__">Add repository…</option>
         </select>
-        <button
-          type="button"
-          className="create-issue-button"
-          disabled={!repo}
-          aria-label="Create issue"
-          title="Create issue (C)"
-          onClick={() => store.setCreateIssue(true)}
-        >
-          +
-        </button>
       </div>
 
       {error ? (

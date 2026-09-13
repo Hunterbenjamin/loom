@@ -381,9 +381,10 @@ test("C opens the dialog, ignores typing, and modal shortcuts do not change the 
   });
 });
 
-test("sidebar plus and palette open the same dialog", () => {
+test("the C key and the palette open the same dialog; there is no sidebar button", () => {
   const h = setup({ open: false });
-  act(() => h.get<HTMLButtonElement>('[aria-label="Create issue"]').click());
+  expect(h.host.querySelector('[aria-label="Create issue"]')).toBeNull();
+  act(() => h.store.setCreateIssue(true));
   expect(h.host.querySelector("dialog")).not.toBeNull();
   h.cancelDialog();
   act(() => h.store.setPalette(true));

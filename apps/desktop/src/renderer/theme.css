@@ -1049,11 +1049,7 @@ ul.plain {
   min-width: 0;
   flex: 1;
 }
-.create-issue-button {
-  flex: 0 0 28px;
-  font-size: 20px;
-  -webkit-app-region: no-drag;
-}
+
 .create-issue-dialog {
   width: 640px;
   max-width: calc(100vw - 40px);
