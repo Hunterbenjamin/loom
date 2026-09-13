@@ -340,7 +340,7 @@ while any of these reasons holds:
 | `plan_needs_approval` | Stage `plan_approval` |
 | `needs_approval` | Stage `awaiting_approval` |
 | `question` | An unanswered `ask_human` question (blocking or not) |
-| `provider_permission` / `provider_input` | A live run's `blockedOn` is `permission` / `input` |
+| `provider_permission` / `provider_input` | A live run's `blockedOn` is `permission` / `input`; implementer permission waits use `provider_input` so unhandled requests reach the human directly |
 | `blocked` | `blocked` is set, except for `dependencies` and `provider_cooling_down`, which just wait |
 | `failed` | `failed` is set |
 | `run_vanished` | An interactive run's session disappeared. Loom won't relaunch it; the human does. |
