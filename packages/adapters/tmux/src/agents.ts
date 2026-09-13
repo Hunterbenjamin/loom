@@ -37,13 +37,51 @@ export function readProcesses(): Promise<ProcessRow[]> {
   });
 }
 
+// Invocations of an agent binary that are not an interactive session: the coordinator's own
+// `claude agents --json` poll, an app-server, a one-shot print. They must not tag a pane.
+const NOT_A_SESSION: Record<AgentKind, ReadonlySet<string>> = {
+  claude: new Set([
+    "agents",
+    "mcp",
+    "config",
+    "doctor",
+    "update",
+    "install",
+    "login",
+    "logout",
+    "-p",
+    "--print",
+    "--version",
+    "-v",
+    "--help",
+    "-h",
+  ]),
+  codex: new Set([
+    "app-server",
+    "exec",
+    "login",
+    "logout",
+    "mcp",
+    "mcp-server",
+    "completion",
+    "--version",
+    "-V",
+    "--help",
+    "-h",
+  ]),
+};
+
 const kindOf = (args: string): AgentKind | null => {
   const words = args.trim().split(/\s+/);
   // `codex`, `/path/to/claude`, or `node /path/to/codex` (an npm shim).
-  for (const word of words.slice(0, 2)) {
+  for (const [index, word] of words.slice(0, 2).entries()) {
     const name = basename(word);
-    if (name === "codex") return "codex";
-    if (name === "claude") return "claude";
+    const kind: AgentKind | null =
+      name === "codex" ? "codex" : name === "claude" ? "claude" : null;
+    if (kind) {
+      const rest = words.slice(index + 1);
+      return rest.some((arg) => NOT_A_SESSION[kind].has(arg)) ? null : kind;
+    }
     if (name !== "node") break;
   }
   return null;

@@ -228,4 +228,15 @@ describe("agent detection", () => {
     expect(detectAgent(400, table)).toBeNull();
     expect(detectAgent(999, table)).toBeNull();
   });
+  it("ignores non-session invocations such as the coordinator's registry poll", () => {
+    const polling = parseProcesses(
+      [
+        "  500     1 node /repo/apps/coordinator/src/cli.ts serve",
+        "  501   500 claude agents --json",
+        "  502   500 /Users/me/.local/bin/codex app-server --listen unix:///tmp/x.sock",
+        "  503   500 claude -p summarize this",
+      ].join("\n"),
+    );
+    expect(detectAgent(500, polling)).toBeNull();
+  });
 });
