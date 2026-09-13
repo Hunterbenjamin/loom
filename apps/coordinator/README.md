@@ -171,6 +171,11 @@ loom task answer <task> <questionId> <answer>
 loom task answer-request <task> <runId> <requestId> accept|decline|cancel
 ```
 
+`task create <repo> <title> [description]` preserves the description exactly; quote it as
+one shell argument. Use `--` before positional text that starts with `--`. The repository's
+pnpm shell emulator keeps literal backticks and quotes intact when forwarding script arguments.
+CLI errors include the error code, message, and each validator or guard detail on its own line.
+
 `inspect` prints persisted task flags, all runs (newest last), message delivery history with
 80-character text previews, open questions, pending plan/merge/provider approvals, the last ten
 outbox rows with executor timestamps and results, and finding counts and open locations. Text
