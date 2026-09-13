@@ -287,3 +287,22 @@ are never replayed automatically. Linked issues only change stage through normal
 
 This slice adds no sidebar, list/detail components, confirmations, shortcuts or notifications.
 The existing desktop fixture merely supplies empty collections for the extended protocol.
+
+
+## Pull request list (slice 3)
+
+Tracker's Pull requests sidebar entry shows the cached open count for the selected repository
+(or the total for All repositories). Opening the view subscribes to those repositories' open
+lists; choosing Merged or Closed additionally subscribes to that state, so the count remains an
+open count. Switching repository, leaving the view or hiding Tracker releases the unused scopes.
+The existing coordinator polling and read ownership are unchanged.
+
+The virtualized list orders PRs by creation time, newest first. Rows show number, title, head →
+base, author, age, checks, review and mergeability; no checks and unknown facts remain explicit.
+All repositories includes repository labels to disambiguate repeated PR numbers. State defaults
+to Open, and the text filter matches number, title, branches, author and linked task key.
+Filters and cursor live only in the window and survive view/mode switches. J/K moves the cursor,
+/ focuses the filter, and Escape clears it. Rows are focusable and Enter/Space selects them;
+the task-key button opens the existing task detail and supports native keyboard activation.
+PR detail opening and actions remain slice 4; palette additions and action shortcuts remain slice 5.
+Fixture mode includes linked and off-pipeline PRs in every state and badge condition.
