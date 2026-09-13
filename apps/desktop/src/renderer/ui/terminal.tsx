@@ -287,7 +287,11 @@ export const TerminalSession = memo(function TerminalSession({
           hostWantsMouse = enable;
         return true;
       };
+    // Taken in the capture phase: xterm's own viewport otherwise turns a wheel in the alternate
+    // screen (which tmux always draws in) into arrow keys before this listener runs.
     const onWheel = (event: WheelEvent) => {
+      event.stopPropagation();
+      event.preventDefault();
       if (!hostWantsMouse) return;
       const screen = element.querySelector<HTMLElement>(".xterm-screen");
       const box = screen?.getBoundingClientRect();
@@ -301,11 +305,13 @@ export const TerminalSession = memo(function TerminalSession({
         1,
         Math.min(10, Math.round(Math.abs(event.deltaY) / 24)),
       );
-      event.preventDefault();
       for (let i = 0; i < lines; i++)
         window.loomTerminal.write(id, `\x1b[<${button};${col};${row}M`);
     };
-    element.addEventListener("wheel", onWheel, { passive: false });
+    element.addEventListener("wheel", onWheel, {
+      capture: true,
+      passive: false,
+    });
     // A TUI may ask for a blinking cursor (DECSCUSR 1/3/5, or DECSET 12). Keep its cursor
     // shape but never blink: a blinking cursor over a fast-redrawing TUI reads as flicker.
     // (Test doubles of xterm carry no parser.)
@@ -547,7 +553,7 @@ export const TerminalSession = memo(function TerminalSession({
       window.clearTimeout(timer);
       observer.disconnect();
       fitViewport.current = null;
-      element.removeEventListener("wheel", onWheel);
+      element.removeEventListener("wheel", onWheel, { capture: true });
       window.clearTimeout(copyTimer);
       copyDisposable?.dispose();
       if (window.loom.term === terminal) window.loom.term = null;
