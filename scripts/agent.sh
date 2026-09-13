@@ -144,7 +144,7 @@ pane="$(tm new-window -d -P -F '#{pane_id}' -t "$session:" -n agent -c "$worktre
 tm select-window -t "$session:agent"
 
 if [ -n "$task" ]; then
-  prompt="Read AGENTS.md, then do this within its rules: $task. Work on branch $branch, run pnpm test, pnpm lint and pnpm typecheck, and open a pull request against $base. Stop and report once it is open."
+  prompt="Read AGENTS.md, then do this within its rules: $task. Work on branch $branch; run pnpm test, pnpm lint and pnpm typecheck until all three pass; open a pull request against $base with gh; wait for its check with 'gh pr checks --watch'; then squash-merge it with 'gh pr merge --squash --delete-branch'. Never push to $base directly. Stop and report once the PR is merged."
 else
   prompt="Read AGENTS.md and $brief_path, then carry out the work it describes within its rules. Stop and report once the pull request the brief asks for is open."
 fi
