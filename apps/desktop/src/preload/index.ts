@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld("loomHost", {
     ipcRenderer.on("app:keybindings-changed", handler);
     return () => ipcRenderer.removeListener("app:keybindings-changed", handler);
   },
+  applyNativeSettings: (settings: unknown) =>
+    ipcRenderer.invoke("app:apply-native-settings", settings),
   notify: (request: { id: string; title: string; body: string }) =>
     ipcRenderer.send("app:notify", request),
   mode: () => ipcRenderer.invoke("app:mode"),

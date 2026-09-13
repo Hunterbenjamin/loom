@@ -929,3 +929,118 @@ test("whitespace setting reads coordinator-filtered patches and keeps native exp
     });
   });
 });
+
+test("Cmd+Enter opens exact-head confirmation from Overview inputs and Diff without submitting", async () => {
+  const h = setup();
+  const comment = h.host.querySelector<HTMLTextAreaElement>(
+    '[aria-label="PR comment"]',
+  );
+  if (!comment) throw new Error("Missing comment box");
+  comment.focus();
+  press("Enter", comment, { metaKey: true });
+  expect(h.host.querySelector("dialog")?.open).toBe(true);
+  expect(h.host.querySelector("dialog")?.textContent).toContain(
+    h.row.detail.headSha,
+  );
+  expect(h.sender).not.toHaveBeenCalled();
+  press("Enter", comment, { metaKey: true });
+  expect(h.sender).not.toHaveBeenCalled();
+  await h.click("Cancel");
+  expect(document.activeElement).toBe(comment);
+  await act(async () => {
+    await import("./pull-request-diff.js");
+  });
+  await h.click("Diff");
+  press("Enter", h.host.querySelector('[data-testid="pierre"]') ?? window, {
+    metaKey: true,
+  });
+  expect(h.host.querySelector("dialog")?.open).toBe(true);
+  expect(h.sender).not.toHaveBeenCalled();
+  act(() => {
+    h.row.detail.headSha = "f".repeat(40) as typeof h.row.detail.headSha;
+    h.update();
+  });
+  expect(h.button("Confirm squash merge").disabled).toBe(true);
+  await h.click("Cancel");
+  press("Enter", window, { metaKey: true });
+  await h.click("Confirm squash merge");
+  expect(h.sender).toHaveBeenCalledExactlyOnceWith({
+    kind: "merge_pull_request",
+    repoId: h.row.repoId,
+    number: h.row.number,
+    matchHeadSha: h.row.detail.headSha,
+    deleteBranch: true,
+  });
+});
+
+test("Cmd+Enter respects merge guards, palette, composition, repeated keys and other chords", async () => {
+  const h = setup({ checks: "pending" });
+  press("Enter", window, { metaKey: true });
+  expect(h.host.querySelector("dialog")).toBeNull();
+  act(() => {
+    h.row.detail.checks = "success";
+    h.update();
+  });
+  for (const extra of [
+    { repeat: true },
+    { isComposing: true },
+    { shiftKey: true },
+    { altKey: true },
+    { ctrlKey: true },
+  ]) {
+    press("Enter", window, { metaKey: true, ...extra });
+    expect(h.host.querySelector("dialog")).toBeNull();
+  }
+  act(() => h.store.setPalette(true));
+  press("Enter", window, { metaKey: true });
+  expect(h.host.querySelector("dialog")).toBeNull();
+  act(() => {
+    h.store.setPalette(false);
+    h.store.setConnection("disconnected");
+  });
+  press("Enter", window, { metaKey: true });
+  expect(h.host.querySelector("dialog")).toBeNull();
+  expect(h.sender).not.toHaveBeenCalled();
+});
+
+test("issue detail opens durable explicit PR links without a PR list cache and deduplicates its branch PR", () => {
+  const h = setup();
+  const task = h.fixture.tasks[0];
+  if (!task) throw new Error("Missing task");
+  const wire = toSnapshot(h.fixture);
+  act(() => {
+    h.store.applyProtocol(
+      stateFromSnapshot(wire.meta, {
+        ...wire.body,
+        pullRequests: [],
+        pullRequestDetails: [],
+        inbox: [
+          {
+            taskId: task.id,
+            reasonRuns: {},
+            reviewedHead: null,
+            planVersion: null,
+            linkedPrNumbers: [42, 43],
+          },
+        ],
+      }),
+    );
+    h.root.render(
+      createElement(StoreProvider, {
+        store: h.store,
+        // biome-ignore lint/correctness/noChildrenProp: typed provider children
+        children: createElement(Detail, { task: { ...task, prNumber: 42 } }),
+      }),
+    );
+  });
+  expect(
+    [...h.host.querySelectorAll("button")].filter(
+      (b) => b.textContent === "PR #42",
+    ),
+  ).toHaveLength(1);
+  act(() => h.button("PR #43").click());
+  expect(h.store.getState().ui.openPr).toEqual({
+    repoId: task.repoId,
+    number: 43,
+  });
+});

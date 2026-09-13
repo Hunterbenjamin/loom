@@ -118,7 +118,10 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   and zoom. Layout is a disposable projection of tmux metadata; no layout is stored in the UI.
 - **Panel types in this slice:** native terminal panes, including agents and issue scratch shells.
   Plan, diff, activity and code panels are deferred; Tracker retains its existing review surface.
-- **Bindings:** Main reads and watches `<LOOM_DATA_ROOT>/<instance>/keybindings.json`.
+- **Bindings:** coordinator Settings owns the full binding map, prefix and timeout. On upgrade the
+  renderer imports `<LOOM_DATA_ROOT>/<instance>/keybindings.json` once only when no stored binding
+  fields exist. Main receives validated updates over IPC for native shortcut suppression and keeps
+  a private derived startup cache; editing the legacy file after import has no effect.
   First launch writes the complete defaults. Zod validates the whole file; invalid JSON,
   unknown/missing actions, invalid chords, duplicate bindings or an invalid timeout activate
   defaults and show an error in the Workbench bottom bar. Saving a valid file updates every
@@ -483,3 +486,28 @@ and age; selecting a commit fetches its first-parent diff. Reviewed is disabled 
 view because it cannot certify the complete PR. Files returns to the whole PR. `j`/`k` selects the
 next/previous file, `v` toggles Reviewed, and `[`/`]` jumps between the selected file's hunks.
 Typing, dialogs, the palette and modified key chords keep their existing bindings.
+
+## Reviews polish (reviews slice 5)
+
+Command+Enter opens the same exact-head Squash & merge confirmation anywhere on the PR page,
+including the Overview comment/link inputs and Diff. It never submits a comment or bypasses
+confirmation. Existing merge guards, pending submissions and head/base invalidation still apply.
+Dialogs, the palette, terminals, composition and repeated or additional modified chords retain
+control of their input. The existing single-key and palette actions remain available.
+
+Link issue publishes both directions from the coordinator's one saved PR-to-issue relation.
+Issue detail shows these PR buttons alongside its observed branch PR, without duplicates;
+multiple explicit references are retained. The reverse links travel in task inbox metadata,
+so opening an issue after restart requires no Reviews list subscription or GitHub read. Relinking
+removes the old issue's reference and updates the new one. It does not rewrite the issue's branch,
+workflow PR identity, stage or approval.
+
+A newly observed merged PR in either a list or detail triggers an immediate fresh observation
+of matching task branches in that repository. Normal reconciliation then derives Done from GitHub;
+a manual reference to a different issue does not complete that issue. In-flight observations from
+before the hint cannot refill the invalidated PR cache. This also covers merges made on GitHub
+and uncertain app merge responses; neither a command acknowledgement nor a renderer patch sets Done.
+
+Fixture Reviews cover all five list sections, both tabs, more than one page of completed PRs,
+linked/working and unlinked branches, checks/reviews/comments/merge activity, branch divergence,
+Implementation and Tests file groups, and pinned/Reviewed examples. Fixture actions remain read-only.

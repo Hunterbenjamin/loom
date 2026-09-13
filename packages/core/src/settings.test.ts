@@ -1,0 +1,137 @@
+import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_SETTINGS,
+  mergeSettings,
+  resolveSettings,
+  SETTINGS_CATALOG,
+  validateSettings,
+} from "./settings.js";
+
+describe("settings resolution", () => {
+  it("uses environment over repository over global over defaults and reports each source", () => {
+    const resolved = resolveSettings(
+      { workflow: { size: "small", reviewRoundCap: 5 } },
+      { workflow: { size: "normal" }, appearance: { theme: "light" } },
+      { workflow: { reviewRoundCap: 7 } },
+    );
+    expect(resolved.effective.workflow).toMatchObject({
+      size: "normal",
+      reviewRoundCap: 7,
+    });
+    expect(resolved.effective.appearance.theme).toBe("light");
+    expect(resolved.sources["workflow.size"]).toBe("repository");
+    expect(resolved.sources["workflow.reviewRoundCap"]).toBe("environment");
+    expect(resolved.sources["appearance.theme"]).toBe("repository");
+    expect(resolved.sources["appearance.chime"]).toBe("default");
+  });
+
+  it("merges role profile fields without drifting other roles", () => {
+    const merged = mergeSettings(DEFAULT_SETTINGS, {
+      roles: { planner: { runMode: "headless" } },
+    });
+    expect(merged.roles.planner.runMode).toBe("headless");
+    expect(merged.roles.planner.model).toBe(
+      DEFAULT_SETTINGS.roles.planner.model,
+    );
+    expect(merged.roles.reviewer).toEqual(DEFAULT_SETTINGS.roles.reviewer);
+  });
+
+  it("applies provider model environment values after repository routing", () => {
+    const resolved = resolveSettings(
+      null,
+      {
+        roles: {
+          planner: { provider: "claude", model: "claude-opus-4-6" },
+          implementer: { provider: "codex", model: "gpt-5.4" },
+        },
+      },
+      null,
+      DEFAULT_SETTINGS,
+      SETTINGS_CATALOG,
+      {
+        models: { codex: "gpt-5.6-sol" },
+        codexReasoningEffort: "high",
+      },
+    );
+    expect(resolved.effective.roles.planner).toMatchObject({
+      provider: "claude",
+      model: "claude-opus-4-6",
+    });
+    expect(resolved.sources["roles.planner.model"]).toBe("repository");
+    expect(resolved.effective.roles.implementer).toMatchObject({
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "high",
+    });
+    expect(resolved.sources["roles.implementer.model"]).toBe("environment");
+    expect(resolved.sources["roles.implementer.reasoningEffort"]).toBe(
+      "environment",
+    );
+  });
+});
+
+describe("settings validation", () => {
+  const copy = () =>
+    JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) as typeof DEFAULT_SETTINGS;
+  it("rejects unknown models, provider reasoning mismatches and unanswerable access", () => {
+    const invalid = copy();
+    invalid.roles.planner.model = "made-up";
+    invalid.roles.implementer.reasoningEffort = "high";
+    invalid.roles.reviewer.access = "approval-gated";
+    invalid.roles.reviewer.runMode = "headless";
+    expect(validateSettings(invalid)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Unknown codex model for planner"),
+        expect.stringContaining("Claude does not accept"),
+        expect.stringContaining("approval-gated access requires interactive"),
+      ]),
+    );
+  });
+
+  it("rejects invalid retry and numeric relationships", () => {
+    const invalid = copy();
+    invalid.runtime.retryBaseMs = 20;
+    invalid.runtime.retryCapMs = 10;
+    invalid.workflow.reviewRoundCap = 0;
+    expect(validateSettings(invalid)).toEqual(
+      expect.arrayContaining([
+        "Retry base must not exceed retry cap",
+        "Review round cap must be positive",
+      ]),
+    );
+  });
+
+  it("rejects incomplete or invalid native keybindings before persistence", () => {
+    const invalid = copy();
+    invalid.appearance.keyPrefix = "not+a+chord";
+    delete invalid.appearance.keybindings.help;
+    invalid.appearance.keybindings.close = ["Prefix not+a+chord"];
+    expect(validateSettings(invalid)).toEqual(
+      expect.arrayContaining([
+        "Key prefix must be a valid chord",
+        "Key bindings must define every supported action exactly once",
+        "Invalid key binding: Prefix not+a+chord",
+      ]),
+    );
+  });
+});
+
+it("the catalog and effective settings expose only Main, ignoring retired fields", () => {
+  const legacy = {
+    operator: { policy: "v1" },
+    main: { model: "claude-opus-5" },
+  };
+  const effective = resolveSettings(legacy, null, {
+    main: { model: "claude-opus-4-6" },
+  }).effective;
+  expect(effective.main.model).toBe("claude-opus-4-6");
+  expect(effective).not.toHaveProperty("operator");
+  expect(
+    SETTINGS_CATALOG.some((setting) => setting.key.startsWith("operator.")),
+  ).toBe(false);
+  expect(
+    SETTINGS_CATALOG.filter((setting) => setting.section === "Main").map(
+      (setting) => setting.key,
+    ),
+  ).toEqual(["main.model"]);
+});

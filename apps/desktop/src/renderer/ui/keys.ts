@@ -50,6 +50,22 @@ export function useShortcuts(store: Store): void {
       }
 
       if (ui.palette || ui.stagePicker) return;
+      if (
+        ui.openPr &&
+        event.metaKey &&
+        event.key === "Enter" &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        !event.repeat &&
+        !event.isComposing &&
+        !(event.target instanceof Element && event.target.closest(".xterm"))
+      ) {
+        pendingG.current = false;
+        event.preventDefault();
+        requestPullRequestAction({ ...ui.openPr, action: "merge" });
+        return;
+      }
       if (typing(event.target)) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 

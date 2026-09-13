@@ -52,6 +52,8 @@ export interface PullRequestViewsDeps {
   after(ms: number, callback: () => void): () => void;
   action(command: PullRequestCommand): Promise<void>;
   changed(repo: Repo): void;
+  linksChanged?(repo: Repo): Promise<void>;
+  merged?(repo: Repo, head: string): void;
   onError(error: unknown): void;
   log?(message: string): void;
 }
@@ -164,6 +166,8 @@ export class PullRequestViews {
           command.kind === "link_pull_request"
         ) {
           this.relink();
+          if (command.kind === "link_pull_request")
+            await this.deps.linksChanged?.(repo);
           if (actionError) throw actionError;
           return;
         }
@@ -371,6 +375,8 @@ export class PullRequestViews {
         const row = parsed[i];
         if (!row) continue;
         const previous = rows.get(row.number);
+        if (row.state === "merged" && previous?.state !== "merged")
+          this.deps.merged?.(repo, row.head);
         if (
           previous &&
           JSON.stringify(previous) ===
@@ -442,6 +448,8 @@ export class PullRequestViews {
             ? previous.behindBy
             : null,
       });
+      if (after.state === "merged" && previous?.detail.state !== "merged")
+        this.deps.merged?.(repo, after.head);
       const publish = () => {
         value.viewedFiles =
           this.deps.viewedFiles?.(repo.id, after.number, after.headSha) ?? [];

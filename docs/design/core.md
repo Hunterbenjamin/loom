@@ -951,7 +951,7 @@ Migrations only add. Migration `0003_operator.sql` and its `operator_events`, `o
 Runtime code no longer reads or writes any of them. Legacy Operator recipes, tokens and settings
 are ignored; startup neither launches nor manages that session. No destructive cleanup runs.
 Task `signature` remains optional for older records but is no longer populated by a filing agent.
-Migration `0005_main_messages.sql` adds `main_message_notes` and `main_message_receipts` for
+Migration `0006_main_messages.sql` adds `main_message_notes` and `main_message_receipts` for
 Main's remaining message path; it does not copy or read retired Operator data.
 
 ### Main messages (2026-09-13)

@@ -54,6 +54,7 @@ test("activity sorts dated owner facts and preserves unknown dates without inven
   expect(prActivity(pr).map((event) => event.kind)).toEqual([
     "opened",
     "comment",
+    "review",
     "commit",
   ]);
   pr.mergedAt = pr.updatedAt;

@@ -119,6 +119,7 @@ export async function taskRows(
     row("task", { ...state.task, attention: derived.attention }),
     row("inbox", {
       taskId,
+      linkedPrNumbers: deps.store.linkedPullRequests(state.task.repoId, taskId),
       forHuman: null,
       reasonRuns: Object.fromEntries(
         Object.entries(derived.reasonRunIds).map(([reason, ids]) => [

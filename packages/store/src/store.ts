@@ -58,6 +58,7 @@ import {
   positive,
   text,
 } from "./schema-helpers.js";
+import { SettingsStore } from "./settings.js";
 
 export type Conflict = {
   ok: false;
@@ -78,20 +79,33 @@ class CommitConflict extends Error {
   }
 }
 export class Store {
+  private roleProfilesForTask?: (task: Task) => ReconcileConfig["roleProfiles"];
   readonly mainMessages: MainMessageStore;
   readonly hooks: SqliteHookLog;
   readonly outbox: Outbox;
+  readonly settings: SettingsStore;
   constructor(
     private readonly db: Database.Database,
     readonly dataDirectory: string,
-    private readonly config: ReconcileConfig,
+    private config: ReconcileConfig,
   ) {
     this.mainMessages = new MainMessageStore(db);
     this.hooks = new SqliteHookLog(db);
     this.outbox = new Outbox(db);
+    this.settings = new SettingsStore(db);
+  }
+  /** Replace live reconcile inputs after an immediate settings update. */
+  setReconcileConfig(config: ReconcileConfig): void {
+    this.config = config;
   }
   close(): void {
     this.db.close();
+  }
+  /** Coordinator injection for next-run defaults; captured task/run fields still win in core. */
+  setRoleProfilesResolver(
+    resolver: (task: Task) => ReconcileConfig["roleProfiles"],
+  ): void {
+    this.roleProfilesForTask = resolver;
   }
   /** Coordinator-owned per-instance project selection, persisted in the existing metadata table. */
   selectedRepo(): Repo["id"] | null {
@@ -155,6 +169,23 @@ export class Store {
         "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       )
       .run(`pr:${JSON.stringify([repoId, number])}`, JSON.stringify(value));
+  }
+  /** Reverse projection of the same durable links, independent of GitHub cache/subscriptions. */
+  linkedPullRequests(repoId: string, taskId: TaskId): number[] {
+    const keys = this.db
+      .prepare(
+        "SELECT key FROM meta WHERE key LIKE 'pr:%' AND json_extract(value, '$.taskId') = ?",
+      )
+      .pluck()
+      .all(taskId);
+    return keys
+      .flatMap((key) => {
+        const [repo, number] = z
+          .tuple([z.string(), z.number().int().positive()])
+          .parse(JSON.parse(z.string().parse(key).slice(3)));
+        return repo === repoId ? [number] : [];
+      })
+      .sort((a, b) => a - b);
   }
   pullRequestViewedFiles(repoId: string, number: number, headSha: string) {
     const raw = this.db
@@ -372,7 +403,9 @@ export class Store {
         artifactContents,
         consumedInputIds,
         outbox: this.outbox.list(taskId),
-        config: this.config,
+        config: this.roleProfilesForTask
+          ? { ...this.config, roleProfiles: this.roleProfilesForTask(task) }
+          : this.config,
         ...context,
       };
     })();

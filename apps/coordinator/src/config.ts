@@ -2,7 +2,18 @@
 // default: a development coordinator must never open the stable instance's database.
 
 import { hostname } from "node:os";
-import type { Provider, ReconcileConfig, Role, RunMode } from "@loom/core";
+import {
+  DEFAULT_SETTINGS,
+  mergeSettings,
+  type Provider,
+  type ProviderEnvironmentSettings,
+  type ReconcileConfig,
+  type Role,
+  type RunMode,
+  resolveSettings,
+  type SettingsPatch,
+  type SettingsValues,
+} from "@loom/core";
 import { z } from "zod";
 import { deriveClaudeSessionId, sha256 } from "./derive.js";
 
@@ -155,6 +166,9 @@ export const configSchema = z
       .string()
       .optional()
       .transform((value) => parseRunModes(value)),
+    agentAccess: z.enum(["full", "approval-gated"]).default("full"),
+    settingsEnvironment: z.custom<SettingsPatch>().default({}),
+    providerEnvironment: z.custom<ProviderEnvironmentSettings>().default({}),
   })
   .transform((config) => ({
     ...config,
@@ -165,23 +179,36 @@ export const configSchema = z
 export type CoordinatorConfig = z.output<typeof configSchema>;
 
 /** The subset core sees. The pure functions are injected here, never serialized. */
-export const reconcileConfig = (
-  config: CoordinatorConfig,
-): ReconcileConfig => ({
-  retry: config.retry,
-  stallAfterMs: config.stallAfterMs,
-  unknownGraceMs: config.unknownGraceMs,
-  deliveryTimeoutMs: config.deliveryTimeoutMs,
-  githubPollMs: config.githubPollMs,
-  deriveClaudeSessionId,
-  sha256,
-  worktreeRoot: config.worktreeRoot,
-  baseBranch: config.baseBranch,
-  models: config.models as Record<Provider, string>,
-  runModes: config.runModes,
-  providerOverrides: config.providerOverrides,
-  codexReasoningEffort: config.codexReasoningEffort,
-});
+export const reconcileConfig = (config: CoordinatorConfig): ReconcileConfig => {
+  return {
+    retry: config.retry,
+    stallAfterMs: config.stallAfterMs,
+    unknownGraceMs: config.unknownGraceMs,
+    deliveryTimeoutMs: config.deliveryTimeoutMs,
+    githubPollMs: config.githubPollMs,
+    deriveClaudeSessionId,
+    sha256,
+    worktreeRoot: config.worktreeRoot,
+    baseBranch: config.baseBranch,
+    models: config.models as Record<Provider, string>,
+    runModes: config.runModes,
+    providerOverrides: config.providerOverrides,
+    codexReasoningEffort: config.codexReasoningEffort,
+    ...(config.settingsEnvironment.roles ||
+    Object.keys(config.providerEnvironment.models ?? {}).length ||
+    config.providerEnvironment.codexReasoningEffort
+      ? {
+          roleProfiles: resolveSettings(
+            null,
+            null,
+            config.settingsEnvironment,
+            DEFAULT_SETTINGS,
+            config.providerEnvironment,
+          ).effective.roles,
+        }
+      : {}),
+  };
+};
 
 const required = (
   name: string,
@@ -201,7 +228,7 @@ export function configFromEnvironment(
   const bindMatch = bindStr.match(/^(\[[^\]]+\]|[^:]+):(\d+)$/);
   const bindPort = bindMatch ? Number(bindMatch[2]) : 47800;
 
-  return configSchema.parse({
+  const parsed = configSchema.parse({
     instance: env.LOOM_INSTANCE ?? required("LOOM_INSTANCE", env),
     dataRoot: env.LOOM_DATA_ROOT ?? required("LOOM_DATA_ROOT", env),
     worktreeRoot:
@@ -238,6 +265,7 @@ export function configFromEnvironment(
     codexExecutable: optional("LOOM_CODEX"),
     claudeExecutable: optional("LOOM_CLAUDE"),
     runModes: optional("LOOM_RUN_MODES"),
+    agentAccess: optional("LOOM_AGENT_ACCESS"),
     mcpPort: env.LOOM_MCP_PORT
       ? Number(env.LOOM_MCP_PORT)
       : derivedPort(bindPort, 1),
@@ -245,6 +273,145 @@ export function configFromEnvironment(
       ? Number(env.LOOM_HOOK_PORT)
       : derivedPort(bindPort, 2),
   });
+  const rolePatch: SettingsPatch["roles"] = {};
+  for (const role of ["planner", "implementer", "reviewer"] as const) {
+    const provider =
+      parsed.providerOverrides[role] ?? DEFAULT_SETTINGS.roles[role].provider;
+    const value: Partial<(typeof DEFAULT_SETTINGS.roles)[typeof role]> = {};
+    if (env[`LOOM_PROVIDER_${role.toUpperCase()}`]) value.provider = provider;
+    if (env.LOOM_RUN_MODES) value.runMode = parsed.runModes[role];
+    if (env.LOOM_AGENT_ACCESS) value.access = parsed.agentAccess;
+    if (Object.keys(value).length) rolePatch[role] = value;
+  }
+  const settingsEnvironment: SettingsPatch = {
+    ...(Object.keys(rolePatch).length ? { roles: rolePatch } : {}),
+    main: {
+      ...(env.LOOM_MODEL_LEAD ? { model: parsed.leadModel ?? null } : {}),
+    },
+    runtime: {
+      ...(env.LOOM_CAP_TOTAL ? { capTotal: parsed.caps.total } : {}),
+      ...(env.LOOM_CAP_CODEX ? { capCodex: parsed.caps.codex } : {}),
+      ...(env.LOOM_CAP_CLAUDE ? { capClaude: parsed.caps.claude } : {}),
+      ...(env.LOOM_WORKTREE_ROOT ? { worktreeRoot: parsed.worktreeRoot } : {}),
+      ...(env.LOOM_TMUX ? { tmuxExecutable: parsed.tmuxExecutable } : {}),
+      ...(env.LOOM_CODEX ? { codexExecutable: parsed.codexExecutable } : {}),
+      ...(env.LOOM_CLAUDE ? { claudeExecutable: parsed.claudeExecutable } : {}),
+      ...(env.LOOM_EXCLUDED_AUTHORS
+        ? { excludedAuthors: parsed.excludedAuthors }
+        : {}),
+    },
+    ...(env.LOOM_WINDOW_MODE
+      ? {
+          appearance: {
+            windowMode: z
+              .enum(["tracker", "workbench"])
+              .parse(env.LOOM_WINDOW_MODE),
+          },
+        }
+      : {}),
+    ...(env.LOOM_BASE_BRANCH
+      ? { repository: { baseBranch: parsed.baseBranch } }
+      : {}),
+  };
+  const providerEnvironment: ProviderEnvironmentSettings = {
+    models: {
+      ...(env.LOOM_MODEL_CODEX ? { codex: parsed.models.codex } : {}),
+      ...(env.LOOM_MODEL_CLAUDE ? { claude: parsed.models.claude } : {}),
+    },
+    ...(env.LOOM_CODEX_REASONING_EFFORT
+      ? { codexReasoningEffort: parsed.codexReasoningEffort }
+      : {}),
+  };
+  return { ...parsed, settingsEnvironment, providerEnvironment };
+}
+
+/** Build the compatibility defaults represented by a parsed startup configuration. */
+export function settingsDefaultsForConfig(
+  config: CoordinatorConfig,
+): SettingsValues {
+  let defaults = mergeSettings(DEFAULT_SETTINGS, {
+    repository: { baseBranch: config.baseBranch },
+    main: { model: config.leadModel ?? null },
+    runtime: {
+      capTotal: config.caps.total,
+      capCodex: config.caps.codex,
+      capClaude: config.caps.claude,
+      retryBaseMs: config.retry.baseMs,
+      retryCapMs: config.retry.capMs,
+      retryMaxAttempts: config.retry.maxAttempts,
+      stallAfterMs: config.stallAfterMs,
+      unknownGraceMs: config.unknownGraceMs,
+      deliveryTimeoutMs: config.deliveryTimeoutMs,
+      githubPollMs: config.githubPollMs,
+      resyncMs: config.resyncMs,
+      heartbeatMs: config.heartbeatMs,
+      worktreeRoot: config.worktreeRoot,
+      tmuxExecutable: config.tmuxExecutable,
+      codexExecutable: config.codexExecutable,
+      claudeExecutable: config.claudeExecutable,
+      excludedAuthors: config.excludedAuthors,
+    },
+  });
+  for (const role of ["planner", "implementer", "reviewer"] as const) {
+    const provider =
+      config.providerOverrides[role] ?? defaults.roles[role].provider;
+    defaults = mergeSettings(defaults, {
+      roles: {
+        [role]: {
+          provider,
+          model: config.models[provider],
+          reasoningEffort:
+            provider === "codex"
+              ? (config.codexReasoningEffort ?? "medium")
+              : null,
+          runMode: config.runModes[role],
+          access: config.agentAccess,
+        },
+      },
+    });
+  }
+  return defaults;
+}
+
+/** Apply coordinator-owned values to a config clone before consumers capture it. */
+export function applyStoredSettingsToConfig(
+  target: CoordinatorConfig,
+  baseline: CoordinatorConfig,
+  stored: SettingsPatch | null,
+  startup: boolean,
+): SettingsValues {
+  const value = resolveSettings(
+    stored,
+    null,
+    baseline.settingsEnvironment,
+    settingsDefaultsForConfig(baseline),
+    baseline.providerEnvironment,
+  ).effective;
+  target.caps = {
+    total: value.runtime.capTotal,
+    codex: value.runtime.capCodex,
+    claude: value.runtime.capClaude,
+  };
+  target.retry = {
+    baseMs: value.runtime.retryBaseMs,
+    capMs: value.runtime.retryCapMs,
+    maxAttempts: value.runtime.retryMaxAttempts,
+  };
+  target.stallAfterMs = value.runtime.stallAfterMs;
+  target.unknownGraceMs = value.runtime.unknownGraceMs;
+  target.deliveryTimeoutMs = value.runtime.deliveryTimeoutMs;
+  target.githubPollMs = value.runtime.githubPollMs;
+  target.resyncMs = value.runtime.resyncMs;
+  target.excludedAuthors = [...value.runtime.excludedAuthors];
+  target.leadModel = value.main.model ?? undefined;
+  if (startup) {
+    target.heartbeatMs = value.runtime.heartbeatMs;
+    target.worktreeRoot = value.runtime.worktreeRoot;
+    target.tmuxExecutable = value.runtime.tmuxExecutable;
+    target.codexExecutable = value.runtime.codexExecutable;
+    target.claudeExecutable = value.runtime.claudeExecutable;
+  }
+  return value;
 }
 
 /** A stable name for this coordinator run, so clients notice a restart. */

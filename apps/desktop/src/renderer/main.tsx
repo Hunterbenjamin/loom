@@ -18,12 +18,71 @@ const Workbench = lazy(() =>
 
 import { emptySnapshot } from "./live/snapshot.js";
 import { pullRequestSubscriptions } from "./store/pull-requests.js";
-import { StoreProvider } from "./store/react.js";
+import { StoreProvider, useStore } from "./store/react.js";
 import { createStore } from "./store/store.js";
+import { TerminalHistoryContext } from "./ui/terminal.js";
 import { WindowModeContext } from "./window-mode.js";
 import "./theme.css";
 import { PaneChime } from "./workbench/chime.js";
 
+let importingKeybindings = false;
+let nativeFingerprint = "";
+async function synchronizeNativeSettings() {
+  const document = store
+    .getState()
+    .settings.find((item) => item.id === "global");
+  if (!document) return;
+  const stored = document.stored.appearance;
+  if (
+    !importingKeybindings &&
+    (!stored ||
+      stored.keyPrefix === undefined ||
+      stored.keyTimeoutMs === undefined ||
+      stored.keybindings === undefined)
+  ) {
+    importingKeybindings = true;
+    try {
+      const legacy = await window.loomHost.keybindings();
+      await store.command({
+        kind: "update_settings",
+        scope: { kind: "global" },
+        expectedVersion: document.version,
+        patch: {
+          appearance: {
+            ...(stored?.keyPrefix === undefined
+              ? { keyPrefix: legacy.config.prefix }
+              : {}),
+            ...(stored?.keyTimeoutMs === undefined
+              ? { keyTimeoutMs: legacy.config.prefixTimeoutMs }
+              : {}),
+            ...(stored?.keybindings === undefined
+              ? { keybindings: legacy.config.bindings }
+              : {}),
+          },
+        },
+      });
+    } finally {
+      importingKeybindings = false;
+    }
+    return;
+  }
+  const { appearance } = document.effective;
+  const native = {
+    version: 1 as const,
+    windowMode: appearance.windowMode,
+    terminalHistoryLimit: appearance.terminalHistoryLimit,
+    keybindings: {
+      version: 1 as const,
+      prefix: appearance.keyPrefix,
+      prefixTimeoutMs: appearance.keyTimeoutMs,
+      bindings: appearance.keybindings,
+    },
+  };
+  const fingerprint = JSON.stringify(native);
+  if (fingerprint === nativeFingerprint) return;
+  await window.loomHost.applyNativeSettings?.(native);
+  nativeFingerprint = fingerprint;
+}
 const initialMode = await window.loomHost.mode();
 const config = connectionConfig.parse(await window.loomHost.connection());
 const store =
@@ -34,6 +93,13 @@ const store =
         true,
         config.mode === "live" ? config.instance : "unconfigured",
       );
+const requestNativeSynchronization = () => {
+  void synchronizeNativeSettings().catch(() => {
+    // Coordinator data remains authoritative; reconnect or the next patch retries the mirror.
+  });
+};
+store.subscribe(requestNativeSynchronization);
+requestNativeSynchronization();
 if (config.mode === "live") {
   const client = new TrackerClient({
     ...config,
@@ -89,24 +155,37 @@ function Boot() {
 
   const app = (
     <StoreProvider store={store}>
-      <WindowModeContext value={mode}>
-        <PaneChime />
-        <Suspense fallback={<div>Opening {mode}…</div>}>
-          {visited.has("tracker") && (
-            <Activity mode={mode === "tracker" ? "visible" : "hidden"}>
-              <App />
-            </Activity>
-          )}
-          {visited.has("workbench") && (
-            <Activity mode={mode === "workbench" ? "visible" : "hidden"}>
-              <Workbench />
-            </Activity>
-          )}
-        </Suspense>
-      </WindowModeContext>
+      <TerminalSettings>
+        <WindowModeContext value={mode}>
+          <PaneChime />
+          <Suspense fallback={<div>Opening {mode}…</div>}>
+            {visited.has("tracker") && (
+              <Activity mode={mode === "tracker" ? "visible" : "hidden"}>
+                <App />
+              </Activity>
+            )}
+            {visited.has("workbench") && (
+              <Activity mode={mode === "workbench" ? "visible" : "hidden"}>
+                <Workbench />
+              </Activity>
+            )}
+          </Suspense>
+        </WindowModeContext>
+      </TerminalSettings>
     </StoreProvider>
   );
   return Pool ? <Pool>{app}</Pool> : app;
+}
+
+function TerminalSettings({ children }: { children: ReactNode }) {
+  const limit = useStore(
+    (state) =>
+      state.settings.find((item) => item.id === "global")?.effective.appearance
+        .terminalHistoryLimit ?? 10_000,
+  );
+  return (
+    <TerminalHistoryContext value={limit}>{children}</TerminalHistoryContext>
+  );
 }
 
 const root = document.getElementById("root");

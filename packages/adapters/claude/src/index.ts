@@ -137,6 +137,7 @@ export async function createClaudeAdapter(
       model,
       settingsPath,
       readOnly,
+      approvalGated,
       conversationOnly,
     }) => [
       "--settings",
@@ -166,7 +167,9 @@ export async function createClaudeAdapter(
           ]
         : readOnly
           ? ["--disallowedTools", ...READ_ONLY_DISALLOWED_TOOLS]
-          : ["--permission-mode", "bypassPermissions"]),
+          : approvalGated
+            ? []
+            : ["--permission-mode", "bypassPermissions"]),
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {

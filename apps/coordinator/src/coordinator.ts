@@ -32,15 +32,29 @@ import type {
   TaskState,
   WorktreePath,
 } from "@loom/core";
+import {
+  DEFAULT_SETTINGS,
+  MODEL_CATALOG,
+  mergeSettings,
+  resolveSettings,
+  SETTINGS_CATALOG,
+  type SettingsPatch,
+  type SettingsScope,
+  type SettingsValues,
+  settingValue,
+  validateSettings,
+} from "@loom/core";
 import { leadCommand, serveHttp } from "@loom/mcp";
 import type { Change, Subscription } from "@loom/protocol";
 import { command as commandSchema } from "@loom/protocol";
 import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import {
+  applyStoredSettingsToConfig,
   COORDINATOR_VERSION,
   type CoordinatorConfig,
   epochOf,
+  reconcileConfig,
 } from "./config.js";
 import { classify, Executor } from "./executor.js";
 import { inspectTask } from "./inspect.js";
@@ -73,6 +87,8 @@ const EMPTY_ATTENTION: Attention = {
 
 export interface CoordinatorOptions {
   config: CoordinatorConfig;
+  /** Unmodified environment/bootstrap config used when a stored override is reset. */
+  baselineConfig?: CoordinatorConfig;
   store: Store;
   adapters: Adapters;
   /** Injected in tests so nothing depends on the wall clock. */
@@ -96,11 +112,82 @@ export interface CreateTaskInput {
   size?: "small" | "normal" | null;
 }
 
+const settingsId = (scope: SettingsScope): string =>
+  scope.kind === "global" ? "global" : `repo:${scope.repoId}`;
+
+const mergeStored = (
+  current: SettingsPatch,
+  patch: SettingsPatch,
+): SettingsPatch => ({
+  ...current,
+  ...patch,
+  ...(patch.roles
+    ? {
+        roles: Object.fromEntries(
+          Object.entries({ ...current.roles, ...patch.roles }).map(
+            ([role, value]) => [
+              role,
+              {
+                ...current.roles?.[
+                  role as keyof NonNullable<SettingsPatch["roles"]>
+                ],
+                ...value,
+              },
+            ],
+          ),
+        ),
+      }
+    : {}),
+  ...(patch.workflow
+    ? { workflow: { ...current.workflow, ...patch.workflow } }
+    : {}),
+  ...(patch.repository
+    ? { repository: { ...current.repository, ...patch.repository } }
+    : {}),
+  ...(patch.main ? { main: { ...current.main, ...patch.main } } : {}),
+  ...(patch.runtime
+    ? { runtime: { ...current.runtime, ...patch.runtime } }
+    : {}),
+  ...(patch.appearance
+    ? { appearance: { ...current.appearance, ...patch.appearance } }
+    : {}),
+});
+
+const removeSettings = (
+  current: SettingsPatch,
+  keys: readonly string[],
+): SettingsPatch => {
+  const next = structuredClone(current) as Record<string, unknown>;
+  for (const path of keys) {
+    const parts = path.split(".");
+    let parent: Record<string, unknown> | undefined = next;
+    for (const part of parts.slice(0, -1)) {
+      const child: unknown = parent?.[part];
+      parent =
+        child && typeof child === "object"
+          ? (child as Record<string, unknown>)
+          : undefined;
+    }
+    if (parent) delete parent[parts.at(-1) ?? ""];
+  }
+  return next as SettingsPatch;
+};
+
+const changedSettings = (before: SettingsPatch, after: SettingsPatch) =>
+  SETTINGS_CATALOG.flatMap(({ key }) => {
+    const oldValue = settingValue(before, key);
+    const newValue = settingValue(after, key);
+    return JSON.stringify(oldValue) === JSON.stringify(newValue)
+      ? []
+      : [{ key, oldValue, newValue }];
+  });
+
 export class Coordinator {
   readonly config: CoordinatorConfig;
   readonly store: Store;
   readonly adapters: Adapters;
   readonly recipes: RecipeStore;
+  private readonly baselineConfig: CoordinatorConfig;
   readonly leads = new Map<string, LeadSession>();
   leadFor(repoId: string): LeadSession {
     const repo = this.store.repos().find((repo) => repo.id === repoId);
@@ -136,6 +223,293 @@ export class Coordinator {
         value: { id: "project", repoId: this.store.selectedRepo() },
       },
     ];
+  }
+  private compatibilitySettings(repoId?: string): SettingsValues {
+    const repo = repoId
+      ? this.store.repos().find((item) => item.id === repoId)
+      : undefined;
+    let compatibility = mergeSettings(DEFAULT_SETTINGS, {
+      repository: {
+        baseBranch: repo?.baseBranch ?? this.config.baseBranch,
+        serialTests: repo?.serialTests ?? false,
+      },
+    });
+    for (const role of ["planner", "implementer", "reviewer"] as const) {
+      const provider =
+        this.config.providerOverrides[role] ??
+        repo?.defaultProviders[role] ??
+        compatibility.roles[role].provider;
+      compatibility = mergeSettings(compatibility, {
+        roles: {
+          [role]: {
+            provider,
+            model: this.config.models[provider],
+            reasoningEffort:
+              provider === "codex"
+                ? ((this.config.codexReasoningEffort as never) ?? "medium")
+                : null,
+            runMode: this.config.runModes[role] ?? "interactive",
+            access: this.config.agentAccess,
+          },
+        },
+      });
+    }
+    return compatibility;
+  }
+  private effectiveSettings(repoId?: string): SettingsValues {
+    const global = this.store.settings.read({ kind: "global" }).data;
+    const repository = repoId
+      ? this.store.settings.read({ kind: "repository", repoId }).data
+      : null;
+    return resolveSettings(
+      global,
+      repository,
+      this.config.settingsEnvironment,
+      this.compatibilitySettings(repoId),
+      this.config.providerEnvironment,
+    ).effective;
+  }
+  private settingsRows(): Row[] {
+    const global = this.store.settings.read({ kind: "global" });
+    const audit = this.store.settings.audit(100);
+    const scopes: SettingsScope[] = [
+      { kind: "global" },
+      ...this.store
+        .repos()
+        .map((repo) => ({ kind: "repository" as const, repoId: repo.id })),
+    ];
+    return scopes.map((scope) => {
+      const stored =
+        scope.kind === "global" ? global : this.store.settings.read(scope);
+      const resolution = resolveSettings(
+        global.data,
+        scope.kind === "repository" ? stored.data : null,
+        this.config.settingsEnvironment,
+        DEFAULT_SETTINGS,
+        this.config.providerEnvironment,
+      );
+      const effective = this.effectiveSettings(
+        scope.kind === "repository" ? scope.repoId : undefined,
+      );
+      if (scope.kind === "repository") {
+        const repo = this.store
+          .repos()
+          .find((item) => item.id === scope.repoId);
+        for (const role of ["planner", "implementer", "reviewer"] as const)
+          if (
+            repo?.defaultProviders[role] &&
+            settingValue(global.data, `roles.${role}.provider`) === undefined &&
+            settingValue(stored.data, `roles.${role}.provider`) === undefined &&
+            settingValue(
+              this.config.settingsEnvironment,
+              `roles.${role}.provider`,
+            ) === undefined
+          )
+            resolution.sources[`roles.${role}.provider`] = "repository";
+        for (const key of ["baseBranch", "serialTests"] as const)
+          if (
+            repo &&
+            settingValue(global.data, `repository.${key}`) === undefined &&
+            settingValue(stored.data, `repository.${key}`) === undefined &&
+            settingValue(
+              this.config.settingsEnvironment,
+              `repository.${key}`,
+            ) === undefined
+          )
+            resolution.sources[`repository.${key}`] = "repository";
+      }
+      return {
+        collection: "settings" as const,
+        key: settingsId(scope),
+        value: {
+          id: settingsId(scope),
+          scope,
+          version: stored.version,
+          stored: stored.data,
+          defaults: DEFAULT_SETTINGS,
+          effective,
+          sources: resolution.sources,
+          catalog: SETTINGS_CATALOG,
+          modelCatalog: MODEL_CATALOG,
+          credentialReadiness: {
+            codex: Boolean(
+              process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY,
+            ),
+            claude: Boolean(process.env.ANTHROPIC_API_KEY),
+            github: Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN),
+          },
+          audit: audit.filter(
+            (entry) => settingsId(entry.scope) === settingsId(scope),
+          ),
+        },
+      };
+    });
+  }
+  private publishSettings(): void {
+    this.protocol.publish(
+      this.published.replace("settings", null, this.settingsRows()),
+    );
+  }
+  private applyStoredRuntime(startup: boolean): void {
+    const global = this.store.settings.read({ kind: "global" }).data;
+    applyStoredSettingsToConfig(
+      this.config,
+      this.baselineConfig,
+      global,
+      startup,
+    );
+    this.store.setReconcileConfig(reconcileConfig(this.config));
+    this.adapters.github.setExcludedAuthors?.(this.config.excludedAuthors);
+    if (!startup && this.resync) {
+      clearInterval(this.resync);
+      this.resync = setInterval(() => this.resyncAll(), this.config.resyncMs);
+      this.resync.unref?.();
+    }
+  }
+  private saveSettings(
+    scope: SettingsScope,
+    expectedVersion: number,
+    next: SettingsPatch,
+  ): number {
+    if (
+      scope.kind === "repository" &&
+      !this.store.repos().some((repo) => repo.id === scope.repoId)
+    )
+      throw Object.assign(new Error("Unknown registered repository"), {
+        code: "invalid_input",
+      });
+    const current = this.store.settings.read(scope);
+    const changes = changedSettings(current.data, next);
+    if (!changes.length)
+      throw Object.assign(new Error("No settings changed"), {
+        code: "invalid_input",
+      });
+    const unavailable = changes
+      .map((change) => SETTINGS_CATALOG.find((item) => item.key === change.key))
+      .filter(
+        (item) => !item || item.readOnly || !item.scopes.includes(scope.kind),
+      );
+    if (unavailable.length)
+      throw Object.assign(new Error("Setting is not editable in this scope"), {
+        code: "invalid_input",
+        details: unavailable.map((item) => item?.key ?? "unknown setting"),
+      });
+    const global =
+      scope.kind === "global"
+        ? next
+        : this.store.settings.read({ kind: "global" }).data;
+    const repositories =
+      scope.kind === "repository"
+        ? [{ id: scope.repoId, data: next }]
+        : this.store.repos().map((repo) => ({
+            id: repo.id,
+            data: this.store.settings.read({
+              kind: "repository",
+              repoId: repo.id,
+            }).data,
+          }));
+    const validateResolved = (
+      repositoryId: string | undefined,
+      repositoryData: SettingsPatch | null,
+      environment: SettingsPatch | null,
+    ) => {
+      const compatibility = this.compatibilitySettings(repositoryId);
+      const effective = resolveSettings(
+        global,
+        repositoryData,
+        environment,
+        compatibility,
+        this.config.providerEnvironment,
+      ).effective;
+      return validateSettings(effective).filter((message) => {
+        const match =
+          /^Unknown (?:codex|claude) model for (planner|implementer|reviewer):/.exec(
+            message,
+          );
+        if (!match) return true;
+        const role = match[1] as "planner" | "implementer" | "reviewer";
+        const path = `roles.${role}.model`;
+        const explicitlyConfigured =
+          settingValue(global, path) !== undefined ||
+          settingValue(repositoryData ?? {}, path) !== undefined ||
+          settingValue(environment ?? {}, path) !== undefined;
+        return (
+          explicitlyConfigured ||
+          effective.roles[role].model !== compatibility.roles[role].model
+        );
+      });
+    };
+    const errors = [
+      ...validateResolved(undefined, null, null),
+      ...validateResolved(undefined, null, this.config.settingsEnvironment),
+      ...repositories.flatMap((repo) =>
+        [
+          ...validateResolved(repo.id, repo.data, null),
+          ...validateResolved(
+            repo.id,
+            repo.data,
+            this.config.settingsEnvironment,
+          ),
+        ].map((message) => `${repo.id}: ${message}`),
+      ),
+    ];
+    if (errors.length)
+      throw Object.assign(new Error("Settings validation failed"), {
+        code: "invalid_input",
+        details: errors,
+      });
+    const saved = this.store.settings.update({
+      scope,
+      expectedVersion,
+      data: next,
+      actor: "desktop",
+      changedAt: this.now(),
+      changes,
+    });
+    if (scope.kind === "global") this.applyStoredRuntime(false);
+    if (
+      scope.kind === "repository" &&
+      changes.some((change) => change.key.startsWith("repository."))
+    ) {
+      const repo = this.store.repos().find((item) => item.id === scope.repoId);
+      if (repo) {
+        const effective = resolveSettings(
+          global,
+          next,
+          this.config.settingsEnvironment,
+          DEFAULT_SETTINGS,
+          this.config.providerEnvironment,
+        ).effective;
+        this.store.putRepo({
+          ...repo,
+          baseBranch: effective.repository.baseBranch,
+          serialTests: effective.repository.serialTests,
+        });
+        this.publishRepos();
+      }
+    }
+    if (
+      scope.kind === "global" &&
+      changes.some((change) => change.key.startsWith("repository."))
+    ) {
+      for (const repo of this.store.repos()) {
+        const repository = this.store.settings.read({
+          kind: "repository",
+          repoId: repo.id,
+        }).data;
+        const effective = resolveSettings(
+          next,
+          repository,
+          this.config.settingsEnvironment,
+          DEFAULT_SETTINGS,
+          this.config.providerEnvironment,
+        ).effective.repository;
+        this.store.putRepo({ ...repo, ...effective });
+      }
+      this.publishRepos();
+    }
+    this.publishSettings();
+    return saved.version;
   }
   private publishRepos(): void {
     this.protocol.publish([
@@ -180,6 +554,9 @@ export class Coordinator {
 
   constructor(private readonly options: CoordinatorOptions) {
     this.config = options.config;
+    this.baselineConfig = structuredClone(
+      options.baselineConfig ?? options.config,
+    );
     this.store = options.store;
     this.adapters = options.adapters;
     this.now = options.now ?? (() => new Date().toISOString() as IsoTime);
@@ -194,6 +571,10 @@ export class Coordinator {
     this.startedAt = this.now();
     this.epoch = epochOf(this.startedAt);
     this.recipes = new RecipeStore(this.store.dataDirectory);
+    this.store.setRoleProfilesResolver(
+      (task) => this.effectiveSettings(task.repoId).roles,
+    );
+    this.applyStoredRuntime(true);
 
     this.loop = new Loop({
       store: this.store,
@@ -233,6 +614,22 @@ export class Coordinator {
         this.protocol.publish(this.published.replace(owner, null, rows)),
       after: this.after,
       action: (command) => this.executor.pullRequest(command),
+      linksChanged: async (repo) => {
+        for (const task of this.store.tasks())
+          if (task.repoId === repo.id)
+            this.protocol.publish(await this.refreshTask(task.id));
+      },
+      merged: (repo, head) => {
+        for (const task of this.store.tasks())
+          if (
+            task.repoId === repo.id &&
+            task.branch === head &&
+            task.stage !== "done"
+          ) {
+            this.pullRequests.forget(repo.github, head);
+            this.loop.enqueue(task.id);
+          }
+      },
       changed: (repo) => {
         for (const task of this.store.tasks())
           if (task.repoId === repo.id && task.branch) {
@@ -411,6 +808,7 @@ export class Coordinator {
 
   createTask(input: CreateTaskInput): TaskState {
     const repo = this.repoById(input.repoId);
+    const settings = this.effectiveSettings(repo.id);
     const now = this.now();
     const id = `t-${randomUUID().slice(0, 8)}` as TaskId;
     const task: Task = {
@@ -424,20 +822,40 @@ export class Coordinator {
       version: 0,
       blocked: null,
       failed: null,
-      requirePlanApproval: input.requirePlanApproval ?? false,
+      requirePlanApproval:
+        input.requirePlanApproval ?? settings.workflow.requirePlanApproval,
+      mergePolicy: settings.workflow.mergePolicy,
       reviewRound: 0,
-      reviewRoundCap: 3,
+      reviewRoundCap: settings.workflow.reviewRoundCap,
+      roleProfiles: Object.fromEntries(
+        (["planner", "implementer", "reviewer"] as const).map((role) => {
+          const profile = settings.roles[role];
+          const provider = input.providers?.[role] ?? profile.provider;
+          return [
+            role,
+            provider === profile.provider
+              ? profile
+              : {
+                  ...profile,
+                  provider,
+                  model: this.config.models[provider],
+                  reasoningEffort:
+                    provider === "codex"
+                      ? (this.config.codexReasoningEffort ?? "medium")
+                      : null,
+                },
+          ];
+        }),
+      ) as Task["roleProfiles"],
       providers: {
-        ...(input.providers ?? repo.defaultProviders),
-        ...Object.fromEntries(
-          Object.entries(this.config.providerOverrides).filter(
-            ([, value]) => value !== undefined,
-          ),
-        ),
+        planner: input.providers?.planner ?? settings.roles.planner.provider,
+        implementer:
+          input.providers?.implementer ?? settings.roles.implementer.provider,
+        reviewer: input.providers?.reviewer ?? settings.roles.reviewer.provider,
       },
       blockedBy: input.blockedBy ?? [],
-      budgetMinutes: input.budgetMinutes ?? null,
-      size: input.size ?? "normal",
+      budgetMinutes: input.budgetMinutes ?? settings.workflow.budgetMinutes,
+      size: input.size ?? settings.workflow.size,
       createdAt: now,
       updatedAt: now,
       worktreePath: null,
@@ -742,6 +1160,7 @@ export class Coordinator {
     await this.ensure(scope);
     this.published.replace("lead", null, await this.leadRows());
     this.published.replace("project", null, this.projectRows());
+    this.published.replace("settings", null, this.settingsRows());
     this.published.replace(
       "repos",
       null,
@@ -857,6 +1276,40 @@ export class Coordinator {
     } & Record<string, unknown>;
     try {
       switch (command.kind) {
+        case "update_settings": {
+          const scope = command.scope as SettingsScope;
+          const current = this.store.settings.read(scope);
+          const version = this.saveSettings(
+            scope,
+            command.expectedVersion as number,
+            mergeStored(current.data, command.patch as SettingsPatch),
+          );
+          return {
+            ok: true,
+            result: { kind: "settings_updated", scope, version },
+          };
+        }
+        case "reset_settings": {
+          const scope = command.scope as SettingsScope;
+          const keys = command.keys as string[];
+          const known = new Set(SETTINGS_CATALOG.map((item) => item.key));
+          const unknown = keys.filter((key) => !known.has(key));
+          if (unknown.length)
+            throw Object.assign(new Error("Unknown setting key"), {
+              code: "invalid_input",
+              details: unknown,
+            });
+          const current = this.store.settings.read(scope);
+          const version = this.saveSettings(
+            scope,
+            command.expectedVersion as number,
+            removeSettings(current.data, keys),
+          );
+          return {
+            ok: true,
+            result: { kind: "settings_updated", scope, version },
+          };
+        }
         case "rename_space":
         case "rename_tab": {
           if (
@@ -1151,12 +1604,18 @@ export class Coordinator {
           };
       }
     } catch (error) {
+      const typed = error as Error & { code?: string; details?: string[] };
       return {
         ok: false,
         error: {
-          code: "internal",
+          code:
+            typed.code === "conflict"
+              ? "conflict"
+              : typed.code === "invalid_input"
+                ? "invalid_input"
+                : "internal",
           message: error instanceof Error ? error.message : String(error),
-          details: [],
+          details: typed.details ?? [],
         },
       };
     }

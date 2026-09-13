@@ -17,8 +17,23 @@ export function reconcileStages(c: Context): void {
     return;
   }
   if (task.stage === "done" || task.stage === "canceled") return;
-  if (pr?.state === "closed") c.block("pr_closed", "PR closed without merge");
-  else if (pr?.state === "open" && task.blocked?.reason === "pr_closed")
+  if (pr?.state === "closed") {
+    c.block("pr_closed", "PR closed without merge");
+    const policyApproval = state.approvals.find(
+      (approval) =>
+        approval.kind === "merge" &&
+        approval.approvedBy === "policy" &&
+        !approval.voidedAt,
+    );
+    if (
+      policyApproval &&
+      (task.stage === "awaiting_approval" || task.stage === "merging")
+    ) {
+      c.voidApprovals("stage_left");
+      if (task.stage === "merging")
+        c.stage("awaiting_approval", "Pull request closed before policy merge");
+    }
+  } else if (pr?.state === "open" && task.blocked?.reason === "pr_closed")
     c.block(null);
   if (pr?.state === "open") {
     for (const comment of pr.comments) {
@@ -93,6 +108,21 @@ export function reconcileStages(c: Context): void {
       );
       if (approval?.kind === "merge") {
         if (
+          approval.approvedBy === "policy" &&
+          (pr.ci.headSha !== pr.headSha ||
+            !["success", "none"].includes(pr.ci.conclusion) ||
+            pr.mergeable !== "mergeable" ||
+            Date.parse(c.now) - Date.parse(c.observations.github?.at ?? "") >
+              state.config.githubPollMs * 2)
+        ) {
+          c.voidApprovals("stage_left");
+          if (task.stage === "merging")
+            c.stage(
+              "awaiting_approval",
+              "Automatic merge guards are no longer current",
+            );
+        }
+        if (
           task.stage === "merging" &&
           state.outbox.some(
             (row) =>
@@ -126,6 +156,28 @@ export function reconcileStages(c: Context): void {
     }
   }
   publishReview(c);
+  // Automatic policy creates the same exact-head approval as a human, only after every guard is
+  // current. Pending/unknown CI waits here; the executor's existing exact-SHA precondition remains
+  // the final authority at merge time.
+  if (
+    task.stage === "awaiting_approval" &&
+    (task.mergePolicy === "auto-all" ||
+      (task.mergePolicy === "auto-small" && task.size === "small")) &&
+    pr?.state === "open" &&
+    state.review?.lastReviewedHead === pr.headSha &&
+    !openBlocking(state.findings) &&
+    pr.ci.headSha === pr.headSha &&
+    ["success", "none"].includes(pr.ci.conclusion) &&
+    Date.parse(c.now) - Date.parse(c.observations.github?.at ?? "") <=
+      state.config.githubPollMs * 2 &&
+    pr.mergeable === "mergeable" &&
+    !state.approvals.some(
+      (approval) => approval.kind === "merge" && !approval.voidedAt,
+    )
+  ) {
+    c.approval(pr.headSha, "policy");
+    c.stage("merging", "Merge policy approved exact reviewed head");
+  }
   if (task.stage === "todo") {
     const missing = task.blockedBy.filter(
       (id) =>

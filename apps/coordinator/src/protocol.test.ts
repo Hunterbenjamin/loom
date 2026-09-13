@@ -68,6 +68,183 @@ test("a client connects, takes a snapshot and sees its repo", async () => {
   expect(client.state?.epoch).toBe(h.coordinator.epoch);
 }, 30_000);
 
+test("settings updates publish atomically, reject stale/global-only writes, and capture repository defaults", async () => {
+  const h = await served();
+  const first = await connect(h, "settings-first");
+  const second = await connect(h, "settings-second");
+  const scope = { kind: "repository" as const, repoId: h.repo.id };
+  const before = first.state?.collections.settings.get(`repo:${h.repo.id}`);
+  expect(before?.effective.roles.implementer.provider).toBe(
+    h.repo.defaultProviders.implementer,
+  );
+  const saved = await first.command({
+    kind: "update_settings",
+    scope,
+    expectedVersion: before?.version ?? 0,
+    patch: {
+      roles: { planner: { model: "claude-opus-4-6" } },
+      workflow: { size: "small", requirePlanApproval: true },
+      repository: { baseBranch: "develop", serialTests: true },
+    },
+  });
+  if (!saved.ok) throw new Error(JSON.stringify(saved.error));
+  expect(saved).toMatchObject({
+    ok: true,
+    result: { kind: "settings_updated", version: 1 },
+  });
+  await vi.waitFor(() =>
+    expect(
+      second.state?.collections.settings.get(`repo:${h.repo.id}`)?.version,
+    ).toBe(1),
+  );
+  const effective = second.state?.collections.settings.get(
+    `repo:${h.repo.id}`,
+  )?.effective;
+  expect(effective).toMatchObject({
+    roles: {
+      planner: { model: "claude-opus-4-6" },
+      implementer: { provider: h.repo.defaultProviders.implementer },
+      reviewer: { provider: h.repo.defaultProviders.reviewer },
+    },
+    workflow: { size: "small", requirePlanApproval: true },
+    repository: { baseBranch: "develop", serialTests: true },
+  });
+  expect(
+    await second.command({
+      kind: "update_settings",
+      scope,
+      expectedVersion: 0,
+      patch: { workflow: { size: "normal" } },
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: { message: expect.stringContaining("another window") },
+  });
+  expect(
+    await second.command({
+      kind: "update_settings",
+      scope,
+      expectedVersion: 1,
+      patch: { runtime: { capTotal: 8 } },
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: { message: "Setting is not editable in this scope" },
+  });
+  const created = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Uses repository settings",
+    description: "",
+  }).task;
+  expect(created).toMatchObject({
+    size: "small",
+    requirePlanApproval: true,
+    roleProfiles: {
+      implementer: { provider: h.repo.defaultProviders.implementer },
+      reviewer: { provider: h.repo.defaultProviders.reviewer },
+    },
+  });
+  expect(h.store.repos()[0]).toMatchObject({
+    baseBranch: "develop",
+    serialTests: true,
+  });
+  expect(
+    await first.command({
+      kind: "reset_settings",
+      scope,
+      expectedVersion: 1,
+      keys: ["workflow.size", "repository.baseBranch"],
+    }),
+  ).toMatchObject({
+    ok: true,
+    result: { kind: "settings_updated", version: 2 },
+  });
+  await vi.waitFor(() =>
+    expect(
+      second.state?.collections.settings.get(`repo:${h.repo.id}`)?.effective,
+    ).toMatchObject({
+      workflow: { size: "normal" },
+      repository: { baseBranch: "main" },
+    }),
+  );
+  expect(
+    second.state?.collections.settings.get(`repo:${h.repo.id}`)?.audit,
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ settingKey: "workflow.size" }),
+      expect.objectContaining({ settingKey: "repository.baseBranch" }),
+    ]),
+  );
+}, 30_000);
+
+test("immediate global settings update core consumers and reset to the startup baseline", async () => {
+  const h = await served();
+  const setExcludedAuthors = vi.fn();
+  h.adapters.github.setExcludedAuthors = setExcludedAuthors;
+  const client = await connect(h, "runtime-settings");
+  const task = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Runtime configuration",
+    description: "",
+  }).task;
+  const before = client.state?.collections.settings.get("global");
+  expect(
+    await client.command({
+      kind: "update_settings",
+      scope: { kind: "global" },
+      expectedVersion: before?.version ?? 0,
+      patch: {
+        runtime: {
+          capTotal: 9,
+          deliveryTimeoutMs: 2222,
+          githubPollMs: 3333,
+          resyncMs: 4444,
+          excludedAuthors: ["loom-bot"],
+        },
+      },
+    }),
+  ).toMatchObject({ ok: true });
+  expect(h.coordinator.config).toMatchObject({
+    caps: { total: 9 },
+    deliveryTimeoutMs: 2222,
+    githubPollMs: 3333,
+    resyncMs: 4444,
+    excludedAuthors: ["loom-bot"],
+  });
+  expect(h.store.loadTaskState(task.id).config).toMatchObject({
+    deliveryTimeoutMs: 2222,
+    githubPollMs: 3333,
+  });
+  expect(setExcludedAuthors).toHaveBeenLastCalledWith(["loom-bot"]);
+
+  expect(
+    await client.command({
+      kind: "reset_settings",
+      scope: { kind: "global" },
+      expectedVersion: 1,
+      keys: [
+        "runtime.capTotal",
+        "runtime.deliveryTimeoutMs",
+        "runtime.githubPollMs",
+        "runtime.resyncMs",
+        "runtime.excludedAuthors",
+      ],
+    }),
+  ).toMatchObject({ ok: true });
+  expect(h.coordinator.config).toMatchObject({
+    caps: { total: 4 },
+    deliveryTimeoutMs: 10_000,
+    githubPollMs: 60_000,
+    resyncMs: 60_000,
+    excludedAuthors: [],
+  });
+  expect(h.store.loadTaskState(task.id).config).toMatchObject({
+    deliveryTimeoutMs: 10_000,
+    githubPollMs: 60_000,
+  });
+  expect(setExcludedAuthors).toHaveBeenLastCalledWith([]);
+}, 30_000);
+
 test("human terminal close confirms native removal and publishes deletion to connected clients", async () => {
   const h = await served();
   const ref = {
@@ -282,6 +459,7 @@ test("list clients receive plan version and core-derived inbox metadata without 
   expect(client.state?.collections.inbox.get(created.task.id)).toEqual({
     taskId: created.task.id,
     forHuman: null,
+    linkedPrNumbers: [],
     reasonRuns: {},
     reviewedHead: null,
     planVersion: null,

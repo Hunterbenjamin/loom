@@ -142,7 +142,11 @@ The replacement waits for confirmed retirement; a stale run ID is rejected. Main
 Reasoning is persisted with the run, outbox action, and launch recipe and passed to both the
 Codex thread and subsequent turns; the issue's private TUI configuration receives it too.
 Older runs without a reasoning field retain provider defaults. These are instance environment
-settings; there is no desktop settings editor yet.
+settings. The desktop Settings page now stores global defaults and sparse per-repository overrides,
+shows environment precedence, and labels whether changes apply immediately, to the next task/run,
+or after coordinator restart. Repository overrides are limited to agent roles, workflow defaults,
+base branch and serialized tests; supervisor capacity/timing, executables, Main, GitHub and
+desktop preferences are instance-wide and can only be edited in Global defaults.
 
 `LOOM_RUN_MODES` is a comma-separated per-role override such as
 `planner=headless,reviewer=headless`. Planner, implementer, and reviewer all default to
