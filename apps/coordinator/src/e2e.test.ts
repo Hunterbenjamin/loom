@@ -100,10 +100,11 @@ test("a task runs Todo to Done through plan, review, a fix round and a merge", a
 }, 30_000);
 
 test.each(["interactive", "headless"] as const)(
-  "Claude roles launch %s with correct edit permissions and gated initial messages",
+  "Claude roles launch %s with correct edit permissions and native initial prompts",
   async (mode) => {
     const h = await harness({
       config: {
+        runModes: `planner=${mode},implementer=${mode},reviewer=${mode}`,
         providerOverrides: {
           planner: "claude",
           implementer: "claude",
@@ -111,11 +112,20 @@ test.each(["interactive", "headless"] as const)(
         },
       },
     });
-    h.config.runModes = { planner: mode, implementer: mode, reviewer: mode };
     const args = vi.spyOn(h.providers.claude, "interactiveArgs");
     const headless = vi.spyOn(h.providers.claude, "startHeadless");
     const taskId = start(h);
-    const script = await scenarios("walking-skeleton");
+    const planner = (await scenarios("walking-skeleton"))[0];
+    if (!planner) throw new Error("Missing planner fixture");
+    const script = [
+      planner,
+      ...(await loadScenarios(
+        new URL(
+          "../../../packages/fake-agent/src/fixtures/reviewer-inline.json",
+          import.meta.url,
+        ),
+      )),
+    ];
     for (const scenario of script) {
       scenario.agent.provider = "claude";
       scenario.agent.mode = mode;
@@ -125,7 +135,12 @@ test.each(["interactive", "headless"] as const)(
     const state = h.store.loadTaskState(taskId);
     expect(state.task.stage).toBe("awaiting_approval");
     if (mode === "interactive") expect(headless).not.toHaveBeenCalled();
-    else expect(args).not.toHaveBeenCalled();
+    else
+      expect(
+        args.mock.calls.filter(([request]) =>
+          state.runs.some((run) => run.sessionId === request.sessionId),
+        ),
+      ).toHaveLength(0);
     const messages = h.store.messages(taskId);
     for (const run of h.store.runs(taskId)) {
       const recipe = h.coordinator.recipes.get(run.id);
@@ -138,12 +153,16 @@ test.each(["interactive", "headless"] as const)(
           model: run.model,
           settingsPath: recipe?.settingsPath,
           readOnly: run.role === "planner",
+          ...(mode === "headless"
+            ? { prompt: expect.stringContaining("get_task_context") }
+            : {}),
         }),
       );
       // A role handoff can be queued before launch and serve as that run's first message.
-      expect(messages.find((m) => m.runId === run.id)).toMatchObject({
-        status: "delivered",
-      });
+      if (mode === "interactive")
+        expect(messages.find((m) => m.runId === run.id)).toMatchObject({
+          status: "delivered",
+        });
       expect(
         h.paneHost.writes.some(
           (write) => write.ref.paneId === run.pane?.paneId,
