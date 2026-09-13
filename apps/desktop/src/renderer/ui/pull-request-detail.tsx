@@ -66,6 +66,7 @@ export function PullRequestDetail({
   const [outcome, setOutcome] = useState("");
   const pr = row?.detail;
   const header = pr ?? summary;
+  const showMergeAction = header?.state !== "merged";
   const reason = connection
     ? "Disconnected from the coordinator."
     : pr
@@ -255,36 +256,42 @@ export function PullRequestDetail({
           ))}
         </div>
         <span className="spacer" />
-        <div className="pr-merge-split">
-          <button
-            type="button"
-            data-pr-action="merge"
-            aria-keyshortcuts="m Meta+Enter"
-            disabled={busy || !!reason}
-            title={reason ?? undefined}
-            onClick={() =>
-              pr &&
-              setConfirm({ kind: "merge", headSha: pr.headSha, base: pr.base })
-            }
-          >
-            Squash &amp; merge
-          </button>
-          <details className="pr-menu">
-            <summary aria-label="Merge options">⌄</summary>
-            <div className="pr-menu-items">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={deleteAfterMerge}
-                  onChange={(event) =>
-                    setDeleteAfterMerge(event.target.checked)
-                  }
-                />
-                Delete branch after merge
-              </label>
-            </div>
-          </details>
-        </div>
+        {showMergeAction ? (
+          <div className="pr-merge-split">
+            <button
+              type="button"
+              data-pr-action="merge"
+              aria-keyshortcuts="m Meta+Enter"
+              disabled={busy || !!reason}
+              title={reason ?? undefined}
+              onClick={() =>
+                pr &&
+                setConfirm({
+                  kind: "merge",
+                  headSha: pr.headSha,
+                  base: pr.base,
+                })
+              }
+            >
+              Squash &amp; merge
+            </button>
+            <details className="pr-menu">
+              <summary aria-label="Merge options">⌄</summary>
+              <div className="pr-menu-items">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={deleteAfterMerge}
+                    onChange={(event) =>
+                      setDeleteAfterMerge(event.target.checked)
+                    }
+                  />
+                  Delete branch after merge
+                </label>
+              </div>
+            </details>
+          </div>
+        ) : null}
         <button
           type="button"
           className="pr-run-agent"
@@ -309,20 +316,21 @@ export function PullRequestDetail({
         aria-labelledby={`pr-tab-${tab}`}
         data-tab-body={tab}
       >
-        {reason || outcome || busy ? (
+        {(reason && header?.state !== "closed" && header?.state !== "merged") ||
+        outcome ||
+        busy ? (
           <div className="pr-feedback">
-            <span className="faint">{reason}</span>
+            <span className="faint">
+              {header?.state !== "closed" && header?.state !== "merged"
+                ? reason
+                : null}
+            </span>
             <div role="status" className="pr-outcome">
               {busy ? "Waiting for coordinator…" : outcome}
             </div>
           </div>
         ) : null}
-        {pr?.mergedAt ? (
-          <div className="pr-observed faint">
-            Merged at {pr.mergedAt}
-            {pr.branchExists === false ? " · Branch deleted." : ""}
-          </div>
-        ) : pr?.branchExists === false ? (
+        {pr?.branchExists === false ? (
           <div className="pr-observed faint">Branch deleted.</div>
         ) : null}
         {pr && row ? (
