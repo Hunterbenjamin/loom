@@ -6,7 +6,7 @@
 /** Names of options the adapter sets; `applyConfig` is idempotent, so re-running is safe. */
 export const CONFIG_LINES = [
   // Terminal behaviour the embedded and native clients both need (spike 06 §1).
-  "set -g mouse on",
+  "set -g mouse off",
   "set -g status off",
   "set -g window-size latest",
   "set -g aggressive-resize on",
