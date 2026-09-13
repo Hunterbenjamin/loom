@@ -178,13 +178,21 @@ const TabGrid = memo(function TabGrid({
           if (host.current?.clientWidth && host.current.clientHeight)
             e.api.layout(host.current.clientWidth, host.current.clientHeight);
           register(tab.id, e.api);
-          for (const p of tab.panels)
+          for (const [index, p] of tab.panels.entries()) {
+            const previous = tab.panels[index - 1];
             e.api.addPanel({
               id: p.id,
               component: "cell",
               minimumWidth: 280,
               minimumHeight: 150,
+              position: previous
+                ? {
+                    referencePanel: previous.id,
+                    direction: "right",
+                  }
+                : undefined,
             });
+          }
           if (host.current?.clientWidth && host.current.clientHeight)
             e.api.layout(host.current.clientWidth, host.current.clientHeight);
           e.api.onDidLayoutChange(() => requestAnimationFrame(measure));
@@ -438,6 +446,74 @@ export function Workbench() {
     setZoom(null);
     keyboardFocus(panel.id);
   };
+  const openGroup = (rows: PaneView[], name: string) => {
+    if (store.getState().panesUnavailable) return;
+    const panels = rows
+      .filter((pane) => !pane.dead && !pane.unavailable)
+      .map((pane) => newPanel(identity(pane)));
+    if (!panels.length) return;
+    const tab = { id: crypto.randomUUID(), name, panels };
+    setTabs((tabs) => [...tabs, tab]);
+    setActive(tab.id);
+    setZoom(null);
+    keyboardFocus(panels[0]?.id ?? "");
+  };
+  const hasPanels = (rows: PaneView[]) =>
+    !!tabs
+      .find((tab) => tab.id === active)
+      ?.panels.some(
+        (panel) =>
+          panel.target &&
+          rows.some((pane) => sameTerminal(pane, panel.target as PaneIdentity)),
+      );
+  const hidePanels = (rows: PaneView[]) => {
+    // This menu closes viewers only, including human shells. Other tabs keep their clients.
+    setZoom(null);
+    setTabs((tabs) =>
+      tabs
+        .map((tab) =>
+          tab.id === active
+            ? {
+                ...tab,
+                panels: tab.panels.filter(
+                  (panel) =>
+                    !panel.target ||
+                    !rows.some((pane) =>
+                      sameTerminal(pane, panel.target as PaneIdentity),
+                    ),
+                ),
+              }
+            : tab,
+        )
+        .filter((tab) => tab.panels.length),
+    );
+  };
+  const copyAttach = (pane: PaneView) => {
+    void store
+      .command({ kind: "open_pane_session", target: identity(pane) })
+      .then(async (outcome) => {
+        if (!outcome.ok) throw new Error(outcome.error.message);
+        if (
+          outcome.result.kind !== "attach_session" ||
+          !outcome.result.target.attach
+        )
+          throw new Error("Attach command unavailable");
+        const attach = outcome.result.target.attach;
+        const quote = (value: string) =>
+          `'${value.replaceAll("'", "'\"'\"'")}'`;
+        const command = [
+          "env",
+          ...Object.entries(attach.env).map(
+            ([key, value]) => `${key}=${value}`,
+          ),
+          ...attach.argv,
+        ]
+          .map(quote)
+          .join(" ");
+        await navigator.clipboard.writeText(command);
+      })
+      .catch((error: unknown) => setError(String(error)));
+  };
   const choose = (pane: PaneView, inNewTab = false) => {
     if (pane.dead || pane.unavailable) return;
     const current = tabs.find((tab) => tab.id === active);
@@ -670,7 +746,11 @@ export function Workbench() {
       setPrefixArmed,
     );
     const key = (e: KeyboardEvent) => {
-      if (document.querySelector('dialog[open], [aria-modal="true"]')) {
+      if (
+        document.querySelector(
+          'dialog[open], [aria-modal="true"], [role="menu"]',
+        )
+      ) {
         matcher.cancel();
         return;
       }
@@ -720,6 +800,10 @@ export function Workbench() {
           filter={filter}
           setFilter={setFilter}
           choose={choose}
+          openGroup={openGroup}
+          hidePanels={hidePanels}
+          hasPanels={hasPanels}
+          copyAttach={copyAttach}
           newTerminal={() => newTab()}
           openPinned={openPinned}
         />

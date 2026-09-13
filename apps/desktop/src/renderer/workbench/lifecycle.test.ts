@@ -7,7 +7,11 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
 import { pane } from "../../../../../packages/protocol/src/pane-fixture.js";
-import { meta as protocolMeta } from "../../../../../packages/protocol/src/test-support.js";
+import {
+  at,
+  id,
+  meta as protocolMeta,
+} from "../../../../../packages/protocol/src/test-support.js";
 import { defaultKeybindingsState } from "../../shared/keybindings.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
@@ -311,6 +315,218 @@ test("pane clicks replace the focused viewer, Enter opens an independent tab, an
     );
     expect(terminalRenders).toHaveBeenCalledTimes(renders);
   } finally {
+    await h.close();
+  }
+});
+
+const contextMenu = async (button: HTMLElement) => {
+  await act(async () =>
+    button.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 20,
+        clientY: 20,
+      }),
+    ),
+  );
+};
+
+test("tab rows open all live siblings as independent splits despite filtering; menu close only detaches this tab", async () => {
+  const sibling = {
+    ...pane,
+    id: JSON.stringify([pane.hostGeneration, "%8"]),
+    paneId: "%8",
+    command: "unique",
+  };
+  const dead = {
+    ...pane,
+    id: JSON.stringify([pane.hostGeneration, "%9"]),
+    paneId: "%9",
+    dead: true,
+  };
+  const unavailable = {
+    ...pane,
+    id: JSON.stringify([pane.hostGeneration, "%10"]),
+    paneId: "%10",
+    unavailable: true,
+  };
+  const h = await harness([pane, sibling, dead, unavailable]);
+  try {
+    const filter = h.element.querySelector<HTMLInputElement>("#agent-filter");
+    if (!filter) throw new Error("Missing filter");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(filter, "unique");
+      filter.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(
+      h.element.querySelectorAll(".wb-tree-pane[data-pane-key]"),
+    ).toHaveLength(1);
+    await act(async () => h.button("Open tab shell").click());
+    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(3);
+    const grids = h.element.querySelectorAll(".wb-tab");
+    expect(grids).toHaveLength(2);
+    expect(
+      [...(grids[1]?.querySelectorAll("[data-attached-pane]") ?? [])].map((p) =>
+        p.getAttribute("data-attached-pane"),
+      ),
+    ).toEqual(["%2", "%8"]);
+    expect(h.send).not.toHaveBeenCalled();
+    const renders = terminalRenders.mock.calls.length;
+    await act(async () => {
+      h.native.set(sibling.id, {
+        ...sibling,
+        status: "working",
+        branch: "feat/update",
+      });
+      h.publish();
+    });
+    expect(terminalRenders).toHaveBeenCalledTimes(renders);
+    await contextMenu(h.button("Open tab shell"));
+    expect(h.button("Rename").disabled).toBe(true);
+    await act(async () => h.button("Close panel").click());
+    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
+    expect(h.native.size).toBe(4);
+    expect(h.send).not.toHaveBeenCalled();
+    await contextMenu(h.button("Open tab shell"));
+    await act(async () => h.button("Open in new tab").click());
+    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(3);
+  } finally {
+    await h.close();
+  }
+});
+
+test("pane menu opens, copies the coordinator attach argv safely, and closes just its viewer", async () => {
+  const sibling = {
+    ...pane,
+    id: JSON.stringify([pane.hostGeneration, "%8"]),
+    paneId: "%8",
+    command: "unique",
+  };
+  const h = await harness([pane, sibling]);
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  const clipboard = vi
+    .spyOn(navigator.clipboard, "writeText")
+    .mockImplementation(writeText);
+  try {
+    await contextMenu(h.button("Open shell unique %8"));
+    await act(async () => h.button("Open").click());
+    expect(
+      h.element
+        .querySelector("[data-attached-pane]")
+        ?.getAttribute("data-attached-pane"),
+    ).toBe("%8");
+    await contextMenu(h.button("Open shell unique %8"));
+    await act(async () => h.button("Open in new tab").click());
+    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(2);
+    await contextMenu(h.button("Open shell unique %8"));
+    h.send.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        kind: "attach_session",
+        target: {
+          identity: "pane",
+          target: sibling,
+          pane: {
+            ...sibling,
+            size: null,
+            observedAt: at("2026-09-13T00:00:00.000Z"),
+          },
+          attach: {
+            kind: "pane_host",
+            cwd: id.worktree("/tmp"),
+            env: { TMUX_TMPDIR: "/tmp/private space" },
+            argv: [
+              "tmux",
+              "-L",
+              "loom-test",
+              "attach-session",
+              "-t",
+              "research'quoted",
+            ],
+          },
+        },
+      },
+    });
+    await act(async () => h.button("Copy attach command").click());
+    expect(h.send).toHaveBeenLastCalledWith({
+      kind: "open_pane_session",
+      target: {
+        hostGeneration: sibling.hostGeneration,
+        sessionName: sibling.sessionName,
+        windowId: sibling.windowId,
+        paneId: sibling.paneId,
+      },
+    });
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(
+      `'env' 'TMUX_TMPDIR=/tmp/private space' 'tmux' '-L' 'loom-test' 'attach-session' '-t' 'research'"'"'quoted'`,
+    );
+    await contextMenu(h.button("Open shell unique %8"));
+    await act(async () => h.button("Close panel").click());
+    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
+    expect(h.native.size).toBe(2);
+    expect(h.send).toHaveBeenCalledTimes(1);
+    // Keyboard opening and Escape restore the row without triggering Workbench bindings.
+    await act(async () =>
+      h.button("Open shell unique %8").dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "F10",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(h.element.querySelector('[role="menu"]')).not.toBeNull();
+    await act(async () =>
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(h.element.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(h.button("Open shell unique %8"));
+  } finally {
+    clipboard.mockRestore();
+    await h.close();
+  }
+});
+
+test("menu tracks unavailable inventory, retains viewer-only close, and reports copy failures", async () => {
+  const h = await harness();
+  const clipboard = vi.spyOn(navigator.clipboard, "writeText");
+  try {
+    await contextMenu(h.button("Open shell sh %2"));
+    h.send.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "unavailable", message: "Pane is stale", details: [] },
+    });
+    await act(async () => h.button("Copy attach command").click());
+    expect(clipboard).not.toHaveBeenCalled();
+    expect(h.element.querySelector('[role="alert"]')?.textContent).toContain(
+      "Pane is stale",
+    );
+    await contextMenu(h.button("Open tab shell"));
+    await act(async () => {
+      h.native.set(pane.id, { ...pane, unavailable: true });
+      h.publish();
+    });
+    expect(h.button("Open").disabled).toBe(true);
+    expect(h.button("Open in new tab").disabled).toBe(true);
+    expect(h.button("Copy attach command").disabled).toBe(true);
+    expect(h.button("Close panel").disabled).toBe(false);
+    await act(async () => h.button("Close panel").click());
+    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(0);
+    expect(h.native.size).toBe(1);
+    expect(h.send).toHaveBeenCalledTimes(1);
+  } finally {
+    clipboard.mockRestore();
     await h.close();
   }
 });

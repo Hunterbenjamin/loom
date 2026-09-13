@@ -53,6 +53,10 @@ test("renders linked and unlinked spaces, independent collapses, filtering and p
           filter,
           setFilter: vi.fn(),
           choose,
+          openGroup: vi.fn(),
+          hidePanels: vi.fn(),
+          hasPanels: () => false,
+          copyAttach: vi.fn(),
           newTerminal: vi.fn(),
           openPinned,
         }),
@@ -97,9 +101,7 @@ test("renders linked and unlinked spaces, independent collapses, filtering and p
       ),
     );
     expect(choose).toHaveBeenLastCalledWith(linked, true);
-    const tabButton = space?.querySelector<HTMLButtonElement>(
-      ".wb-tree-tab > button",
-    );
+    const tabButton = space?.querySelector<HTMLButtonElement>(".wb-disclosure");
     await act(async () => tabButton?.click());
     expect(tabButton?.getAttribute("aria-expanded")).toBe("false");
     expect(paneButton()).toBeNull();
@@ -136,6 +138,10 @@ test("renders linked and unlinked spaces, independent collapses, filtering and p
             filter: "",
             setFilter: vi.fn(),
             choose,
+            openGroup: vi.fn(),
+            hidePanels: vi.fn(),
+            hasPanels: () => false,
+            copyAttach: vi.fn(),
             newTerminal: vi.fn(),
             openPinned,
           }),
