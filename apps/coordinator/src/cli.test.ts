@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { command, decodeClientFrame, encodeFrame } from "@loom/protocol";
 import { openStore, type Store } from "@loom/store";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { finding, run } from "../../../packages/core/test/fixtures.js";
@@ -15,7 +16,12 @@ import {
   task,
   taskId,
 } from "../../../packages/store/test/fixtures.js";
-import { main, taskCreateCommand } from "./cli.js";
+import {
+  formatCliError,
+  main,
+  reportCliError,
+  taskCreateCommand,
+} from "./cli.js";
 
 let root: string;
 let store: Store;
@@ -142,6 +148,79 @@ test("task create parses an optional summary without treating it as a descriptio
   expect(
     taskCreateCommand(["task", "create", "example-repo", "Short title"]),
   ).toMatchObject({ description: "", summary: null });
+});
+
+test("task create preserves a 1457-character description in the full command frame", () => {
+  const description = `${"  Keep `backticks`, \"double quotes\", 'single quotes' (and parentheses). ".padEnd(
+    1455,
+    "x",
+  )}  `;
+  expect(description).toHaveLength(1457);
+  const value = taskCreateCommand([
+    "task",
+    "create",
+    "example-repo",
+    "Title",
+    description,
+  ]);
+  expect(command.safeParse(value).success).toBe(true);
+  expect(
+    decodeClientFrame(
+      encodeFrame({ type: "command", requestId: "r1", command: value }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    frame: { command: { description, summary: null } },
+  });
+});
+
+test("task create treats text after -- literally and keeps option values out of positionals", () => {
+  expect(
+    taskCreateCommand([
+      "task",
+      "create",
+      "--small",
+      "--summary=--literal summary",
+      "--",
+      "example-repo",
+      "--help",
+      "--summary is literal description text",
+    ]),
+  ).toMatchObject({
+    repoId: "example-repo",
+    title: "--help",
+    description: "--summary is literal description text",
+    summary: "--literal summary",
+    size: "small",
+  });
+});
+
+test("task create rejects missing option values", () => {
+  expect(() =>
+    taskCreateCommand(["task", "create", "example-repo", "--summary"]),
+  ).toThrow();
+});
+
+test("CLI errors preserve details for structured rejections and thrown errors", () => {
+  const error = {
+    code: "invalid_frame",
+    message: "Frame failed the schema",
+    details: ["command.title: Too big", "command.repoId: Required"],
+  };
+  const expected =
+    "invalid_frame: Frame failed the schema\n  command.title: Too big\n  command.repoId: Required\n";
+  expect(formatCliError(error)).toBe(expected);
+  expect(formatCliError(Object.assign(new Error(error.message), error))).toBe(
+    expected,
+  );
+  expect(formatCliError(new Error("Unavailable"))).toBe("Unavailable\n");
+  expect(formatCliError("Unavailable")).toBe("Unavailable\n");
+  const stderr = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation(() => true);
+  reportCliError(error);
+  expect(stderr).toHaveBeenCalledWith(expected);
+  expect(process.exitCode).toBe(1);
 });
 
 test("task inspect prints a complete fixture without a coordinator", async () => {

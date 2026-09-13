@@ -4,6 +4,7 @@
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { parseArgs } from "node:util";
 import type {
   HumanCommand,
   ProviderRules,
@@ -48,25 +49,47 @@ const USAGE = `loom — Loom's coordinator and its client
 
 Environment: LOOM_INSTANCE, LOOM_DATA_ROOT, LOOM_TOKEN, LOOM_BIND, LOOM_WORKTREE_ROOT.`;
 
-const flag = (argv: string[], name: string): string | null => {
-  const index = argv.indexOf(`--${name}`);
-  return index >= 0 ? (argv[index + 1] ?? null) : null;
-};
-const has = (argv: string[], name: string): boolean =>
-  argv.includes(`--${name}`);
-const rest = (argv: string[]): string[] => {
-  const booleanFlags = new Set([
-    "--json",
-    "--small",
-    "--require-plan-approval",
-  ]);
-  return argv.filter((value, index) => {
-    if (value.startsWith("--")) return false;
-    const prevFlag = argv[index - 1];
-    if (!prevFlag?.startsWith("--")) return true;
-    return booleanFlags.has(prevFlag);
+// Let the argument parser consume options and their values together. In particular,
+// everything after `--` is literal text, even a title/description that looks like a flag.
+const argumentsOf = (argv: string[]) =>
+  parseArgs({
+    args: argv,
+    allowPositionals: true,
+    options: {
+      summary: { type: "string" },
+      base: { type: "string" },
+      view: { type: "string" },
+      json: { type: "boolean" },
+      small: { type: "boolean" },
+      "require-plan-approval": { type: "boolean" },
+      exec: { type: "boolean" },
+      help: { type: "boolean" },
+    },
   });
-};
+const flag = (argv: string[], name: "summary" | "base" | "view") =>
+  argumentsOf(argv).values[name] ?? null;
+const has = (
+  argv: string[],
+  name: "json" | "small" | "require-plan-approval" | "exec" | "help",
+): boolean => argumentsOf(argv).values[name] === true;
+const rest = (argv: string[]): string[] => argumentsOf(argv).positionals;
+
+export function formatCliError(error: unknown): string {
+  const value = typeof error === "object" && error !== null ? error : null;
+  const message =
+    value && "message" in value ? String(value.message) : String(error);
+  const code = value && "code" in value ? `${String(value.code)}: ` : "";
+  const details =
+    value && "details" in value && Array.isArray(value.details)
+      ? value.details.map((line) => `  ${String(line)}\n`).join("")
+      : "";
+  return `${code}${message}\n${details}`;
+}
+
+export function reportCliError(error: unknown): void {
+  process.stderr.write(formatCliError(error));
+  process.exitCode = 1;
+}
 
 export function taskCreateCommand(
   argv: string[],
@@ -98,7 +121,7 @@ const connect = async (
     clientId: `cli-${randomUUID().slice(0, 8)}`,
     kind: "cli",
     subscriptions,
-    onError: (message) => process.stderr.write(`${message}\n`),
+    onError: (message, error) => reportCliError(error ?? message),
   });
 
 /** Every command answers with exactly one ack; a rejection reads the same as an agent's would. */
@@ -110,12 +133,7 @@ async function send(
   try {
     const outcome = await client.command(command);
     if (!outcome.ok) {
-      process.stderr.write(
-        `${outcome.error.code}: ${outcome.error.message}\n${outcome.error.details
-          .map((line) => `  ${line}\n`)
-          .join("")}`,
-      );
-      process.exitCode = 1;
+      reportCliError(outcome.error);
       return;
     }
     process.stdout.write(`${JSON.stringify(outcome.result, null, 2)}\n`);
@@ -216,11 +234,12 @@ async function attach(
       kind: "open_attach_session",
       runId: run.id,
     });
-    if (!outcome.ok || outcome.result.kind !== "attach_session") {
-      process.stderr.write(
-        `${outcome.ok ? "internal" : outcome.error.code}: no attach target\n`,
-      );
-      process.exitCode = 1;
+    if (!outcome.ok) {
+      reportCliError(outcome.error);
+      return;
+    }
+    if (outcome.result.kind !== "attach_session") {
+      reportCliError({ code: "internal", message: "no attach target" });
       return;
     }
     const target = outcome.result.target;
@@ -249,7 +268,7 @@ async function serve(config: CoordinatorConfig): Promise<void> {
     config: reconcileConfig(config),
   });
   const adapters = await createRealAdapters(config, store, (error) =>
-    process.stderr.write(`adapter: ${error.message}\n`),
+    process.stderr.write(`adapter: ${formatCliError(error)}`),
   );
   const coordinator = new Coordinator({
     config,
@@ -536,8 +555,6 @@ export async function main(argv: string[]): Promise<void> {
 
 if (process.argv[1]?.endsWith("cli.ts") || process.argv[1]?.endsWith("loom"))
   main(process.argv.slice(2)).catch((error: unknown) => {
-    process.stderr.write(
-      `${error instanceof Error ? error.message : String(error)}\n`,
-    );
+    reportCliError(error);
     process.exit(1);
   });
