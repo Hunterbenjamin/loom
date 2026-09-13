@@ -344,9 +344,14 @@ export const TerminalSession = memo(function TerminalSession({
         }
         const cellWidth = screen.clientWidth / terminal.cols;
         const cellHeight = screen.clientHeight / terminal.rows;
+        // Every pane of a window shares one native size: the whole tab area in cells, not this
+        // panel's slice of it. Otherwise two split panels each report half a window and the
+        // window shrinks to the last one, magnifying both.
+        const area =
+          container.closest<HTMLElement>("[data-panel-host]") ?? container;
         wanted = {
-          cols: Math.max(2, Math.floor(container.clientWidth / cellWidth)),
-          rows: Math.max(1, Math.floor(container.clientHeight / cellHeight)),
+          cols: Math.max(2, Math.floor(area.clientWidth / cellWidth)),
+          rows: Math.max(1, Math.floor(area.clientHeight / cellHeight)),
         };
         sendSize();
         spawnClient();

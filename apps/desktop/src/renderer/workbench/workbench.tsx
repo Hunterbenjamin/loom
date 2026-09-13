@@ -173,6 +173,7 @@ const TabGrid = memo(function TabGrid({
     <div
       className="wb-tab"
       ref={host}
+      data-panel-host=""
       style={{ display: active ? "block" : "none" }}
     >
       <GridviewReact
