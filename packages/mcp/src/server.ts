@@ -47,6 +47,8 @@ export interface McpHost {
 }
 export interface McpServerOptions {
   host: McpHost;
+  /** Receives the cause of a host failure that the agent only sees as a generic error. */
+  log?: (message: string) => void;
   leadHost?: LeadHost;
   operatorHost?: LeadHost;
   /** Re-read authoritative liveness on every call; null means an unknown token. */
@@ -310,7 +312,10 @@ export function createMcpServer(
             identity.repoId,
           ),
         });
-      } catch {
+      } catch (error) {
+        options.log?.(
+          `Main tool ${name} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
         throw new Error("Loom host could not complete the request");
       }
     }
@@ -325,8 +330,12 @@ export function createMcpServer(
           request.params.arguments ?? {},
         ),
       );
-    } catch {
-      // Do not echo host errors: they may contain tokens, paths or provider payloads.
+    } catch (error) {
+      // Do not echo host errors: they may contain tokens, paths or provider payloads. The
+      // coordinator's own log gets the cause, so a refused call at launch is diagnosable.
+      options.log?.(
+        `Tool ${name} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error("Loom host could not complete the request");
     }
   });

@@ -556,6 +556,7 @@ export class Coordinator {
     return {
       host,
       buildAnchor,
+      log: (message: string) => this.log(`MCP: ${message}`),
       resolveToken: (token: string) =>
         this.operator.resolve(token) ??
         [...this.leads.values()]
