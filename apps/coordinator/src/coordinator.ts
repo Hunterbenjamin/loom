@@ -212,6 +212,7 @@ export class Coordinator {
     });
     this.inventory = new PaneInventory(
       this.adapters.paneHost,
+      this.adapters.git,
       () => ({
         states: this.store.tasks().map((t) => this.store.loadTaskState(t.id)),
         now: this.now(),

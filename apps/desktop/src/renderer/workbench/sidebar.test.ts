@@ -22,6 +22,7 @@ test("renders linked and unlinked spaces, independent collapses, filtering and p
     sessionName: "loom-t-1",
     windowName: "implementer",
     taskLabel: "t-1 · Fix delivery race",
+    branch: "fix/delivery-race",
     role: "implementer",
     provider: "codex",
     status: "working",
@@ -63,6 +64,13 @@ test("renders linked and unlinked spaces, independent collapses, filtering and p
     );
     expect(space?.textContent).toContain("implementer · codex");
     expect(space?.textContent).toContain("Working");
+    expect(space?.querySelector(".wb-space-branch")?.textContent).toBe(
+      "fix/delivery-race",
+    );
+    expect(
+      element.querySelector('[aria-label="research"] .wb-space-branch')
+        ?.textContent,
+    ).toBe("—");
     expect(
       element.querySelector('[aria-label="research"]')?.textContent,
     ).toContain("shell");

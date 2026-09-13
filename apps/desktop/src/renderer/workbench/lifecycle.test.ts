@@ -297,6 +297,15 @@ test("pane clicks replace the focused viewer, Enter opens an independent tab, an
       "◐",
     );
     expect(terminalRenders).toHaveBeenCalledTimes(renders);
+    await act(async () => {
+      h.native.set(pane.id, { ...pane, branch: "feat/branch-patch" });
+      h.native.set(next.id, { ...next, branch: "feat/branch-patch" });
+      h.publish();
+    });
+    expect(h.element.querySelector(".wb-space-branch")?.textContent).toBe(
+      "feat/branch-patch",
+    );
+    expect(terminalRenders).toHaveBeenCalledTimes(renders);
   } finally {
     await h.close();
   }

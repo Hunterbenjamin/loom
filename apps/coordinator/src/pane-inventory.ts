@@ -1,5 +1,6 @@
 import {
   deriveAttention,
+  type GitAdapter,
   type PaneHost,
   type PaneObservation,
   type TaskState,
@@ -66,6 +67,7 @@ export function assemblePanes(
       unavailable: false,
       taskId: task?.id ?? null,
       taskLabel: task ? `${task.id} · ${task.title}` : null,
+      branch: task?.branch ?? null,
       runId: match?.run.id ?? null,
       role: match?.run.role ?? null,
       provider: match?.run.provider ?? null,
@@ -84,6 +86,7 @@ export class PaneInventory {
   private stopped = false;
   constructor(
     private host: PaneHost,
+    private git: Pick<GitAdapter, "currentBranch">,
     private metadata: () => {
       states: TaskState[];
       now: string;
@@ -118,13 +121,30 @@ export class PaneInventory {
           ),
         );
         const m = this.metadata();
-        this.rows = assemblePanes(
+        const rows = assemblePanes(
           panes,
           m.states,
           counts,
           m.now,
           m.leadPane,
           m.leadWaiting,
+        );
+        // Share each cwd read (including failures) for this refresh only. The next
+        // poll or hint must observe branch switches and recover unreadable paths.
+        const branches = new Map<string, Promise<string | null>>();
+        this.rows = await Promise.all(
+          rows.map(async (row) => {
+            if (row.taskId !== null) return row;
+            let branch = branches.get(row.startCwd);
+            if (!branch) {
+              branch = this.git
+                .currentBranch(row.startCwd)
+                .then((value) => value ?? "HEAD")
+                .catch(() => null);
+              branches.set(row.startCwd, branch);
+            }
+            return paneView.parse({ ...row, branch: await branch });
+          }),
         );
         this.unavailable = false;
       } catch {

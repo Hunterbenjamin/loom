@@ -73,6 +73,7 @@ test("coalesces scans, counts each session once, emits semantic deltas, retains 
   const patches: unknown[] = [];
   const inventory = new PaneInventory(
     host,
+    { currentBranch: vi.fn().mockResolvedValue("main") },
     () => ({ states: [], now, leadPane: null, leadWaiting: false }),
     (rows) =>
       patches.push(
@@ -113,4 +114,73 @@ test("coalesces scans, counts each session once, emits semantic deltas, retains 
   await inventory.stop();
   await inventory.refresh();
   expect(list.mock.calls.length).toBe(before + 1);
+});
+
+test("assembles task branches and caches unlinked cwd reads per refresh, isolating unreadable paths", async () => {
+  const { state } = fixture();
+  const recorded = run();
+  recorded.pane = observation.ref;
+  state.runs = [recorded];
+  const native = (paneId: string, sessionName: string, cwd: string) => ({
+    ...observation,
+    ref: { ...observation.ref, paneId, sessionName },
+    startCwd: cwd as PaneObservation["startCwd"],
+  });
+  const host = new FakePaneHost();
+  vi.spyOn(host, "listClients").mockResolvedValue([]);
+  vi.spyOn(host, "listPanes").mockResolvedValue([
+    observation,
+    native("%2", state.worktree?.paneWorkspaceId ?? "", "/task-shell"),
+    native("%3", "scratch", "/repo/subdir"),
+    native("%4", "scratch", "/repo/subdir"),
+    native("%5", "unreadable", "/missing"),
+    native("%6", "unreadable", "/missing"),
+    native("%7", "detached", "/detached"),
+  ]);
+  let branch = "main";
+  let unreadable = true;
+  const git = {
+    currentBranch: vi.fn(async (cwd: string) => {
+      if (cwd === "/missing" && unreadable) throw new Error("Not readable");
+      return cwd === "/detached" ? null : branch;
+    }),
+  };
+  const inventory = new PaneInventory(
+    host,
+    git,
+    () => ({ states: [state], now, leadPane: null, leadWaiting: false }),
+    vi.fn(),
+  );
+  await inventory.refresh();
+  expect(inventory.rows.map((row) => row.branch)).toEqual([
+    state.task.branch,
+    state.task.branch,
+    "main",
+    "main",
+    null,
+    null,
+    "HEAD",
+  ]);
+  expect(git.currentBranch.mock.calls.map(([cwd]) => cwd)).toEqual([
+    "/repo/subdir",
+    "/missing",
+    "/detached",
+  ]);
+  expect(inventory.unavailable).toBe(false);
+  expect(inventory.rows.every((row) => !row.unavailable)).toBe(true);
+  branch = "feat/switched";
+  unreadable = false;
+  state.task.branch = "feat/task-updated";
+  await inventory.refresh();
+  expect(inventory.rows.map((row) => row.branch)).toEqual([
+    "feat/task-updated",
+    "feat/task-updated",
+    branch,
+    branch,
+    branch,
+    branch,
+    "HEAD",
+  ]);
+  expect(git.currentBranch).toHaveBeenCalledTimes(6);
+  await inventory.stop();
 });

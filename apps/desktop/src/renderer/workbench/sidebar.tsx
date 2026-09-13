@@ -85,6 +85,12 @@ export function Sidebar({
                 </span>
                 <Status state={space.indicator} />
                 <span className="wb-tree-name">{space.label}</span>
+                <small
+                  className="wb-space-branch"
+                  title={space.branch ?? "Branch unavailable"}
+                >
+                  {space.branch ?? "—"}
+                </small>
               </button>
               {expanded(space.key) &&
                 space.tabs.map((tab) => (
