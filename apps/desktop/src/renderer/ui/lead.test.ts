@@ -66,8 +66,14 @@ afterEach(() => {
 for (const live of [false, true])
   test(`Main bottom bar and attach/detach leave list render count unchanged (${live ? "live" : "fixtures"})`, async () => {
     const fixture = buildSnapshot(20);
+    const firstRepo = fixture.repos[0];
+    if (!firstRepo) throw new Error("Missing first repository");
     const store = createStore(fixture, live, live ? "dev" : "fixtures");
-    if (live) store.setConnection("connected");
+    if (live) {
+      store.setConnection("connected");
+      const { body, meta } = toSnapshot(fixture);
+      store.applyProtocol(stateFromSnapshot(meta, body));
+    }
     const spawn = vi.fn(
       async (_request: import("../../shared/ipc.js").PtySpawnRequest) => ({
         pid: 123,
@@ -85,6 +91,7 @@ for (const live of [false, true])
       off: vi.fn(),
     };
     window.loomHost = {
+      chooseRepository: vi.fn(),
       keybindings: vi.fn(),
       onKeybindingsChanged: vi.fn(() => () => {}),
       mode: vi.fn(),
@@ -135,7 +142,7 @@ for (const live of [false, true])
       "Main panel",
     );
     expect(spawn.mock.calls[0]).toMatchObject([
-      { label: "Main", lead: true, runId: null },
+      { label: "Main", lead: fixture.repos[0]?.id, runId: null },
     ]);
     const request = spawn.mock.calls[0]?.[0];
     if (!request) throw new Error("No terminal spawned");
@@ -168,7 +175,7 @@ for (const live of [false, true])
             op: "upsert" as const,
             collection: "lead" as const,
             value: {
-              id: "lead" as const,
+              id: firstRepo.id,
               sessionId: null,
               status: "working" as const,
             },
@@ -194,9 +201,25 @@ for (const live of [false, true])
       );
       expect(sender).toHaveBeenCalledExactlyOnceWith({
         kind: "stop_lead_session",
+        repoId: fixture.repos[0]?.id,
       });
       expect(spawn).toHaveBeenCalledTimes(3);
     }
+    const oldAttach = spawn.mock.calls.at(-1)?.[0];
+    const secondRepo = fixture.repos[1];
+    if (!secondRepo) throw new Error("Missing second repository");
+    const beforeSwitch = spawn.mock.calls.length;
+    if (live) {
+      const { body, meta } = toSnapshot(fixture);
+      body.projects = [{ id: "project", repoId: secondRepo.id }];
+      await act(async () => store.applyProtocol(stateFromSnapshot(meta, body)));
+    } else await act(async () => store.setRepo(secondRepo.id));
+    await vi.waitFor(() =>
+      expect(spawn).toHaveBeenCalledTimes(beforeSwitch + 1),
+    );
+    expect(spawn.mock.calls.at(-1)?.[0].lead).toBe(secondRepo.id);
+    expect(kill).toHaveBeenCalledWith(oldAttach?.id);
+    expect(host.querySelector(".lead-panel")).not.toBeNull();
     await act(async () =>
       host
         .querySelector<HTMLButtonElement>('[aria-label="Close Main"]')
@@ -212,3 +235,42 @@ for (const live of [false, true])
     expect(host.querySelector('[aria-label="Main panel"]')).not.toBeNull();
     expect(host.textContent).not.toMatch(/\bLead\b/);
   });
+
+test("an empty Tracker offers Open repository without opening Main", async () => {
+  const store = createStore({ ...buildSnapshot(0), repos: [], tasks: [] });
+  const chooseRepository = vi.fn(async () => null);
+  window.loomHost = {
+    ...window.loomHost,
+    interactive: vi.fn(),
+    chooseRepository,
+  };
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  cleanups.push(() => {
+    root.unmount();
+    host.remove();
+  });
+  await act(async () =>
+    root.render(
+      createElement(StoreProvider, {
+        store,
+        // biome-ignore lint/correctness/noChildrenProp: typed provider requires children.
+        children: createElement(App),
+      }),
+    ),
+  );
+  expect(host.textContent).toContain("Choose a project folder to get started.");
+  expect(host.querySelector<HTMLButtonElement>(".lead-toggle")?.disabled).toBe(
+    true,
+  );
+  expect(host.querySelector(".lead-panel")).toBeNull();
+  await act(async () =>
+    [...host.querySelectorAll("button")]
+      .find((button) => button.textContent === "Open repository…")
+      ?.click(),
+  );
+  expect(chooseRepository).toHaveBeenCalledTimes(1);
+  expect(store.getState().snapshot.repos).toEqual([]);
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+});

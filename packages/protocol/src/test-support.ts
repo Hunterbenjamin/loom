@@ -68,6 +68,7 @@ export function snapshot(): SnapshotBody {
     panes: [],
     paneInventory: [],
     leads: [],
+    projects: [{ id: "project", repoId: REPO }],
     inbox: [],
     repos: [
       {

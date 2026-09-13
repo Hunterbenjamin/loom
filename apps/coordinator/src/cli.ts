@@ -5,13 +5,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
-import type {
-  HumanCommand,
-  ProviderRules,
-  RepoId,
-  Sha,
-  TaskId,
-} from "@loom/core";
+import type { HumanCommand, RepoId, Sha, TaskId } from "@loom/core";
 import { type Command, runId, type Subscription } from "@loom/protocol";
 import { openReadOnlyStore, openStore } from "@loom/store";
 import { LoomClient } from "./client.js";
@@ -23,6 +17,7 @@ import {
 import { Coordinator } from "./coordinator.js";
 import { formatInspection, getTaskTimings, inspectTask } from "./inspect.js";
 import { createRealAdapters } from "./real-adapters.js";
+import { registerRepo } from "./repos.js";
 
 const USAGE = `loom — Loom's coordinator and its client
 
@@ -310,27 +305,14 @@ async function addRepo(
   github: string,
   baseBranch: string,
 ): Promise<void> {
-  // An instance-local admin write, like `serve` itself: the protocol carries no repo registry.
+  // Offline instance-local registration shares the live add_repo implementation.
   const store = await openStore({
     dataRoot: config.dataRoot,
     instance: config.instance,
     config: reconcileConfig(config),
   });
   try {
-    const path = await (await import("node:fs/promises")).realpath(root);
-    const id = github.replace("/", "-") as RepoId;
-    store.putRepo({
-      id,
-      root: path as never,
-      github,
-      baseBranch,
-      defaultProviders: {
-        planner: "claude",
-        implementer: "claude",
-        reviewer: "codex",
-      } satisfies ProviderRules,
-      serialTests: false,
-    });
+    const { id } = await registerRepo(store, root, github, baseBranch);
     process.stdout.write(`${id}\n`);
   } finally {
     store.close();

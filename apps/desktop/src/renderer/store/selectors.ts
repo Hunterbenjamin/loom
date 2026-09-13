@@ -79,7 +79,7 @@ const computeRows = memo1(
     const now = Date.parse(snapshot.now);
     const rows: Row[] = [];
     for (const task of snapshot.tasks) {
-      if (repo !== "all" && task.repoId !== repo) continue;
+      if (task.repoId !== repo) continue;
       if (!matchesView(task, view)) continue;
       if (needle && !`${task.id} ${task.title}`.toLowerCase().includes(needle))
         continue;
@@ -263,11 +263,11 @@ export const viewCounts = memo1(
       "awaiting-approval": 0,
       done: 0,
       "pull-requests": snapshot.pullRequests.filter(
-        (pr) => pr.state === "open" && (repo === "all" || pr.repoId === repo),
+        (pr) => pr.state === "open" && pr.repoId === repo,
       ).length,
     };
     for (const task of snapshot.tasks) {
-      if (repo !== "all" && task.repoId !== repo) continue;
+      if (task.repoId !== repo) continue;
       for (const view of VIEWS)
         if (matchesView(task, view.id)) counts[view.id] += 1;
     }

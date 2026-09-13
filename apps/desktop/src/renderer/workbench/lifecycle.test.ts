@@ -49,6 +49,7 @@ async function harness(initial: PaneView[] = [pane]) {
   publish();
   store.setConnection("connected");
   window.loomHost = {
+    chooseRepository: vi.fn(),
     interactive: vi.fn(),
     keybindings: async () => defaultKeybindingsState,
     onKeybindingsChanged: () => () => {},

@@ -19,7 +19,7 @@ async function connect(lead: boolean) {
       leadHost: { invoke },
       resolveToken: (token) =>
         token === "lead-token"
-          ? { kind: "lead", active: true }
+          ? { kind: "lead", active: true, repoId: "repo-loom" }
           : env.options.resolveToken(token),
     },
     lead ? "lead-token" : env.token,
@@ -66,7 +66,7 @@ test("run tokens cannot call any Main tool, even by naming one directly", async 
 test("Main inputs are strict and validated before reaching the host", async () => {
   const { client, invoke } = await connect(true);
   await client.callTool({ name: "list_tasks", arguments: {} });
-  expect(invoke).toHaveBeenCalledExactlyOnceWith("list_tasks", {});
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("list_tasks", {}, "repo-loom");
   const invalid = await client.callTool({
     name: "approve_merge",
     arguments: { taskId: "task", headSha: "wrong" },
@@ -142,7 +142,7 @@ test("set_note accepts replacement and clearing, and rejects invalid or oversize
       (await client.callTool({ name: "set_note", arguments: { note } }))
         .isError,
     ).toBe(false);
-    expect(invoke).toHaveBeenLastCalledWith("set_note", { note });
+    expect(invoke).toHaveBeenLastCalledWith("set_note", { note }, "repo-loom");
   }
   for (const input of [
     {},

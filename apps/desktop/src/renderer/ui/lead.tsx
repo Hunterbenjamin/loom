@@ -1,3 +1,4 @@
+import { repoId } from "@loom/protocol";
 import {
   lazy,
   type ReactNode,
@@ -31,8 +32,19 @@ export function LeadBar({
   const connection = useStore((s) => s.connection);
   const instance = useStore((s) => s.instance);
   const count = useStore((s) => inboxRows(s).length);
-  const agentCount = useStore((s) => attentionPanes(s.panes).length);
+  const agentCount = useStore(
+    (s) =>
+      attentionPanes(s.panes).filter(
+        (pane) =>
+          mode === "workbench" ||
+          pane.sessionName === `loom-lead-${s.ui.repo}` ||
+          s.snapshot.tasks.some(
+            (task) => task.id === pane.taskId && task.repoId === s.ui.repo,
+          ),
+      ).length,
+  );
   const status = useStore((s) => s.lead.status);
+  const repo = useStore((s) => s.ui.repo);
   const theme = useStore((s) => s.ui.theme);
   const live = useStore((s) => s.live);
   const [open, setOpen] = useState(false);
@@ -62,16 +74,20 @@ export function LeadBar({
   const resize = (value: number) =>
     setHeight(Math.max(160, Math.min(window.innerHeight - 100, value)));
   const restart = async () => {
-    if (restarting) return;
+    if (restarting || !repo) return;
     setRestarting(true);
     setError(null);
     try {
       if (live) {
-        const outcome = await store.command({ kind: "stop_lead_session" });
+        const outcome = await store.command({
+          kind: "stop_lead_session",
+          repoId: repoId.parse(repo),
+        });
         if (!outcome.ok) throw new Error(outcome.error.message);
       }
       // The remounted terminal resolves open_lead_session in main after stop completes.
-      setGeneration((value) => value + 1);
+      if (store.getState().ui.repo === repo)
+        setGeneration((value) => value + 1);
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "Could not restart Main",
@@ -82,7 +98,7 @@ export function LeadBar({
   };
   return (
     <>
-      {open ? (
+      {open && repo ? (
         <section
           className="lead-panel"
           aria-label="Main panel"
@@ -140,9 +156,9 @@ export function LeadBar({
           {error ? <div role="alert">{error}</div> : null}
           <Suspense fallback={<div className="pad faint">Opening Main…</div>}>
             <Terminal
-              key={generation}
+              key={`${repo}:${generation}`}
               label="Main"
-              lead
+              lead={repo}
               live={live}
               theme={theme}
             />
@@ -182,6 +198,7 @@ export function LeadBar({
         <span className="spacer" />
         <ChimeMuteButton />
         <button
+          disabled={!repo}
           ref={toggle}
           type="button"
           className="lead-toggle"

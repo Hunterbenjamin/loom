@@ -65,3 +65,25 @@ test("live snapshots and PR patches update rows and retain the selected repo/num
   expect(store.getState().snapshot.pullRequests).toEqual([]);
   expect(store.getState().ui.prCursor).toBe(0);
 });
+
+test("PR lists, counts and subscriptions follow exactly one selected repository", async () => {
+  const { pullRequestSubscriptions } = await import("./pull-requests.js");
+  const { viewCounts } = await import("./selectors.js");
+  const store = createStore();
+  store.setView("pull-requests");
+  store.setTrackerVisible(true);
+  for (const repo of store.getState().snapshot.repos) {
+    store.setPrCursor(3);
+    await store.setRepo(repo.id);
+    expect(store.getState().ui.prCursor).toBe(0);
+    const rows = selectedPullRequests(store.getState());
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.repoId === repo.id)).toBe(true);
+    expect(
+      viewCounts(store.getState().snapshot, repo.id)["pull-requests"],
+    ).toBe(rows.length);
+    expect(pullRequestSubscriptions(store.getState())).toEqual([
+      { kind: "pull_requests", repoId: repo.id, state: "open" },
+    ]);
+  }
+});

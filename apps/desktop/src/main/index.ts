@@ -2,7 +2,7 @@
 // no durable task state: the coordinator remains the owner.
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { app, BrowserWindow, ipcMain, Notification } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Notification } from "electron";
 import { z } from "zod";
 import { connectionFromEnvironment } from "../shared/connection.js";
 import {
@@ -16,6 +16,18 @@ import { usesWorkbenchKey } from "../shared/keybindings.js";
 import { resolveAttach } from "./attach.js";
 import { watchKeybindings } from "./keybindings.js";
 import { OwnedResources } from "./ownership.js";
+import { repositoryFolder } from "./repository.js";
+
+ipcMain.handle("app:choose-repository", async (event) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner) throw new Error("Window is unavailable");
+  const result = await dialog.showOpenDialog(owner, {
+    title: "Open repository",
+    properties: ["openDirectory"],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  return repositoryFolder(result.filePaths[0]);
+});
 
 const connection = connectionFromEnvironment(
   process.env,
@@ -171,7 +183,7 @@ function wire(): void {
               : request.operator
                 ? await resolveAttach(connection, "operator")
                 : request.lead
-                  ? await resolveAttach(connection, "lead")
+                  ? await resolveAttach(connection, { lead: request.lead })
                   : request.runId
                     ? await resolveAttach(connection, request.runId)
                     : null;

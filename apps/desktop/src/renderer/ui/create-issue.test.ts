@@ -45,13 +45,23 @@ const rejected: AckOutcome = {
 function setup({
   live = true,
   open = true,
-  repo = "all",
+  repo = "repo-loom",
   emptyRepos = false,
 } = {}) {
-  const snapshot = buildSnapshot();
+  let snapshot = buildSnapshot();
   if (emptyRepos) snapshot.repos = [];
   const store = createStore(snapshot, live, "dev");
-  store.setRepo(repo);
+  if (live && !emptyRepos) {
+    const { body, meta } = toSnapshot(snapshot);
+    body.projects = [
+      {
+        id: "project",
+        repoId: snapshot.repos.find((r) => r.id === repo)?.id ?? null,
+      },
+    ];
+    store.applyProtocol(stateFromSnapshot(meta, body));
+  } else if (!emptyRepos) void store.setRepo(repo);
+  snapshot = store.getState().snapshot;
   store.setCreateIssue(open);
   const send = vi
     .fn<(command: unknown) => Promise<AckOutcome>>()
@@ -208,6 +218,7 @@ test("defaults to the sidebar repo and sends the complete backlog payload with m
       { ...task, id, repoId: repo.id, stage: "backlog" },
     ],
   });
+  body.projects = [{ id: "project", repoId: repo.id }];
   act(() => h.store.applyProtocol(stateFromSnapshot(meta, body)));
   expect(
     cursorRows(h.store.getState())[h.store.getState().ui.cursor]?.task.id,
@@ -423,4 +434,34 @@ test("uses the first repository when the initial snapshot arrives with the dialo
   );
   h.cancelDialog();
   expect(h.host.querySelector("dialog")).toBeNull();
+});
+
+test("the project picker has no All option and keeps add/select errors inline", async () => {
+  const h = setup({ open: false });
+  const picker = h.get<HTMLSelectElement>('[aria-label="Repository"]');
+  expect([...picker.options].map((option) => option.textContent)).not.toContain(
+    "All repositories",
+  );
+  expect([...picker.options].map((option) => option.textContent)).toContain(
+    "Add repository…",
+  );
+  const add = vi
+    .spyOn(h.store, "addRepo")
+    .mockRejectedValue(new Error("No origin remote"));
+  await act(async () => h.change('[aria-label="Repository"]', "__add__"));
+  expect(add).toHaveBeenCalledTimes(1);
+  expect(h.host.querySelector('[role="alert"]')?.textContent).toContain(
+    "No origin remote",
+  );
+  expect(picker.value).toBe(h.store.getState().ui.repo);
+  h.send.mockResolvedValueOnce(rejected);
+  await act(async () => h.change('[aria-label="Repository"]', "repo-herdr"));
+  expect(h.send).toHaveBeenLastCalledWith({
+    kind: "select_repo",
+    repoId: "repo-herdr",
+  });
+  expect(h.host.querySelector('[role="alert"]')?.textContent).toContain(
+    "Cannot start",
+  );
+  expect(h.store.getState().ui.repo).toBe("repo-loom");
 });

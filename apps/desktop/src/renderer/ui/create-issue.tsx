@@ -80,11 +80,20 @@ function CreateIssueDialog() {
     else input.current?.focus();
   }, [discard]);
 
-  const finish = (id: TaskId, todo: boolean) =>
+  const finish = async (id: TaskId, todo: boolean) => {
+    if (store.getState().ui.repo !== repoId) await store.setRepo(repoId);
     store.selectCreatedTask(id, repoId, todo);
+  };
   const cancel = () => {
     if (submitting.current) return;
-    if (created) finish(created, false);
+    if (created)
+      void finish(created, false).catch((error: unknown) =>
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Could not select repository",
+        ),
+      );
     else if (dirty) setDiscard(true);
     else store.setCreateIssue(false);
   };
@@ -140,7 +149,7 @@ function CreateIssueDialog() {
             throw new Error("Expected a workflow acknowledgement.");
         } else store.moveTask(id, "todo");
       }
-      finish(id, status === "todo");
+      await finish(id, status === "todo");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {

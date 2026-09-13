@@ -84,6 +84,7 @@ export const tabKey = (pane: PaneView) =>
     pane.windowId,
   ]);
 const pinned = (pane: PaneView) =>
+  pane.sessionName.startsWith("loom-lead-") ||
   ["loom-lead", "loom-main", "loom-operator"].includes(pane.sessionName);
 const rollup = (states: Indicator[]) =>
   states.reduce(

@@ -90,7 +90,7 @@ function key(key: string, target: EventTarget = window) {
 
 test("renders every field and badge, filters states separately and keeps the open sidebar count", () => {
   const h = setup();
-  expect(h.rows()).toHaveLength(8);
+  expect(h.rows()).toHaveLength(4);
   const content = h.host.textContent;
   for (const text of [
     "→ main",
@@ -109,7 +109,9 @@ test("renders every field and badge, filters states separately and keeps the ope
     "Draft",
   ])
     expect(content).toContain(text);
-  act(() => h.store.setRepo(h.store.getState().snapshot.repos[0]?.id ?? ""));
+  act(() => {
+    void h.store.setRepo(h.store.getState().snapshot.repos[0]?.id ?? "");
+  });
   expect(h.rows()).toHaveLength(4);
   const count = () =>
     h.host.querySelector('[data-view="pull-requests"] .count')?.textContent;
@@ -170,7 +172,7 @@ test("subscriptions follow repository, state and visibility without PR details o
   const h = setup();
   expect(pullRequestSubscriptions(h.store.getState())).toEqual([]);
   act(() => h.store.setTrackerVisible(true));
-  expect(pullRequestSubscriptions(h.store.getState())).toHaveLength(2);
+  expect(pullRequestSubscriptions(h.store.getState())).toHaveLength(1);
   const repo = h.store.getState().snapshot.repos[0];
   if (!repo) throw new Error("missing repo");
   act(() => {

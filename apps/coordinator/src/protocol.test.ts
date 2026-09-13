@@ -469,6 +469,72 @@ test("publish errors deduplicate by task and cause, and reset after success", as
   }
 }, 30_000);
 
+test("select_repo and add_repo publish one durable selection to existing and new windows", async () => {
+  const { mkdir, realpath } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const h = await served();
+  const first = await connect(h, "project-first");
+  const observer = await connect(h, "project-observer");
+  expect(first.state?.collections.project.get("project")?.repoId).toBe(
+    h.repo.id,
+  );
+  const root = join(h.dataRoot, "second-repository");
+  await mkdir(root);
+  const add = { kind: "add_repo" as const, root, github: "sample/second" };
+  expect(await first.command(add)).toMatchObject({
+    ok: true,
+    result: { kind: "repo_added", repoId: "sample-second" },
+  });
+  await vi.waitFor(() =>
+    expect(observer.state?.collections.project.get("project")?.repoId).toBe(
+      "sample-second",
+    ),
+  );
+  expect(observer.state?.collections.repo.get("sample-second")).toMatchObject({
+    root: await realpath(root),
+    github: "sample/second",
+    baseBranch: h.config.baseBranch,
+    serialTests: false,
+  });
+  expect(await first.command(add)).toMatchObject({ ok: true });
+  expect(h.store.repos()).toHaveLength(2);
+  expect(h.paneHost.launches).toHaveLength(0);
+  expect(
+    await first.command({
+      kind: "select_repo",
+      repoId: "missing" as typeof h.repo.id,
+    }),
+  ).toMatchObject({ ok: false });
+  expect(
+    await first.command({ ...add, root: `${root}/missing` }),
+  ).toMatchObject({ ok: false });
+  expect(h.store.selectedRepo()).toBe("sample-second");
+  expect(
+    (await connect(h, "project-new")).state?.collections.project.get("project")
+      ?.repoId,
+  ).toBe("sample-second");
+  expect(
+    await first.command({ kind: "select_repo", repoId: h.repo.id }),
+  ).toMatchObject({
+    ok: true,
+    result: { kind: "repo_selected", repoId: h.repo.id },
+  });
+  await vi.waitFor(() =>
+    expect(observer.state?.collections.project.get("project")?.repoId).toBe(
+      h.repo.id,
+    ),
+  );
+  first.close();
+  observer.close();
+  const restarted = await h.restart();
+  open.push(restarted);
+  expect(
+    (
+      await connect(restarted, "project-restart")
+    ).state?.collections.project.get("project")?.repoId,
+  ).toBe(h.repo.id);
+});
+
 test("rename commands map to the pane host and publish authoritative names to every window", async () => {
   const h = await served();
   const ref = {

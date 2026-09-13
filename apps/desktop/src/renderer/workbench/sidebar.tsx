@@ -69,11 +69,13 @@ export function Sidebar({
     const animations = new Set<Animation>();
     const stop = store.subscribePaneTransitions((pane) => {
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      const pinned = ["loom-lead", "loom-main"].includes(pane.sessionName)
-        ? "main"
-        : pane.sessionName === "loom-operator"
-          ? "operator"
-          : null;
+      const pinned =
+        pane.sessionName === `loom-lead-${store.getState().ui.repo}` ||
+        ["loom-lead", "loom-main"].includes(pane.sessionName)
+          ? "main"
+          : pane.sessionName === "loom-operator"
+            ? "operator"
+            : null;
       const row = [
         ...(sidebar.current?.querySelectorAll<HTMLElement>(
           "[data-pane-key], [data-pinned]",
@@ -116,6 +118,7 @@ export function Sidebar({
     [panes, filter, runs],
   );
   const lead = useStore((s) => s.lead);
+  const repo = useStore((s) => s.ui.repo);
   const operator = useStore((s) => s.operator);
   const [grouped, setGrouped] = useState(true);
   const agents = tree.flatMap((space) =>
@@ -393,7 +396,7 @@ export function Sidebar({
                     : (operator?.status ?? "unknown");
                 const native = panes.find((pane) =>
                   (target === "main"
-                    ? ["loom-lead", "loom-main"]
+                    ? [`loom-lead-${repo}`, "loom-lead", "loom-main"]
                     : ["loom-operator"]
                   ).includes(pane.sessionName),
                 );
@@ -402,6 +405,7 @@ export function Sidebar({
                     key={target}
                     type="button"
                     className="wb-tree-row wb-agent-row"
+                    disabled={target === "main" && !repo}
                     data-pinned={target}
                     aria-current={
                       selected === target || (native && isSelected(native))
