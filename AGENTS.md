@@ -11,10 +11,10 @@ the process that runs them, and its README says how. Your brief is the file name
 launched, under `docs/briefs/`; Phase 2 briefs share `docs/briefs/phase-2-common.md`. The spikes in
 `spikes/` are finished reference material, never imported.
 
-**How Loom is built right now:** off its own pipeline. Loom work is done by agents launched
+**How Loom is built right now:** mostly off its own pipeline. Loom work is done by agents launched
 directly into worktrees (`scripts/agent.sh`, or a session opened by hand) and reviewed by a human.
-Loom's coordinator only runs sandbox smoke tasks (`scripts/smoke.sh`) until the checklist in
-`docs/self-hosting-readiness.md` passes; see "Until then: two tracks" in `docs/build-plan.md`.
+Only tasks the human explicitly files go through Loom's coordinator; see "Until then: two tracks"
+in `docs/build-plan.md`.
 
 Read `docs/architecture.md` before any change to how Loom talks to external tools, stores state,
 or moves tasks between stages.
