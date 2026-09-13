@@ -453,6 +453,12 @@ export function human(
       c.change("Human reset retry budget", () => {
         task.failed = null;
       });
+      if (actionOnly)
+        for (const message of state.messages)
+          if (message.status === "pending" && message.attempts === 0) {
+            message.pendingSince = c.now;
+            message.deliveryAttention = false;
+          }
       if (run) {
         if (fresh) {
           const pending = state.messages.filter(

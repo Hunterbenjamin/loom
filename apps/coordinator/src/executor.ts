@@ -434,10 +434,15 @@ export class Executor {
         return {};
       }
       case "push_branch": {
+        const baseBranch =
+          state.worktree?.baseBranch ??
+          this.deps.repo(action.taskId).baseBranch;
+        if (action.branch === baseBranch)
+          throw new Fatal("Refusing to push the repository base branch");
         // The remote may already be at this SHA, from an earlier attempt of the same intent.
         const observation = await adapters.git.readWorktree(
           action.worktreePath,
-          this.deps.config.baseBranch,
+          baseBranch,
         );
         if (observation.remoteHeadSha === action.expectedHeadSha)
           return { remoteHeadSha: action.expectedHeadSha };
@@ -445,7 +450,7 @@ export class Executor {
           worktreePath: action.worktreePath,
           branch: action.branch,
           expectedHeadSha: action.expectedHeadSha,
-          leaseSha: observation.remoteHeadSha,
+          expectedRemoteHeadSha: observation.remoteHeadSha,
         });
       }
       case "open_pr": {

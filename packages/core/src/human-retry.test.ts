@@ -142,6 +142,137 @@ test.each(["starting", "working", "idle", "blocked"] as const)(
   },
 );
 
+test("human retry still replaces a failed run when an older action also failed", () => {
+  const f = setup();
+  const worktree = f.state.worktree;
+  const branch = f.state.task.branch;
+  const gitReading = f.observations.git;
+  const git = gitReading?.ok ? gitReading.value : null;
+  if (!worktree || !branch || !git?.headSha)
+    throw new Error("Missing retry fixture state");
+  const key = `push_branch:${f.state.task.id}:${git.headSha}` as never;
+  f.state.outbox = [
+    {
+      key,
+      kind: "push_branch",
+      status: "failed",
+      attempts: 3,
+      createdAt: now,
+      finishedAt: now,
+      action: {
+        key,
+        kind: "push_branch",
+        taskId: f.state.task.id,
+        worktreePath: worktree.path,
+        branch,
+        expectedHeadSha: git.headSha,
+      },
+      error: { code: "retryable", message: "Earlier push rejected" },
+    },
+  ];
+
+  const result = fixed(f.state, f.observations);
+
+  expect(result.inputs[0]?.accepted).toBe(true);
+  expect(result.actions.find((a) => a.kind === "stop_run")).toMatchObject({
+    runId: f.run.id,
+    terminate: true,
+  });
+  expect(result.next.desiredRun?.fresh).toBe(true);
+});
+
+test("failed task actions retry without replacing live runs in the worktree", () => {
+  const f = fixture("in_review");
+  const planner = f.state.runs.find((r) => r.role === "planner");
+  const implementer = f.state.runs.find((r) => r.role === "implementer");
+  const reviewer = f.state.runs.find((r) => r.role === "reviewer");
+  const worktree = f.state.worktree;
+  const branch = f.state.task.branch;
+  const gitReading = f.observations.git;
+  const git = gitReading?.ok ? gitReading.value : null;
+  if (
+    !planner ||
+    !implementer ||
+    !reviewer ||
+    !worktree ||
+    !branch ||
+    !git?.headSha
+  )
+    throw new Error("Missing retry fixture state");
+  planner.endedAt = now;
+  reviewer.status = "starting";
+  reviewer.seenAt = null;
+  const reviewerObservation = f.observations.runs.find(
+    (row) => row.runId === reviewer.id,
+  );
+  if (!reviewerObservation?.provider.ok)
+    throw new Error("Missing reviewer observation");
+  reviewerObservation.provider.value = null;
+  const action = {
+    key: `push_branch:${f.state.task.id}:${git.headSha}` as never,
+    taskId: f.state.task.id,
+    kind: "push_branch" as const,
+    worktreePath: worktree.path,
+    branch,
+    expectedHeadSha: git.headSha,
+  };
+  f.state.outbox = [
+    {
+      key: action.key,
+      kind: action.kind,
+      status: "failed",
+      attempts: 3,
+      createdAt: now,
+      finishedAt: now,
+      action,
+      error: { code: "retryable", message: "Push rejected" },
+    },
+  ];
+  f.state.task.failed = {
+    reason: "action_failed",
+    since: now,
+    detail: "Push rejected",
+    runId: null,
+  };
+  f.state.messages = [
+    {
+      id: "review-initial" as never,
+      runId: reviewer.id,
+      purpose: "initial",
+      text: "Review this change",
+      textHash: "sha256:review",
+      status: "pending",
+      pendingSince: "2026-09-11T23:00:00.000Z" as typeof now,
+      attempts: 0,
+      transportRef: null,
+      sentAt: null,
+      delivered: null,
+      deliveryAttention: true,
+    },
+  ];
+  f.observations.inputs = [command({ type: "retry" })];
+
+  const result = fixed(f.state, f.observations);
+
+  expect(result.inputs[0]?.accepted).toBe(true);
+  expect(result.next.task.failed).toBeNull();
+  expect(
+    result.next.runs.find((r) => r.id === implementer.id)?.endedAt,
+  ).toBeNull();
+  expect(
+    result.next.runs.find((r) => r.id === reviewer.id)?.endedAt,
+  ).toBeNull();
+  expect(result.actions.some((row) => row.kind === "stop_run")).toBe(false);
+  expect(result.next.messages[0]).toMatchObject({
+    pendingSince: now,
+    deliveryAttention: false,
+  });
+  expect(result.next.task.attention.reasons).not.toContain("provider_input");
+  expect(result.actions.find((row) => row.kind === "push_branch")?.key).toBe(
+    `${action.key}#4`,
+  );
+});
+
 test("failed retirement can itself be retried without discarding the fresh-session intent", () => {
   const f = setup();
   const stopped = fixed(f.state, f.observations);

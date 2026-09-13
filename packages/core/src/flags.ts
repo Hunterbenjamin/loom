@@ -210,6 +210,7 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
     }
     for (const message of input.messages)
       if (
+        !input.failed &&
         message.deliveryAttention &&
         input.runs.some((run) => run.id === message.runId && !run.endedAt)
       )

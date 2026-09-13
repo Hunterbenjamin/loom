@@ -84,15 +84,15 @@ export interface GitAdapter {
     baseBranch: string;
   }): Promise<ActionOutputs["create_worktree"]>;
   /**
-   * Refuses unless the local branch head equals `expectedHeadSha`. Never forces blindly: with
-   * `leaseSha`, the remote head Loom last observed, the push is `--force-with-lease` on exactly
-   * that head, so a rebased branch (a rebase round) replaces only what Loom has already seen.
+   * Refuses unless the local branch head equals `expectedHeadSha`. Never forces blindly:
+   * `expectedRemoteHeadSha` is the remote head Loom last observed, and the push replaces exactly
+   * that head with `--force-with-lease` so a rebased branch cannot overwrite unseen remote work.
    */
   push(req: {
     worktreePath: WorktreePath;
     branch: string;
     expectedHeadSha: Sha;
-    leaseSha?: Sha | null;
+    expectedRemoteHeadSha: Sha | null;
   }): Promise<ActionOutputs["push_branch"]>;
   /** Writes `<worktree>/.task/` and keeps `.task/` in `.git/info/exclude`. */
   writeTaskFiles(
