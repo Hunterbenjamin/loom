@@ -12,6 +12,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { terminalsForTask } from "../store/selectors.js";
 import { kittyEncode } from "./kitty.js";
+import { type PaneViewport, terminalCrop } from "./terminal-crop.js";
 
 const THEMES = {
   dark: { background: "#0b0c0e", foreground: "#d8dbde", cursor: "#7aa2f7" },
@@ -179,6 +180,7 @@ function TaskShellTerminal({
 /** The shared attach client for task runs and the instance Lead. Unmount only detaches. */
 export const TerminalSession = memo(function TerminalSession({
   panelId,
+  viewport,
   shellKey,
   shellName,
   pane,
@@ -191,6 +193,7 @@ export const TerminalSession = memo(function TerminalSession({
   live,
 }: {
   panelId?: string;
+  viewport?: PaneViewport;
   shellKey?: string;
   shellName?: string;
   pane?: import("@loom/protocol").PaneIdentity;
@@ -208,6 +211,13 @@ export const TerminalSession = memo(function TerminalSession({
       (window.loom.terminalRenders[panelId] ?? 0) + 1;
   }
   const host = useRef<HTMLDivElement>(null);
+  const clip = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef(viewport);
+  const fitViewport = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    viewportRef.current = viewport;
+    fitViewport.current?.();
+  }, [viewport]);
   const [status, setStatus] = useState("starting...");
   const [command, setCommand] = useState("");
 
@@ -246,7 +256,37 @@ export const TerminalSession = memo(function TerminalSession({
     } catch {
       // Software rendering still works; only throughput suffers.
     }
-    fit.fit();
+    const fitView = () => {
+      const crop = viewportRef.current;
+      const container = clip.current;
+      if (crop && container) {
+        terminal.resize(crop.columns, crop.rows);
+        const screen = element.querySelector<HTMLElement>(".xterm-screen");
+        if (!screen?.clientWidth || !screen.clientHeight) return;
+        const placement = terminalCrop(
+          crop,
+          screen.clientWidth,
+          screen.clientHeight,
+          container.clientWidth,
+          container.clientHeight,
+        );
+        Object.assign(element.style, {
+          width: `${screen.clientWidth}px`,
+          height: `${screen.clientHeight}px`,
+          transformOrigin: "top left",
+          transform: placement,
+        });
+      } else {
+        Object.assign(element.style, {
+          width: "100%",
+          height: "100%",
+          transform: "",
+        });
+        fit.fit();
+      }
+    };
+    fitViewport.current = fitView;
+    fitView();
     instance.current = terminal;
     window.loom.term = terminal;
     window.loom.terms ??= {};
@@ -325,8 +365,9 @@ export const TerminalSession = memo(function TerminalSession({
     // Resize on panel resize only, debounced: the attached client owns the pane size for
     // every other viewer, and that size sticks after detach (spike 03).
     let timer: number | undefined;
-    let width = element.clientWidth;
-    let height = element.clientHeight;
+    const resizeElement = clip.current ?? element;
+    let width = resizeElement.clientWidth;
+    let height = resizeElement.clientHeight;
     const observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
       const next = entry.contentRect;
@@ -337,18 +378,19 @@ export const TerminalSession = memo(function TerminalSession({
       if (width <= 0 || height <= 0) return;
       timer = window.setTimeout(() => {
         try {
-          fit.fit();
+          fitView();
         } catch {
           // The panel can be detached mid-animation.
         }
       }, 80);
     });
-    observer.observe(element);
+    observer.observe(resizeElement);
 
     return () => {
       disposed = true;
       window.clearTimeout(timer);
       observer.disconnect();
+      fitViewport.current = null;
       if (window.loom.term === terminal) window.loom.term = null;
       delete window.loom.terms?.[panelId ?? id];
       instance.current = null;
@@ -367,7 +409,9 @@ export const TerminalSession = memo(function TerminalSession({
         <span>{status}</span>
       </div>
       <div className="terminal-host" data-testid="terminal">
-        <div className="terminal-viewport" ref={host} />
+        <div className="terminal-crop" ref={clip}>
+          <div className="terminal-viewport" ref={host} />
+        </div>
       </div>
     </div>
   );

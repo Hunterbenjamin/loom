@@ -130,3 +130,60 @@ test("pinned Main and Operator sessions are excluded from the space tree", () =>
     ),
   ).toEqual([]);
 });
+
+test("tree row projection contains only spaces and native tabs with full rollups and window index order", () => {
+  const tree = spaces([
+    {
+      ...pane,
+      windowId: "@2",
+      windowIndex: 5,
+      windowName: "Shell",
+      command: "zsh",
+    },
+    {
+      ...pane,
+      paneId: "%8",
+      windowId: "@8",
+      windowIndex: 0,
+      windowName: "Build",
+      command: "node",
+      status: "working",
+    },
+    {
+      ...pane,
+      paneId: "%9",
+      windowId: "@8",
+      windowIndex: 0,
+      windowName: "Build",
+      command: "codex",
+      status: "blocked",
+    },
+  ]);
+  const rows = tree.flatMap((space) => [
+    { kind: "space", name: space.name, status: space.indicator.label },
+    ...space.tabs.map((tab) => ({
+      kind: "tab",
+      name: tab.name,
+      status: tab.indicator.label,
+    })),
+  ]);
+  expect(rows).toMatchInlineSnapshot(`
+    [
+      {
+        "kind": "space",
+        "name": "research",
+        "status": "Blocked / needs you",
+      },
+      {
+        "kind": "tab",
+        "name": "Build",
+        "status": "Blocked / needs you",
+      },
+      {
+        "kind": "tab",
+        "name": "Shell",
+        "status": "Idle",
+      },
+    ]
+  `);
+});

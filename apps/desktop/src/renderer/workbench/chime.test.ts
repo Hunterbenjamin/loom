@@ -81,24 +81,24 @@ test("audio obeys window/pane focus and mute; flash is once per transition with 
   try {
     await update({ status: "blocked" });
     expect(play).toHaveBeenCalledTimes(1);
-    expect(animate).toHaveBeenCalledTimes(2);
+    expect(animate).toHaveBeenCalledTimes(1);
     expect((animate.mock.contexts[0] as HTMLElement)?.dataset.paneKey).toBe(
       pane.id,
     );
     expect(
-      (animate.mock.contexts[1] as HTMLElement)?.classList.contains(
+      (animate.mock.contexts[0] as HTMLElement)?.classList.contains(
         "wb-agent-row",
       ),
     ).toBe(true);
     await update({ status: "blocked", attachedClients: 5 });
     expect(play).toHaveBeenCalledTimes(1);
-    expect(animate).toHaveBeenCalledTimes(2);
+    expect(animate).toHaveBeenCalledTimes(1);
     const clearFocus = store.registerPaneFocus(() => pane);
     focus.mockReturnValue(true);
     await update({ status: "working" });
     await update({ status: "ended" });
     expect(play).toHaveBeenCalledTimes(1);
-    expect(animate).toHaveBeenCalledTimes(4);
+    expect(animate).toHaveBeenCalledTimes(2);
     focus.mockReturnValue(false);
     await update({ status: "working" });
     await update({ status: "blocked" });
@@ -117,14 +117,14 @@ test("audio obeys window/pane focus and mute; flash is once per transition with 
     await update({ status: "working" });
     await update({ status: "blocked" });
     expect(play).toHaveBeenCalledTimes(3);
-    expect(animate).toHaveBeenCalledTimes(10); // Mute does not remove visual feedback.
+    expect(animate).toHaveBeenCalledTimes(5); // Mute does not remove visual feedback.
     reduced = true;
     await act(async () => mute?.click());
     play.mockRejectedValueOnce(new Error("Autoplay blocked"));
     await update({ status: "working" });
     await update({ status: "blocked" });
     expect(play).toHaveBeenCalledTimes(4);
-    expect(animate).toHaveBeenCalledTimes(10);
+    expect(animate).toHaveBeenCalledTimes(5);
     await act(async () => store.toast("unrelated update"));
     expect(play).toHaveBeenCalledTimes(4);
   } finally {

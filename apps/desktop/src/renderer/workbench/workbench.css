@@ -115,18 +115,18 @@
 }
 
 .wb-sidebar {
-  width: 375px;
+  width: 260px;
   max-width: 40vw;
   flex: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid #383b48;
-  background: #272b33;
-  color: #c3c6da;
-  font: 13px / 1.45 var(--mono);
-  --wb-dim: #84899d;
-  --wb-selected: #303440;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font: 13px / 1.45 var(--sans);
+  --wb-dim: var(--text-dim);
+  --wb-selected: var(--bg-active);
 }
 .wb-sidebar.collapsed {
   width: 30px;
@@ -147,9 +147,12 @@
   outline-offset: -1px;
 }
 .wb-sidebar #agent-filter {
-  width: 100%;
+  width: calc(100% - 24px);
+  margin: 0 12px 8px;
   flex: none;
-  padding: 2px 12px 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   color: var(--wb-dim);
 }
 .wb-sidebar #agent-filter::placeholder {
@@ -167,7 +170,8 @@
 }
 .wb-section-heading h2 {
   margin: 0;
-  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
 }
 .wb-section-heading button,
 .wb-spaces-footer button,
@@ -176,8 +180,8 @@
   color: var(--wb-dim);
 }
 .wb-sidebar button:hover:not(:disabled) {
-  background: #ffffff06;
-  color: #e2e4ef;
+  background: var(--bg-hover);
+  color: var(--text);
 }
 .wb-terminals {
   flex: 0 1 auto;
@@ -191,7 +195,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid #383b48;
+  border-top: 1px solid var(--line);
 }
 .wb-terminal-list,
 .wb-agent-list {
@@ -208,7 +212,8 @@
   gap: 8px;
   width: 100%;
   text-align: left;
-  padding: 3px 12px;
+  padding: 7px 12px;
+  font-size: 12px;
   min-width: 0;
 }
 .wb-sidebar [aria-current="true"],
@@ -232,10 +237,10 @@
 .wb-agent-tab,
 .wb-state-label {
   color: var(--wb-dim);
-  font-size: inherit;
+  font-size: 11px;
 }
 .wb-tree-row strong {
-  font-weight: 600;
+  font-weight: 400;
 }
 .wb-space,
 .wb-agent-row {
@@ -254,9 +259,6 @@
   flex: none;
   padding: 3px 0;
   width: 1ch;
-}
-.wb-tree-tab .wb-tree-pane {
-  padding-left: calc(12px + 4ch);
 }
 .wb-sidebar .dead,
 .wb-sidebar button:disabled {
@@ -391,4 +393,25 @@
 .wb-rename [role="alert"] {
   color: var(--danger);
   overflow-wrap: anywhere;
+}
+
+.wb-space-row {
+  display: flex;
+  align-items: baseline;
+  padding-left: 8px;
+}
+.wb-space {
+  flex: 1;
+}
+.wb-status.working {
+  color: var(--accent);
+}
+.wb-status.finished {
+  color: var(--good);
+}
+.wb-status.unknown {
+  color: var(--violet);
+}
+.wb-status.idle {
+  color: var(--text-dim);
 }

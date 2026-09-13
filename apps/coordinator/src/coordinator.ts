@@ -970,16 +970,45 @@ export class Coordinator {
             await this.operator.open();
             await this.publishOperator();
           }
+          const scratchTarget =
+            command.kind === "open_workbench_terminal" && command.target
+              ? paneIdentity.parse(command.target)
+              : undefined;
+          if (
+            scratchTarget &&
+            !scratchTarget.hostGeneration.startsWith(
+              `loom-${this.config.instance}#`,
+            )
+          )
+            throw new Error("Pane belongs to another instance");
+          const scratchPane = scratchTarget
+            ? await this.adapters.paneHost.getPane(scratchTarget)
+            : null;
+          if (
+            scratchTarget &&
+            (!scratchPane ||
+              scratchPane.dead ||
+              scratchPane.ref.windowId !== scratchTarget.windowId)
+          )
+            throw new Error("Pane is missing, dead or stale");
+          if (
+            command.kind === "open_workbench_terminal" &&
+            command.split &&
+            !scratchTarget
+          )
+            throw new Error("Split requires a target pane");
           const ref =
             command.kind === "open_operator_terminal"
               ? paneIdentity.parse(this.operator.paneRef)
               : command.kind === "open_workbench_terminal"
                 ? await this.adapters.paneHost.createScratch({
-                    workspaceId: "loom-workbench",
+                    workspaceId: scratchPane?.workspaceId ?? "loom-workbench",
+                    target: scratchTarget,
+                    split: command.split as "right" | "below" | undefined,
                     createWorkspace: true,
                     key: command.key as string,
                     label: (command.label as string | undefined) ?? "Terminal",
-                    cwd: homedir() as WorktreePath,
+                    cwd: scratchPane?.startCwd ?? (homedir() as WorktreePath),
                     executable: process.env.SHELL || "/bin/sh",
                     args: ["-l"],
                     env: runEnvironment(process.env, {}),
@@ -1099,6 +1128,7 @@ export class Coordinator {
         case "open_lead_session": {
           const target = await this.leadFor(command.repoId as string).open();
           await this.publishLead();
+          await this.inventory.refresh();
           return { ok: true, result: { kind: "attach_session", target } };
         }
         case "stop_lead_session": {

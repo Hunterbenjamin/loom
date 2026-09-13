@@ -21,6 +21,10 @@ vi.mock("@xterm/xterm", () => ({
     attachCustomKeyEventHandler() {}
     onData() {}
     onResize() {}
+    resize(cols: number, rows: number) {
+      this.cols = cols;
+      this.rows = rows;
+    }
     write() {}
     focus() {}
     dispose() {}
@@ -180,4 +184,61 @@ test("two panel clients are independent; label/theme updates and parent paints p
     await act(async () => root.unmount());
     element.remove();
   }
+});
+
+test("pane crops attach at the full native window size and layout patches preserve the client", async () => {
+  const spawn = vi.fn(async () => ({ pid: 1, command: "attach" }));
+  const kill = vi.fn(async () => true);
+  window.loomTerminal = {
+    spawn,
+    kill,
+    write: vi.fn(),
+    resize: vi.fn(),
+    onData: vi.fn(),
+    onExit: vi.fn(),
+    off: vi.fn(),
+  };
+  const store = createStore(undefined, true, "test");
+  window.loom = { store, ready: true, diffPaintedAt: null, term: null };
+  const element = document.createElement("div");
+  document.body.append(element);
+  const root = createRoot(element);
+  const pane = {
+    hostGeneration: "loom-test#1",
+    sessionName: "research",
+    windowId: "@1",
+    paneId: "%2",
+  };
+  const render = (columns: number) =>
+    root.render(
+      createElement(TerminalSession, {
+        panelId: "crop",
+        pane,
+        viewport: {
+          columns,
+          rows: 40,
+          left: 61,
+          top: 21,
+          width: 59,
+          height: 19,
+        },
+        label: "Workbench",
+        theme: "dark",
+        live: true,
+      }),
+    );
+  try {
+    await act(async () => render(120));
+    expect(spawn).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ cols: 120, rows: 40, pane }),
+    );
+    await act(async () => render(140));
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(window.loom.terms?.crop).toMatchObject({ cols: 140, rows: 40 });
+    expect(kill).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => root.unmount());
+    element.remove();
+  }
+  expect(kill).toHaveBeenCalledTimes(1);
 });
