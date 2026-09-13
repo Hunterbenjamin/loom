@@ -26,7 +26,11 @@ export function App() {
   const theme = useStore((s) => s.ui.theme);
   const waiting = useStore(
     (s) =>
-      s.live && s.connection !== "connected" && s.snapshot.tasks.length === 0,
+      s.live &&
+      s.connection !== "connected" &&
+      (s.ui.view === "pull-requests"
+        ? s.snapshot.pullRequests.length === 0
+        : s.snapshot.tasks.length === 0),
   );
   const pane = useStore((s) => s.ui.pane);
   const view = useStore((s) => s.ui.view);

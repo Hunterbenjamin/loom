@@ -78,8 +78,15 @@ export function useShortcuts(store: Store): void {
           document.querySelector<HTMLInputElement>("[data-pr-search]")?.focus();
           return;
         }
-        // PR detail and task stage actions are outside the list slice.
-        if (event.key === "Enter" || event.key === "e") return;
+        if (event.key === "Enter") {
+          event.preventDefault();
+          document
+            .querySelector<HTMLElement>('[data-pr][data-cursor="true"]')
+            ?.focus();
+          return;
+        }
+        // Task stage actions do not apply to repository PRs.
+        if (event.key === "e") return;
       }
 
       const inbox =
