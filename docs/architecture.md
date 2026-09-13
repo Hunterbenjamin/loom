@@ -152,13 +152,17 @@ Rules:
 
 ### Main session
 
-The coordinator also owns one interactive Claude Main session per instance, outside the task/run
-model. Its recipe and per-session credentials live under the instance data directory; its pane is
-in the fixed `loom-lead` workspace on the same private server. Main uses a separate MCP identity
-with human-command tools and `set_note`, which atomically replaces the instance-local
-`main-notes` document (at most 2,000 characters). Each launch includes that note as context.
-The Claude launch restricts Main to Loom MCP and read-only file tools within the instance
-directory; the agent has no terminal attach capability. Human viewers still attach to its panel.
+The coordinator also owns one interactive Claude Main session per repository, outside the task/run
+model. Its recipe, credentials, settings and `main-notes` live under `<instance data>/lead/<repoId>/`;
+it launches at the repository root in `loom-lead-<repoId>` on the same private server. Main's
+separate authenticated MCP identity scopes task reads and human-command tools to that repository.
+`set_note` atomically replaces its own notes (at most 2,000 characters), included on each launch.
+The Claude launch restricts Main to Loom MCP and read-only file tools within the repository;
+the agent has no terminal attach capability. Human viewers still attach to its panel.
+The coordinator persists the per-instance last-opened repository in SQLite and publishes selection
+to windows. Selecting another repository retargets a viewer without stopping either session.
+Startup recovers every per-repository recipe and idempotently migrates the legacy single recipe
+to the first registered repository, keeping its session ID and token. Operator remains instance-wide.
 This conversation-only policy is separate from task planners' and reviewers' edit restrictions,
 so those task roles retain the tools needed to inspect the repository and run tests.
 The human-command tools enqueue the same guarded inputs as the CLI; they do not
