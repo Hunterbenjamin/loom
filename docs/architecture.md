@@ -479,8 +479,16 @@ configuration (`--tools ""`, strict MCP config and per-process settings) and a s
 identity prevent the Operator agent from using issue-run, shell and attach tools. Humans can attach
 its terminal through the pinned Workbench entry. Native Claude status gates queued input: busy,
 waiting and unknown sessions receive no paste. A durable prompt hash is recorded before paste;
-UserPromptSubmit confirms delivery and the matching Stop receipt finishes a turn. Uncertain
-delivery is never automatically replayed after restart.
+UserPromptSubmit confirms delivery. On startup and every pump, an unconfirmed attempt also
+checks the session's native transcript for a submitted user message with the same normalized hash
+between the attempt start and the observation time. A matching Stop or native idle finishes a
+confirmed turn. After 30 seconds without a receipt, an idle session with no pending dialog may
+retry through the same send gate; busy sessions retain the attempt for further receipt checks.
+Delivery errors never prevent observation. Genuine native turn failures stay visible until Retry.
+Main messages have a separate durable chat receipt: each is pasted as `Message from Main: <text>`
+even if a tool already completed its `main_message` event. Provider confirmation retires the chat
+item; the idempotent event and `append_note` reply remain the durable record. The desktop shows
+Operator errors on hover and offers Retry without replacing the session or its terminal.
 Every mutation is checked against policy v1 using fresh observations. Rescue commands reuse the
 core/outbox/executor path, without a submission or stage transition; automatic bug planning uses
 the existing `todo` input. Runtime bug repository routing is explicit. Desktop status and authored

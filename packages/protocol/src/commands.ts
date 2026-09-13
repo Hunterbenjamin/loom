@@ -86,6 +86,7 @@ export const command = z.union([
     noteId: z.string().min(1).max(300),
   }),
   z.strictObject({ kind: z.literal("open_operator_session") }),
+  z.strictObject({ kind: z.literal("retry_operator_session") }),
   z.strictObject({ kind: z.literal("open_operator_terminal") }),
   z.strictObject({ kind: z.literal("stop_operator_session") }),
   z.strictObject({ kind: z.literal("operator_status") }),
