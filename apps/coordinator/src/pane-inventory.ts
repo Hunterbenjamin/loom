@@ -102,6 +102,7 @@ export class PaneInventory {
     },
     private publish: (rows: PaneView[], unavailable: boolean) => void,
   ) {}
+  private readonly reaped = new Set<string>();
   refresh(): Promise<void> {
     if (this.stopped) return Promise.resolve();
     this.dirty = true;
@@ -154,6 +155,32 @@ export class PaneInventory {
             return paneView.parse({ ...row, branch: await branch });
           }),
         );
+        // Closing is killing all the way up: tmux keeps an exited process's pane (remain-on-exit)
+        // so a Loom run's death can be observed first. A dead pane nobody owns is reaped at once,
+        // and tmux then drops an emptied window and session on its own.
+        // The host's hint after the kill triggers the scan that drops the row; each pane is
+        // asked once, so a host that keeps reporting it never causes a kill loop.
+        for (const row of this.rows) {
+          if (
+            !row.dead ||
+            row.runId ||
+            row.taskId ||
+            row.unavailable ||
+            row.sessionName.startsWith("loom-lead") ||
+            ["loom-main", "loom-operator"].includes(row.sessionName) ||
+            this.reaped.has(row.id)
+          )
+            continue;
+          this.reaped.add(row.id);
+          await this.host
+            .closeTerminal({
+              hostGeneration: row.hostGeneration,
+              sessionName: row.sessionName,
+              windowId: row.windowId,
+              paneId: row.paneId,
+            })
+            .catch(() => {});
+        }
         this.unavailable = false;
       } catch {
         this.unavailable = true;

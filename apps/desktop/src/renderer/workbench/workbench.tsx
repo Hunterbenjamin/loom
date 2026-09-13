@@ -848,8 +848,11 @@ export function Workbench() {
           onKeyDown={(e) => {
             if (e.key === "Escape") setPalette(false);
           }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPalette(false);
+          }}
         >
-          <div>
+          <div className="palette">
             <Command label="Workbench commands" loop>
               <button type="button" onClick={() => setPalette(false)}>
                 Close
