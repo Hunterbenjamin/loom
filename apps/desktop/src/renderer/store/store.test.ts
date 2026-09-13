@@ -222,12 +222,16 @@ it("live selection changes only when the coordinator publishes it", async () => 
     commands.push(command);
     return { ok: true, result: { kind: "repo_selected", repoId: next.id } };
   });
+  const pr = must(fixture.pullRequests[0]);
+  api.openPullRequest({ repoId: pr.repoId, number: pr.number });
   await api.setRepo(next.id);
+  expect(api.getState().ui.openPr).not.toBeNull();
   expect(commands).toEqual([{ kind: "select_repo", repoId: next.id }]);
   expect(api.getState().ui.repo).toBe(body.projects[0]?.repoId);
   body.projects = [{ id: "project", repoId: next.id }];
   api.applyProtocol(stateFromSnapshot(meta, body));
   expect(api.getState().ui.repo).toBe(next.id);
+  expect(api.getState().ui.openPr).toBeNull();
   const secondWindow = createStore(fixture, true);
   secondWindow.applyProtocol(stateFromSnapshot(meta, body));
   expect(secondWindow.getState().ui.repo).toBe(next.id);

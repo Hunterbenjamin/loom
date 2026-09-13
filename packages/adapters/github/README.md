@@ -50,7 +50,8 @@ heuristic. `run` and `now` are injectable for tests.
   merged), follows every list page, hydrates checks/reviews/mergeability, and returns
   newest-first `PullRequestSummary` values, including `observedAt`.
 - `readPullRequest(repo, number)` adds the body, merge facts, commits, native check runs
-  with start/completion times, and change counts. Null authors remain null; a null body
+  with start/completion times, and change counts. Detail also includes `branchExists`, read
+  from the actual head repository; an unidentified repository remains null (unknown). Null authors remain null; a null body
   becomes an empty string. Latest decisive review per author wins; comments/pending
   reviews do not erase a decision, and any outstanding changes request takes priority.
   Check summaries include legacy commit statuses using the same rules as task observations.

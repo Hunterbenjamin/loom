@@ -118,6 +118,7 @@ test("an 8 MiB capped patch survives JSON escaping and protocol roundtrip", () =
       number: summary.number,
       detail: {
         ...github,
+        branchExists: true,
         body: "",
         mergedAt: null,
         mergeCommitSha: null,

@@ -236,6 +236,7 @@ export class PullRequestViews {
         { collection: "pull_request_detail", key, value },
       ]);
       const {
+        branchExists: _branchExists,
         body: _body,
         mergedAt: _at,
         mergeCommitSha: _sha,

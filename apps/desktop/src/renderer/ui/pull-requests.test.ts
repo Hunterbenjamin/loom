@@ -139,7 +139,8 @@ test("j/k follows displayed order, search owns typing, and task links open only 
   key("j");
   expect(h.rows()[1]?.dataset.cursor).toBe("true");
   expect(key("Enter").defaultPrevented).toBe(true);
-  expect(document.activeElement).toBe(h.rows()[1]);
+  expect(h.store.getState().ui.openPr).not.toBeNull();
+  key("Escape");
   key("k");
   expect(h.rows()[0]?.dataset.cursor).toBe("true");
   for (let i = 0; i < 12; i++) key("j");

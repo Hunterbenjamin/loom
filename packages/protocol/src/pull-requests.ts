@@ -25,6 +25,7 @@ export const pullRequestSummary = z.strictObject({
   observedAt: isoTime,
 });
 export const pullRequestDetail = pullRequestSummary.extend({
+  branchExists: z.boolean().nullable().default(null),
   body: z.string(),
   mergedAt: isoTime.nullable(),
   mergeCommitSha: sha.nullable(),

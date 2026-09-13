@@ -65,6 +65,15 @@ export function http(value: unknown, headers: Record<string, string> = {}) {
 
 export function setup(excludedAuthors: string[] = []) {
   const routes = new Map<string, GhResult>([
+    [
+      `${root}/git/ref/heads/${encodeURIComponent(original.head.ref)}`,
+      ok(
+        http({
+          ref: `refs/heads/${original.head.ref}`,
+          object: { sha: original.head.sha },
+        }),
+      ),
+    ],
     [list, ok(fixture("pulls"))],
     [pr, ok(fixture("pull"))],
     [checksPath, ok(fixture("checks"))],
