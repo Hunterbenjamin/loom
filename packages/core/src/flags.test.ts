@@ -163,6 +163,7 @@ describe("idle runs awaiting submission", () => {
       questions: f.state.questions,
       messages: f.state.messages,
       stallAfterMs: f.state.config.stallAfterMs,
+      fixRoundStallAfterMs: f.state.config.fixRoundStallAfterMs,
       unknownGraceMs: f.state.config.unknownGraceMs,
     });
 
@@ -241,6 +242,40 @@ describe("idle runs awaiting submission", () => {
     expect(expired.next.task.attention.reasons).toContain(
       "idle_without_submission",
     );
+  });
+
+  it("a delivered fix round shortens the idle window: the run already knows what to do", () => {
+    const f = idleFixture();
+    f.state.config.fixRoundStallAfterMs = 60_000;
+    f.state.messages.push({
+      id: `${f.run.id}/fix_round/1` as never,
+      runId: f.run.id,
+      purpose: "fix_round",
+      text: "Address the findings and submit for review.",
+      textHash: "hash",
+      status: "delivered",
+      attempts: 1,
+      transportRef: null,
+      sentAt: now,
+      delivered: null,
+    });
+    f.observations.now = at(60_000 - 1);
+    const before = fixed(f.state, f.observations);
+    expect(before.next.task.attention.reasons).not.toContain(reason);
+    expect(before.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "schedule",
+          at: at(60_000),
+          why: "stall_check",
+        }),
+      ]),
+    );
+    f.observations.now = at(60_000);
+    const due = fixed(before.next, f.observations);
+    expect(due.next.task.attention.reasons).toContain(reason);
+    expect(due.next.task.stage).toBe("in_progress");
+    expect(due.next.runs[0]?.endedAt).toBeNull();
   });
 
   it("starts a full grace period when work stops, and clears/restarts it when work resumes", () => {
@@ -589,6 +624,7 @@ describe("every attention reason", () => {
       questions: r.next.questions,
       messages: r.next.messages,
       stallAfterMs: r.next.config.stallAfterMs,
+      fixRoundStallAfterMs: r.next.config.fixRoundStallAfterMs,
       unknownGraceMs: r.next.config.unknownGraceMs,
     });
     expect(derived.attention).toEqual(r.next.task.attention);
@@ -628,6 +664,7 @@ it("attributes reasons to their source runs without including ended or external 
     questions: [],
     messages: [],
     stallAfterMs: 10_000,
+    fixRoundStallAfterMs: 5_000,
     unknownGraceMs: 10_000,
     runs: [
       { ...run, endedAt: null, blockedOn: "permission" as const },

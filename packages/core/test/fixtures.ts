@@ -34,6 +34,7 @@ export const config: TaskState["config"] = {
   models: { codex: "fake", claude: "fake" },
   retry: { baseMs: 10000, capMs: 300000, maxAttempts: 3 },
   stallAfterMs: 900000,
+  fixRoundStallAfterMs: 5 * 60_000,
   unknownGraceMs: 60000,
   deliveryTimeoutMs: 10000,
   githubPollMs: 60000,

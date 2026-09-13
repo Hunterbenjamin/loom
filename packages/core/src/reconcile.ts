@@ -39,6 +39,7 @@ export interface ReconcileConfig {
   retry: RetryPolicy;
   /** Grace for working stalls and idle runs awaiting submission. Attention only; nothing is killed. */
   stallAfterMs: number;
+  fixRoundStallAfterMs: number;
   /** A run may be `unknown` this long before it gets `status_unknown` attention. */
   unknownGraceMs: number;
   /** A sent message with no provider confirmation after this long needs a decision. */

@@ -83,6 +83,8 @@ export interface Harness {
     writeOnly?: boolean,
   ): Promise<Sha>;
   logs: string[];
+  /** Every WORKFLOW `setup` the coordinator ran, in order; nothing is actually executed. */
+  shellCalls: { command: string; cwd: string }[];
   close(): Promise<void>;
   /** Reopens the same data directory with fresh adapters, as a restart would. */
   restart(): Promise<Harness>;
@@ -225,10 +227,14 @@ async function open(
     close: async () => {},
   };
   const logs: string[] = [];
+  const shellCalls: { command: string; cwd: string }[] = [];
   const coordinator = new Coordinator({
     config,
     store,
     adapters,
+    shell: async (command, cwd) => {
+      shellCalls.push({ command, cwd });
+    },
     now: () => clock.now(),
     after: (ms, callback) => clock.after(ms, callback),
     log: (message) => logs.push(message),
@@ -281,6 +287,7 @@ async function open(
     repoRoot,
     git,
     logs,
+    shellCalls,
     async commitIn(worktree, files, message, writeOnly = false) {
       for (const [path, content] of Object.entries(files)) {
         const target = resolve(worktree, path);

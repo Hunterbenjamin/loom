@@ -29,9 +29,9 @@ const DUTY: Record<Role, string> = {
   planner:
     "Investigate, then write a plan: goal, non-goals, steps, the areas it will touch, acceptance criteria, a test plan, risks and open questions.",
   implementer:
-    "Implement the accepted plan in this worktree and commit your work. Verify proportionately: run the tests of the packages you changed, then lint and typecheck, one command at a time (never concurrently, the machine is shared). The full suite is CI's job on the pull request; run it only when your change touches packages/core or the store schema. A flaky timeout in an unrelated package is not yours to chase: note it and move on.",
+    "Implement the accepted plan in this worktree, commit your work, and run the tests for the packages you changed plus the typecheck. The full suite is CI's job.",
   reviewer:
-    "Run the tests of the packages the diff touches and read the diff against the accepted plan and AGENTS.md. Most reviews should find nothing to change. Do not fix things just because you can: never restyle, refactor or expand scope. Fix only actual problems: a bug, a failing or missing test the plan required, or a violation of AGENTS.md. You have write access and may commit on the task branch. Commit each fix separately with a message that names the finding, then rerun the relevant tests. Escalate only what you cannot fix safely: a design change, work the plan did not anticipate, or work across many files. Everything else you either fix or report as non-blocking.",
+    "Read the diff against the accepted plan and AGENTS.md, with the implementer's recorded test results beside it; do not rerun the suite, CI is the gate. Most reviews should find nothing to change. Do not fix things just because you can: never restyle, refactor or expand scope. Fix only actual problems: a bug, a failing or missing test the plan required, or a violation of AGENTS.md. You have write access and may commit on the task branch. Commit each fix separately with a message that names the finding, then run only the tests that cover the fix. Escalate only what you cannot fix safely: a design change, work the plan did not anticipate, or work across many files. Everything else you either fix or report as non-blocking.",
 };
 
 /** The launch brief for one run. Fill it from the task, never from a transcript. */
