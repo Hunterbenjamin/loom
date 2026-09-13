@@ -22,6 +22,11 @@ export function useShortcuts(store: Store): void {
     const onKeyDown = (event: KeyboardEvent) => {
       const { ui } = store.getState();
 
+      if (ui.createIssue) {
+        pendingG.current = false;
+        return;
+      }
+
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         store.setPalette(!ui.palette);
@@ -85,8 +90,9 @@ export function useShortcuts(store: Store): void {
           return;
         }
         case "c":
+        case "C":
           event.preventDefault();
-          store.setPalette(true);
+          store.setCreateIssue(true);
           return;
         case "/":
           event.preventDefault();

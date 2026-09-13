@@ -1,5 +1,10 @@
-import { paneIdentity } from "@loom/protocol";
+import {
+  type ProtocolError,
+  paneIdentity,
+  pullRequestCommand,
+} from "@loom/protocol";
 import { PaneInventory, paneKey } from "./pane-inventory.js";
+import { PullRequestViews } from "./pull-requests.js";
 import { runEnvironment } from "./recipes.js";
 // The coordinator: one long-running process per instance. It owns the loop, the executor, the MCP
 // server agents call, and the protocol server windows connect to. Everything it talks to is
@@ -36,7 +41,7 @@ import {
   type CoordinatorConfig,
   epochOf,
 } from "./config.js";
-import { Executor } from "./executor.js";
+import { classify, Executor } from "./executor.js";
 import { inspectTask } from "./inspect.js";
 import type { LaunchDeps } from "./launch.js";
 import { LeadSession } from "./lead.js";
@@ -102,6 +107,7 @@ export class Coordinator {
   private pollingLead = false;
   readonly loop: Loop;
   readonly executor: Executor;
+  private readonly prViews: PullRequestViews;
   readonly protocol: ProtocolServer;
   readonly startedAt: IsoTime;
   readonly epoch: string;
@@ -210,6 +216,26 @@ export class Coordinator {
       nextInputId: () => randomUUID() as InputId,
       onResult: (taskId) => this.loop.enqueue(taskId),
     });
+    this.prViews = new PullRequestViews({
+      github: this.adapters.github,
+      repo: (id) => this.repoById(id),
+      tasks: () => this.store.tasks(),
+      replace: (owner, rows) =>
+        this.protocol.publish(this.published.replace(owner, null, rows)),
+      after: this.after,
+      action: (command) => this.executor.pullRequest(command),
+      changed: (repo) => {
+        for (const task of this.store.tasks())
+          if (task.repoId === repo.id && task.branch) {
+            this.pullRequests.forget(repo.github, task.branch);
+            this.loop.enqueue(task.id);
+          }
+      },
+      onError: (error) =>
+        this.log(
+          `Could not refresh pull requests: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    });
     this.inventory = new PaneInventory(
       this.adapters.paneHost,
       this.adapters.git,
@@ -257,6 +283,7 @@ export class Coordinator {
       },
       command: (value) => this.command(value),
       ensure: (scope) => this.ensure(scope),
+      scopesChanged: (scope) => this.prViews.subscriptions(scope),
       onError: (error) => this.log(`Protocol error: ${error.message}`),
     });
   }
@@ -342,6 +369,7 @@ export class Coordinator {
   }
 
   async stop(): Promise<void> {
+    await this.prViews.stop();
     if (this.panePoll) clearInterval(this.panePoll);
     await this.inventory.stop();
     if (this.leadPoll) clearInterval(this.leadPoll);
@@ -635,6 +663,7 @@ export class Coordinator {
   private async refreshTask(taskId: TaskId): Promise<Change[]> {
     const { rows } = await taskRows(this.viewDeps(), taskId);
     const changes = this.published.replace(`task:${taskId}`, taskId, rows);
+    this.prViews.relink();
     for (const key of this.diffScopes) {
       const [id, mode] = key.split("#");
       if (id !== taskId) continue;
@@ -699,6 +728,7 @@ export class Coordinator {
   }
 
   private async ensure(scope: readonly Subscription[]): Promise<void> {
+    await this.prViews.ensure(scope);
     for (const subscription of scope) {
       if (subscription.kind !== "diff") continue;
       const key = `${subscription.taskId}#${subscription.mode}`;
@@ -721,22 +751,50 @@ export class Coordinator {
 
   // ---------------------------------------------------------------- commands
 
-  private async command(value: unknown): Promise<
-    | { ok: true; result: unknown }
-    | {
-        ok: false;
-        error: {
-          code:
-            | "unknown_task"
-            | "unknown_run"
-            | "unavailable"
-            | "invalid_input"
-            | "internal";
-          message: string;
-          details: string[];
+  private async command(
+    value: unknown,
+  ): Promise<
+    { ok: true; result: unknown } | { ok: false; error: ProtocolError }
+  > {
+    const pr = pullRequestCommand.safeParse(value);
+    if (pr.success) {
+      if (!this.store.repos().some((repo) => repo.id === pr.data.repoId))
+        return {
+          ok: false,
+          error: {
+            code: "invalid_input",
+            message: "Unknown registered repository",
+            details: [],
+          },
+        };
+      try {
+        await this.prViews.command(pr.data);
+        return {
+          ok: true,
+          result: {
+            kind: "pull_request_action",
+            command: pr.data.kind,
+            repoId: pr.data.repoId,
+            number: "number" in pr.data ? pr.data.number : null,
+          },
+        };
+      } catch (error) {
+        const classified = classify(error);
+        return {
+          ok: false,
+          error: {
+            code:
+              classified.code === "precondition"
+                ? "guard_failed"
+                : classified.code === "retryable"
+                  ? "unavailable"
+                  : "internal",
+            message: classified.message,
+            details: [],
+          },
         };
       }
-  > {
+    }
     const command = commandSchema.parse(value) as {
       kind: string;
       taskId?: TaskId;
