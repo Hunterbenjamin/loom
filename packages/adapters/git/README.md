@@ -16,8 +16,10 @@ Reads do not fetch. `remoteHeadSha` reads `refs/remotes/<remote>/<branch>` from 
 Git state, which fetch or push can update; a missing tracking ref is null. Lazy
 fetching is disabled so partial-clone reads fail on unavailable objects instead of
 silently going to the network. Push checks the checked-out branch and its SHA,
-then pushes that immutable SHA with an explicit non-forcing refspec. It does not
-push additional tags or submodules. Git hooks retain their normal behavior.
+then pushes that immutable SHA with an explicit force-with-lease bound to the
+caller's observed `remoteHeadSha` (including null for a branch expected not to
+exist). It does not push additional tags or submodules. Git hooks retain their
+normal behavior.
 
 `writeTaskFiles` accepts plain filenames (no directories or traversal), atomically
 replaces each file and rejects a symlinked `.task` directory. It preserves the
@@ -46,7 +48,7 @@ What the real tool actually does:
   empty text files also have no hunks and remain distinguishable by metadata.
 
 Git invocations have a 60-second timeout and a 64 MiB stdout limit. Failures omit
-arguments and stderr to avoid exposing credentials embedded in remote URLs.
+arguments, but include up to the final 8 KiB of stderr after redacting URL userinfo.
 Inherited Git routing/configuration environment variables are scrubbed; repository
 and normal Git configuration still apply. No shared daemon or global config is
 modified.

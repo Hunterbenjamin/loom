@@ -442,6 +442,9 @@ that crosses providers goes only through artifacts.
 - The coordinator stores the complete review submission in the versioned handoff artifact and
   its reviewer commit list/pending publication in review state. On convergence it emits
   `push_branch(reviewedSha)` before `open_pr`, retaining the implementer's submit-for-review push.
+  A push sends the immutable expected SHA to the explicit issue-branch ref with force-with-lease
+  bound to the remote head from the executor's preceding owner observation; the executor fatally
+  refuses the repository base branch.
   It stays `in_review` while publication is pending, then enters `awaiting_approval` only after a
   fresh PR observation confirms the reviewed head, positive mergeability and non-failing CI for
   that head. This survives restart and duplicate hints; an old PR head during publication never
