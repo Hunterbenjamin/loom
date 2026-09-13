@@ -2,7 +2,12 @@ import type { Run } from "@loom/core";
 import { expect, test } from "vitest";
 import { pane } from "../../../../../packages/protocol/src/pane-fixture.js";
 import { buildSnapshot } from "../fixtures/index.js";
-import { attentionPanes, paneIndicator, spaces } from "./selectors.js";
+import {
+  attentionPanes,
+  paneIndicator,
+  spaces,
+  workbenchSessions,
+} from "./selectors.js";
 
 const rows = (tree: ReturnType<typeof spaces>) =>
   tree.flatMap((space) =>
@@ -120,7 +125,7 @@ test("fuzzy filter retains ancestors, matches task and native names, and keeps f
   expect(spaces([agent], "  ")).toEqual(spaces([agent]));
 });
 
-test("only repository Main sessions are excluded from the space tree", () => {
+test("pinned and workbench sessions are excluded from the space tree", () => {
   const legacy = ["loom-main", "loom-lead"].map((sessionName) => ({
     ...pane,
     sessionName,
@@ -130,14 +135,23 @@ test("only repository Main sessions are excluded from the space tree", () => {
       .map((item) => item.sessionName)
       .sort(),
   ).toEqual(["loom-lead", "loom-main"]);
+  const hidden = ["loom-lead-repo", "loom-coordinator", "loom-desktop"].map(
+    (sessionName, index) => ({
+      ...pane,
+      sessionName,
+      sessionId: `$${index}`,
+    }),
+  );
+  expect(spaces(hidden)).toEqual([]);
   expect(
-    spaces(
-      ["loom-lead-repo"].map((sessionName) => ({
-        ...pane,
-        sessionName,
-      })),
-    ),
+    attentionPanes(hidden.map((item) => ({ ...item, attention: true }))),
   ).toEqual([]);
+  expect(
+    workbenchSessions(hidden).map(({ name, label }) => ({ name, label })),
+  ).toEqual([
+    { name: "loom-coordinator", label: "Coordinator" },
+    { name: "loom-desktop", label: "Desktop" },
+  ]);
 });
 
 test("tree row projection contains only spaces and native tabs with full rollups and window index order", () => {

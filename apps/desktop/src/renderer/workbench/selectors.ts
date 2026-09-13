@@ -83,7 +83,13 @@ export const tabKey = (pane: PaneView) =>
     pane.sessionId ?? pane.sessionName,
     pane.windowId,
   ]);
-const pinned = (pane: PaneView) => pane.sessionName.startsWith("loom-lead-");
+const workbenchSessionLabels = new Map([
+  ["loom-coordinator", "Coordinator"],
+  ["loom-desktop", "Desktop"],
+]);
+const pinned = (pane: PaneView) =>
+  pane.sessionName.startsWith("loom-lead-") ||
+  workbenchSessionLabels.has(pane.sessionName);
 const rollup = (states: Indicator[]) =>
   states.reduce(
     (worst, state) => (state.priority < worst.priority ? state : worst),
@@ -219,6 +225,23 @@ export function spaces(
     })
     .filter((space) => space.tabs.length);
 }
+
+/** Development services are rendered below the scrolling sidebar sections. */
+export function workbenchSessions(
+  panes: readonly PaneView[],
+  runs: readonly Run[] = [],
+): TreeSpace[] {
+  return spaces(
+    panes.filter((pane) => workbenchSessionLabels.has(pane.sessionName)),
+    "",
+    runs,
+    true,
+  ).map((space) => ({
+    ...space,
+    label: workbenchSessionLabels.get(space.name) ?? space.name,
+  }));
+}
+
 export const attentionPanes = (panes: readonly PaneView[]) =>
   spaces(panes)
     .flatMap((space) =>

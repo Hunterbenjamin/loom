@@ -293,3 +293,89 @@ test("grouping changes agent order, keeps dead agents out of the list, and leave
     await act(async () => root.unmount());
   }
 });
+
+test("pins existing workbench sessions below the scrolling lists and opens them as groups", async () => {
+  const store = createStore(undefined, true, "test");
+  const coordinator = {
+    ...pane,
+    id: "coordinator",
+    paneId: "%20",
+    sessionId: "$20",
+    sessionName: "loom-coordinator",
+    windowName: "coordinator",
+    status: "working",
+  };
+  const desktop = {
+    ...pane,
+    id: "desktop",
+    paneId: "%21",
+    sessionId: "$21",
+    sessionName: "loom-desktop",
+    windowName: "desktop",
+  };
+  const publish = (panes: (typeof pane)[]) =>
+    store.applyProtocol(
+      stateFromSnapshot(meta, { ...emptySnapshotBody(), panes }),
+    );
+  publish([pane, coordinator, desktop]);
+  window.loomHost = {
+    interactive: vi.fn(),
+  } as unknown as typeof window.loomHost;
+  const element = document.createElement("div");
+  const root = createRoot(element);
+  const openGroup = vi.fn();
+  try {
+    await act(async () =>
+      root.render(
+        createElement(StoreProvider, {
+          store,
+          // biome-ignore lint/correctness/noChildrenProp: Provider requires typed children.
+          children: createElement(Sidebar, {
+            filter: "",
+            setFilter: vi.fn(),
+            choose: vi.fn(),
+            openGroup,
+            hidePanels: vi.fn(),
+            hasPanels: () => false,
+            copyAttach: vi.fn(),
+            newTerminal: vi.fn(),
+            openPinned: vi.fn(),
+          }),
+        }),
+      ),
+    );
+    expect(
+      [...element.querySelectorAll(".wb-terminal-list .wb-tree-name")].map(
+        (row) => row.textContent,
+      ),
+    ).not.toEqual(expect.arrayContaining(["Coordinator", "Desktop"]));
+    expect(element.querySelectorAll(".wb-agent-list button")).toHaveLength(0);
+    const fixed = element.querySelector(".wb-workbench-sessions");
+    expect(fixed?.nextElementSibling?.className).toBe("wb-sidebar-footer");
+    expect(
+      [...(fixed?.querySelectorAll("button") ?? [])].map(
+        (row) => row.textContent,
+      ),
+    ).toEqual([
+      expect.stringContaining("Coordinator"),
+      expect.stringContaining("Desktop"),
+    ]);
+    const coordinatorRow = fixed?.querySelector<HTMLButtonElement>(
+      '[aria-label="Open Coordinator terminal"]',
+    );
+    expect(
+      coordinatorRow?.querySelector(".wb-status")?.getAttribute("aria-label"),
+    ).toBe("Working");
+    await act(async () => coordinatorRow?.click());
+    expect(openGroup).toHaveBeenCalledWith([coordinator], "loom-coordinator");
+
+    await act(async () => publish([pane, coordinator]));
+    expect(
+      element.querySelector('[aria-label="Open Desktop terminal"]'),
+    ).toBeNull();
+    await act(async () => publish([pane]));
+    expect(element.querySelector(".wb-workbench-sessions")).toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+  }
+});

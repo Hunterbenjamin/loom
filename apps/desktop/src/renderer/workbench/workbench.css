@@ -205,6 +205,11 @@
 .wb-pinned {
   flex: none;
 }
+.wb-workbench-sessions {
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding: 4px 0;
+}
 .wb-pinned-agent {
   display: flex;
   align-items: center;
