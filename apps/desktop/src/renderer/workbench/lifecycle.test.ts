@@ -42,7 +42,10 @@ vi.mock("../ui/terminal.js", async () => {
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-async function harness(initial: PaneView[] = [pane]) {
+async function harness(
+  initial: PaneView[] = [pane],
+  leadInventoryAfterAck = false,
+) {
   const store = createStore(undefined, true, "test");
   const fixture = snapshot();
   const firstRepo = fixture.repos[0];
@@ -117,8 +120,15 @@ async function harness(initial: PaneView[] = [pane]) {
           windowName: "Main native",
           provider: "claude",
         } satisfies PaneView);
-      native.set(lead.id, lead);
-      publish();
+      if (leadInventoryAfterAck)
+        setTimeout(() => {
+          native.set(lead.id, lead);
+          publish();
+        });
+      else {
+        native.set(lead.id, lead);
+        publish();
+      }
       return {
         ok: true,
         result: {
@@ -717,6 +727,32 @@ test("pinned Main resolves its repository target and ignores legacy-name decoys"
         candidate.sessionName.startsWith("loom-lead-"),
       ),
     ).toHaveLength(2);
+  } finally {
+    await h.close();
+  }
+});
+
+test("pinned Main waits for its exact pane when acknowledgement arrives first", async () => {
+  const decoy = {
+    ...pane,
+    id: JSON.stringify([pane.hostGeneration, "%76"]),
+    paneId: "%76",
+    sessionName: "loom-main",
+  };
+  const h = await harness([decoy], true);
+  try {
+    await act(async () =>
+      h.element
+        .querySelector<HTMLButtonElement>('[data-pinned="main"]')
+        ?.click(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        h.element
+          .querySelector("[data-attached-pane]")
+          ?.getAttribute("data-attached-pane"),
+      ).toBe("%77"),
+    );
   } finally {
     await h.close();
   }
