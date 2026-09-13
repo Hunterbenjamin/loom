@@ -104,8 +104,9 @@ Rules:
   Override per-role modes via `LOOM_RUN_MODES` (for example,
   `planner=headless,reviewer=headless`). The setting is captured only when a new run row is created;
   existing runs, retries, resumes, and externally discovered sessions retain their recorded mode.
-  Interactive planners and reviewers remain read-only: Codex uses the role sandbox, and Claude does
-  not receive the implementer's permission bypass.
+  Interactive planners and reviewers retain their role restrictions: Codex uses the read-only
+  sandbox; Claude disallows Edit, Write and NotebookEdit, as in headless mode, and does not receive
+  the implementer's permission bypass. Claude's tool restrictions are not a filesystem sandbox.
   Codex clients can share a live thread on the same app-server. Resume to subscribe, hydrate current state, then reconcile
   notifications. Use `turn/steer` with `expectedTurnId` for mid-turn input.
 - Codex approval requests reach all subscribed clients, including a client resuming while a request

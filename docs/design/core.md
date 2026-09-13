@@ -185,13 +185,15 @@ retry/timing thresholds. `githubPollMs` is the coordinator's polling policy; cor
 |---|---|---|
 | `backlog` | nobody | Parked. |
 | `todo` | nobody | Queued for capacity and dependencies. |
-| `planning` | planner (headless) | |
+| `planning` | planner (interactive, in a pane) | |
 | `plan_approval` | nobody | Only when `requirePlanApproval`. |
 | `in_progress` | implementer (interactive, in a pane) | |
-| `in_review` | reviewer (headless, editing disabled) | The implementer's session stays alive for fix rounds. |
+| `in_review` | reviewer (interactive, in a pane, editing disabled) | The implementer's session stays alive for fix rounds. |
 | `awaiting_approval` | nobody | Human reviews the diff. |
 | `merging` | nobody | Merge requested; waiting to see it on GitHub. |
 | `done`, `canceled` | nobody | Terminal (`canceled` can be reopened). |
+
+The table shows the default modes. `LOOM_RUN_MODES` can select headless mode per role for new runs.
 
 Triggers: **H** human command, **M** MCP tool call from the task's *current* run for that role, **R** a fact
 found by reconcile. "Start X" means insert the run row (with its session ID for Claude), then `start_run`,
@@ -501,7 +503,7 @@ backoff (`<key>#<n>`). `precondition` means the world moved: re-read and decide 
 
 | | Codex headless | Codex interactive | Claude headless | Claude interactive |
 |---|---|---|---|---|
-| start | `thread/start` (read-only sandbox for planners/reviewers) | `thread/start` with the role sandbox, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>`; planners/reviewers omit implementer edit/bypass permissions |
+| start | `thread/start` (read-only sandbox for planners/reviewers) | `thread/start` with the role sandbox, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>`; planners/reviewers disallow Edit, Write and NotebookEdit and omit implementer bypass permissions |
 | send | `turn/start`, or `turn/steer` with `expectedTurnId` | the same, through the app-server, not the pane | SDK | `pasteText`, gated on provider status |
 | interrupt | `turn/interrupt` | `turn/interrupt` | SDK interrupt | `sendKey Escape` |
 | resume | `thread/resume` | `thread/resume`, then reattach the pane | SDK resume | A pane: `claude --resume <id> --settings <per-run> --mcp-config <per-run>` |

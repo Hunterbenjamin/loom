@@ -18,7 +18,11 @@ import type {
 import type { AgentsReaderOptions } from "./agents.js";
 import { readAgents } from "./agents.js";
 import type { StartHeadlessRequest } from "./headless.js";
-import { HeadlessRun, isResumable } from "./headless.js";
+import {
+  HeadlessRun,
+  isResumable,
+  READ_ONLY_DISALLOWED_TOOLS,
+} from "./headless.js";
 import type { HookLog, HookReceipt } from "./hooks.js";
 import {
   foldHookSummary,
@@ -133,9 +137,10 @@ export async function createClaudeAdapter(
       sessionId,
       "--model",
       model,
-      // Implementers have full access inside their own worktree. Planners and reviewers omit the
-      // override so Claude keeps its read-only/default permission behavior.
-      ...(readOnly ? [] : ["--permission-mode", "bypassPermissions"]),
+      // Preserve the headless roles' edit restrictions when they run in a terminal.
+      ...(readOnly
+        ? ["--disallowedTools", ...READ_ONLY_DISALLOWED_TOOLS]
+        : ["--permission-mode", "bypassPermissions"]),
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {

@@ -159,6 +159,10 @@ describe("createClaudeAdapter", () => {
       SESSION,
       "--model",
       "haiku",
+      "--disallowedTools",
+      "Edit",
+      "Write",
+      "NotebookEdit",
     ]);
   });
 
