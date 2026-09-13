@@ -139,6 +139,18 @@ describe("task transactions", () => {
     expect(restored.runs.find((r) => r.id === run.id)?.idleSince).toBe(now);
     expect(restored.task.attention).toEqual(state.task.attention);
   });
+  it("retains pending delivery age and attention across reopen", async () => {
+    const store = await seeded();
+    const state = richState();
+    const message = required(state.messages[0]);
+    message.status = "pending";
+    message.pendingSince = now;
+    message.deliveryAttention = true;
+    expect(store.commit(taskId, result(state), 0).ok).toBe(true);
+    store.close();
+    const restarted = await open();
+    expect(restarted.loadTaskState(taskId).messages).toContainEqual(message);
+  });
   it("round-trips every Phase 1b field through commit and reopen", async () => {
     const store = await seeded(),
       state = richState();

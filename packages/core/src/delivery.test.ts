@@ -209,6 +209,24 @@ describe("delivery requires provider evidence", () => {
     expect(r.actions.some((a) => a.kind === "send_message")).toBe(false);
     expect(r.next.task.attention.reasons).toContain("provider_input");
   });
+  it("raises attention when capacity prevents a timed-out send from retrying", () => {
+    const f = prepared();
+    f.observations.capacity.caps.total = 0;
+    f.observations.now = "2026-09-12T00:00:10.000Z" as typeof now;
+    const r = fixed(f.state, f.observations);
+    expect(r.next.messages[0]).toMatchObject({
+      status: "sent",
+      attempts: 1,
+      deliveryAttention: true,
+    });
+    expect(r.actions.some((a) => a.kind === "send_message")).toBe(false);
+    expect(r.actions).toContainEqual(
+      expect.objectContaining({
+        kind: "notify",
+        title: expect.stringContaining("could not be resent: no capacity"),
+      }),
+    );
+  });
   for (const text of ["/clear", "!rm file", "  /command"])
     it(`prefixes unsafe generated text ${text}`, () => {
       const f = fixture();
@@ -498,5 +516,237 @@ describe("executor timing survives delayed reconciliation", () => {
       status: "sent",
       delivered: null,
     });
+  });
+});
+
+describe("bounded pending delivery", () => {
+  const deadline = "2026-09-12T00:00:10.000Z" as typeof now;
+  const beforeDeadline = "2026-09-12T00:00:09.999Z" as typeof now;
+
+  function queuedReviewer() {
+    const f = fixture("in_review");
+    const run = f.state.runs[2] as Run;
+    f.observations.inputs = [
+      command({
+        type: "send_message",
+        runId: run.id,
+        text: "Review this change",
+      }),
+    ];
+    return { ...f, run };
+  }
+
+  function expectAttention(
+    result: ReturnType<typeof reconcile>,
+    run: Run,
+    reason: string,
+  ) {
+    expect(result.next.task.stage).toBe("in_review");
+    expect(result.next.task.attention.reasons).toContain("provider_input");
+    expect(result.actions).toContainEqual(
+      expect.objectContaining({
+        kind: "notify",
+        title: expect.stringContaining(reason),
+        body: expect.stringContaining(run.id),
+      }),
+    );
+  }
+
+  it("times out capacity-starved reviewer input at the fixed deadline, without duplicate notifications", () => {
+    const f = queuedReviewer();
+    f.observations.capacity.caps.total = 0;
+    const queued = fixed(f.state, f.observations);
+    expect(queued.next.messages[0]).toMatchObject({
+      status: "pending",
+      attempts: 0,
+      pendingSince: now,
+    });
+    expect(queued.actions).toContainEqual(
+      expect.objectContaining({
+        kind: "schedule",
+        at: deadline,
+        why: "delivery_timeout",
+      }),
+    );
+    expect(queued.next.task.attention.reasons).not.toContain("provider_input");
+    f.observations.now = beforeDeadline;
+    const waiting = fixed(queued.next, f.observations);
+    expect(waiting.next.task.attention.reasons).not.toContain("provider_input");
+    f.observations.now = deadline;
+    const expired = fixed(waiting.next, f.observations);
+    expectAttention(expired, f.run, "no capacity for the reviewer role");
+    expect(expired.next.messages[0]).toMatchObject({
+      attempts: 0,
+      deliveryAttention: true,
+      pendingSince: now,
+    });
+    expect(expired.actions.some((a) => a.kind === "send_message")).toBe(false);
+    f.observations.now = "2026-09-12T00:30:00.000Z" as typeof now;
+    const repeated = fixed(expired.next, f.observations);
+    expect(repeated.actions.some((a) => a.kind === "notify")).toBe(false);
+    expect(repeated.next.task.attention.reasonSince.provider_input).toBe(
+      deadline,
+    );
+  });
+
+  for (const status of ["pending", "sent"] as const) {
+    it(`names the earlier ${status} message blocking the same run`, () => {
+      const f = queuedReviewer();
+      const initial = fixed(f.state, f.observations);
+      const action = initial.actions.find(
+        (a) => a.kind === "send_message",
+      ) as Action;
+      let state = initial.next;
+      if (status === "sent") {
+        f.observations.inputs = [actionInput(action, { transportRef: null })];
+        state = fixed(state, f.observations).next;
+        // Keep the earlier send awaiting evidence without entering its retry path.
+        const earlier = state.messages[0];
+        if (!earlier) throw Error("Missing earlier message");
+        earlier.attempts = 2;
+      }
+      f.observations.inputs = [
+        command(
+          { type: "send_message", runId: f.run.id, text: "Follow up" },
+          "follow-up",
+        ),
+      ];
+      const queued = fixed(state, f.observations);
+      expect(queued.next.messages[1]).toMatchObject({
+        status: "pending",
+        attempts: 0,
+      });
+      expect(queued.actions.some((a) => a.kind === "send_message")).toBe(false);
+      f.observations.now = beforeDeadline;
+      expect(
+        fixed(queued.next, f.observations).next.messages[1]?.deliveryAttention,
+      ).not.toBe(true);
+      f.observations.now = deadline;
+      const expired = fixed(queued.next, f.observations);
+      expectAttention(
+        expired,
+        f.run,
+        `earlier message ${state.messages[0]?.id} is still ${status}`,
+      );
+      expect(expired.next.messages[1]).toMatchObject({
+        deliveryAttention: true,
+        attempts: 0,
+      });
+      expect(expired.actions.some((a) => a.kind === "send_message")).toBe(
+        false,
+      );
+    });
+  }
+
+  it("surfaces an active Codex snapshot with no observable turn", () => {
+    const f = fixture();
+    const run = f.state.runs[0] as Run;
+    const observation = f.observations.runs[0] as RunObservation;
+    if (
+      observation.provider.ok &&
+      observation.provider.value?.provider === "codex"
+    )
+      observation.provider.value.status = "active";
+    f.observations.inputs = [
+      command({ type: "send_message", runId: run.id, text: "Continue" }),
+    ];
+    const queued = fixed(f.state, f.observations);
+    f.observations.now = deadline;
+    const expired = fixed(queued.next, f.observations);
+    expect(expired.next.messages[0]).toMatchObject({
+      attempts: 0,
+      deliveryAttention: true,
+    });
+    expect(expired.actions).toContainEqual(
+      expect.objectContaining({
+        kind: "notify",
+        title: expect.stringContaining("the run is unknown"),
+      }),
+    );
+  });
+
+  it("bounds a missing transport result and clears attention only on provider confirmation", () => {
+    const f = queuedReviewer();
+    const queued = fixed(f.state, f.observations);
+    const action = queued.actions.find(
+      (a) => a.kind === "send_message",
+    ) as Action;
+    f.observations.now = deadline;
+    const expired = fixed(queued.next, f.observations);
+    expectAttention(expired, f.run, "transport action is pending");
+    expect(expired.next.messages[0]?.attempts).toBe(1);
+    expect(expired.actions.some((a) => a.kind === "send_message")).toBe(false);
+    const result = actionInput(action, { transportRef: null });
+    result.receivedAt = deadline;
+    f.observations.inputs = [result];
+    const sent = fixed(expired.next, f.observations);
+    expect(sent.next.messages[0]).toMatchObject({
+      status: "sent",
+      deliveryAttention: true,
+    });
+    const observation = f.observations.runs[2] as RunObservation;
+    observation.provider.at = deadline;
+    if (
+      observation.provider.ok &&
+      observation.provider.value?.provider === "claude"
+    )
+      observation.provider.value.hooks.promptSubmits = [
+        {
+          promptId: "receipt",
+          textHash: sent.next.messages[0]?.textHash ?? "",
+          at: deadline,
+        },
+      ];
+    const delivered = fixed(sent.next, f.observations);
+    expect(delivered.next.messages[0]).toMatchObject({
+      status: "delivered",
+      deliveryAttention: false,
+    });
+    expect(delivered.next.task.attention.reasons).not.toContain(
+      "provider_input",
+    );
+  });
+
+  it("sends once when capacity returns before the deadline", () => {
+    const f = queuedReviewer();
+    f.observations.capacity.caps.total = 0;
+    const queued = fixed(f.state, f.observations);
+    f.observations.now = beforeDeadline;
+    f.observations.capacity.caps.total = 4;
+    const released = fixed(queued.next, f.observations);
+    expect(
+      released.actions.filter((a) => a.kind === "send_message"),
+    ).toHaveLength(1);
+    expect(released.next.messages[0]).toMatchObject({
+      pendingSince: now,
+      attempts: 1,
+    });
+    expect(released.next.task.attention.reasons).not.toContain(
+      "provider_input",
+    );
+  });
+
+  it("initializes legacy pending age once and preserves it across reloads", () => {
+    const f = queuedReviewer();
+    f.observations.capacity.caps.total = 0;
+    const queued = fixed(f.state, f.observations);
+    delete queued.next.messages[0]?.pendingSince;
+    queued.next.outbox = [];
+    f.observations.now = deadline;
+    const migrated = fixed(queued.next, f.observations);
+    expect(migrated.next.messages[0]?.pendingSince).toBe(deadline);
+    expect(migrated.next.task.attention.reasons).not.toContain(
+      "provider_input",
+    );
+    const reloaded = {
+      ...migrated.next,
+      messages: JSON.parse(JSON.stringify(migrated.next.messages)),
+    };
+    f.observations.now = "2026-09-12T00:00:20.000Z" as typeof now;
+    expectAttention(
+      fixed(reloaded, f.observations),
+      f.run,
+      "no capacity for the reviewer role",
+    );
   });
 });
