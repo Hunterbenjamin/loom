@@ -61,6 +61,8 @@ export class TaskServer {
      */
     readonly credentialsSource: string = join(homedir(), ".codex", "auth.json"),
     readonly onDiagnostic?: (event: AdapterDiagnostic) => void,
+    /** Routine recovery notes for the coordinator log; never events. */
+    readonly onLog?: (message: string) => void,
   ) {
     if (!isAbsolute(directory))
       throw new Error("Codex task directory must be absolute");
@@ -195,12 +197,10 @@ export class TaskServer {
     // one thread store make every session fail with a thread-store conflict.
     for (const pid of await orphanServers(this.socket)) {
       if (pid === stale?.pid) continue;
-      this.onDiagnostic?.({
-        kind: "stale_process",
-        resource: "codex_server",
-        sessionId: null,
-        message: `Terminating an orphaned app-server (pid ${pid}) for this task`,
-      });
+      // Routine recovery, not a bug: log it, never raise it as an event.
+      this.onLog?.(
+        `Terminating an orphaned app-server (pid ${pid}) for this task`,
+      );
       try {
         process.kill(pid, "SIGTERM");
       } catch {

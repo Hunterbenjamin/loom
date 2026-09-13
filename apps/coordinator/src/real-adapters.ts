@@ -75,6 +75,7 @@ export async function createRealAdapters(
       taskDirectory,
       executable: config.codexExecutable,
       onDiagnostic: (event) => diagnostic({ ...event, taskId }),
+      onLog: (message) => console.log(`${taskId}: ${message}`),
     }),
   );
   return {

@@ -28,6 +28,8 @@ import { CODEX_VERSION, TaskServer } from "./server.js";
 export { CODEX_VERSION, RpcError, StaleCodexRequestError };
 export interface CodexAdapterOptions {
   onDiagnostic?: (event: import("@loom/core").AdapterDiagnostic) => void;
+  /** Routine recovery notes (an orphan reaped), for the coordinator log. */
+  onLog?: (message: string) => void;
   /** Dedicated per-task state directory. Keep it short enough for a Unix socket. */
   taskDirectory: string;
   executable?: string;
@@ -85,6 +87,7 @@ class AppServerAdapter implements CodexAdapter {
       options.executable ?? "codex",
       undefined,
       options.onDiagnostic,
+      options.onLog,
     );
     this.timeoutMs = z
       .number()
