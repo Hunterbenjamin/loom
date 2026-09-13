@@ -51,6 +51,7 @@ export function assemblePanes(
         questions: s.questions,
         messages: s.messages,
         stallAfterMs: s.config.stallAfterMs,
+        fixRoundStallAfterMs: s.config.fixRoundStallAfterMs,
         unknownGraceMs: s.config.unknownGraceMs,
       });
       attention = Object.values(derived.reasonRunIds).some((ids) =>

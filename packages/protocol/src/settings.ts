@@ -49,6 +49,7 @@ export const settingsValues = z.strictObject({
     retryCapMs: z.number().int().positive(),
     retryMaxAttempts: z.number().int().positive(),
     stallAfterMs: z.number().int().positive(),
+    fixRoundStallAfterMs: z.number().int().positive(),
     unknownGraceMs: z.number().int().positive(),
     deliveryTimeoutMs: z.number().int().positive(),
     githubPollMs: z.number().int().positive(),

@@ -302,6 +302,7 @@ function launch(c: Context, run: Run, resume: boolean, fresh = false): void {
         COMPLETION[run.role],
         "Inspect the existing worktree changes, plan, findings and handoff before continuing. Preserve existing work; this may be a fresh session replacing an earlier agent.",
         "Loom moves the task between stages; you never do. Don't merge and don't push to the base branch.",
+        "Be economical: call `report_progress` only when a decision changes course, at most once per plan step. If a Loom tool fails twice in a row with the same error, stop retrying, say so, and end your turn; Loom notices an idle run and brings in the human.",
         `Current git observation: ${JSON.stringify(c.git ?? null)}`,
         `Plan: ${JSON.stringify(c.state.plan ?? null)}`,
       ].join("\n"),
@@ -317,9 +318,9 @@ const COMPLETION: Record<Run["role"], string> = {
   planner:
     "Your work is complete only when `submit_plan` has succeeded. Do not stop before it has.",
   implementer:
-    "Implement the plan in this worktree, run the repo's tests, commit on this branch, and call `submit_for_review` with the commit's head SHA, a summary, your test results and a handoff. Your work is complete only when `submit_for_review` has succeeded. Do not stop before it has.",
+    "Implement the plan in this worktree, run the tests for the packages you changed plus the typecheck (not the whole suite; CI runs that), commit on this branch, and call `submit_for_review` with the commit's head SHA, a summary, your test results and a handoff. Your work is complete only when `submit_for_review` has succeeded. Do not stop before it has.",
   reviewer:
-    "Review the branch against the plan, run the tests, and call `submit_review` once with every finding and a verdict for each addressed or disputed one. Your work is complete only when `submit_review` has succeeded.",
+    "Review the branch against the plan by reading the diff and the implementer's recorded test results; do not rerun the test suite, CI is the gate. Run a test only to confirm a suspected bug or after an inline fix. Call `submit_review` once with every finding and a verdict for each addressed or disputed one. Your work is complete only when `submit_review` has succeeded.",
 };
 
 export function startDesired(c: Context): void {
