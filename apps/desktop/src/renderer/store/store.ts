@@ -17,6 +17,7 @@ import type {
   Entities,
   LeadState,
   OperatorState,
+  PaneIdentity,
   PaneView,
   PatchFrame,
   RunTarget,
@@ -30,6 +31,7 @@ import {
   type Snapshot,
 } from "../fixtures/index.js";
 import { projectSnapshot } from "../live/snapshot.js";
+import { createPaneTransitionDetector } from "./pane-transitions.js";
 
 export type ViewId =
   | "all"
@@ -70,6 +72,7 @@ export interface UiState {
   searching: boolean;
   theme: Theme;
   palette: boolean;
+  chimeMuted: boolean;
   stagePicker: boolean;
   toast: string | null;
   openRun: RunId | null;
@@ -145,6 +148,7 @@ const initialUi: UiState = {
   searching: false,
   theme: "dark",
   palette: false,
+  chimeMuted: false,
   stagePicker: false,
   toast: null,
   openRun: null,
@@ -166,6 +170,11 @@ export function createStore(
   instance = live ? "unconfigured" : "fixtures",
 ) {
   const notificationClaims = new Set<string>();
+  const paneTransitions = createPaneTransitionDetector();
+  const transitionListeners = new Set<(pane: PaneView) => void>();
+  let paneFocus:
+    | (() => PaneIdentity | "main" | "operator" | undefined)
+    | undefined;
   let state: State = {
     snapshot,
     ui: initialUi,
@@ -234,11 +243,31 @@ export function createStore(
       });
       return outcome;
     },
+    subscribePaneTransitions(listener: (pane: PaneView) => void) {
+      transitionListeners.add(listener);
+      return () => {
+        transitionListeners.delete(listener);
+      };
+    },
+    registerPaneFocus(reader: NonNullable<typeof paneFocus>) {
+      paneFocus = reader;
+      return () => {
+        if (paneFocus === reader) paneFocus = undefined;
+      };
+    },
+    focusedPane() {
+      return paneFocus?.();
+    },
+    toggleChimeMuted() {
+      setUi({ chimeMuted: !state.ui.chimeMuted });
+    },
     setConnection(connection: string) {
+      if (connection !== "connected") paneTransitions.reset();
       state = { ...state, connection };
       emit();
     },
     applyProtocol(client: ClientState, patch?: PatchFrame) {
+      const previous = state;
       const notices = [...client.collections.inbox.values()].flatMap((i) =>
         i.forHuman ? [i.forHuman.noteId] : [],
       );
@@ -284,7 +313,19 @@ export function createStore(
             ? [...client.collections.run_target.values()]
             : state.runTargets,
       };
+      const transitions =
+        previous.panes !== state.panes ||
+        previous.snapshot.runs !== state.snapshot.runs ||
+        previous.panesUnavailable !== state.panesUnavailable
+          ? paneTransitions.observe(
+              state.panes,
+              state.snapshot.runs,
+              state.panesUnavailable,
+            )
+          : [];
       emit();
+      for (const pane of transitions)
+        for (const listener of transitionListeners) listener(pane);
     },
     openAttention(
       task: TaskId,

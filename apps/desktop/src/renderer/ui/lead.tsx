@@ -9,6 +9,7 @@ import {
 import { inboxRows } from "../store/inbox.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { useWindowMode } from "../window-mode.js";
+import { ChimeMuteButton } from "../workbench/chime.js";
 import { attentionPanes } from "../workbench/selectors.js";
 
 const Terminal = lazy(() =>
@@ -179,6 +180,7 @@ export function LeadBar({
           Agents needing attention · {agentCount}
         </button>
         <span className="spacer" />
+        <ChimeMuteButton />
         <button
           ref={toggle}
           type="button"

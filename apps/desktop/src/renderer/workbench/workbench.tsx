@@ -32,6 +32,7 @@ import {
   terminalName,
 } from "./selectors.js";
 import "./workbench.css";
+import { ChimeMuteCommand } from "./chime.js";
 import { NewTerminalDialog } from "./new-terminal.js";
 import { Sidebar } from "./sidebar.js";
 
@@ -302,6 +303,16 @@ export function Workbench() {
   const initialized = useRef(false);
   const [active, setActive] = useState(tabs[0]?.id ?? "");
   const [focused, setFocused] = useState(tabs[0]?.panels[0]?.id ?? "");
+  useLayoutEffect(
+    () =>
+      store.registerPaneFocus(() => {
+        const panel = tabs
+          .find((tab) => tab.id === active)
+          ?.panels.find((panel) => panel.id === focused);
+        return panel?.target ?? panel?.system;
+      }),
+    [store, tabs, active, focused],
+  );
   const [zoom, setZoom] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [palette, setPalette] = useState(false);
@@ -803,6 +814,7 @@ export function Workbench() {
               </button>
               <Command.Input autoFocus placeholder="Type a command…" />
               <Command.List>
+                <ChimeMuteCommand close={() => setPalette(false)} />
                 {actions.map((a) => (
                   <Command.Item
                     key={a.id}

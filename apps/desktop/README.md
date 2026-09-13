@@ -208,3 +208,9 @@ Run it after the desktop build and separately from other performance harnesses t
 Switching modes preserves Tracker selection and Workbench tabs/splits in the same window.
 Inactive terminal viewers detach and reattach when shown; the native panes and agents keep running.
 The app does not create a hidden spare Workbench window.
+
+Workbench pane transitions into needs-you or done play a short bundled chime and flash the row
+once. The focused pane in the focused window stays silent. Sound on/off in the bottom bar and
+Mute/Unmute transition sounds in either palette control a per-window mute, retained across mode
+switches until the window closes. System output mute/volume applies; reduced motion disables
+flashes. Initial snapshots and reconnect recovery do not announce existing states.

@@ -55,7 +55,17 @@ unloaded rows. Task summaries, model labels and progress indicators remain visib
   ○ idle, ! failed, or ? unknown. Tabs and spaces roll up needs-you > failed > unknown > working >
   done > idle across all descendants, including ones hidden by filtering. Only published provider
   status and coordinator attention determine indicators; native process exit alone is not agent
-  completion. Branches, rename, sound and flash remain separate Workbench v2 slices.
+  completion. Branches and rename remain separate Workbench v2 slices.
+- **Sound and flash:** the window store compares consecutive pane observations using the same
+  indicators (including recorded completed turns). Entering needs-you or done plays one bundled
+  320 ms chime and flashes the visible pane row once for 600 ms. Repeated patches, initial
+  discovery and recovery from an unavailable observation are silent. The focused pane in the
+  focused window is silent; background panes still chime. Sound uses ordinary HTML audio and
+  respects system output mute/volume. Reduced motion disables the flash. The bottom bar's Sound
+  toggle and both palettes' Mute/Unmute transition sounds command share per-window, memory-only
+  mute state across mode switches. Muting also stops a chime already playing. The window listens
+  in both modes; hidden rows do not replay flashes when revealed. No terminal render or attach
+  lifecycle changes are needed for either feedback effect.
 - **Tabs and splits:** each outer tab owns a Dockview 4.13.1 Gridview. Splitting names and creates
   an independent terminal, then adds its viewer next to the focused panel; the library handles sizing. Drag a
   panel header to an edge of another panel in the same tab to move it. Terminal mounts live as
