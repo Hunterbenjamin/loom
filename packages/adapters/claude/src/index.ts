@@ -160,7 +160,7 @@ export async function createClaudeAdapter(
             "--allowedTools",
             "Read,Glob,Grep",
             "--disallowedTools",
-            "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task",
+            "Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,Task",
             "--strict-mcp-config",
             "--disable-slash-commands",
             "--no-chrome",

@@ -182,7 +182,6 @@ describe("createClaudeAdapter", () => {
         "Bash",
         "Edit",
         "Write",
-        "MultiEdit",
         "NotebookEdit",
         "WebFetch",
         "WebSearch",

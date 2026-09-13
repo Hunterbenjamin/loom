@@ -97,7 +97,6 @@ test("concurrent open commands are idempotent, private, and separate from task r
     "Bash",
     "Edit",
     "Write",
-    "MultiEdit",
     "NotebookEdit",
     "WebFetch",
     "WebSearch",
