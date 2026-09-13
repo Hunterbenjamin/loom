@@ -358,6 +358,14 @@ export interface ClaudeAdapter {
   listSessions(): Promise<ClaudeAgentsEntry[]>;
   /** Hooks received for the session, folded. */
   hookSummary(sessionId: ProviderSessionId): Promise<ClaudeHookSummary>;
+  /** Re-read a submitted user prompt from the provider transcript, scoped to this attempt. */
+  promptReceipt(request: {
+    sessionId: ProviderSessionId;
+    cwd: WorktreePath;
+    textHash: string;
+    after: IsoTime;
+    before: IsoTime;
+  }): Promise<ClaudeHookSummary["promptSubmits"][number] | null>;
   /**
    * Writes the per-run settings file `interactiveArgs` and `startHeadless` are then given:
    * HTTP hooks pointing at this coordinator, the SessionStart command hook, and Loom's MCP

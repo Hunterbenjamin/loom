@@ -953,6 +953,13 @@ export class Coordinator {
           });
           return { ok: true, result: { kind: "notification", notice } };
         }
+        case "retry_operator_session":
+          await this.operator.retry();
+          await this.publishOperator();
+          return {
+            ok: true,
+            result: { kind: "operator_state", state: this.operator.state() },
+          };
         case "open_operator_session":
           await this.operator.open();
           await this.publishOperator();

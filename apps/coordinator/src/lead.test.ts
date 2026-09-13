@@ -883,9 +883,13 @@ for (const onIssue of [false, true])
       h.store.operator.pending().filter((e) => e.kind === "main_message"),
     ).toHaveLength(1);
     await h.coordinator.operator.pump();
-    expect(h.paneHost.writes.some((w) => w.text.includes(input.text))).toBe(
-      true,
-    );
+    expect(
+      h.paneHost.writes.filter(
+        (w) => w.text === `Message from Main: ${input.text}`,
+      ),
+    ).toHaveLength(1);
+    await h.coordinator.operator.pump();
+    expect(h.store.operator.pendingChat()).toEqual([]);
     const reply = {
       eventId: event.id,
       text: "The requirements need a human decision.",

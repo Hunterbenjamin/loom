@@ -206,7 +206,11 @@ settings and MCP registration are rewritten at launch, and resume requires provi
 The recorded tmux pane is reused across coordinator and viewer restarts. If that identity is still
 live without its recorded pane, recovery refuses a duplicate launch and exposes an error.
 Only native idle status permits queued input; delivery hashes are saved before paste and matched
-to UserPromptSubmit receipts. Uncertain delivery is retained without automatically pasting again. Stop intent, event queue, retry ledger, filing quota and notes survive
+to UserPromptSubmit receipts or the corresponding native transcript submission within the attempt
+window. Every pump, including recovery, rechecks uncertain delivery despite a stored error. After
+30 seconds without confirmation, native idle with no pending dialog permits retry; busy or waiting
+sessions retain the queued input. Confirmed input plus native idle recovers a missing Stop hook.
+Stop intent, event queue, retry ledger, filing quota and notes survive
 restart. Operator failures do not produce recursive Operator events.
 
 Policy row identifiers are `permission.allowed`, `permission.other`, `headless.retry`,
@@ -247,5 +251,11 @@ observation. The command evidence is retained for escalation as well as permissi
 
 A failed native SDK result pauses Operator delivery immediately, even if its streaming child is
 still open. The visible session error is durable and queued events are retained across restart;
-`open_operator_session` explicitly clears the error to retry. Polling never starts an automatic
-redelivery loop for a failed turn.
+`retry_operator_session` (desktop Retry) or `open_operator_session` explicitly retries. Polling never
+starts an automatic redelivery loop for a failed turn.
+
+Main-to-Operator messages also have a durable chat-delivery receipt, separate from event processing.
+They queue while the Operator is busy or waiting, then enter its transcript as
+`Message from Main: <text>` through the normal idle send gate. Tool consumption cannot remove a
+pending chat delivery. The Operator answers briefly in chat and records the same reply with
+`append_note` on the matching `main_message`; replaying that event never creates a second reply.
