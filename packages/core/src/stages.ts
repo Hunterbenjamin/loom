@@ -17,8 +17,23 @@ export function reconcileStages(c: Context): void {
     return;
   }
   if (task.stage === "done" || task.stage === "canceled") return;
-  if (pr?.state === "closed") c.block("pr_closed", "PR closed without merge");
-  else if (pr?.state === "open" && task.blocked?.reason === "pr_closed")
+  if (pr?.state === "closed") {
+    c.block("pr_closed", "PR closed without merge");
+    const policyApproval = state.approvals.find(
+      (approval) =>
+        approval.kind === "merge" &&
+        approval.approvedBy === "policy" &&
+        !approval.voidedAt,
+    );
+    if (
+      policyApproval &&
+      (task.stage === "awaiting_approval" || task.stage === "merging")
+    ) {
+      c.voidApprovals("stage_left");
+      if (task.stage === "merging")
+        c.stage("awaiting_approval", "Pull request closed before policy merge");
+    }
+  } else if (pr?.state === "open" && task.blocked?.reason === "pr_closed")
     c.block(null);
   if (pr?.state === "open") {
     for (const comment of pr.comments) {

@@ -361,6 +361,26 @@ describe("guarded automatic merge policy", () => {
       "awaiting_approval",
     );
   });
+
+  it("voids a policy approval and cancels its merge when the PR closes", () => {
+    const f = fixture("awaiting_approval");
+    f.state.task.mergePolicy = "auto-all";
+    const approved = fixed(f.state, f.observations);
+    expect(approved.next.task.stage).toBe("merging");
+    if (f.observations.github?.ok && f.observations.github.value)
+      f.observations.github.value.state = "closed";
+
+    const closed = fixed(approved.next, f.observations);
+    expect(closed.next.task.stage).toBe("awaiting_approval");
+    expect(
+      closed.next.approvals.find(
+        (approval) => approval.kind === "merge" && !approval.voidedAt,
+      ),
+    ).toBeUndefined();
+    expect(
+      closed.next.outbox.find((row) => row.kind === "merge_pr")?.status,
+    ).toBe("canceled");
+  });
 });
 
 function reject(
