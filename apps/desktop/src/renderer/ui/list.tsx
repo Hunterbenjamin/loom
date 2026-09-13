@@ -1,7 +1,11 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { type KeyboardEvent, memo, useEffect, useMemo, useRef } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
-import { groupRows, type ListItem, selectedRows } from "../store/selectors.js";
+import {
+  cursorRows,
+  type ListItem,
+  selectedListItems,
+} from "../store/selectors.js";
 import type { SortKey } from "../store/store.js";
 import { AttentionChips, ProviderLabel, RunDot } from "./bits.js";
 import { age, stageLabel } from "./format.js";
@@ -19,9 +23,11 @@ const HEADINGS: { key: SortKey; label: string }[] = [
 
 function ListViewComponent() {
   const store = useStoreApi();
-  const rows = useStore(selectedRows);
-  const items = groupRows(rows);
+  const rows = useStore(cursorRows);
+  const items = useStore(selectedListItems);
   const cursor = useStore((s) => s.ui.cursor);
+  const sections = useStore((s) => s.ui.listSections);
+  const previousSections = useRef(sections);
   const sort = useStore((s) => s.ui.sort);
   const descending = useStore((s) => s.ui.descending);
   const scroller = useRef<HTMLDivElement>(null);
@@ -33,6 +39,12 @@ function ListViewComponent() {
 
   const virtual = useVirtualizer({
     count: items.length,
+    getItemKey: (index) => {
+      const item = items[index] as ListItem;
+      return item.kind === "row"
+        ? item.row.task.id
+        : `${item.kind}-${item.stage}`;
+    },
     getScrollElement: () => scroller.current,
     estimateSize: () => 32,
     overscan: 12,
@@ -44,8 +56,12 @@ function ListViewComponent() {
   );
 
   useEffect(() => {
-    if (cursorItem >= 0) virtual.scrollToIndex(cursorItem, { align: "auto" });
-  }, [cursorItem, virtual]);
+    // Toggling a section must not scroll back to the reset task cursor.
+    const sectionsChanged = previousSections.current !== sections;
+    previousSections.current = sections;
+    if (!sectionsChanged && cursorItem >= 0)
+      virtual.scrollToIndex(cursorItem, { align: "auto" });
+  }, [cursorItem, virtual, sections]);
 
   return (
     <>
@@ -79,10 +95,30 @@ function ListViewComponent() {
                 }}
               >
                 {entry.kind === "header" ? (
-                  <div className="group-header">
-                    <span>{stageLabel(entry.stage)}</span>
-                    <span className="faint nums">{entry.count}</span>
-                  </div>
+                  <button
+                    type="button"
+                    className="group-header"
+                    aria-expanded={!entry.collapsed}
+                    onClick={() => store.toggleListSection(entry.stage)}
+                    onKeyDown={sectionKeyDown}
+                  >
+                    <span aria-hidden="true">
+                      {entry.collapsed ? "▸" : "▾"}
+                    </span>
+                    <span>
+                      {stageLabel(entry.stage)} ·{" "}
+                      <span className="faint nums">{entry.count}</span>
+                    </span>
+                  </button>
+                ) : entry.kind === "load-more" ? (
+                  <button
+                    type="button"
+                    className="list-load-more"
+                    onClick={() => store.loadMoreListSection(entry.stage)}
+                    onKeyDown={sectionKeyDown}
+                  >
+                    Load {entry.count} more
+                  </button>
                 ) : (
                   <Row
                     index={indexOfRow.get(entry.row) ?? 0}
@@ -97,6 +133,11 @@ function ListViewComponent() {
       </div>
     </>
   );
+}
+
+// Native buttons handle Enter/Space; keep Enter away from the task-open shortcut.
+function sectionKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+  if (event.key === "Enter" || event.key === " ") event.stopPropagation();
 }
 
 function Row({

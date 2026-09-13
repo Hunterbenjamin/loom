@@ -48,7 +48,15 @@ export type SortKey =
   | "age";
 export type Theme = "dark" | "light";
 
+/** Initial limit and each subsequent page for terminal list sections. */
+export const LIST_PAGE_SIZE = 20;
+export type ListSections = Partial<
+  Record<Stage, { collapsed?: boolean; visibleCount?: number }>
+>;
+
 export interface UiState {
+  /** Presentation only; owned by this window and never persisted. */
+  listSections: ListSections;
   view: ViewId;
   pane: Pane;
   /** Repo filter; `all` means every repo. */
@@ -124,6 +132,7 @@ export function matchesView(task: Task, view: ViewId): boolean {
 }
 
 const initialUi: UiState = {
+  listSections: {},
   view: "all",
   pane: "list",
   repo: "all",
@@ -297,7 +306,30 @@ export function createStore(
       setUi({ view, cursor: 0, openTask: null });
     },
     setPane(pane: Pane) {
-      setUi({ pane });
+      setUi({ pane, cursor: 0 });
+    },
+    toggleListSection(stage: Stage) {
+      const section = state.ui.listSections[stage];
+      setUi({
+        listSections: {
+          ...state.ui.listSections,
+          [stage]: { ...section, collapsed: !section?.collapsed },
+        },
+        cursor: 0,
+      });
+    },
+    loadMoreListSection(stage: "done" | "canceled") {
+      const section = state.ui.listSections[stage];
+      setUi({
+        listSections: {
+          ...state.ui.listSections,
+          [stage]: {
+            ...section,
+            visibleCount:
+              (section?.visibleCount ?? LIST_PAGE_SIZE) + LIST_PAGE_SIZE,
+          },
+        },
+      });
     },
     setRepo(repo: string) {
       setUi({ repo, cursor: 0 });
