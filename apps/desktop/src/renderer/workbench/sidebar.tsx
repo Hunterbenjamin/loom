@@ -4,7 +4,13 @@ import { paneKey } from "../store/pane-transitions.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { RenameRow } from "./rename-row.js";
 import { RowMenu } from "./row-menu.js";
-import { type Indicator, spaceKey, spaces, tabKey } from "./selectors.js";
+import {
+  type Indicator,
+  spaceKey,
+  spaces,
+  tabKey,
+  workbenchSessions,
+} from "./selectors.js";
 import { Status } from "./status.js";
 
 function pinnedState(status: string): Indicator {
@@ -110,6 +116,7 @@ export function Sidebar({
     () => spaces(panes, filter, runs),
     [panes, filter, runs],
   );
+  const services = useMemo(() => workbenchSessions(panes, runs), [panes, runs]);
   const lead = useStore((s) => s.lead);
   const repo = useStore((s) => s.ui.repo);
   const [grouped, setGrouped] = useState(true);
@@ -410,6 +417,42 @@ export function Sidebar({
               )}
             </div>
           </section>
+          {!!services.length && (
+            <section
+              className="wb-workbench-sessions"
+              aria-label="Workbench terminals"
+            >
+              {services.map((service) => {
+                const servicePanes = rowPanes("space", service.key);
+                return (
+                  <button
+                    type="button"
+                    key={service.key}
+                    className="wb-tree-row wb-agent-row"
+                    aria-label={`Open ${service.label} terminal`}
+                    aria-current={
+                      selectedSpace === service.key ||
+                      (!!selectedPane && spaceKey(selectedPane) === service.key)
+                        ? "true"
+                        : undefined
+                    }
+                    disabled={
+                      !servicePanes.some(
+                        (pane) =>
+                          !unavailable && !pane.unavailable && !pane.dead,
+                      )
+                    }
+                    {...rowMenu("space", service.key)}
+                    onClick={() => openGroup(servicePanes, service.name)}
+                    title={`Open ${service.label} terminal`}
+                  >
+                    <Status state={service.indicator} />
+                    <span className="wb-tree-name">{service.label}</span>
+                  </button>
+                );
+              })}
+            </section>
+          )}
         </>
       )}
       <footer className="wb-sidebar-footer">
