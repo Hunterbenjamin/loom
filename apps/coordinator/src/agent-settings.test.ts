@@ -83,16 +83,15 @@ test.each(["interactive", "headless"] as const)(
       if (launch?.kind !== "start_run")
         throw new Error("Missing stored launch");
       expect(launch.reasoningEffort).toBe("medium");
-      await writeCodexHomeConfig(h.dataRoot, launch, {
-        type: "http",
-        url: "http://127.0.0.1:1/mcp",
-      });
+      await writeCodexHomeConfig(h.dataRoot, launch);
       const config = await readFile(
         join(h.dataRoot, "codex", created.task.id, "codex-home", "config.toml"),
         "utf8",
       );
       expect(config).toContain('model = "gpt-5.6-sol"');
       expect(config).toContain('model_reasoning_effort = "medium"');
+      // The app-server is shared by the task's runs: no run's token belongs in its config.
+      expect(config).not.toContain("mcp_servers");
       const reviewerLaunch = h.store.outbox
         .list(created.task.id)
         .find(
@@ -101,10 +100,7 @@ test.each(["interactive", "headless"] as const)(
         )?.action;
       if (reviewerLaunch?.kind !== "start_run")
         throw new Error("Missing reviewer launch");
-      await writeCodexHomeConfig(h.dataRoot, reviewerLaunch, {
-        type: "http",
-        url: "http://127.0.0.1:1/mcp",
-      });
+      await writeCodexHomeConfig(h.dataRoot, reviewerLaunch);
       expect(
         await readFile(
           join(
