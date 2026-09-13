@@ -222,6 +222,7 @@ export class OperatorSession {
           this.deps.config.operatorModel ??
           this.deps.config.models.claude,
         settingsPath,
+        readOnly: false,
       }),
       "--tools",
       "",

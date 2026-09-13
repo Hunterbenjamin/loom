@@ -293,6 +293,7 @@ export class LeadSession {
       model: recipe.model,
       settingsPath: recipe.settingsPath,
       readOnly: true,
+      conversationOnly: true,
     });
     args.push("--name", "Main", "--", leadBrief(await this.note()));
     await this.save({ ...recipe, args, launched: true });

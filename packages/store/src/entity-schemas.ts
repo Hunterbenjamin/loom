@@ -256,6 +256,7 @@ export const messageSchema = contract<Message>()(
     expectedTurnId: text.nullable().optional(),
     baselineTurnId: text.nullable().optional(),
     deliveryAttention: z.boolean().optional(),
+    pendingSince: time.optional(),
   }),
 );
 export const questionSchema = contract<Question>()(

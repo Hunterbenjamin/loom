@@ -100,8 +100,14 @@ against a schema before any transition.
 Rules:
 - Choose and record the session ID before launch: `claude --session-id <uuid>`, or the Codex thread ID
   returned by `thread/start`.
-- Planners and reviewers run headless; the implementer runs interactively. Codex clients can share
-  a live thread on the same app-server. Resume to subscribe, hydrate current state, then reconcile
+- All roles (planner, implementer, reviewer) run interactively by default for visibility in panes.
+  Override per-role modes via `LOOM_RUN_MODES` (for example,
+  `planner=headless,reviewer=headless`). The setting is captured only when a new run row is created;
+  existing runs, retries, resumes, and externally discovered sessions retain their recorded mode.
+  Interactive planners and reviewers retain their role restrictions: Codex uses the read-only
+  sandbox; Claude disallows Edit, Write and NotebookEdit, as in headless mode, and does not receive
+  the implementer's permission bypass. Claude's tool restrictions are not a filesystem sandbox.
+  Codex clients can share a live thread on the same app-server. Resume to subscribe, hydrate current state, then reconcile
   notifications. Use `turn/steer` with `expectedTurnId` for mid-turn input.
 - Codex approval requests reach all subscribed clients, including a client resuming while a request
   is pending. Either client can answer; clear the prompt on `serverRequest/resolved`. Scope pending
@@ -147,6 +153,8 @@ with human-command tools and `set_note`, which atomically replaces the instance-
 `main-notes` document (at most 2,000 characters). Each launch includes that note as context.
 The Claude launch restricts Main to Loom MCP and read-only file tools within the instance
 directory; the agent has no terminal attach capability. Human viewers still attach to its panel.
+This conversation-only policy is separate from task planners' and reviewers' edit restrictions,
+so those task roles retain the tools needed to inspect the repository and run tests.
 The human-command tools enqueue the same guarded inputs as the CLI; they do not
 change stage ownership. Task-run tools and Main tools reject each other's identities. See
 [Main](design/ui.md#main) for its lifecycle, recovery and bottom-bar UI.

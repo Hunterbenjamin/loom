@@ -23,7 +23,7 @@ import { type Action, actions, prefixKeys } from "./actions.js";
 import {
   attentionPanes,
   sameTerminal,
-  terminalList,
+  spaces,
   terminalName,
 } from "./selectors.js";
 import "./workbench.css";
@@ -393,28 +393,44 @@ export function Workbench() {
     setZoom(null);
     keyboardFocus(panel.id);
   };
-  const choose = (pane: PaneView) => {
+  const choose = (pane: PaneView, inNewTab = false) => {
     if (pane.dead || pane.unavailable) return;
-    const existing = tabs
-      .flatMap((tab) => tab.panels.map((panel) => ({ tab, panel })))
-      .find(({ panel }) => panel.target && sameTerminal(panel.target, pane));
-    if (existing) {
-      setActive(existing.tab.id);
+    const current = tabs.find((tab) => tab.id === active);
+    const panel = current?.panels.find((panel) => panel.id === focused);
+    // A click replaces only the focused viewer; Enter always creates an independent tab.
+    if (!inNewTab && current && panel && !panel.system) {
+      if (panel.target && sameTerminal(panel.target, pane)) {
+        keyboardFocus(panel.id);
+        return;
+      }
+      setTabs((tabs) =>
+        tabs.map((tab) =>
+          tab.id === current.id
+            ? {
+                ...tab,
+                name: tab.panels.length === 1 ? terminalName(pane) : tab.name,
+                panels: tab.panels.map((p) =>
+                  p.id === panel.id ? { ...p, target: identity(pane) } : p,
+                ),
+              }
+            : tab,
+        ),
+      );
       setZoom(null);
-      keyboardFocus(existing.panel.id);
+      keyboardFocus(panel.id);
       return;
     }
-    // Selecting an existing session only attaches. Creation is exclusively a New action.
-    const panel = newPanel(identity(pane));
+    // Pinned agent tabs retain their identity; opening here creates a regular viewer.
+    const next = newPanel(identity(pane));
     const tab = {
       id: crypto.randomUUID(),
       name: terminalName(pane),
-      panels: [panel],
+      panels: [next],
     };
-    setTabs((ts) => [...ts, tab]);
+    setTabs((tabs) => [...tabs, tab]);
     setActive(tab.id);
     setZoom(null);
-    keyboardFocus(panel.id);
+    keyboardFocus(next.id);
   };
   useEffect(() => {
     if (unavailable || connection !== "connected") return;
@@ -441,12 +457,14 @@ export function Workbench() {
     });
     if (!initialized.current) {
       initialized.current = true;
-      const first = terminalList(panes).find(({ pane }) => !pane.unavailable);
+      const first = spaces(panes)
+        .flatMap((space) => space.tabs.flatMap((tab) => tab.panes))
+        .find(({ pane }) => !pane.dead && !pane.unavailable);
       if (first) {
         const panel = newPanel(identity(first.pane));
         const tab = {
           id: crypto.randomUUID(),
-          name: first.name,
+          name: terminalName(first.pane),
           panels: [panel],
         };
         setTabs((ts) => (ts.length ? ts : [tab]));
@@ -634,6 +652,7 @@ export function Workbench() {
   };
   return (
     <div className="workbench">
+      <div className="wb-titlebar" aria-hidden="true" />
       {pendingTab && (
         <NewTerminalDialog
           initialName={`Terminal ${tabs.length + 1}`}

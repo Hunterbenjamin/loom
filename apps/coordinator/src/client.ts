@@ -5,11 +5,13 @@ import type {
   AckOutcome,
   ClientState,
   Command,
+  ProtocolError,
   ServerFrame,
   Subscription,
 } from "@loom/protocol";
 import {
   applyPatch,
+  decodeClientFrame,
   decodeServerFrame,
   encodeFrame,
   PROTOCOL_VERSION,
@@ -26,7 +28,7 @@ export interface ClientOptions {
   subscriptions?: Subscription[];
   /** Called when the stream lost frames. The default asks for a fresh snapshot. */
   onGap?: (client: LoomClient, expected: number) => void;
-  onError?: (message: string) => void;
+  onError?: (message: string, error?: ProtocolError) => void;
 }
 
 type Waiter = (frame: ServerFrame) => boolean;
@@ -36,6 +38,7 @@ export class LoomClient {
   readonly gaps: { expected: number; received: number }[] = [];
   /** The last `error` frame's message, so a refused handshake says why it was refused. */
   lastError: string | null = null;
+  private lastProtocolError: ProtocolError | null = null;
   private readonly waiters = new Set<Waiter>();
   private readonly acks = new Map<string, (outcome: AckOutcome) => void>();
   private sequence = 0;
@@ -60,9 +63,12 @@ export class LoomClient {
       socket.addEventListener("close", (event) => {
         if (handshaking)
           reject(
-            new Error(
-              client.lastError ??
-                `The coordinator closed the socket (${event.code})`,
+            Object.assign(
+              new Error(
+                client.lastError ??
+                  `The coordinator closed the socket (${event.code})`,
+              ),
+              client.lastProtocolError,
             ),
           );
       });
@@ -93,10 +99,13 @@ export class LoomClient {
   /** Sends a command and resolves with its single acknowledgement. */
   async command(command: Command): Promise<AckOutcome> {
     const requestId = `r${++this.sequence}`;
+    const frame = { type: "command" as const, requestId, command };
+    const decoded = decodeClientFrame(encodeFrame(frame));
+    if (!decoded.ok) return { ok: false, error: decoded.error };
     const outcome = new Promise<AckOutcome>((resolve) =>
       this.acks.set(requestId, resolve),
     );
-    this.send({ type: "command", requestId, command });
+    this.send(frame);
     return outcome;
   }
 
@@ -148,7 +157,8 @@ export class LoomClient {
   private receive(raw: unknown): void {
     const decoded = decodeServerFrame(String(raw));
     if (!decoded.ok) {
-      this.options.onError?.(decoded.error.message);
+      this.reportError(decoded.error, null, true);
+      this.close();
       return;
     }
     const frame = decoded.frame;
@@ -169,8 +179,26 @@ export class LoomClient {
       this.acks.get(frame.requestId)?.(frame.outcome);
       this.acks.delete(frame.requestId);
     } else if (frame.type === "error")
-      this.options.onError?.(frame.error.message);
+      this.reportError(frame.error, frame.requestId, frame.fatal);
     for (const waiter of [...this.waiters]) waiter(frame);
+  }
+
+  private reportError(
+    error: ProtocolError,
+    requestId: string | null,
+    fatal: boolean,
+  ): void {
+    this.lastError = error.message;
+    this.lastProtocolError = error;
+    let delivered = false;
+    for (const [id, resolve] of this.acks) {
+      if (fatal || id === requestId) {
+        this.acks.delete(id);
+        resolve({ ok: false, error });
+        delivered = true;
+      }
+    }
+    if (!delivered) this.options.onError?.(error.message, error);
   }
 
   private send(frame: Parameters<typeof encodeFrame>[0]): void {

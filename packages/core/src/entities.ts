@@ -359,6 +359,8 @@ export interface Message {
   /** sha256 of the text after the provider's normalization (tab → 4 spaces, CRLF → LF). */
   textHash: string;
   status: MessageStatus;
+  /** Start of the current pending interval; absent on legacy records. */
+  pendingSince?: IsoTime;
   attempts: number;
   /** Codex turn ID returned by `turn/start` or `turn/steer`. (ref) */
   transportRef: string | null;

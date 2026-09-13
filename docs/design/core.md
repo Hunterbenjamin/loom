@@ -44,7 +44,7 @@ human relaunches an interactive run (§3).
 | Field | Own | Notes |
 |---|---|---|
 | `id` | A | Deterministic: `<taskId>/<role>/<round>`. Stable across attempts. |
-| `taskId`, `role`, `provider`, `mode`, `model` | A | Planner and reviewer are `headless`; implementer is `interactive`. |
+| `taskId`, `role`, `provider`, `mode`, `model` | A | All roles default to `interactive` (visible in panes). `LOOM_RUN_MODES` may override individual roles for new rows only; existing runs, retries/resumes, and external sessions retain their recorded mode and identity. |
 | `origin` | A | `loom`, or `external` for a session started by hand in the worktree (observe-only). |
 | `worktreePath`, `round` | A | |
 | `attempts` | A | Launches of this run so far. A retry bumps it and keeps the row. |
@@ -160,7 +160,9 @@ Append-only; one row per committed stage change or flag change.
 Delivery metadata follows the original `Message` fields. Core writes it and the store must retain it:
 `via` identifies the transport path (absent before send), `expectedTurnId` identifies a steered turn,
 `baselineTurnId` identifies the last observed turn before sending (absent/null means none), and
-`deliveryAttention` defaults to false. `transportAttempt` records executor start/completion times
+`deliveryAttention` defaults to false. `pendingSince` records the start of the current pending
+interval; legacy pending records initialize it on their first reconciliation and persist it.
+`transportAttempt` records executor start/completion times
 and session/run identity (§5.5), and is absent on legacy records. These fields are never
 reconstructed from a terminal.
 
@@ -188,13 +190,15 @@ retry/timing thresholds. `githubPollMs` is the coordinator's polling policy; cor
 |---|---|---|
 | `backlog` | nobody | Parked. |
 | `todo` | nobody | Queued for capacity and dependencies. |
-| `planning` | planner (headless) | |
+| `planning` | planner (interactive, in a pane) | |
 | `plan_approval` | nobody | Only when `requirePlanApproval`. |
 | `in_progress` | implementer (interactive, in a pane) | |
-| `in_review` | reviewer (headless, editing disabled) | The implementer's session stays alive for fix rounds. |
+| `in_review` | reviewer (interactive, in a pane, editing disabled) | The implementer's session stays alive for fix rounds. |
 | `awaiting_approval` | nobody | Human reviews the diff. |
 | `merging` | nobody | Merge requested; waiting to see it on GitHub. |
 | `done`, `canceled` | nobody | Terminal (`canceled` can be reopened). |
+
+The table shows the default modes. `LOOM_RUN_MODES` can select headless mode per role for new runs.
 
 Triggers: **H** human command, **M** MCP tool call from the task's *current* run for that role, **R** a fact
 found by reconcile. "Start X" means insert the run row (with its session ID for Claude), then `start_run`,
@@ -519,7 +523,7 @@ answer failures use `retry.maxAttempts` (3 by default); the final failed attempt
 
 | | Codex headless | Codex interactive | Claude headless | Claude interactive |
 |---|---|---|---|---|
-| start | `thread/start` (read-only sandbox for reviewers) | `thread/start`, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>` |
+| start | `thread/start` (read-only sandbox for planners/reviewers) | `thread/start` with the role sandbox, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>`; planners/reviewers disallow Edit, Write and NotebookEdit and omit implementer bypass permissions |
 | send | `turn/start`, or `turn/steer` with `expectedTurnId` | the same, through the app-server, not the pane | SDK | `pasteText`, gated on provider status |
 | interrupt | `turn/interrupt` | `turn/interrupt` | SDK interrupt | `sendKey Escape` |
 | resume | `thread/resume` | `thread/resume`, then reattach the pane | SDK resume | A pane: `claude --resume <id> --settings <per-run> --mcp-config <per-run>` |
@@ -583,6 +587,9 @@ instead of reusing the old receipt. These guarantees do not undo an external sid
 ### 5.5 When a message counts as delivered
 
 Never on the pane host's `"written"`, and never on a transport response alone.
+The launch prompt is a normal queued message for every role. For an interactive run, it cannot be
+sent until both provider identity and pane identity are recorded and the provider-status gate below
+permits the paste.
 
 | Path | `sent` when | `delivered` when |
 |---|---|---|
@@ -591,7 +598,14 @@ Never on the pane host's `"written"`, and never on a transport response alone.
 | Claude (interactive or headless) | `pasteText` returns `"written"`, or the SDK accepts it | `UserPromptSubmit` for the session whose normalized `prompt` hash matches (tabs → 4 spaces, CRLF → LF) |
 
 Several prompts can join one Claude turn and share a `prompt_id`; each is still matched by its own
-`UserPromptSubmit`. If a message is still not delivered after `deliveryTimeoutMs`: when the provider is
+`UserPromptSubmit`. A pending message schedules a check at `pendingSince + deliveryTimeoutMs`,
+including messages waiting for capacity, another message, provider readiness, an expected Codex
+turn, or an outbox transport result. At that deadline it raises `provider_input` on its run and
+notifies once per message with the current blocker. Reconciliation and restarts do not reset the
+interval. Attention remains until delivery is confirmed or the message/run is retired; timeout
+does not authorize replay of an outbox-owned send. An allowed resend starts a new pending interval.
+
+If a sent message is still not delivered after `deliveryTimeoutMs`: when the provider is
 idle and shows no new turn, resend once under the same message ID; otherwise add attention. **A paste is
 gated on the provider's status**: in spike 06 a paste into a pending permission dialog approved the
 command instead of delivering a prompt, so `pasteText` is only called for a run the provider reports as

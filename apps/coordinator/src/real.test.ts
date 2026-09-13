@@ -56,6 +56,7 @@ test.skipIf(!enabled)(
       bind: "127.0.0.1:0",
       token: "real-test-token-0123456789",
       models: { codex: MODEL, claude: MODEL },
+      runModes: "planner=headless",
     });
     const store = await openStore({
       dataRoot: config.dataRoot,
