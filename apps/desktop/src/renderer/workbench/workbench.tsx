@@ -415,18 +415,17 @@ export function Workbench() {
   };
   const openPinned = (system: "main" | "operator") => {
     const state = store.getState();
-    const find = () =>
-      store
-        .getState()
-        .panes.find((p) =>
-          system === "main"
-            ? [`loom-lead-${state.ui.repo}`, "loom-main", "loom-lead"].includes(
-                p.sessionName,
-              )
-            : p.sessionName === "loom-operator",
-        );
+    // Main is one session per repository. Only that session counts; a leftover single-instance
+    // session must never be mistaken for it, and a stopped Main is relaunched before it opens.
+    const find = () => {
+      const panes = store.getState().panes.filter((p) => !p.dead);
+      if (system === "operator")
+        return panes.find((p) => p.sessionName === "loom-operator");
+      return panes.find((p) => p.sessionName === `loom-lead-${state.ui.repo}`);
+    };
     const existing = find();
-    if (existing && !existing.dead) return openGroup([existing], system);
+    if (existing && (system !== "main" || state.lead.status !== "stopped"))
+      return openGroup([existing], system);
     void store
       .command(
         system === "main"

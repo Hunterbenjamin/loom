@@ -184,8 +184,7 @@
   color: var(--text);
 }
 .wb-terminals {
-  flex: 0 1 auto;
-  max-height: 50%;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
