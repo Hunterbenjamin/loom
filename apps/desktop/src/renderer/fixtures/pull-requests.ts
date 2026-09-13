@@ -12,6 +12,10 @@ export function buildPullRequests(
       const linked = index === 0 ? task : undefined;
       return {
         repoId: repo.id,
+        viewerDidAuthor: index >= 2,
+        viewerReviewRequested: index === 1,
+        reviewRequired: index === 1,
+        completedAt: index >= 4 ? minutesBefore(index * 10) : null,
         number: 201 + index,
         title:
           linked?.title ??

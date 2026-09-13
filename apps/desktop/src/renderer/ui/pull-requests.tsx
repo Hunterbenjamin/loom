@@ -1,251 +1,267 @@
 import type { PullRequestRow } from "@loom/protocol";
 import { pullRequestKey } from "@loom/protocol";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useRef } from "react";
-import { selectedPullRequests } from "../store/pull-requests.js";
-import { shallowArray, useStore, useStoreApi } from "../store/react.js";
+import { type KeyboardEvent, useEffect, useMemo, useRef } from "react";
+import { reviewAgentWorking, reviewGroups } from "../store/pull-requests.js";
+import { useStore, useStoreApi } from "../store/react.js";
 import { since } from "./format.js";
+import { PullRequestGlyph } from "./pull-request-glyph.js";
 
-const COLUMNS =
-  "minmax(240px, 2fr) minmax(140px, 1fr) 110px 52px 88px 142px 104px";
-const CHECKS = {
-  success: ["Pass", "good"],
-  pending: ["Pending", "attention"],
-  failure: ["Fail", "danger"],
-  none: ["No checks", ""],
-} as const;
-const REVIEWS = {
-  approved: ["Approved", "good"],
-  changes_requested: ["Changes requested", "danger"],
-  none: ["None", ""],
-} as const;
-const MERGEABILITY = {
-  mergeable: ["Mergeable", "good"],
-  conflicting: ["Conflicts", "danger"],
-  unknown: ["Unknown", ""],
-} as const;
+type Group = ReturnType<typeof reviewGroups>[number];
+type Item =
+  | { kind: "header"; group: Group }
+  | { kind: "more"; group: Group }
+  | { kind: "row"; pr: PullRequestRow; cursor: number };
 
 export function PullRequestsView() {
   const store = useStoreApi();
-  const rows = useStore(selectedPullRequests, shallowArray);
-  const status = useStore((s) => s.ui.prState);
+  const ui = useStore((s) => s.ui);
+  const prs = useStore((s) => s.snapshot.pullRequests);
+  const groups = useMemo(
+    () => reviewGroups({ ui, snapshot: { pullRequests: prs } }),
+    [ui, prs],
+  );
   const loading = useStore((s) =>
     s.pullRequestLists.some(
-      (list) =>
-        list.repoId === s.ui.repo &&
-        list.state === s.ui.prState &&
-        list.loading,
+      (list) => list.repoId === s.ui.repo && list.loading,
     ),
   );
-  const query = useStore((s) => s.ui.prQuery);
-  const cursor = useStore((s) => s.ui.prCursor);
-  const now = useStore((s) => s.snapshot.now);
-  const repos = useStore((s) => s.snapshot.repos);
   const scroller = useRef<HTMLDivElement>(null);
+  const search = useRef<HTMLInputElement>(null);
+  const items: Item[] = [];
+  let cursor = 0;
+  for (const group of groups) {
+    if (!group.count && group.id !== "completed") continue;
+    items.push({ kind: "header", group });
+    for (const pr of group.rows)
+      items.push({ kind: "row", pr, cursor: cursor++ });
+    if (!group.collapsed && group.remaining)
+      items.push({ kind: "more", group });
+  }
   const virtual = useVirtualizer({
-    count: rows.length,
+    count: items.length,
     getItemKey: (index) => {
-      const row = rows[index] as PullRequestRow;
-      return pullRequestKey(row.repoId, row.number);
+      const item = items[index] as Item;
+      return item.kind === "row"
+        ? pullRequestKey(item.pr.repoId, item.pr.number)
+        : `${item.kind}-${item.group.id}`;
     },
     getScrollElement: () => scroller.current,
     estimateSize: () => 40,
     overscan: 12,
-    scrollMargin: 28,
-    scrollPaddingStart: 28,
   });
+  const cursorItem = items.findIndex(
+    (item) => item.kind === "row" && item.cursor === ui.prCursor,
+  );
+  const previousSections = useRef(ui.prSections);
   useEffect(() => {
-    const bounded = Math.max(0, Math.min(cursor, rows.length - 1));
-    if (bounded !== cursor) store.setPrCursor(bounded);
-    if (rows.length) virtual.scrollToIndex(bounded, { align: "auto" });
-  }, [cursor, rows.length, store, virtual]);
+    const changed = previousSections.current !== ui.prSections;
+    previousSections.current = ui.prSections;
+    const bounded = Math.max(0, Math.min(ui.prCursor, cursor - 1));
+    if (bounded !== ui.prCursor) store.setPrCursor(bounded);
+    if (!changed && cursorItem >= 0)
+      virtual.scrollToIndex(cursorItem, { align: "auto" });
+  }, [ui.prCursor, ui.prSections, cursor, cursorItem, store, virtual]);
 
   return (
     <>
-      <div className="pr-filters">
-        <div className="segmented">
-          {(["open", "merged", "closed"] as const).map((value) => (
+      <div className="reviews-toolbar">
+        <div className="reviews-tabs">
+          {(
+            [
+              ["for-you", "For you"],
+              ["created", "Created"],
+            ] as const
+          ).map(([value, label]) => (
             <button
               key={value}
               type="button"
-              aria-pressed={status === value}
-              onClick={() => store.setPrState(value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.stopPropagation();
-              }}
+              aria-pressed={ui.prTab === value}
+              onClick={() => store.setPrTab(value)}
+              onKeyDown={buttonKeyDown}
             >
-              {value[0]?.toUpperCase()}
-              {value.slice(1)}
+              {label}
             </button>
           ))}
         </div>
-        <input
-          className="search"
-          data-pr-search
-          aria-label="Filter pull requests"
-          placeholder="Filter pull requests…"
-          value={query}
-          onChange={(event) => store.setPrQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              store.setPrQuery("");
-              event.currentTarget.blur();
-              event.stopPropagation();
-            }
-          }}
-        />
+        <div className="reviews-search" data-active={!!ui.prQuery}>
+          <input
+            ref={search}
+            data-pr-search
+            aria-label="Filter reviews"
+            placeholder="Filter reviews…"
+            value={ui.prQuery}
+            onChange={(e) => store.setPrQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                store.setPrQuery("");
+                e.currentTarget.blur();
+                e.stopPropagation();
+              }
+            }}
+          />
+          <button
+            type="button"
+            aria-label="Filter reviews"
+            title="Filter reviews (/)"
+            onClick={() => search.current?.focus()}
+            onKeyDown={buttonKeyDown}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <path d="M2 4h12M4 8h8M6 12h4" />
+            </svg>
+          </button>
+        </div>
       </div>
-      <div className="list" ref={scroller} data-testid="pull-requests-list">
-        {rows.length === 0 ? (
+      <div
+        className="list reviews-list"
+        ref={scroller}
+        data-testid="pull-requests-list"
+      >
+        {loading ? (
           <div className="pad faint" role="status">
-            {loading
-              ? "Loading pull requests…"
-              : query.trim()
-                ? "No pull requests match this filter."
-                : `No ${status} pull requests in the current snapshot.`}
+            Loading reviews…
           </div>
         ) : null}
-        <table
-          className="pr-table"
-          aria-label="Pull requests"
-          aria-rowcount={rows.length + 1}
-        >
-          <thead>
-            <tr
-              className="list-head pr-grid"
-              style={{ ["--cols" as string]: COLUMNS }}
-            >
-              {[
-                "Pull request",
-                "Branch",
-                "Author",
-                "Age",
-                "Checks",
-                "Review",
-                "Mergeability",
-              ].map((label) => (
-                <th scope="col" key={label}>
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody
-            style={{
-              display: "block",
-              height: virtual.getTotalSize(),
-              position: "relative",
-            }}
-          >
-            {virtual.getVirtualItems().map((item) => {
-              const pr = rows[item.index] as PullRequestRow;
-              const repo = repos.find((repo) => repo.id === pr.repoId);
-              return (
-                <tr
-                  key={item.key}
-                  className="row pr-row"
-                  aria-rowindex={item.index + 2}
-                  tabIndex={item.index === cursor ? 0 : -1}
-                  aria-selected={item.index === cursor}
-                  data-cursor={item.index === cursor}
-                  data-pr={pullRequestKey(pr.repoId, pr.number)}
-                  style={{
-                    ["--cols" as string]: COLUMNS,
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: item.size,
-                    transform: `translateY(${item.start - 28}px)`,
-                  }}
-                  onClick={() => {
-                    store.setPrCursor(item.index);
-                    store.openPullRequest({
-                      repoId: pr.repoId,
-                      number: pr.number,
-                    });
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      store.setPrCursor(item.index);
-                      store.openPullRequest({
-                        repoId: pr.repoId,
-                        number: pr.number,
-                      });
-                    }
-                  }}
-                >
-                  <td className="cell-title">
-                    <span className="id" title={repo?.github}>
-                      #{pr.number}
-                    </span>
-                    <span className="text" title={pr.title}>
-                      {pr.title}
-                    </span>
-                    {pr.draft ? <span className="chip">Draft</span> : null}
-                    {pr.taskId ? (
-                      <button
-                        type="button"
-                        className="pr-task-link mono"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          store.open(pr.taskId);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ")
-                            event.stopPropagation();
-                        }}
-                      >
-                        {pr.taskId}
-                      </button>
-                    ) : null}
-                  </td>
-                  <td className="text dim" title={`${pr.head} → ${pr.base}`}>
-                    {pr.head} → {pr.base}
-                  </td>
-                  <td
-                    className="text dim"
-                    title={pr.author ?? "Unknown author"}
+        {!loading && groups.every((group) => group.count === 0) ? (
+          <div className="pad faint" role="status">
+            {ui.prQuery.trim()
+              ? "No reviews match this filter."
+              : ui.prTab === "created"
+                ? "No pull requests created by you."
+                : "No reviews for you."}
+          </div>
+        ) : null}
+        <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
+          {virtual.getVirtualItems().map((item) => {
+            const entry = items[item.index] as Item;
+            return (
+              <div
+                key={item.key}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: item.size,
+                  transform: `translateY(${item.start}px)`,
+                }}
+              >
+                {entry.kind === "header" ? (
+                  <button
+                    type="button"
+                    className="reviews-group"
+                    aria-expanded={!entry.group.collapsed}
+                    onClick={() => store.togglePrSection(entry.group.id)}
+                    onKeyDown={buttonKeyDown}
                   >
-                    {pr.author ?? "Unknown"}
-                  </td>
-                  <td className="faint nums" title={pr.createdAt}>
-                    {since(now, pr.createdAt)}
-                  </td>
-                  <Badge label="Checks" value={CHECKS[pr.checks]} />
-                  <Badge label="Review" value={REVIEWS[pr.review]} />
-                  <Badge
-                    label="Mergeability"
-                    value={MERGEABILITY[pr.mergeable]}
+                    <span>{entry.group.label}</span>
+                    <span className="nums">{entry.group.count}</span>
+                    <span aria-hidden="true">
+                      {entry.group.collapsed ? "▸" : "▾"}
+                    </span>
+                  </button>
+                ) : entry.kind === "more" ? (
+                  <button
+                    type="button"
+                    className="list-load-more"
+                    onClick={() => store.loadMoreCompletedPrs()}
+                    onKeyDown={buttonKeyDown}
+                  >
+                    Load {Math.min(20, entry.group.remaining)} more
+                  </button>
+                ) : (
+                  <ReviewRow
+                    pr={entry.pr}
+                    index={entry.cursor}
+                    cursor={ui.prCursor}
                   />
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </>
   );
 }
 
-function Badge({
-  label,
-  value,
+function buttonKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+  if (event.key === "Enter" || event.key === " ") event.stopPropagation();
+}
+
+function ReviewRow({
+  pr,
+  index,
+  cursor,
 }: {
-  label: string;
-  value: readonly [string, string];
+  pr: PullRequestRow;
+  index: number;
+  cursor: number;
 }) {
+  const store = useStoreApi();
+  const now = useStore((s) => s.snapshot.now);
+  const working = useStore((s) => reviewAgentWorking(s, pr));
+  const status = working
+    ? ["Agent working", "ϟ", "working"]
+    : pr.checks === "failure"
+      ? ["Checks failed", "×", "danger"]
+      : pr.checks === "pending"
+        ? ["Checks pending", "●", "attention"]
+        : pr.checks === "success"
+          ? ["All checks passed", "✓", "good"]
+          : null;
+  const open = () => {
+    store.setPrCursor(index);
+    store.openPullRequest({ repoId: pr.repoId, number: pr.number });
+  };
   return (
-    <td>
-      <span
-        role="img"
-        className={`chip ${value[1]}`}
-        aria-label={`${label}: ${value[0]}`}
+    <div
+      className="review-row"
+      data-cursor={index === cursor}
+      data-pr={pullRequestKey(pr.repoId, pr.number)}
+    >
+      <button
+        type="button"
+        className="review-row-open"
+        tabIndex={index === cursor ? 0 : -1}
+        onClick={open}
+        onKeyDown={buttonKeyDown}
+        title={pr.title}
       >
-        {value[0]}
+        <PullRequestGlyph state={pr.state} />
+        <span className="text">{pr.title}</span>
+      </button>
+      {pr.taskId ? (
+        <button
+          type="button"
+          className="pr-task-link mono"
+          onClick={() => store.open(pr.taskId)}
+          onKeyDown={buttonKeyDown}
+          title={`Open issue ${pr.taskId}`}
+        >
+          {pr.taskId}
+        </button>
+      ) : null}
+      <span
+        className={`review-status ${status?.[2] ?? ""}`}
+        role="img"
+        aria-label={status?.[0] ?? "No checks"}
+        title={status?.[0]}
+      >
+        {status?.[1]}
       </span>
-    </td>
+      <span className="faint nums review-age" title={pr.createdAt}>
+        {since(now, pr.createdAt)}
+      </span>
+    </div>
   );
 }

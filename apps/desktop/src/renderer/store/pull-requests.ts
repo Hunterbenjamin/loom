@@ -34,25 +34,118 @@ export function readyToMergeCount(state: State): number {
   ).length;
 }
 
-export function selectedPullRequests(state: State): PullRequestRow[] {
-  const { repo, prState, prQuery } = state.ui;
+export type ReviewSection =
+  | "ready"
+  | "attention"
+  | "waiting"
+  | "created"
+  | "completed";
+export const REVIEW_SECTIONS: { id: ReviewSection; label: string }[] = [
+  { id: "ready", label: "Ready to merge" },
+  { id: "attention", label: "Needs attention" },
+  { id: "waiting", label: "Waiting" },
+  { id: "created", label: "Created by you" },
+  { id: "completed", label: "Completed" },
+];
+
+export function reviewReady(pr: PullRequestRow): boolean {
+  return (
+    mergeDisabledReason(pr) === null &&
+    pr.review !== "changes_requested" &&
+    !pr.reviewRequired &&
+    !pr.viewerReviewRequested
+  );
+}
+
+export function reviewNeedsHuman(pr: PullRequestRow): boolean {
+  return (
+    pr.state === "open" &&
+    (reviewReady(pr) ||
+      pr.viewerReviewRequested ||
+      (pr.viewerDidAuthor &&
+        (pr.checks === "failure" ||
+          pr.mergeable === "conflicting" ||
+          pr.review === "changes_requested")))
+  );
+}
+
+function sectionFor(
+  pr: PullRequestRow,
+  tab: State["ui"]["prTab"],
+): ReviewSection | null {
+  if (tab === "created" && !pr.viewerDidAuthor) return null;
+  if (pr.state !== "open") return "completed";
+  if (tab === "created") return "created";
+  if (reviewReady(pr)) return "ready";
+  if (!pr.viewerDidAuthor && !pr.viewerReviewRequested) return null;
+  if (
+    pr.checks === "failure" ||
+    pr.mergeable === "conflicting" ||
+    pr.review === "changes_requested"
+  )
+    return "attention";
+  if (pr.checks === "pending" || pr.reviewRequired || pr.viewerReviewRequested)
+    return "waiting";
+  return pr.viewerDidAuthor ? "created" : "waiting";
+}
+
+export function reviewGroups(state: {
+  ui: State["ui"];
+  snapshot: Pick<State["snapshot"], "pullRequests">;
+}) {
+  const { repo, prTab, prQuery, prSections, prCompletedCount } = state.ui;
   const needle = prQuery.trim().toLowerCase();
-  return state.snapshot.pullRequests
-    .filter(
-      (pr) =>
-        pr.repoId === repo &&
-        pr.state === prState &&
-        (!needle ||
-          `#${pr.number} ${pr.title} ${pr.head} ${pr.base} ${pr.author ?? ""} ${pr.taskId ?? ""}`
-            .toLowerCase()
-            .includes(needle)),
+  const groups = REVIEW_SECTIONS.map(({ id, label }) => ({
+    id,
+    label,
+    collapsed: prSections[id] ?? id === "completed",
+    rows: [] as PullRequestRow[],
+    count: 0,
+    remaining: 0,
+  }));
+  for (const pr of state.snapshot.pullRequests) {
+    if (
+      pr.repoId !== repo ||
+      (needle &&
+        !`#${pr.number} ${pr.title} ${pr.head} ${pr.base} ${pr.author ?? ""} ${pr.taskId ?? ""}`
+          .toLowerCase()
+          .includes(needle))
     )
-    .sort(
+      continue;
+    const group = groups.find((g) => g.id === sectionFor(pr, prTab));
+    group?.rows.push(pr);
+  }
+  for (const group of groups) {
+    group.rows.sort(
       (a, b) =>
-        Date.parse(b.createdAt) - Date.parse(a.createdAt) ||
-        b.number - a.number ||
-        a.repoId.localeCompare(b.repoId),
+        (group.id === "completed"
+          ? Date.parse(b.completedAt ?? b.updatedAt) -
+            Date.parse(a.completedAt ?? a.updatedAt)
+          : Date.parse(b.createdAt) - Date.parse(a.createdAt)) ||
+        b.number - a.number,
     );
+    group.count = group.rows.length;
+    if (group.id === "completed") {
+      group.remaining = Math.max(0, group.count - prCompletedCount);
+      group.rows = group.rows.slice(0, prCompletedCount);
+    }
+    if (group.collapsed) group.rows = [];
+  }
+  return groups;
+}
+
+/** Keyboard navigation sees only expanded, loaded rows, in section order. */
+export function selectedPullRequests(state: State): PullRequestRow[] {
+  return reviewGroups(state).flatMap((group) => group.rows);
+}
+
+export function reviewAgentWorking(state: State, pr: PullRequestRow): boolean {
+  return (
+    pr.taskId !== null &&
+    state.snapshot.runs.some(
+      (run) => run.taskId === pr.taskId && run.status === "working",
+    )
+  );
 }
 
 /** The selected repository stays subscribed for the bottom bar in either window mode. */
@@ -66,11 +159,9 @@ export function pullRequestSubscriptions(state: State): Subscription[] {
     ...state.snapshot.repos
       .filter((repo) => repo.id === state.ui.repo)
       .flatMap((repo): Subscription[] =>
-        (!state.ui.trackerVisible ||
-        state.ui.view !== "pull-requests" ||
-        state.ui.prState === "open"
+        (!state.ui.trackerVisible || state.ui.view !== "pull-requests"
           ? ["open" as const]
-          : ["open" as const, state.ui.prState]
+          : ["open" as const, "merged" as const, "closed" as const]
         ).map((status) => ({
           kind: "pull_requests",
           repoId: repo.id,

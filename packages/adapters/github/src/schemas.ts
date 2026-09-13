@@ -150,6 +150,9 @@ export const graphqlEnvelope = z.object({
   errors: z.array(z.unknown()).optional(),
 });
 export const graphqlPullRequest = z.object({
+  viewerDidAuthor: z.boolean(),
+  viewerLatestReviewRequest: z.object({ id: z.string() }).nullable(),
+  closedAt: time.nullable(),
   number: id,
   title: z.string(),
   author: z.object({ login: z.string().min(1) }).nullable(),
