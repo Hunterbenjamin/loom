@@ -76,6 +76,7 @@ export class LeadSession {
       repo: Repo;
       mcpEntry(token: string): McpServerEntry;
       now(): string;
+      unreadReplies?(): import("@loom/store").TaskNote[];
     },
   ) {
     this.directory = leadDirectory(deps.dataDirectory, deps.repo.id);
@@ -333,7 +334,11 @@ export class LeadSession {
       "--name",
       "Main",
       "--",
-      leadBrief(await this.note(), this.deps.repo.github),
+      leadBrief(
+        await this.note(),
+        this.deps.repo.github,
+        this.deps.unreadReplies?.() ?? [],
+      ),
     );
     await this.save({ ...recipe, args, launched: true });
     const { workspaceId } = await this.deps.adapters.paneHost.ensureWorkspace({

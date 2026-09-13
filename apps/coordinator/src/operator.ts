@@ -475,7 +475,12 @@ export class OperatorSession {
       const result = await this.call(name, input);
       if (input.eventId) {
         const event = this.deps.store.operator.event(String(input.eventId));
-        await this.deps.changed((event?.taskId as TaskId) ?? null);
+        await this.deps.changed(
+          (event?.taskId as TaskId) ??
+            (this.deps.store.operator.noteById(`${event?.id}:reply`)
+              ?.taskId as TaskId) ??
+            null,
+        );
       }
       const events = this.deps.store.operator
         .pending()
@@ -547,6 +552,48 @@ export class OperatorSession {
     }
     if (store.operator.isProcessed(event.id))
       return { accepted: true, replayed: true };
+    if (event.kind === "main_message") {
+      if (name !== "append_note")
+        return {
+          accepted: false,
+          reason:
+            "Main messages are questions or heads-ups, never work commands",
+        };
+      const reply = z
+        .strictObject({
+          eventId: z.string(),
+          text: z.string().min(1).max(4000).optional(),
+          taskId: z.string().min(1).optional(),
+        })
+        .parse(input);
+      const task = reply.taskId
+        ? store
+            .tasks()
+            .find((t) => t.id === reply.taskId && t.repoId === event.repoId)
+        : null;
+      if (reply.taskId && !task)
+        return {
+          accepted: false,
+          reason: "Reply issue is outside the sending Main's repository",
+        };
+      store.operator.atomic(() => {
+        const note = this.note(
+          event,
+          "main.message",
+          reply.text ? "reply" : "acknowledged",
+          reply.text ?? "Main's message was read; no reply.",
+          false,
+          task?.id ?? null,
+        );
+        store.operator.updateNote({
+          ...note,
+          repoId: event.repoId,
+          ...(reply.text ? { addressedTo: "main" as const } : {}),
+        });
+        store.operator.complete(event.id, this.deps.now());
+      });
+      return { accepted: true };
+    }
     if (name === "file_task") return this.file(event, filingInput.parse(input));
     if (!event.taskId) {
       if (name !== "append_note")

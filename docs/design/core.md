@@ -937,3 +937,20 @@ deduplicated evidence notes, quota accounting and optional autoFix `todo` input 
 Tags reference a particular attention occurrence and disappear from the projection when it changes.
 The Operator retry allowance is one existing human `retry` input per role/round, not a change to
 core's automatic attempt budget.
+
+### Main messages (2026-09-13)
+
+Main's `message_agent` accepts an Operator destination, an exact task/run, or a task/role,
+plus 1–4,000 characters and an optional `idempotencyKey`. The coordinator scopes destinations
+and durable key receipts to Main's repository. A reused key returns the original queued/refused
+result; different content under that key is refused. Task notes authored `main`, receipts and
+accepted human `send_message` inbox inputs commit atomically. The input pins the run epoch and
+attempt; reconciliation refuses a replacement run. Fresh provider admission is bounded to 600 ms
+so unavailable status refuses promptly. The existing core action, capacity rules, executor send
+gate and native delivery receipts still apply; `queued` never claims delivery. Main never waits.
+
+Operator messages reuse `operator_events` (`main_message`) and `operator_notes`. The next pump
+consumes them. `append_note` acknowledges once, optionally recording a reply on a scoped issue or
+as an instance note. Additive note fields `repoId`, `addressedTo: main` and `readAt` preserve routing
+and unread state across restart. Main's first prompt includes unread replies; panel summaries use
+`read_agent_replies` to retrieve and mark them read. No provider or terminal is a reply channel.

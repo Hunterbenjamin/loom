@@ -4,6 +4,8 @@ export {
   leadInputSchemas,
   leadToolNames,
   mainNoteSchema,
+  messageAgentResultSchema,
+  messageAgentSchema,
 } from "./lead.js";
 export { InMemoryHost } from "./memory.js";
 export {

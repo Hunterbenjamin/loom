@@ -46,6 +46,7 @@ import { inspectTask } from "./inspect.js";
 import type { LaunchDeps } from "./launch.js";
 import { LeadSession, legacyLeadPort, migrateLead } from "./lead.js";
 import { Loop } from "./loop.js";
+import { messageAgent } from "./main-messages.js";
 import { createMcpHost } from "./mcp-host.js";
 import { observe as observeOwners, PullRequestCache } from "./observe.js";
 import { OperatorSession } from "./operator.js";
@@ -113,6 +114,7 @@ export class Coordinator {
         config: this.config,
         dataDirectory: this.store.dataDirectory,
         repo,
+        unreadReplies: () => this.store.operator.unreadReplies(repo.id),
         mcpEntry: (token) => this.launchDeps().mcpEntry(token),
         now: () => this.now(),
       });
@@ -572,6 +574,27 @@ export class Coordinator {
         ) => {
           if (!repoId) throw new Error("Main repository identity is required");
           const lead = this.leadFor(repoId);
+          if (name === "message_agent")
+            return messageAgent(
+              {
+                store: this.store,
+                adapters: this.adapters,
+                now: () => this.now(),
+                enqueue: (taskId) => this.loop.enqueue(taskId),
+              },
+              repoId,
+              input,
+            );
+          if (name === "read_agent_replies")
+            return this.store.operator.atomic(() => {
+              const replies = this.store.operator.unreadReplies(repoId);
+              for (const reply of replies)
+                this.store.operator.updateNote({
+                  ...reply,
+                  readAt: this.now(),
+                });
+              return replies;
+            });
           if (name === "set_note") return lead.setNote(input.note as string);
           if (name === "list_tasks")
             return this.store.tasks().filter((task) => task.repoId === repoId);

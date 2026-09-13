@@ -215,9 +215,13 @@ export function createMcpServer(
         tools: leadToolNames.map((name) => ({
           name,
           description:
-            name === "set_note"
-              ? "Replace Main's instance memory note (max 2000 characters); empty clears it."
-              : `Main: ${name.replaceAll("_", " ")}. Uses Loom's human commands and guards.`,
+            name === "message_agent"
+              ? "Queue a short question or heads-up through Loom, always recorded. Returns queued/refused without waiting for a reply. Use idempotencyKey for retries; create an issue for work."
+              : name === "read_agent_replies"
+                ? "Read this repository's unread replies addressed to Main and mark the returned notes read. Use once in a panel summary; never poll for replies."
+                : name === "set_note"
+                  ? "Replace Main's instance memory note (max 2000 characters); empty clears it."
+                  : `Main: ${name.replaceAll("_", " ")}. Uses Loom's human commands and guards.`,
           inputSchema: z.toJSONSchema(leadInputSchemas[name] as z.ZodObject, {
             io: "input",
           }) as { type: "object" },

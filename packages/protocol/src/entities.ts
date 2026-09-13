@@ -592,7 +592,17 @@ export const humanCommand = z.union([
     ]),
     text: text.optional(),
   }),
-  z.strictObject({ type: z.literal("send_message"), runId, text }),
+  z.strictObject({
+    type: z.literal("send_message"),
+    runId,
+    text,
+    expectedRun: z
+      .object({
+        sessionEpoch: z.number().int().nonnegative(),
+        attempts: z.number().int().nonnegative(),
+      })
+      .optional(),
+  }),
   z.strictObject({ type: z.literal("retry") }),
   z.strictObject({ type: z.literal("restart_run"), runId }),
   z.strictObject({ type: z.literal("grant_review_round") }),

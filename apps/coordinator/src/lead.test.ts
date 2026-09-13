@@ -729,3 +729,361 @@ test("startup migrates the legacy recipe once to the first registered repository
   expect(await recipe(h)).toEqual(migrated);
   expect(h.paneHost.launches).toHaveLength(launches);
 });
+
+async function messagingRun(
+  h: Harness,
+  provider: "claude" | "codex" = "claude",
+) {
+  const { task } = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Message target",
+    description: "Fake run",
+    size: "small",
+    providers: { planner: provider, implementer: provider, reviewer: provider },
+  });
+  h.coordinator.submitHuman(task.id, { type: "move", to: "todo" });
+  await h.coordinator.settle();
+  const run = present(
+    h.store.runs(task.id).find((r) => r.role === "implementer"),
+  );
+  h.providers.confirm(present(run.sessionId));
+  h.coordinator.loop.enqueue(task.id);
+  await h.coordinator.settle();
+  return { task, run };
+}
+
+for (const provider of ["claude", "codex"] as const)
+  test(`Main messages use core delivery and native ${provider} receipts, with durable concurrent dedupe`, async () => {
+    const { h } = await setup();
+    await h.coordinator.leadFor(h.repo.id).open();
+    const client = await mcp(h);
+    const { task, run } = await messagingRun(h, provider);
+    const input = {
+      to: { kind: "task", taskId: task.id, role: "implementer" },
+      text: "Heads-up: the human is reviewing the requirements.",
+      idempotencyKey: "heads-up",
+    };
+    const send = () =>
+      client.callTool({ name: "message_agent", arguments: input });
+    for (const result of await Promise.all([send(), send()]))
+      expect(result.structuredContent).toEqual({
+        ok: true,
+        value: { delivered: "queued" },
+      });
+    expect(h.store.operator.notes(task.id)).toMatchObject([
+      { author: "main", body: input.text, outcome: "queued" },
+    ]);
+    await h.coordinator.settle();
+    const message = present(
+      h.store.messages(task.id).find((m) => m.text.includes(input.text)),
+    );
+    expect(message.status).toBe("sent");
+    expect(
+      h.store.outbox
+        .list(task.id)
+        .filter(
+          (row) => row.kind === "send_message" && row.key.includes(message.id),
+        ),
+    ).toHaveLength(1);
+    expect(h.providers.confirm(present(run.sessionId))?.text).toContain(
+      input.text,
+    );
+    h.coordinator.loop.enqueue(task.id);
+    await h.coordinator.settle();
+    expect(
+      h.store.messages(task.id).find((m) => m.id === message.id)?.status,
+    ).toBe("delivered");
+    expect((await send()).structuredContent).toEqual({
+      ok: true,
+      value: { delivered: "queued" },
+    });
+    expect(
+      (
+        await client.callTool({
+          name: "message_agent",
+          arguments: { ...input, text: "Different" },
+        })
+      ).structuredContent,
+    ).toMatchObject({
+      value: {
+        delivered: "refused",
+        reason: expect.stringContaining("idempotencyKey"),
+      },
+    });
+    expect(
+      h.store.messages(task.id).filter((m) => m.text.includes(input.text)),
+    ).toHaveLength(1);
+    expect(h.store.operator.notes(task.id)).toHaveLength(1);
+  });
+
+for (const waiting of ["approval", "question"] as const)
+  test(`Main refuses a run waiting on ${waiting} without writing to its provider`, async () => {
+    const { h } = await setup();
+    await h.coordinator.leadFor(h.repo.id).open();
+    const client = await mcp(h);
+    const { task, run } = await messagingRun(h);
+    h.providers.request(present(run.sessionId), waiting, "Needs a decision");
+    const writes = h.paneHost.writes.length;
+    const input = {
+      to: { kind: "run", taskId: task.id, runId: run.id },
+      text: "Quick question",
+      idempotencyKey: "waiting",
+    };
+    const response = await client.callTool({
+      name: "message_agent",
+      arguments: input,
+    });
+    expect(response.structuredContent).toMatchObject({
+      value: {
+        delivered: "refused",
+        reason: expect.stringContaining(
+          waiting === "approval" ? "permission" : "input",
+        ),
+      },
+    });
+    h.providers.answer(present(run.sessionId), "accept");
+    expect(
+      (await client.callTool({ name: "message_agent", arguments: input }))
+        .structuredContent,
+    ).toEqual(response.structuredContent);
+    await h.coordinator.settle();
+    expect(h.paneHost.writes).toHaveLength(writes);
+    expect(
+      h.store.messages(task.id).some((m) => m.text.includes(input.text)),
+    ).toBe(false);
+    expect(h.store.operator.notes(task.id)).toMatchObject([
+      { author: "main", body: input.text, outcome: "refused" },
+    ]);
+  });
+
+for (const onIssue of [false, true])
+  test(`Operator consumes a Main event on its next pump and records an unread ${onIssue ? "issue" : "operator"} reply`, async () => {
+    const { h } = await setup();
+    await h.coordinator.leadFor(h.repo.id).open();
+    const client = await mcp(h);
+    const { task } = h.coordinator.createTask({
+      repoId: h.repo.id,
+      title: "Context",
+      description: "Context only",
+    });
+    const input = {
+      to: { kind: "operator" },
+      text: "Is there anything the human should know?",
+      idempotencyKey: "operator-question",
+    };
+    expect(
+      (await client.callTool({ name: "message_agent", arguments: input }))
+        .structuredContent,
+    ).toMatchObject({ value: { delivered: "queued" } });
+    await client.callTool({ name: "message_agent", arguments: input });
+    const event = present(
+      h.store.operator.pending().find((e) => e.kind === "main_message"),
+    );
+    expect(
+      h.store.operator.pending().filter((e) => e.kind === "main_message"),
+    ).toHaveLength(1);
+    await h.coordinator.operator.pump();
+    expect(h.paneHost.writes.some((w) => w.text.includes(input.text))).toBe(
+      true,
+    );
+    const reply = {
+      eventId: event.id,
+      text: "The requirements need a human decision.",
+      ...(onIssue ? { taskId: task.id } : {}),
+    };
+    expect(
+      await h.coordinator.operator.invoke("retry_task", { eventId: event.id }),
+    ).toMatchObject({ result: { accepted: false } });
+    await h.coordinator.operator.invoke("append_note", reply);
+    await h.coordinator.operator.invoke("append_note", reply);
+    expect(h.store.operator.isProcessed(event.id)).toBe(true);
+    expect(h.store.operator.unreadReplies(h.repo.id)).toMatchObject([
+      {
+        author: "operator",
+        addressedTo: "main",
+        body: reply.text,
+        taskId: onIssue ? task.id : null,
+      },
+    ]);
+    expect(h.store.operator.unreadReplies("other-repo")).toEqual([]);
+    await h.coordinator.leadFor(h.repo.id).stop();
+    await h.coordinator.leadFor(h.repo.id).open();
+    expect((await recipe(h)).args.at(-1)).toContain(reply.text);
+    const secondClient = await mcp(h);
+    expect(
+      (
+        await secondClient.callTool({
+          name: "read_agent_replies",
+          arguments: {},
+        })
+      ).structuredContent,
+    ).toMatchObject({ value: [{ body: reply.text }] });
+    expect(h.store.operator.unreadReplies(h.repo.id)).toEqual([]);
+  });
+
+test("Main refuses missing roles, ended runs and cross-repository destinations", async () => {
+  const { h } = await setup();
+  await h.coordinator.leadFor(h.repo.id).open();
+  const client = await mcp(h);
+  const { task, run } = await messagingRun(h);
+  const other = {
+    ...h.repo,
+    id: "other" as typeof h.repo.id,
+    root: h.dataRoot as typeof h.repo.root,
+    github: "example/other",
+  };
+  h.store.putRepo(other);
+  const foreign = h.coordinator.createTask({
+    repoId: other.id,
+    title: "Private",
+    description: "Other Main",
+  });
+  for (const to of [
+    { kind: "task", taskId: task.id, role: "reviewer" },
+    { kind: "run", taskId: task.id, runId: "missing" },
+    { kind: "run", taskId: foreign.task.id, runId: run.id },
+    { kind: "task", taskId: foreign.task.id, role: "implementer" },
+  ])
+    expect(
+      (
+        await client.callTool({
+          name: "message_agent",
+          arguments: { to, text: "Hello" },
+        })
+      ).structuredContent,
+    ).toMatchObject({ value: { delivered: "refused" } });
+  expect(h.store.operator.notes(foreign.task.id)).toEqual([]);
+  h.coordinator.submitHuman(task.id, {
+    type: "cancel",
+    reason: "Complete fixture",
+  });
+  await h.coordinator.settle();
+  expect(
+    (
+      await client.callTool({
+        name: "message_agent",
+        arguments: {
+          to: { kind: "run", taskId: task.id, runId: run.id },
+          text: "Hello",
+        },
+      })
+    ).structuredContent,
+  ).toMatchObject({
+    value: { delivered: "refused", reason: "the run has ended" },
+  });
+});
+
+test("Main message receipts and unread Operator replies survive a coordinator restart", async () => {
+  const { h } = await setup();
+  await h.coordinator.leadFor(h.repo.id).open();
+  const client = await mcp(h);
+  const input = {
+    to: { kind: "operator" },
+    text: "Quick context?",
+    idempotencyKey: "restart-message",
+  };
+  await client.callTool({ name: "message_agent", arguments: input });
+  const event = present(
+    h.store.operator.pending().find((e) => e.kind === "main_message"),
+  );
+  await h.coordinator.operator.invoke("append_note", {
+    eventId: event.id,
+    text: "Context for Main",
+  });
+  const restarted = await h.restart();
+  cleanups.push(() => restarted.close());
+  const nextClient = await mcp(restarted);
+  expect(
+    (await nextClient.callTool({ name: "message_agent", arguments: input }))
+      .structuredContent,
+  ).toMatchObject({ value: { delivered: "queued" } });
+  expect(restarted.store.operator.isProcessed(event.id)).toBe(true);
+  expect(
+    restarted.store.operator.notes().filter((n) => n.author === "main"),
+  ).toHaveLength(1);
+  expect(restarted.store.operator.unreadReplies(h.repo.id)).toHaveLength(1);
+  expect(
+    (await nextClient.callTool({ name: "read_agent_replies", arguments: {} }))
+      .structuredContent,
+  ).toMatchObject({ value: [{ body: "Context for Main" }] });
+  expect(
+    (await nextClient.callTool({ name: "read_agent_replies", arguments: {} }))
+      .structuredContent,
+  ).toMatchObject({ value: [] });
+});
+
+test("Main refuses a slow status read promptly and never queues a late send", async () => {
+  const { h } = await setup();
+  await h.coordinator.leadFor(h.repo.id).open();
+  const client = await mcp(h);
+  const { task, run } = await messagingRun(h);
+  const sessions = await h.adapters.claude.listSessions();
+  let release: (value: typeof sessions) => void = () => {};
+  const read = vi
+    .spyOn(h.adapters.claude, "listSessions")
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+  const start = performance.now();
+  const result = await client.callTool({
+    name: "message_agent",
+    arguments: {
+      to: { kind: "run", taskId: task.id, runId: run.id },
+      text: "Slow check",
+    },
+  });
+  expect(performance.now() - start).toBeLessThan(1500);
+  expect(result.structuredContent).toMatchObject({
+    value: {
+      delivered: "refused",
+      reason: "provider status was not available promptly",
+    },
+  });
+  release(sessions);
+  read.mockRestore();
+  await h.coordinator.settle();
+  expect(
+    h.store.messages(task.id).some((m) => m.text.includes("Slow check")),
+  ).toBe(false);
+});
+
+test("a permission appearing after Main admission still blocks the existing send path", async () => {
+  const { h } = await setup();
+  await h.coordinator.leadFor(h.repo.id).open();
+  const client = await mcp(h);
+  const { task, run } = await messagingRun(h);
+  const writes = h.paneHost.writes.length;
+  const enqueue = h.store.enqueueInput.bind(h.store);
+  const spy = vi
+    .spyOn(h.store, "enqueueInput")
+    .mockImplementation((taskId, input) => {
+      if (input.type === "human" && input.command.type === "send_message")
+        h.providers.request(
+          present(run.sessionId),
+          "approval",
+          "Decision arrived during admission",
+        );
+      return enqueue(taskId, input);
+    });
+  expect(
+    (
+      await client.callTool({
+        name: "message_agent",
+        arguments: {
+          to: { kind: "run", taskId: task.id, runId: run.id },
+          text: "Race check",
+        },
+      })
+    ).structuredContent,
+  ).toMatchObject({ value: { delivered: "queued" } });
+  spy.mockRestore();
+  await h.coordinator.settle();
+  expect(h.paneHost.writes).toHaveLength(writes);
+  expect(
+    h.store.messages(task.id).find((m) => m.text.includes("Race check"))
+      ?.status,
+  ).toBe("pending");
+});
