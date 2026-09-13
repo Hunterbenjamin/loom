@@ -85,9 +85,13 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
         }),
       ),
     ).toMatchSnapshot();
-    expect(space?.querySelector(".wb-status")?.getAttribute("aria-label")).toBe(
-      "Working",
-    );
+    // The space row keeps a plain circle; its first tab carries the live indicator.
+    expect(space?.querySelector(".wb-status")?.textContent).toBe("○");
+    expect(
+      space
+        ?.querySelector(".wb-tab-row .wb-status")
+        ?.getAttribute("aria-label"),
+    ).toBe("Working");
     expect(space?.querySelector(".wb-space-branch")?.textContent).toBe(
       "fix/delivery-race",
     );
@@ -147,7 +151,10 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
     expect(space?.querySelector(".wb-disclosure")).toBeNull();
     expect(space?.querySelector(".wb-tree-tab")).not.toBeNull();
     await act(async () => publish(true));
-    expect(space?.querySelector(".wb-status")?.textContent).toBe("●");
+    expect(space?.querySelector(".wb-status")?.textContent).toBe("○");
+    expect(space?.querySelector(".wb-tab-row .wb-status")?.textContent).toBe(
+      "●",
+    );
     await act(async () => render("cdx"));
     expect(space?.querySelector(".wb-tree-tab")).not.toBeNull();
     expect(element.querySelector('[aria-label="research"]')).toBeNull();

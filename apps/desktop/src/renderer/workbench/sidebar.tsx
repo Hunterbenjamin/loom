@@ -268,7 +268,11 @@ export function Sidebar({
                         openGroup(rowPanes("space", space.key), space.name)
                       }
                     >
-                      <Status state={space.indicator} />
+                      {/* A space is a place, not an agent: its row keeps the plain circle and
+                          the rows inside it carry the live indicators. */}
+                      <span className="wb-status idle" aria-hidden="true">
+                        ○
+                      </span>
                       <span className="wb-row-copy">
                         <span className="wb-tree-name">{space.label}</span>
                         <small
