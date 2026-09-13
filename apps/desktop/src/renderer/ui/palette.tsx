@@ -2,7 +2,7 @@ import { Command } from "cmdk";
 import { useEffect, useState } from "react";
 import { STAGES } from "../fixtures/index.js";
 import { useStore, useStoreApi } from "../store/react.js";
-import { selectedRows } from "../store/selectors.js";
+import { cursorRows, selectedRows } from "../store/selectors.js";
 import { VIEWS } from "../store/store.js";
 import { stageLabel } from "./format.js";
 
@@ -10,6 +10,7 @@ export function Palette() {
   const store = useStoreApi();
   const open = useStore((s) => s.ui.palette);
   const rows = useStore(selectedRows);
+  const visibleRows = useStore(cursorRows);
   const cursor = useStore((s) => s.ui.cursor);
   const openTask = useStore((s) => s.ui.openTask);
   const pane = useStore((s) => s.ui.pane);
@@ -20,7 +21,7 @@ export function Palette() {
   }, [open]);
 
   if (!open) return null;
-  const current = openTask ?? rows[cursor]?.task.id ?? null;
+  const current = openTask ?? visibleRows[cursor]?.task.id ?? null;
   const close = () => store.setPalette(false);
   const run = (action: () => void) => {
     close();
@@ -140,7 +141,7 @@ export function Palette() {
 export function StagePicker() {
   const store = useStoreApi();
   const open = useStore((s) => s.ui.stagePicker);
-  const rows = useStore(selectedRows);
+  const rows = useStore(cursorRows);
   const cursor = useStore((s) => s.ui.cursor);
   const openTask = useStore((s) => s.ui.openTask);
   if (!open) return null;

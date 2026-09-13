@@ -209,14 +209,9 @@ class AppServerAdapter implements CodexAdapter {
     return this.connection;
   }
   private async reconnectAfterDisconnection(): Promise<void> {
-    // Attempt to restart or adopt the app-server, then reconnect
-    try {
-      await this.server.start();
-      await this.connect();
-    } catch (error) {
-      // If reconnection fails, the error will be re-thrown by rpcWithReconnect
-      throw error;
-    }
+    // Attempt to restart or adopt the app-server, then reconnect.
+    await this.server.start();
+    await this.connect();
   }
   /** Wraps an RPC action to automatically reconnect if the connection is lost. */
   private async rpcWithReconnect<T>(action: () => Promise<T>): Promise<T> {

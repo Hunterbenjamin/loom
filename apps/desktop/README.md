@@ -128,8 +128,12 @@ Workbench. The palette also offers mode switching; explicit New Window commands 
 New Tracker is also available in the Tracker palette. `LOOM_WINDOW_MODE=workbench` chooses the initial
 window mode independently of live/fixture connection settings. Layouts are memory-only.
 
-The sidebar lists canonical native sessions and panes, including dead and unlinked panes. Selecting
-an existing terminal attaches to it. Drag panel headers to panel edges to rearrange splits.
+The sidebar groups native spaces → tabs → panes, including dimmed dead panes and unlinked spaces.
+Task spaces show their task key/title; every row rolls up provider status and coordinator attention.
+Main and Operator stay pinned at the bottom. Expansion and fuzzy filtering live in window memory.
+A pane click replaces the focused viewer; Enter opens a new tab. Space and tab rows toggle expansion.
+Branches, rename, sound/flash and opening a tab row as splits belong to later Workbench v2 slices.
+Drag panel headers to panel edges to rearrange splits.
 
 ### Workbench keybindings
 

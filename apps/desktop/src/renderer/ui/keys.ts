@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { inboxRows, reasonTab } from "../store/inbox.js";
-import { selectedRows } from "../store/selectors.js";
+import { cursorRows } from "../store/selectors.js";
 import type { Store } from "../store/store.js";
 
 const TYPING = new Set(["INPUT", "TEXTAREA", "SELECT"]);
@@ -54,7 +54,7 @@ export function useShortcuts(store: Store): void {
 
       const inbox =
         ui.view === "needs-you" ? inboxRows(store.getState()) : null;
-      const rows = inbox ?? selectedRows(store.getState());
+      const rows = inbox ?? cursorRows(store.getState());
       switch (event.key) {
         case "g":
           pendingG.current = true;

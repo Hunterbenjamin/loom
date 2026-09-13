@@ -18,7 +18,11 @@ import type {
 import type { AgentsReaderOptions } from "./agents.js";
 import { readAgents } from "./agents.js";
 import type { StartHeadlessRequest } from "./headless.js";
-import { HeadlessRun, isResumable } from "./headless.js";
+import {
+  HeadlessRun,
+  isResumable,
+  READ_ONLY_DISALLOWED_TOOLS,
+} from "./headless.js";
 import type { HookLog, HookReceipt } from "./hooks.js";
 import {
   foldHookSummary,
@@ -124,7 +128,14 @@ export async function createClaudeAdapter(
       });
     },
 
-    interactiveArgs: ({ sessionId, resume, model, settingsPath, readOnly }) => [
+    interactiveArgs: ({
+      sessionId,
+      resume,
+      model,
+      settingsPath,
+      readOnly,
+      conversationOnly,
+    }) => [
       "--settings",
       settingsPath,
       "--mcp-config",
@@ -133,13 +144,12 @@ export async function createClaudeAdapter(
       sessionId,
       "--model",
       model,
-      // Full access inside the run's own worktree (user decision, 2026-09-12): every prompt
-      // stalled a run until a human answered in tmux. Safety is the worktree, the send gate,
-      // code-owned transitions and branch protection on the base branch, not per-command prompts.
-      "--permission-mode",
-      readOnly ? "dontAsk" : "bypassPermissions",
-      ...(readOnly
+      // Main is confined to conversation and file reads. Task planners/reviewers retain
+      // their edit restrictions while keeping the tools needed to inspect and test the repo.
+      ...(conversationOnly
         ? [
+            "--permission-mode",
+            "dontAsk",
             "--restricted",
             "--tools",
             "Read,Glob,Grep",
@@ -151,7 +161,9 @@ export async function createClaudeAdapter(
             "--disable-slash-commands",
             "--no-chrome",
           ]
-        : []),
+        : readOnly
+          ? ["--disallowedTools", ...READ_ONLY_DISALLOWED_TOOLS]
+          : ["--permission-mode", "bypassPermissions"]),
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {

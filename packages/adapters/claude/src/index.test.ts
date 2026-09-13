@@ -128,6 +128,7 @@ describe("createClaudeAdapter", () => {
         resume: false,
         model: "haiku",
         settingsPath,
+        readOnly: false,
       }),
     ).toEqual([
       "--settings",
@@ -147,8 +148,22 @@ describe("createClaudeAdapter", () => {
         resume: true,
         model: "haiku",
         settingsPath,
+        readOnly: true,
       }),
-    ).toContain("--resume");
+    ).toEqual([
+      "--settings",
+      "/runs/r1/settings.json",
+      "--mcp-config",
+      "/runs/r1/settings.mcp.json",
+      "--resume",
+      SESSION,
+      "--model",
+      "haiku",
+      "--disallowedTools",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+    ]);
   });
 
   test.each([false, true])(
@@ -160,6 +175,7 @@ describe("createClaudeAdapter", () => {
         model: "haiku",
         settingsPath: "/runs/main/settings.json",
         readOnly: true,
+        conversationOnly: true,
       });
       expect(args).toContain(resume ? "--resume" : "--session-id");
       expect(args[args.indexOf("--disallowedTools") + 1]?.split(",")).toEqual([

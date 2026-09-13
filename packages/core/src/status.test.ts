@@ -323,7 +323,8 @@ describe("Claude status table", () => {
     ],
     [
       "headless crash",
-      (_, p) => {
+      (r, p) => {
+        r.mode = "headless";
         p.agentsEntry = null;
       },
       "failed",

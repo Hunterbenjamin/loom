@@ -14,8 +14,8 @@ const scenarios = (name: string) =>
   loadScenarios(new URL(`./fixtures/${name}.json`, import.meta.url));
 
 let open: Harness[] = [];
-const harness = async () => {
-  const value = await createHarness();
+const harness = async (...args: Parameters<typeof createHarness>) => {
+  const value = await createHarness(...args);
   open.push(value);
   return value;
 };
@@ -41,7 +41,9 @@ const load = (h: Harness, id: TaskId) => h.store.loadTaskState(id);
 test(
   "a headless run that crashes is retried on the same session",
   async () => {
-    const h = await harness();
+    const h = await harness({
+      config: { runModes: "planner=headless" },
+    });
     const taskId = start(h);
     const driver = new ScenarioDriver(h, await scenarios("crash-retry"));
     await driver.run({

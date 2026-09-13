@@ -115,6 +115,7 @@ describe("Operator policy v1", () => {
     const f = fixture("planning");
     const r = {
       ...run("planner", "claude"),
+      mode: "headless" as const,
       status: "failed" as const,
       endedAt: now,
       endReason: "crashed" as const,

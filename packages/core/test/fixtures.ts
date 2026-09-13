@@ -37,6 +37,11 @@ export const config: TaskState["config"] = {
   unknownGraceMs: 60000,
   deliveryTimeoutMs: 10000,
   githubPollMs: 60000,
+  runModes: {
+    planner: "interactive",
+    implementer: "interactive",
+    reviewer: "interactive",
+  },
 };
 export const plan = {
   goal: "Make the change",
@@ -55,12 +60,18 @@ export function run(
   round = role === "reviewer" ? 1 : 0,
 ): Run {
   const id = runId(taskId, role, round);
+  const pane = {
+    hostGeneration: "fake-1",
+    sessionName: "workspace",
+    windowId: `@${role}-${round}`,
+    paneId: `%${role}-${round}`,
+  };
   return {
     id,
     taskId,
     role,
     provider,
-    mode: role === "implementer" ? "interactive" : "headless",
+    mode: config.runModes[role] ?? "interactive",
     origin: "loom",
     worktreePath: path,
     round,
@@ -69,7 +80,7 @@ export function run(
     sessionId: `session:${id}` as ProviderSessionId,
     sessionEpoch: 0,
     codexGeneration: 1,
-    pane: null,
+    pane,
     status: "idle",
     blockedOn: null,
     lastTurn: null,
@@ -132,7 +143,7 @@ export function fixture(stage: Stage = "in_progress"): {
     approvals: [],
     artifacts: [],
     outbox: [],
-    config,
+    config: { ...config, runModes: { ...config.runModes } },
     consumedInputIds: [],
     artifactContents: {},
     desiredRun: null,
@@ -204,7 +215,22 @@ export function fixture(stage: Stage = "in_progress"): {
     runId: r.id,
     resumable: true,
     activityAt: null,
-    pane: null,
+    pane:
+      r.mode === "interactive" && r.pane
+        ? {
+            ok: true,
+            at: now,
+            value: {
+              ref: r.pane,
+              cwd: path,
+              startCwd: path,
+              pid: 4242,
+              command: r.provider,
+              dead: false,
+              exitCode: null,
+            },
+          }
+        : null,
     provider: {
       ok: true,
       at: now,

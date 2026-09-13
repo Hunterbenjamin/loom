@@ -43,6 +43,7 @@ describe("headless retries and interactive control", () => {
       key: `start_run:${f.run.id}#2`,
       runId: f.run.id,
       attempt: 2,
+      mode: "headless",
       sessionId: f.run.sessionId,
       resume: true,
     });
@@ -303,6 +304,10 @@ describe("launch results and persisted outbox", () => {
     f.state.plan = null;
     f.state.runs = [];
     f.observations.runs = [];
+    f.state.config = {
+      ...f.state.config,
+      runModes: { ...f.state.config.runModes, planner: "headless" },
+    };
     const first = reconcile(f.state, f.observations);
     const start = first.actions.find((a) => a.kind === "start_run");
     if (!start) throw Error("Missing start");
@@ -462,6 +467,69 @@ describe("launch results and persisted outbox", () => {
     expect(fixed(approved.next, f.observations).next.task.stage).toBe(
       "merging",
     );
+  });
+});
+
+describe("run mode configuration", () => {
+  it("default config has interactive mode for all roles", () => {
+    const f = fixture("planning");
+    // Verify the default config has interactive mode for all roles
+    expect(f.state.config.runModes).toEqual({
+      planner: "interactive",
+      implementer: "interactive",
+      reviewer: "interactive",
+    });
+  });
+
+  it("run fixture uses config.runModes to set mode", () => {
+    const f = fixture("in_progress");
+    // Existing planner run from fixture should use config.runModes
+    const planner = f.state.runs.find((r) => r.role === "planner");
+    // The run fixture uses config.runModes, so it should be interactive
+    expect(planner?.mode).toBe("interactive");
+  });
+
+  it.each(["planner", "implementer", "reviewer"] as const)(
+    "creates a new %s run with the interactive default",
+    (role) => {
+      const f = fixture(
+        role === "planner"
+          ? "planning"
+          : role === "reviewer"
+            ? "in_review"
+            : "in_progress",
+      );
+      f.state.runs = f.state.runs.filter((run) => run.role !== role);
+      f.observations.runs = f.observations.runs.filter(
+        (observation) => !observation.runId.includes(`/${role}/`),
+      );
+      if (role === "planner") {
+        f.state.plan = null;
+        f.state.review = null;
+        f.state.task.prNumber = null;
+        f.observations.github = { ok: true, at: now, value: null };
+      }
+      f.state.desiredRun = {
+        role,
+        round: role === "reviewer" ? 1 : 0,
+        resume: false,
+      };
+      const r = fixed(f.state, f.observations);
+      expect(r.next.runs.find((run) => run.role === role)?.mode).toBe(
+        "interactive",
+      );
+    },
+  );
+
+  it("uses a role override only when creating the run", () => {
+    const f = fixture("backlog");
+    f.state.task.stage = "todo";
+    f.state.runs = [];
+    f.state.config.runModes.implementer = "headless";
+    f.state.desiredRun = { role: "implementer", round: 0, resume: false };
+    const r = fixed(f.state, f.observations);
+    const impl = r.next.runs.find((run) => run.role === "implementer");
+    expect(impl?.mode).toBe("headless");
   });
 });
 
