@@ -199,7 +199,8 @@ in the latency numbers.
 ## Main
 
 Every window has a 34px bottom bar: connection state and instance on the left, and a Main toggle
-with the number of Needs-you rows on the right. `⌘J` opens or closes Main, including while typing
+with the number of Needs-you rows on the right. The bar also shows the selected repository's
+*Ready to merge* PR count (see slice 5 below). `⌘J` opens or closes Main, including while typing
 in its terminal. The panel overlays the lower third of the window. Its top edge supports pointer
 and arrow-key resizing; height and visibility live only in that window's memory. Closing detaches
 that terminal client and leaves the session running. Reopening attaches again and, if native status is idle with no pending dialog, requests a short
@@ -342,8 +343,9 @@ The existing desktop fixture merely supplies empty collections for the extended 
 ## Pull request list (slice 3)
 
 Tracker's Pull requests sidebar entry shows the cached open count for the selected repository.
-Opening the view subscribes only to that repository's open list; choosing Merged or Closed additionally subscribes to that state, so the count remains an
-open count. Switching repository, leaving the view or hiding Tracker releases the unused scopes.
+The selected repository's open list stays subscribed for the bottom-bar count (slice 5); choosing
+Merged or Closed additionally subscribes to that state. Switching repository, leaving the view or
+hiding Tracker releases the unused detail and non-open list scopes.
 The existing coordinator polling and read ownership are unchanged.
 
 The virtualized list orders PRs by creation time, newest first. Rows show number, title, head →
@@ -352,7 +354,7 @@ State defaults to Open, and the text filter matches number, title, branches, aut
 Filters and cursor live only in the window and survive view/mode switches. J/K moves the cursor,
 / focuses the filter, and Escape clears it. Rows are focusable and Enter/Space selects them;
 the task-key button opens the existing task detail and supports native keyboard activation.
-Rows now open PR detail on click or Enter/Space; palette additions and action shortcuts remain slice 5.
+Rows open PR detail on click or Enter/Space; palette additions and action shortcuts are described in slice 5.
 Fixture mode includes linked and off-pipeline PRs in every state and badge condition.
 
 
@@ -381,3 +383,28 @@ GitHub detail fact, refreshed through the adapter using the actual head reposito
 Refresh and all mutations use existing coordinator commands, with no direct renderer GitHub access.
 Pending commands disable duplicate submissions. Outcomes and errors remain inline; merged-at and
 branch-deleted labels come from refreshed GitHub observations. No task stage is changed by the UI.
+
+
+## Pull request polish (slice 5)
+
+With a PR detail open, the Tracker palette includes Squash and merge (`m`), Delete branch (`d`),
+Open on GitHub (`o`) and Refresh pull request (`r`). The single-key shortcuts activate the same
+controls: merge still opens the exact-head confirmation, and disabled actions cannot run. Typing,
+terminals, the palette, native dialogs and modified/repeated keys retain their own input handling.
+Palette commands show the same eligibility reasons as the action bar; pending submissions cannot
+be duplicated. The existing Pull requests navigation command is also available in the palette.
+
+A merge command submitted from the app produces a native system notification when the coordinator
+returns its result after the GitHub refresh, including if the human has navigated away from detail.
+Successful results announce the squash merge and requested branch deletion; errors include the
+coordinator's reason. A lost response is explicitly unconfirmed and directs the human to refresh,
+never to replay automatically. Notification delivery does not alter the command outcome. Merely
+observing a merged PR or running a fixture command does not notify.
+
+The bottom bar in both window modes shows *Ready to merge* for the selected repository, regardless
+of list state or text filters. It counts cached open, non-draft PRs with positive mergeability and
+passing or no checks, using the action bar's eligibility rules. The count is a disposable projection,
+not approval or a guarantee against later pushes. Each window subscribes to its selected repository's
+open list, including outside the PR view; the coordinator shares the existing 60-second conditional
+poll across matching windows and releases it when no window subscribes. Switching repository changes
+the scope. Detail and non-open list polls are still released when their views are hidden.

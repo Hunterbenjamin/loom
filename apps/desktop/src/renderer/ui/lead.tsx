@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { inboxRows } from "../store/inbox.js";
+import { readyToMergeCount } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { useWindowMode } from "../window-mode.js";
 import { ChimeMuteButton } from "../workbench/chime.js";
@@ -31,6 +32,7 @@ export function LeadBar({
   const store = useStoreApi();
   const connection = useStore((s) => s.connection);
   const instance = useStore((s) => s.instance);
+  const readyCount = useStore(readyToMergeCount);
   const count = useStore((s) => inboxRows(s).length);
   const agentCount = useStore(
     (s) =>
@@ -195,6 +197,9 @@ export function LeadBar({
         >
           Agents needing attention · {agentCount}
         </button>
+        <span title="Open, non-draft pull requests with passing or no checks and no merge conflicts in the selected repository">
+          Ready to merge · {readyCount}
+        </span>
         <span className="spacer" />
         <ChimeMuteButton />
         <button
