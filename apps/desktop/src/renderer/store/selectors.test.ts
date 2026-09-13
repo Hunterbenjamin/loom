@@ -1,8 +1,16 @@
 import { describe, expect, test } from "vitest";
-import { minutesBefore, runId, taskId } from "../fixtures/ids.js";
+import { isoTime, minutesBefore, runId, taskId } from "../fixtures/ids.js";
 import type { Snapshot } from "../fixtures/index.js";
 import { buildSnapshot } from "../fixtures/index.js";
-import { rowsFor, terminalsForTask } from "./selectors.js";
+import {
+  cursorRows,
+  groupRows,
+  rowsFor,
+  sortRows,
+  terminalsForTask,
+} from "./selectors.js";
+
+import { createStore, LIST_PAGE_SIZE } from "./store.js";
 
 describe("rowsFor", () => {
   test("selects an explicit summary and falls back to the description's first sentence", () => {
@@ -287,5 +295,115 @@ describe("terminalsForTask", () => {
   test("returns no runs when the task has none", () => {
     const { fixture, task } = setup();
     expect(terminalsForTask({ ...fixture, runs: [] }, task)).toEqual([]);
+  });
+});
+
+describe("list section paging", () => {
+  function setup(stage: "done" | "canceled" | "in_progress", count: number) {
+    const fixture = buildSnapshot();
+    const task = fixture.tasks[0];
+    if (!task) throw new Error("Missing fixture task");
+    return createStore({
+      ...fixture,
+      tasks: Array.from({ length: count }, (_, i) => ({
+        ...task,
+        id: taskId(`task-${i}`),
+        stage,
+        title: `Title ${String(i).padStart(3, "0")}`,
+        // Newer transitions deliberately have older creation dates.
+        createdAt: minutesBefore(1000 + i),
+        stageEnteredAt: minutesBefore(count - i),
+      })),
+    });
+  }
+
+  test.each(["done", "canceled"] as const)(
+    "pages %s by exact transition time regardless of column sort",
+    (stage) => {
+      const store = setup(stage, 46);
+      const rows = rowsFor(store.getState().snapshot, "all", "all", "");
+      const before = [...rows];
+      for (const sort of ["title", "age", "stage"] as const) {
+        for (const descending of [false, true]) {
+          const items = groupRows(sortRows(rows, sort, descending));
+          expect(items[0]).toEqual({
+            kind: "header",
+            stage,
+            count: 46,
+            collapsed: false,
+          });
+          expect(
+            items
+              .filter((item) => item.kind === "row")
+              .map((item) => item.row.task.id),
+          ).toEqual(
+            Array.from({ length: LIST_PAGE_SIZE }, (_, i) => `task-${45 - i}`),
+          );
+          expect(items.at(-1)).toEqual({
+            kind: "load-more",
+            stage,
+            count: LIST_PAGE_SIZE,
+          });
+        }
+      }
+      expect(rows).toEqual(before);
+      store.loadMoreListSection(stage);
+      expect(cursorRows(store.getState())).toHaveLength(40);
+      expect(groupRows(rows, store.getState().ui.listSections).at(-1)).toEqual({
+        kind: "load-more",
+        stage,
+        count: 6,
+      });
+      store.loadMoreListSection(stage);
+      expect(cursorRows(store.getState())).toHaveLength(46);
+      expect(
+        groupRows(rows, store.getState().ui.listSections).filter(
+          (item) => item.kind === "load-more",
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  test.each([0, 19, 20, 21, 40])("handles a section with %s tasks", (count) => {
+    const store = setup("done", count);
+    const rows = rowsFor(store.getState().snapshot, "all", "all", "");
+    const items = groupRows(rows);
+    expect(items.filter((item) => item.kind === "row")).toHaveLength(
+      Math.min(count, LIST_PAGE_SIZE),
+    );
+    expect(items.filter((item) => item.kind === "load-more")).toHaveLength(
+      count > LIST_PAGE_SIZE ? 1 : 0,
+    );
+    expect(items.filter((item) => item.kind === "header")).toHaveLength(
+      count ? 1 : 0,
+    );
+  });
+
+  test("leaves active sections unlimited and in the selected sort order", () => {
+    const store = setup("in_progress", 46);
+    store.setSort("title");
+    expect(cursorRows(store.getState()).map((row) => row.task.id)).toEqual(
+      Array.from({ length: 46 }, (_, i) => `task-${i}`),
+    );
+    store.toggleListSection("in_progress");
+    expect(cursorRows(store.getState())).toEqual([]);
+    store.setPane("board");
+    expect(cursorRows(store.getState())).toHaveLength(46);
+  });
+
+  test("breaks equal transition timestamps deterministically, without minute rounding", () => {
+    const store = setup("done", 3);
+    const snapshot = store.getState().snapshot;
+    snapshot.tasks = snapshot.tasks.map((task, i) => ({
+      ...task,
+      stageEnteredAt: isoTime(`2026-09-13T00:00:${i === 1 ? "02" : "01"}.000Z`),
+    }));
+    const rows = rowsFor(snapshot, "all", "all", "");
+    const ids = (input: typeof rows) =>
+      groupRows(input).flatMap((item) =>
+        item.kind === "row" ? [item.row.task.id] : [],
+      );
+    expect(ids(rows)).toEqual(["task-1", "task-0", "task-2"]);
+    expect(ids([...rows].reverse())).toEqual(ids(rows));
   });
 });
