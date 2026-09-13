@@ -64,6 +64,16 @@ are not attachable terminals; the existing isolated terminal harness covers PTY 
 | `LOOM_WIDTH`, `LOOM_HEIGHT` | Window size at launch. |
 | `LOOM_ATTACH_PANE`, `LOOM_TMUX_BIN` | Fixture-only terminal target and executable. |
 
+Tracker creates issues with `C`, the palette's **Create issue** command, or **+** beside the
+repository picker. The dialog defaults to the selected repository (the first for All), Backlog,
+Normal size and plan approval required. Description accepts Markdown and grows as you type;
+Command+Enter submits. Todo is labelled as starting the workflow; Small skips planning for
+one-file fixes. Escape or Cancel asks before discarding an edited draft.
+
+Live creation waits for `task_created`, then queues the human move for Todo. Rejections appear
+inline; if creation succeeded, retry sends only the move. Success selects the issue in All tasks
+and shows its key. Fixture mode uses the same form with the existing local creation path.
+
 ## Keyboard
 
 Every action is reachable from the keyboard.
@@ -76,7 +86,7 @@ Every action is reachable from the keyboard.
 | `j` / `k` | Move the cursor |
 | `enter` | Open the task under the cursor |
 | `esc` | Close the palette, the search field, then the issue |
-| `c` | Create a task |
+| `c` | Open Create issue |
 | `/` | Search |
 | `e` | Change stage |
 | `cmd+k`, then "Review changes and findings" | Open Review for the current task |

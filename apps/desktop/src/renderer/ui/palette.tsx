@@ -81,11 +81,9 @@ export function Palette() {
               </>
             ) : null}
             <Command.Item
-              onSelect={() =>
-                run(() => store.createTask(value || "New task", "all"))
-              }
+              onSelect={() => run(() => store.setCreateIssue(true))}
             >
-              Create task {value ? `"${value}"` : ""}
+              Create issue…
             </Command.Item>
           </Command.Group>
 

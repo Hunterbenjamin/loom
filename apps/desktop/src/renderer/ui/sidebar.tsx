@@ -32,6 +32,15 @@ export function Sidebar() {
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          className="create-issue-button"
+          aria-label="Create issue"
+          title="Create issue (C)"
+          onClick={() => store.setCreateIssue(true)}
+        >
+          +
+        </button>
       </div>
 
       <div className="sidebar-section">Views</div>

@@ -24,6 +24,20 @@ round trip. Inactive mode effects are suspended: terminal viewers detach while h
 again when shown, without stopping their native panes or agents. No hidden spare window is created.
 Closing a window closes only its viewers; the coordinator owns durable task state.
 
+## Tracker
+
+Create issue opens from `C`, the command palette, or **+** beside the repository picker. A native
+modal keeps keyboard focus inside it and autofocuses the required title. The Markdown description
+grows with its content; Command+Enter submits. Repository defaults to the sidebar selection, or
+the first repository for All. Status offers Backlog and Todo (starts the workflow); size offers
+Normal and Small (skips planning, for one-file fixes), alongside Require plan approval.
+
+The live window sends `create_task` and waits for its assigned key. Todo then sends a separate
+human move; its acknowledgement means queued. Errors remain inline with the draft; a failed move
+can be retried without recreating the issue. Success closes the modal, reveals and selects the new
+issue in the list, and toasts its key. Escape and Cancel confirm before discarding edited drafts.
+Only fixture mode edits the local snapshot.
+
 ## Workbench
 
 - **Sidebar:** live native terminal sessions, with Main and Operator pinned first. Rows use terminal
