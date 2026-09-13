@@ -49,9 +49,11 @@ import type { Store } from "@loom/store";
 import { z } from "zod";
 import type { Adapters } from "./adapters.js";
 import {
+  applyStoredSettingsToConfig,
   COORDINATOR_VERSION,
   type CoordinatorConfig,
   epochOf,
+  reconcileConfig,
 } from "./config.js";
 import { classify, Executor } from "./executor.js";
 import { inspectTask } from "./inspect.js";
@@ -85,6 +87,8 @@ const EMPTY_ATTENTION: Attention = {
 
 export interface CoordinatorOptions {
   config: CoordinatorConfig;
+  /** Unmodified environment/bootstrap config used when a stored override is reset. */
+  baselineConfig?: CoordinatorConfig;
   store: Store;
   adapters: Adapters;
   /** Injected in tests so nothing depends on the wall clock. */
@@ -186,6 +190,7 @@ export class Coordinator {
   readonly store: Store;
   readonly adapters: Adapters;
   readonly recipes: RecipeStore;
+  private readonly baselineConfig: CoordinatorConfig;
   readonly leads = new Map<string, LeadSession>();
   leadFor(repoId: string): LeadSession {
     const repo = this.store.repos().find((repo) => repo.id === repoId);
@@ -264,6 +269,7 @@ export class Coordinator {
       repository,
       this.config.settingsEnvironment,
       this.compatibilitySettings(repoId),
+      this.config.providerEnvironment,
     ).effective;
   }
   private settingsRows(): Row[] {
@@ -282,6 +288,8 @@ export class Coordinator {
         global.data,
         scope.kind === "repository" ? stored.data : null,
         this.config.settingsEnvironment,
+        DEFAULT_SETTINGS,
+        this.config.providerEnvironment,
       );
       const effective = this.effectiveSettings(
         scope.kind === "repository" ? scope.repoId : undefined,
@@ -347,60 +355,19 @@ export class Coordinator {
   }
   private applyStoredRuntime(startup: boolean): void {
     const global = this.store.settings.read({ kind: "global" }).data;
-    const resolution = resolveSettings(
+    applyStoredSettingsToConfig(
+      this.config,
+      this.baselineConfig,
       global,
-      null,
-      this.config.settingsEnvironment,
+      startup,
     );
-    const stored = (path: string) =>
-      settingValue(global, path) !== undefined &&
-      resolution.sources[path] !== "environment";
-    const value = resolution.effective;
-    if (stored("runtime.capTotal"))
-      this.config.caps.total = value.runtime.capTotal;
-    if (stored("runtime.capCodex"))
-      this.config.caps.codex = value.runtime.capCodex;
-    if (stored("runtime.capClaude"))
-      this.config.caps.claude = value.runtime.capClaude;
-    if (stored("runtime.retryBaseMs"))
-      this.config.retry.baseMs = value.runtime.retryBaseMs;
-    if (stored("runtime.retryCapMs"))
-      this.config.retry.capMs = value.runtime.retryCapMs;
-    if (stored("runtime.retryMaxAttempts"))
-      this.config.retry.maxAttempts = value.runtime.retryMaxAttempts;
-    if (stored("runtime.stallAfterMs"))
-      this.config.stallAfterMs = value.runtime.stallAfterMs;
-    if (stored("runtime.unknownGraceMs"))
-      this.config.unknownGraceMs = value.runtime.unknownGraceMs;
-    if (stored("runtime.deliveryTimeoutMs"))
-      this.config.deliveryTimeoutMs = value.runtime.deliveryTimeoutMs;
-    if (stored("runtime.githubPollMs"))
-      this.config.githubPollMs = value.runtime.githubPollMs;
-    if (stored("runtime.resyncMs"))
-      this.config.resyncMs = value.runtime.resyncMs;
-    if (stored("runtime.excludedAuthors"))
-      this.config.excludedAuthors = value.runtime.excludedAuthors;
-    if (stored("operator.autoFix"))
-      this.config.operator.autoFix = value.operator.autoFix;
-    if (stored("operator.maxFiledPerHour"))
-      this.config.operator.maxFiledPerHour = value.operator.maxFiledPerHour;
-    if (!startup) return;
-    if (stored("runtime.heartbeatMs"))
-      this.config.heartbeatMs = value.runtime.heartbeatMs;
-    if (stored("runtime.worktreeRoot"))
-      this.config.worktreeRoot = value.runtime.worktreeRoot;
-    if (stored("runtime.tmuxExecutable"))
-      this.config.tmuxExecutable = value.runtime.tmuxExecutable;
-    if (stored("runtime.codexExecutable"))
-      this.config.codexExecutable = value.runtime.codexExecutable;
-    if (stored("runtime.claudeExecutable"))
-      this.config.claudeExecutable = value.runtime.claudeExecutable;
-    if (stored("operator.model"))
-      this.config.operatorModel = value.operator.model ?? undefined;
-    if (stored("operator.leadModel"))
-      this.config.leadModel = value.operator.leadModel ?? undefined;
-    if (stored("operator.repoId"))
-      this.config.operator.repoId = value.operator.repoId ?? undefined;
+    this.store.setReconcileConfig(reconcileConfig(this.config));
+    this.adapters.github.setExcludedAuthors?.(this.config.excludedAuthors);
+    if (!startup && this.resync) {
+      clearInterval(this.resync);
+      this.resync = setInterval(() => this.resyncAll(), this.config.resyncMs);
+      this.resync.unref?.();
+    }
   }
   private saveSettings(
     scope: SettingsScope,
@@ -455,6 +422,7 @@ export class Coordinator {
         repositoryData,
         environment,
         compatibility,
+        this.config.providerEnvironment,
       ).effective;
       return validateSettings(effective).filter((message) => {
         const match =
@@ -492,6 +460,8 @@ export class Coordinator {
       global,
       scope.kind === "repository" ? next : null,
       this.config.settingsEnvironment,
+      DEFAULT_SETTINGS,
+      this.config.providerEnvironment,
     ).effective.operator.repoId;
     if (
       operatorRepo &&
@@ -522,6 +492,8 @@ export class Coordinator {
           global,
           next,
           this.config.settingsEnvironment,
+          DEFAULT_SETTINGS,
+          this.config.providerEnvironment,
         ).effective;
         this.store.putRepo({
           ...repo,
@@ -544,6 +516,8 @@ export class Coordinator {
           next,
           repository,
           this.config.settingsEnvironment,
+          DEFAULT_SETTINGS,
+          this.config.providerEnvironment,
         ).effective.repository;
         this.store.putRepo({ ...repo, ...effective });
       }
@@ -596,6 +570,9 @@ export class Coordinator {
 
   constructor(private readonly options: CoordinatorOptions) {
     this.config = options.config;
+    this.baselineConfig = structuredClone(
+      options.baselineConfig ?? options.config,
+    );
     this.store = options.store;
     this.adapters = options.adapters;
     this.now = options.now ?? (() => new Date().toISOString() as IsoTime);

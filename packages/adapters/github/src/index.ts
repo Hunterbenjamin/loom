@@ -18,12 +18,13 @@ export interface GitHubOptions {
 
 export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
   const run = options.run ?? runGh;
-  const excluded = new Set(
-    z
-      .array(z.string().min(1))
-      .parse(options.excludedAuthors)
-      .map((v) => v.toLowerCase()),
-  );
+  const excluded = new Set<string>();
+  const setExcludedAuthors = (authors: readonly string[]) => {
+    excluded.clear();
+    for (const author of z.array(z.string().min(1)).parse(authors))
+      excluded.add(author.toLowerCase());
+  };
+  setExcludedAuthors(options.excludedAuthors);
   const snapshots = new Map<string, { etag: string; pages: Pages }>();
   const deleteBranch = branchActions(run);
   const deleteHead = async (repo: string, number: number) => {
@@ -59,6 +60,7 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
   };
 
   return {
+    setExcludedAuthors,
     ...pullRequestReads(run, () =>
       s.time.parse((options.now?.() ?? new Date()).toISOString()),
     ),

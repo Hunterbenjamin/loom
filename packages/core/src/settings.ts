@@ -93,6 +93,12 @@ export type SettingsPatch = {
   appearance?: Partial<SettingsValues["appearance"]>;
 };
 
+/** Provider-wide environment values are applied after the effective role provider is known. */
+export interface ProviderEnvironmentSettings {
+  models?: Partial<Record<Provider, string>>;
+  codexReasoningEffort?: ReasoningEffort;
+}
+
 export interface SettingDefinition {
   key: string;
   section:
@@ -645,6 +651,7 @@ export function resolveSettings(
   repository: SettingsPatch | null,
   environment: SettingsPatch | null,
   defaults: SettingsValues = DEFAULT_SETTINGS,
+  providerEnvironment: ProviderEnvironmentSettings | null = null,
 ) {
   const globalValues = merge(defaults, global);
   const repositoryValues = merge(globalValues, repository);
@@ -660,6 +667,21 @@ export function resolveSettings(
         : has(global)
           ? "global"
           : "default";
+  }
+  for (const role of ["planner", "implementer", "reviewer"] as const) {
+    const profile = effective.roles[role];
+    const model = providerEnvironment?.models?.[profile.provider];
+    if (model !== undefined) {
+      profile.model = model;
+      sources[`roles.${role}.model`] = "environment";
+    }
+    if (
+      profile.provider === "codex" &&
+      providerEnvironment?.codexReasoningEffort !== undefined
+    ) {
+      profile.reasoningEffort = providerEnvironment.codexReasoningEffort;
+      sources[`roles.${role}.reasoningEffort`] = "environment";
+    }
   }
   return { effective, sources };
 }

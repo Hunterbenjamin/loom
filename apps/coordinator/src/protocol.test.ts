@@ -177,6 +177,74 @@ test("settings updates publish atomically, reject stale/global-only writes, and 
   );
 }, 30_000);
 
+test("immediate global settings update core consumers and reset to the startup baseline", async () => {
+  const h = await served();
+  const setExcludedAuthors = vi.fn();
+  h.adapters.github.setExcludedAuthors = setExcludedAuthors;
+  const client = await connect(h, "runtime-settings");
+  const task = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Runtime configuration",
+    description: "",
+  }).task;
+  const before = client.state?.collections.settings.get("global");
+  expect(
+    await client.command({
+      kind: "update_settings",
+      scope: { kind: "global" },
+      expectedVersion: before?.version ?? 0,
+      patch: {
+        runtime: {
+          capTotal: 9,
+          deliveryTimeoutMs: 2222,
+          githubPollMs: 3333,
+          resyncMs: 4444,
+          excludedAuthors: ["loom-bot"],
+        },
+      },
+    }),
+  ).toMatchObject({ ok: true });
+  expect(h.coordinator.config).toMatchObject({
+    caps: { total: 9 },
+    deliveryTimeoutMs: 2222,
+    githubPollMs: 3333,
+    resyncMs: 4444,
+    excludedAuthors: ["loom-bot"],
+  });
+  expect(h.store.loadTaskState(task.id).config).toMatchObject({
+    deliveryTimeoutMs: 2222,
+    githubPollMs: 3333,
+  });
+  expect(setExcludedAuthors).toHaveBeenLastCalledWith(["loom-bot"]);
+
+  expect(
+    await client.command({
+      kind: "reset_settings",
+      scope: { kind: "global" },
+      expectedVersion: 1,
+      keys: [
+        "runtime.capTotal",
+        "runtime.deliveryTimeoutMs",
+        "runtime.githubPollMs",
+        "runtime.resyncMs",
+        "runtime.excludedAuthors",
+      ],
+    }),
+  ).toMatchObject({ ok: true });
+  expect(h.coordinator.config).toMatchObject({
+    caps: { total: 4 },
+    deliveryTimeoutMs: 10_000,
+    githubPollMs: 60_000,
+    resyncMs: 60_000,
+    excludedAuthors: [],
+  });
+  expect(h.store.loadTaskState(task.id).config).toMatchObject({
+    deliveryTimeoutMs: 10_000,
+    githubPollMs: 60_000,
+  });
+  expect(setExcludedAuthors).toHaveBeenLastCalledWith([]);
+}, 30_000);
+
 test("human terminal close confirms native removal and publishes deletion to connected clients", async () => {
   const h = await served();
   const ref = {

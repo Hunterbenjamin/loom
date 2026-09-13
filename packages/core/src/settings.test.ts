@@ -34,6 +34,38 @@ describe("settings resolution", () => {
     );
     expect(merged.roles.reviewer).toEqual(DEFAULT_SETTINGS.roles.reviewer);
   });
+
+  it("applies provider model environment values after repository routing", () => {
+    const resolved = resolveSettings(
+      null,
+      {
+        roles: {
+          planner: { provider: "claude", model: "claude-opus-4-6" },
+          implementer: { provider: "codex", model: "gpt-5.4" },
+        },
+      },
+      null,
+      DEFAULT_SETTINGS,
+      {
+        models: { codex: "gpt-5.6-sol" },
+        codexReasoningEffort: "high",
+      },
+    );
+    expect(resolved.effective.roles.planner).toMatchObject({
+      provider: "claude",
+      model: "claude-opus-4-6",
+    });
+    expect(resolved.sources["roles.planner.model"]).toBe("repository");
+    expect(resolved.effective.roles.implementer).toMatchObject({
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "high",
+    });
+    expect(resolved.sources["roles.implementer.model"]).toBe("environment");
+    expect(resolved.sources["roles.implementer.reasoningEffort"]).toBe(
+      "environment",
+    );
+  });
 });
 
 describe("settings validation", () => {

@@ -94,6 +94,34 @@ export const settingsPatch = z.strictObject({
   appearance: settingsValues.shape.appearance.partial().optional(),
 });
 
+// Published stored documents are deliberately forward-compatible. Commands still use the
+// strict schema above, so an older client cannot write fields it does not understand, while it
+// can receive and round-trip additive fields already owned by a newer coordinator.
+const storedRoleProfile = roleProfile.partial().passthrough();
+export const storedSettingsPatch = z
+  .object({
+    roles: z
+      .object({
+        planner: storedRoleProfile.optional(),
+        implementer: storedRoleProfile.optional(),
+        reviewer: storedRoleProfile.optional(),
+      })
+      .passthrough()
+      .optional(),
+    workflow: settingsValues.shape.workflow.partial().passthrough().optional(),
+    repository: settingsValues.shape.repository
+      .partial()
+      .passthrough()
+      .optional(),
+    operator: settingsValues.shape.operator.partial().passthrough().optional(),
+    runtime: settingsValues.shape.runtime.partial().passthrough().optional(),
+    appearance: settingsValues.shape.appearance
+      .partial()
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
 export const settingDefinition = z.strictObject({
   key: z.string().min(1),
   section: z.enum([
@@ -129,7 +157,7 @@ export const settingsDocument = z.strictObject({
   id: z.string().min(1),
   scope: settingsScope,
   version: z.number().int().nonnegative(),
-  stored: settingsPatch,
+  stored: storedSettingsPatch,
   defaults: settingsValues,
   effective: settingsValues,
   sources: z.record(

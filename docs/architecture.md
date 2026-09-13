@@ -67,6 +67,12 @@ is captured on each run. Retries and recovery retain that recipe, while an expli
 current effective role profile. Live supervisor values apply immediately; the catalog labels values
 that apply to the next task, next run, or coordinator restart. Every stored mutation uses an expected
 version and appends a redacted audit row. Settings and audit schemas reject secret-bearing keys.
+At startup the coordinator opens the store with bootstrap defaults, resolves the global settings
+row, refreshes core's reconcile configuration, and only then constructs tool and GitHub adapters.
+Immediate changes replace the live reconcile configuration and reschedule affected supervisor
+timers; resetting a value re-resolves from the immutable startup/environment baseline. Provider-wide
+model environment variables are applied after each role's effective provider is selected, so a
+repository provider override cannot detach or misapply them.
 
 This is the reviewed production configuration inventory. “Exposed” means it is represented by the
 typed catalog and Settings page; environment-backed rows are visible but disabled while the variable

@@ -4,12 +4,15 @@
 import { hostname } from "node:os";
 import {
   DEFAULT_SETTINGS,
+  mergeSettings,
   type Provider,
+  type ProviderEnvironmentSettings,
   type ReconcileConfig,
   type Role,
   type RunMode,
   resolveSettings,
   type SettingsPatch,
+  type SettingsValues,
 } from "@loom/core";
 import { z } from "zod";
 import { deriveClaudeSessionId, sha256 } from "./derive.js";
@@ -176,6 +179,7 @@ export const configSchema = z
       .transform((value) => parseRunModes(value)),
     agentAccess: z.enum(["full", "approval-gated"]).default("full"),
     settingsEnvironment: z.custom<SettingsPatch>().default({}),
+    providerEnvironment: z.custom<ProviderEnvironmentSettings>().default({}),
   })
   .transform((config) => ({
     ...config,
@@ -201,10 +205,17 @@ export const reconcileConfig = (config: CoordinatorConfig): ReconcileConfig => {
     runModes: config.runModes,
     providerOverrides: config.providerOverrides,
     codexReasoningEffort: config.codexReasoningEffort,
-    ...(config.settingsEnvironment.roles
+    ...(config.settingsEnvironment.roles ||
+    Object.keys(config.providerEnvironment.models ?? {}).length ||
+    config.providerEnvironment.codexReasoningEffort
       ? {
-          roleProfiles: resolveSettings(null, null, config.settingsEnvironment)
-            .effective.roles,
+          roleProfiles: resolveSettings(
+            null,
+            null,
+            config.settingsEnvironment,
+            DEFAULT_SETTINGS,
+            config.providerEnvironment,
+          ).effective.roles,
         }
       : {}),
   };
@@ -287,11 +298,6 @@ export function configFromEnvironment(
       parsed.providerOverrides[role] ?? DEFAULT_SETTINGS.roles[role].provider;
     const value: Partial<(typeof DEFAULT_SETTINGS.roles)[typeof role]> = {};
     if (env[`LOOM_PROVIDER_${role.toUpperCase()}`]) value.provider = provider;
-    const modelName =
-      provider === "codex" ? "LOOM_MODEL_CODEX" : "LOOM_MODEL_CLAUDE";
-    if (env[modelName]) value.model = parsed.models[provider];
-    if (env.LOOM_CODEX_REASONING_EFFORT && provider === "codex")
-      value.reasoningEffort = parsed.codexReasoningEffort as never;
     if (env.LOOM_RUN_MODES) value.runMode = parsed.runModes[role];
     if (env.LOOM_AGENT_ACCESS) value.access = parsed.agentAccess;
     if (Object.keys(value).length) rolePatch[role] = value;
@@ -338,7 +344,115 @@ export function configFromEnvironment(
       ? { repository: { baseBranch: parsed.baseBranch } }
       : {}),
   };
-  return { ...parsed, settingsEnvironment };
+  const providerEnvironment: ProviderEnvironmentSettings = {
+    models: {
+      ...(env.LOOM_MODEL_CODEX ? { codex: parsed.models.codex } : {}),
+      ...(env.LOOM_MODEL_CLAUDE ? { claude: parsed.models.claude } : {}),
+    },
+    ...(env.LOOM_CODEX_REASONING_EFFORT
+      ? { codexReasoningEffort: parsed.codexReasoningEffort }
+      : {}),
+  };
+  return { ...parsed, settingsEnvironment, providerEnvironment };
+}
+
+/** Build the compatibility defaults represented by a parsed startup configuration. */
+export function settingsDefaultsForConfig(
+  config: CoordinatorConfig,
+): SettingsValues {
+  let defaults = mergeSettings(DEFAULT_SETTINGS, {
+    repository: { baseBranch: config.baseBranch },
+    operator: {
+      model: config.operatorModel ?? null,
+      leadModel: config.leadModel ?? null,
+      repoId: config.operator.repoId ?? null,
+      autoFix: config.operator.autoFix,
+      maxFiledPerHour: config.operator.maxFiledPerHour,
+    },
+    runtime: {
+      capTotal: config.caps.total,
+      capCodex: config.caps.codex,
+      capClaude: config.caps.claude,
+      retryBaseMs: config.retry.baseMs,
+      retryCapMs: config.retry.capMs,
+      retryMaxAttempts: config.retry.maxAttempts,
+      stallAfterMs: config.stallAfterMs,
+      unknownGraceMs: config.unknownGraceMs,
+      deliveryTimeoutMs: config.deliveryTimeoutMs,
+      githubPollMs: config.githubPollMs,
+      resyncMs: config.resyncMs,
+      heartbeatMs: config.heartbeatMs,
+      worktreeRoot: config.worktreeRoot,
+      tmuxExecutable: config.tmuxExecutable,
+      codexExecutable: config.codexExecutable,
+      claudeExecutable: config.claudeExecutable,
+      excludedAuthors: config.excludedAuthors,
+    },
+  });
+  for (const role of ["planner", "implementer", "reviewer"] as const) {
+    const provider =
+      config.providerOverrides[role] ?? defaults.roles[role].provider;
+    defaults = mergeSettings(defaults, {
+      roles: {
+        [role]: {
+          provider,
+          model: config.models[provider],
+          reasoningEffort:
+            provider === "codex"
+              ? (config.codexReasoningEffort ?? "medium")
+              : null,
+          runMode: config.runModes[role],
+          access: config.agentAccess,
+        },
+      },
+    });
+  }
+  return defaults;
+}
+
+/** Apply coordinator-owned values to a config clone before consumers capture it. */
+export function applyStoredSettingsToConfig(
+  target: CoordinatorConfig,
+  baseline: CoordinatorConfig,
+  stored: SettingsPatch | null,
+  startup: boolean,
+): SettingsValues {
+  const value = resolveSettings(
+    stored,
+    null,
+    baseline.settingsEnvironment,
+    settingsDefaultsForConfig(baseline),
+    baseline.providerEnvironment,
+  ).effective;
+  target.caps = {
+    total: value.runtime.capTotal,
+    codex: value.runtime.capCodex,
+    claude: value.runtime.capClaude,
+  };
+  target.retry = {
+    baseMs: value.runtime.retryBaseMs,
+    capMs: value.runtime.retryCapMs,
+    maxAttempts: value.runtime.retryMaxAttempts,
+  };
+  target.stallAfterMs = value.runtime.stallAfterMs;
+  target.unknownGraceMs = value.runtime.unknownGraceMs;
+  target.deliveryTimeoutMs = value.runtime.deliveryTimeoutMs;
+  target.githubPollMs = value.runtime.githubPollMs;
+  target.resyncMs = value.runtime.resyncMs;
+  target.excludedAuthors = [...value.runtime.excludedAuthors];
+  target.operator.autoFix = [...value.operator.autoFix];
+  target.operator.maxFiledPerHour = value.operator.maxFiledPerHour;
+  target.operatorModel = value.operator.model ?? undefined;
+  target.leadModel = value.operator.leadModel ?? undefined;
+  target.operator.repoId = value.operator.repoId ?? undefined;
+  if (startup) {
+    target.heartbeatMs = value.runtime.heartbeatMs;
+    target.worktreeRoot = value.runtime.worktreeRoot;
+    target.tmuxExecutable = value.runtime.tmuxExecutable;
+    target.codexExecutable = value.runtime.codexExecutable;
+    target.claudeExecutable = value.runtime.claudeExecutable;
+  }
+  return value;
 }
 
 /** A stable name for this coordinator run, so clients notice a restart. */

@@ -155,6 +155,8 @@ export interface PullRequestPatch {
 }
 
 export interface GitHubAdapter {
+  /** Update observation filtering without rebuilding the adapter or losing its caches. */
+  setExcludedAuthors?(authors: readonly string[]): void;
   /** All pages, newest first. Closed excludes merged. Reads use disposable native ETags. */
   listPullRequests(
     repo: string,

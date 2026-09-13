@@ -86,12 +86,16 @@ export class Store {
   constructor(
     private readonly db: Database.Database,
     readonly dataDirectory: string,
-    private readonly config: ReconcileConfig,
+    private config: ReconcileConfig,
   ) {
     this.operator = new OperatorStore(db);
     this.hooks = new SqliteHookLog(db);
     this.outbox = new Outbox(db);
     this.settings = new SettingsStore(db);
+  }
+  /** Replace live reconcile inputs after an immediate settings update. */
+  setReconcileConfig(config: ReconcileConfig): void {
+    this.config = config;
   }
   close(): void {
     this.db.close();
