@@ -52,10 +52,23 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
 
 ## Workbench
 
-- **Sidebar:** a native space → tab → pane tree, grouped by host generation/session and window
-  identity. Issue spaces show the recorded issue key/title; unlinked spaces show the session name.
+- **Sidebar:** a 375 px dark panel in the terminal's 13 px monospace font, with two sections.
+  The lowercase `spaces` heading and a dim, unboxed filter line sit above the native
+  space → tab → pane tree, grouped by host generation/session and window identity. Spaces
+  use a bold name with the dim Git branch on a second line aligned under it. Tabs and panes
+  indent by two characters per level; each row has a one-character indicator column.
+  Full-width subtle background bands mark the focused pane and its space/tab ancestors.
+  Spaces use their content height up to half of the sidebar, with an independently scrolling
+  tree and plain `new` and `menu` footer actions (new terminal and command palette).
+  The lower `agents` section fills the remaining height. Main and Operator are pinned at its
+  top, above an independently scrolling list of panes with recorded provider/run metadata.
+  Agent rows show `space · tab` (tab dimmer), then the provider on a second line; the focused
+  agent uses the same selection band. `grouped` toggles native space/tab order versus indicator
+  priority order. A bottom-left `«` collapses the sidebar; `»` expands it, and fuzzy jump also
+  expands it before focusing the filter. Grouping and collapse are per-window memory only.
+  Issue spaces show the recorded issue key/title; unlinked spaces show the session name.
   Tabs show native window names; panes show their command or recorded role · provider and state.
-  Main and Operator are pinned at the bottom. Expansion is per-window memory; fuzzy filtering
+  Expansion is per-window memory; fuzzy filtering
   reveals matching descendants and their ancestors without changing saved expansion. Native dead
   panes remain dimmed and disabled. Run linkage is only by a unique recorded generation + pane ID,
   never cwd, title, command or native run tags. Clicking a pane replaces the focused viewer; Enter
@@ -74,14 +87,18 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   Reads are cached per cwd within each serialized inventory refresh, including failures, and
   refreshed on the same hints and poll as the view. Detached checkouts show `HEAD`; unreadable
   paths show `—`. Branch patches update sidebar metadata without remounting terminal viewers.
-- **Indicators:** every tree row uses ◌ working, ◐ blocked/needs you, ✓ finished turn/ended,
-  ○ idle, ! failed, or ? unknown. Tabs and spaces roll up needs-you > failed > unknown > working >
+- **Indicators:** small text glyphs without borders: ○ idle, ● blocked/needs you in the attention
+  color, ✓ finished turn/ended, ! failed in the error color, and ? unknown. Working cycles
+  through ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏ every 80 ms on one shared renderer interval for all
+  visible working indicators, including rollups and pinned rows. The clock stops when the
+  document is hidden or no working indicators remain. Reduced motion uses static ◌ and no
+  interval. Other glyphs inherit the row's text color. Tabs and spaces roll up needs-you > failed > unknown > working >
   done > idle across all descendants, including ones hidden by filtering. Only published provider
   status and coordinator attention determine indicators; native process exit alone is not agent
   completion. Branches and rename remain separate Workbench v2 slices.
 - **Sound and flash:** the window store compares consecutive pane observations using the same
   indicators (including recorded completed turns). Entering needs-you or done plays one bundled
-  320 ms chime and flashes the visible pane row once for 600 ms. Repeated patches, initial
+  320 ms chime and flashes each visible occurrence of the pane row once for 600 ms. Repeated patches, initial
   discovery and recovery from an unavailable observation are silent. The focused pane in the
   focused window is silent; background panes still chime. Sound uses ordinary HTML audio and
   respects system output mute/volume. Reduced motion disables the flash. The bottom bar's Sound

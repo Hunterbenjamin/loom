@@ -1,20 +1,36 @@
-import type { PaneView } from "@loom/protocol";
+import type { PaneIdentity, PaneView } from "@loom/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { paneKey } from "../store/pane-transitions.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { RowMenu } from "./row-menu.js";
 import { type Indicator, spaceKey, spaces, tabKey } from "./selectors.js";
+import { Status } from "./status.js";
 
-function Status({ state }: { state: Indicator }) {
-  return (
-    <span
-      className={`wb-status ${state.tone}`}
-      role="img"
-      aria-label={state.label}
-    >
-      {state.icon}
-    </span>
-  );
+function pinnedState(status: string): Indicator {
+  const tone =
+    status === "waiting"
+      ? "waiting"
+      : status === "error"
+        ? "failed"
+        : status === "stopped"
+          ? "idle"
+          : status;
+  const icon =
+    tone === "working"
+      ? "◌"
+      : tone === "waiting"
+        ? "●"
+        : tone === "idle"
+          ? "○"
+          : tone === "failed"
+            ? "!"
+            : "?";
+  return {
+    tone,
+    icon,
+    label: status === "waiting" ? "Needs you" : status,
+    priority: 0,
+  };
 }
 
 export function Sidebar({
@@ -27,7 +43,15 @@ export function Sidebar({
   hidePanels,
   hasPanels,
   copyAttach,
+  selected,
+  collapsed: sidebarCollapsed = false,
+  toggleSidebar,
+  showMenu,
 }: {
+  selected?: PaneIdentity | "main" | "operator";
+  collapsed?: boolean;
+  toggleSidebar?: () => void;
+  showMenu?: () => void;
   filter: string;
   setFilter: (value: string) => void;
   choose: (pane: PaneView, newTab?: boolean) => void;
@@ -53,28 +77,30 @@ export function Sidebar({
         ...(sidebar.current?.querySelectorAll<HTMLElement>(
           "[data-pane-key], [data-pinned]",
         ) ?? []),
-      ].find((element) =>
+      ].filter((element) =>
         pinned
           ? element.dataset.pinned === pinned
           : element.dataset.paneKey === paneKey(pane),
       );
-      if (!row) return;
-      const animation = row.animate(
-        [
-          {
-            backgroundColor:
-              getComputedStyle(row).getPropertyValue("--accent-dim").trim() ||
-              "transparent",
-          },
-          { backgroundColor: "transparent" },
-        ],
-        { duration: 600, iterations: 1 },
-      );
-      animations.add(animation);
-      void animation.finished.then(
-        () => animations.delete(animation),
-        () => animations.delete(animation),
-      );
+      for (const element of row) {
+        const animation = element.animate(
+          [
+            {
+              backgroundColor:
+                getComputedStyle(element)
+                  .getPropertyValue("--accent-dim")
+                  .trim() || "transparent",
+            },
+            { backgroundColor: getComputedStyle(element).backgroundColor },
+          ],
+          { duration: 600, iterations: 1 },
+        );
+        animations.add(animation);
+        void animation.finished.then(
+          () => animations.delete(animation),
+          () => animations.delete(animation),
+        );
+      }
     });
     return () => {
       stop();
@@ -90,6 +116,23 @@ export function Sidebar({
   );
   const lead = useStore((s) => s.lead);
   const operator = useStore((s) => s.operator);
+  const [grouped, setGrouped] = useState(true);
+  const agents = tree.flatMap((space) =>
+    space.tabs.flatMap((tab) =>
+      tab.panes
+        .filter(({ pane }) => pane.provider || pane.runId)
+        .map((row) => ({ ...row, space, tab })),
+    ),
+  );
+  if (!grouped)
+    agents.sort(
+      (a, b) =>
+        a.indicator.priority - b.indicator.priority ||
+        a.pane.id.localeCompare(b.pane.id),
+    );
+  const selectedPane = typeof selected === "object" ? selected : undefined;
+  const isSelected = (pane: PaneView) =>
+    !!selectedPane && paneKey(pane) === paneKey(selectedPane);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const expanded = (key: string) => !!filter.trim() || !collapsed.has(key);
   const toggle = (key: string) =>
@@ -168,130 +211,260 @@ export function Sidebar({
   return (
     <aside
       ref={sidebar}
-      className="wb-sidebar"
+      className={`wb-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}
       aria-label="Spaces and terminals"
     >
-      <input
-        id="agent-filter"
-        aria-label="Find space, tab or pane"
-        placeholder="Find space, tab or pane…"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-      />
-      <section className="wb-terminals" aria-label="Terminal tree">
-        <div className="wb-section-heading">
-          <h2>Spaces</h2>
-          <button type="button" aria-label="New terminal" onClick={newTerminal}>
-            ＋
-          </button>
-        </div>
-        {unavailable && (
-          <p role="status">
-            Terminal host unavailable. Showing last known terminals.
-          </p>
-        )}
-        <div className="wb-terminal-list">
-          {tree.map((space) => (
-            <section key={space.key} aria-label={space.label}>
+      {!sidebarCollapsed && (
+        <>
+          <section className="wb-terminals" aria-label="Terminal tree">
+            <div className="wb-section-heading">
+              <h2>spaces</h2>
+            </div>
+            <input
+              id="agent-filter"
+              aria-label="Find space, tab or pane"
+              placeholder="filter…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+            {unavailable && (
+              <p role="status">
+                Terminal host unavailable. Showing last known terminals.
+              </p>
+            )}
+            <div className="wb-terminal-list">
+              {tree.map((space) => (
+                <section key={space.key} aria-label={space.label}>
+                  <button
+                    type="button"
+                    className="wb-tree-row wb-space"
+                    aria-current={
+                      selectedPane && spaceKey(selectedPane) === space.key
+                        ? "true"
+                        : undefined
+                    }
+                    aria-expanded={expanded(space.key)}
+                    onClick={() => toggle(space.key)}
+                    {...rowMenu("space", space.key)}
+                    title={space.name}
+                  >
+                    <Status state={space.indicator} />
+                    <span className="wb-row-copy">
+                      <strong className="wb-tree-name">{space.label}</strong>
+                      <small
+                        className="wb-space-branch"
+                        title={space.branch ?? "Branch unavailable"}
+                      >
+                        {space.branch ?? "—"}
+                      </small>
+                    </span>
+                  </button>
+                  {expanded(space.key) &&
+                    space.tabs.map((tab) => (
+                      <section
+                        className="wb-tree-tab"
+                        key={tab.key}
+                        aria-label={tab.name}
+                      >
+                        <div
+                          className="wb-tab-row"
+                          aria-current={
+                            selectedPane && tabKey(selectedPane) === tab.key
+                              ? "true"
+                              : undefined
+                          }
+                          {...rowMenu("tab", tab.key)}
+                        >
+                          <button
+                            type="button"
+                            className="wb-disclosure"
+                            aria-label={`Toggle ${tab.name} panes`}
+                            aria-expanded={expanded(tab.key)}
+                            onClick={() => toggle(tab.key)}
+                          >
+                            <Status state={tab.indicator} />
+                          </button>
+                          <button
+                            type="button"
+                            className="wb-tree-row"
+                            aria-label={`Open tab ${tab.name}`}
+                            disabled={
+                              !rowPanes("tab", tab.key).some(
+                                (pane) =>
+                                  !unavailable &&
+                                  !pane.unavailable &&
+                                  !pane.dead,
+                              )
+                            }
+                            onClick={() =>
+                              openGroup(rowPanes("tab", tab.key), tab.name)
+                            }
+                          >
+                            <span className="wb-tree-name">{tab.name}</span>
+                          </button>
+                        </div>
+                        {expanded(tab.key) &&
+                          tab.panes.map(({ pane, name, indicator }) => (
+                            <button
+                              type="button"
+                              key={pane.id}
+                              data-pane-key={paneKey(pane)}
+                              aria-current={
+                                isSelected(pane) ? "true" : undefined
+                              }
+                              className={`wb-tree-row wb-tree-pane ${pane.dead ? "dead" : ""}`}
+                              aria-label={`Open ${tab.name} ${name} ${pane.paneId}`}
+                              disabled={
+                                unavailable || pane.unavailable || pane.dead
+                              }
+                              {...rowMenu("pane", paneKey(pane))}
+                              onClick={() => choose(pane)}
+                              onKeyDown={(e) => {
+                                rowMenu("pane", paneKey(pane)).onKeyDown(e);
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  choose(pane, true);
+                                }
+                              }}
+                              title={`${pane.startCwd}\n${pane.command}${pane.dead ? "\nExited" : ""}`}
+                            >
+                              <Status state={indicator} />
+                              <span className="wb-tree-name">{name}</span>
+                              {(pane.runId ||
+                                pane.status ||
+                                pane.attention) && (
+                                <small
+                                  className={`wb-state-label ${indicator.tone}`}
+                                >
+                                  {indicator.label}
+                                </small>
+                              )}
+                            </button>
+                          ))}
+                      </section>
+                    ))}
+                </section>
+              ))}
+              {!tree.length && (
+                <p className="wb-muted">
+                  {filter ? "No matching terminals" : "No terminals"}
+                </p>
+              )}
+            </div>
+            <footer className="wb-spaces-footer">
               <button
                 type="button"
-                className="wb-tree-row wb-space"
-                aria-expanded={expanded(space.key)}
-                onClick={() => toggle(space.key)}
-                {...rowMenu("space", space.key)}
-                title={space.name}
+                aria-label="New terminal"
+                onClick={newTerminal}
               >
-                <span aria-hidden="true">
-                  {expanded(space.key) ? "▾" : "▸"}
-                </span>
-                <Status state={space.indicator} />
-                <span className="wb-tree-name">{space.label}</span>
-                <small
-                  className="wb-space-branch"
-                  title={space.branch ?? "Branch unavailable"}
-                >
-                  {space.branch ?? "—"}
-                </small>
+                new
               </button>
-              {expanded(space.key) &&
-                space.tabs.map((tab) => (
-                  <section
-                    className="wb-tree-tab"
-                    key={tab.key}
-                    aria-label={tab.name}
+              <button
+                type="button"
+                aria-label="Workbench menu"
+                onClick={showMenu}
+              >
+                menu
+              </button>
+            </footer>
+          </section>
+          <section className="wb-agents" aria-label="Agents">
+            <div className="wb-section-heading">
+              <h2>agents</h2>
+              <button
+                type="button"
+                aria-label="Group agents by space"
+                aria-pressed={grouped}
+                onClick={() => setGrouped((value) => !value)}
+              >
+                {grouped ? "grouped" : "ungrouped"}
+              </button>
+            </div>
+            <section className="wb-pinned" aria-label="Pinned terminals">
+              {(["main", "operator"] as const).map((target) => {
+                const status =
+                  target === "main"
+                    ? lead.status
+                    : (operator?.status ?? "unknown");
+                const native = panes.find((pane) =>
+                  (target === "main"
+                    ? ["loom-lead", "loom-main"]
+                    : ["loom-operator"]
+                  ).includes(pane.sessionName),
+                );
+                return (
+                  <button
+                    key={target}
+                    type="button"
+                    className="wb-tree-row wb-agent-row"
+                    data-pinned={target}
+                    aria-current={
+                      selected === target || (native && isSelected(native))
+                        ? "true"
+                        : undefined
+                    }
+                    onClick={() => openPinned(target)}
+                    title={`Open ${target === "main" ? "Main" : "Operator"} terminal`}
                   >
-                    <div className="wb-tab-row" {...rowMenu("tab", tab.key)}>
-                      <button
-                        type="button"
-                        className="wb-disclosure"
-                        aria-label={`Toggle ${tab.name} panes`}
-                        aria-expanded={expanded(tab.key)}
-                        onClick={() => toggle(tab.key)}
-                      >
-                        {expanded(tab.key) ? "▾" : "▸"}
-                      </button>
-                      <button
-                        type="button"
-                        className="wb-tree-row"
-                        aria-label={`Open tab ${tab.name}`}
-                        disabled={
-                          !rowPanes("tab", tab.key).some(
-                            (pane) =>
-                              !unavailable && !pane.unavailable && !pane.dead,
-                          )
-                        }
-                        onClick={() =>
-                          openGroup(rowPanes("tab", tab.key), tab.name)
-                        }
-                      >
-                        <Status state={tab.indicator} />
-                        <span className="wb-tree-name">{tab.name}</span>
-                      </button>
-                    </div>
-                    {expanded(tab.key) &&
-                      tab.panes.map(({ pane, name, indicator }) => (
-                        <button
-                          type="button"
-                          key={pane.id}
-                          data-pane-key={paneKey(pane)}
-                          className={`wb-tree-row wb-tree-pane ${pane.dead ? "dead" : ""}`}
-                          aria-label={`Open ${tab.name} ${name} ${pane.paneId}`}
-                          disabled={
-                            unavailable || pane.unavailable || pane.dead
-                          }
-                          {...rowMenu("pane", paneKey(pane))}
-                          onClick={() => choose(pane)}
-                          onKeyDown={(e) => {
-                            rowMenu("pane", paneKey(pane)).onKeyDown(e);
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              choose(pane, true);
-                            }
-                          }}
-                          title={`${pane.startCwd}\n${pane.command}${pane.dead ? "\nExited" : ""}`}
-                        >
-                          <Status state={indicator} />
-                          <span className="wb-tree-name">{name}</span>
-                          {(pane.runId || pane.status || pane.attention) && (
-                            <small
-                              className={`wb-state-label ${indicator.tone}`}
-                            >
-                              {indicator.label}
-                            </small>
-                          )}
-                        </button>
-                      ))}
-                  </section>
-                ))}
+                    <Status state={pinnedState(status)} />
+                    <span className="wb-row-copy">
+                      <strong>{target === "main" ? "Main" : "Operator"}</strong>
+                      <small>{native?.provider ?? status}</small>
+                    </span>
+                  </button>
+                );
+              })}
             </section>
-          ))}
-          {!tree.length && (
-            <p className="wb-muted">
-              {filter ? "No matching terminals" : "No terminals"}
-            </p>
-          )}
-        </div>
-      </section>
+            <div className="wb-agent-list">
+              {agents.map(({ pane, indicator, space, tab }) => (
+                <button
+                  type="button"
+                  key={pane.id}
+                  data-pane-key={paneKey(pane)}
+                  className={`wb-tree-row wb-agent-row ${pane.dead ? "dead" : ""}`}
+                  aria-label={`Open agent ${space.label} ${tab.name} ${pane.paneId}`}
+                  aria-current={isSelected(pane) ? "true" : undefined}
+                  disabled={unavailable || pane.unavailable || pane.dead}
+                  {...rowMenu("pane", paneKey(pane))}
+                  onClick={() => choose(pane)}
+                  onKeyDown={(e) => {
+                    rowMenu("pane", paneKey(pane)).onKeyDown(e);
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      choose(pane, true);
+                    }
+                  }}
+                  title={`${space.name} · ${tab.name} · ${pane.paneId}\n${indicator.label}${pane.dead ? "\nExited" : ""}`}
+                >
+                  <Status state={indicator} />
+                  <span className="wb-row-copy">
+                    <span className="wb-tree-name">
+                      <strong>{space.label}</strong>
+                      <span className="wb-agent-tab"> · {tab.name}</span>
+                    </span>
+                    <small>{pane.provider ?? "—"}</small>
+                  </span>
+                </button>
+              ))}
+              {!agents.length && (
+                <p className="wb-muted">
+                  {filter ? "No matching agents" : "No agents"}
+                </p>
+              )}
+            </div>
+          </section>
+        </>
+      )}
+      <footer className="wb-sidebar-footer">
+        <button
+          type="button"
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!sidebarCollapsed}
+          onClick={toggleSidebar}
+        >
+          {sidebarCollapsed ? "»" : "«"}
+        </button>
+      </footer>
       {menu && (
         <RowMenu
           {...menu}
@@ -340,30 +513,6 @@ export function Sidebar({
           ]}
         />
       )}
-      <section className="wb-pinned" aria-label="Pinned terminals">
-        <button
-          type="button"
-          className="wb-tree-pane"
-          data-pinned="main"
-          onClick={() => openPinned("main")}
-          title="Open Main terminal"
-        >
-          <span aria-hidden="true">⌁</span>
-          <span>Main</span>
-          <small>{lead.status}</small>
-        </button>
-        <button
-          type="button"
-          className="wb-tree-pane"
-          data-pinned="operator"
-          onClick={() => openPinned("operator")}
-          title="Open Operator terminal"
-        >
-          <span aria-hidden="true">⌁</span>
-          <span>Operator</span>
-          <small>{operator?.status ?? "Connecting"}</small>
-        </button>
-      </section>
     </aside>
   );
 }

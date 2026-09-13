@@ -23,21 +23,6 @@
   flex: 1;
   min-height: 0;
 }
-.wb-sidebar {
-  width: 260px;
-  flex-shrink: 0;
-  overflow: auto;
-  border-right: 1px solid var(--line);
-  padding: 12px;
-}
-.wb-sidebar input {
-  width: 100%;
-  padding: 8px;
-  background: transparent;
-  color: inherit;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-}
 .wb-main {
   flex: 1;
   min-width: 0;
@@ -130,137 +115,183 @@
 }
 
 .wb-sidebar {
+  width: 375px;
+  max-width: 40vw;
+  flex: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  gap: 12px;
+  border-right: 1px solid #383b48;
+  background: #272b33;
+  color: #c3c6da;
+  font: 13px / 1.45 var(--mono);
+  --wb-dim: #84899d;
+  --wb-selected: #303440;
 }
-.wb-sidebar > input {
-  flex-shrink: 0;
+.wb-sidebar.collapsed {
+  width: 30px;
 }
-.wb-section-heading {
+.wb-sidebar [hidden] {
+  display: none;
+}
+.wb-sidebar button,
+.wb-sidebar input {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+}
+.wb-sidebar button:focus-visible,
+.wb-sidebar input:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.wb-sidebar #agent-filter {
+  width: 100%;
+  flex: none;
+  padding: 2px 12px 8px;
+  color: var(--wb-dim);
+}
+.wb-sidebar #agent-filter::placeholder {
+  color: var(--wb-dim);
+  opacity: 0.7;
+}
+.wb-section-heading,
+.wb-spaces-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 32px;
+  flex: none;
+  padding: 8px 12px;
+  color: var(--wb-dim);
 }
 .wb-section-heading h2 {
-  font-size: 12px;
   margin: 0;
-  font-weight: 600;
+  font: inherit;
 }
-.wb-section-heading h2 span {
-  opacity: 0.5;
-  margin-left: 4px;
+.wb-section-heading button,
+.wb-spaces-footer button,
+.wb-sidebar-footer button {
+  padding: 0;
+  color: var(--wb-dim);
+}
+.wb-sidebar button:hover:not(:disabled) {
+  background: #ffffff06;
+  color: #e2e4ef;
 }
 .wb-terminals {
-  flex: 1;
+  flex: 0 1 auto;
+  max-height: 50%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
 }
-.wb-tree-row,
-.wb-tree-pane {
+.wb-agents {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  border-top: 1px solid #383b48;
+}
+.wb-terminal-list,
+.wb-agent-list {
+  overflow: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+.wb-pinned {
+  flex: none;
+}
+.wb-tree-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   width: 100%;
   text-align: left;
-  padding: 7px 4px;
-  font-size: 12px;
+  padding: 3px 12px;
   min-width: 0;
 }
-.wb-tree-row:hover,
-.wb-pinned button:hover {
-  background: var(--line);
+.wb-sidebar [aria-current="true"],
+.wb-sidebar [aria-current="true"]:hover:not(:disabled) {
+  background: var(--wb-selected);
 }
-.wb-tree-name {
+.wb-row-copy {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.wb-tree-name,
+.wb-row-copy small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
-.wb-tree-tab {
-  padding-left: 12px;
+.wb-row-copy small,
+.wb-agent-tab,
+.wb-state-label {
+  color: var(--wb-dim);
+  font-size: inherit;
 }
-.wb-space-branch {
-  margin-left: auto;
-  max-width: 45%;
-  flex-shrink: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10px;
-  opacity: 0.6;
+.wb-tree-row strong {
+  font-weight: 600;
+}
+.wb-space,
+.wb-agent-row {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.wb-tab-row {
+  display: flex;
+  align-items: baseline;
+  padding-left: calc(12px + 2ch);
+}
+.wb-tab-row .wb-tree-row {
+  padding-left: 8px;
+}
+.wb-disclosure {
+  flex: none;
+  padding: 3px 0;
+  width: 1ch;
 }
 .wb-tree-tab .wb-tree-pane {
-  padding-left: 24px;
+  padding-left: calc(12px + 4ch);
 }
-.wb-tree-pane.dead {
-  opacity: 0.5;
-}
-.wb-tree-pane small {
-  margin-left: auto;
-  font-size: 10px;
+.wb-sidebar .dead,
+.wb-sidebar button:disabled {
+  opacity: 0.45;
 }
 .wb-state-label {
-  flex-shrink: 0;
+  margin-left: auto;
   max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .wb-status {
-  flex-shrink: 0;
-  width: 17px;
-  height: 17px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 1px solid currentColor;
-  font-size: 11px;
+  display: inline-block;
+  flex: none;
+  width: 1ch;
+  text-align: center;
+  font: inherit;
 }
-.wb-status.working {
-  animation: wb-working 2s linear infinite;
+.wb-status.waiting {
+  color: var(--warn);
 }
-.wb-status.working,
-.wb-state-label.working {
-  color: #759fe5;
+.wb-status.failed {
+  color: var(--danger);
 }
-.wb-status.waiting,
-.wb-state-label.waiting,
-.wb-waiting-count {
-  color: #d4a642;
+.wb-muted,
+.wb-terminals > [role="status"] {
+  color: var(--wb-dim);
+  margin: 0;
+  padding: 6px 12px;
 }
-.wb-status.finished,
-.wb-state-label.finished {
-  color: #65aa80;
-}
-.wb-status.failed,
-.wb-state-label.failed {
-  color: #d77b72;
-}
-.wb-status.unknown,
-.wb-state-label.unknown,
-.wb-status.idle,
-.wb-state-label.idle {
-  opacity: 0.6;
-}
-.wb-waiting-count {
-  font-size: 11px;
-}
-.wb-muted {
-  opacity: 0.6;
-  font-size: 12px;
-  padding: 8px 0;
-}
-@keyframes wb-working {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .wb-status.working {
-    animation: none;
-  }
+.wb-sidebar-footer {
+  flex: none;
+  margin-top: auto;
+  padding: 6px 12px;
 }
 .wb-new-terminal {
   width: 380px;
@@ -309,28 +340,6 @@
 .wb-new-terminal button:disabled {
   opacity: 0.45;
 }
-.wb-terminals {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.wb-terminals > .wb-section-heading,
-.wb-pinned {
-  flex-shrink: 0;
-}
-.wb-pinned {
-  border-top: 1px solid var(--line);
-  padding-top: 6px;
-}
-.wb-pinned small {
-  opacity: 0.5;
-  font-size: 10px;
-}
-.wb-terminal-list {
-  overflow: auto;
-  min-height: 0;
-}
-
 .wb-keybinding-status {
   max-width: 320px;
   min-width: 120px;
@@ -339,14 +348,6 @@
   white-space: nowrap;
 }
 
-.wb-tab-row {
-  display: flex;
-  align-items: center;
-}
-.wb-disclosure {
-  flex-shrink: 0;
-  padding: 7px 4px;
-}
 .wb-row-menu {
   position: fixed;
   z-index: 20;

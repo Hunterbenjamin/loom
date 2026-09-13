@@ -142,7 +142,11 @@ window mode independently of live/fixture connection settings. Layouts are memor
 
 The sidebar groups native spaces → tabs → panes, including dimmed dead panes and unlinked spaces.
 Issue spaces show their issue key/title; every row rolls up provider status and coordinator attention.
-Main and Operator stay pinned at the bottom. Expansion and fuzzy filtering live in window memory.
+The dark monospace sidebar has a `spaces` tree above an independently scrolling `agents` list.
+Spaces take their content height up to half the sidebar; Main and Operator are pinned at the top
+of agents. Branches and providers appear on second lines; status uses one-character text glyphs
+with a shared working spinner that pauses when hidden and respects reduced motion.
+Expansion, grouping and fuzzy filtering live in window memory.
 A pane click replaces the focused viewer; Enter opens a new tab. Space rows toggle expansion;
 tab disclosure arrows toggle their pane lists. Clicking a tab name opens all its live, available
 panes as side-by-side splits in a new Workbench tab, even when filtering hides siblings.
