@@ -35,6 +35,17 @@ export function actionResult(
       c.fail("action_failed", result.error.message);
     else if (result.error.code === "retryable") {
       const retry = c.state.config.retry;
+      if (
+        row.action.kind === "answer_provider_request" &&
+        row.attempts - (row.retryBaseAttempt ?? 0) >= retry.maxAttempts
+      ) {
+        row.retryAt = undefined;
+        c.fail(
+          "action_failed",
+          `Provider answer retries exhausted: ${row.key}: ${result.error.message}`,
+        );
+        return null;
+      }
       row.retryAt = later(
         c.now,
         Math.min(
@@ -48,6 +59,14 @@ export function actionResult(
         why: "retry",
       });
     } else {
+      if (row.action.kind === "answer_provider_request") {
+        c.emit(`schedule:${input.key}:provider`, {
+          kind: "schedule",
+          at: c.now,
+          why: "poll",
+        });
+        return null;
+      }
       c.emit(`refresh:${input.key}:git`, { kind: "refresh", owner: "git" });
       c.emit(`refresh:${input.key}:github`, {
         kind: "refresh",

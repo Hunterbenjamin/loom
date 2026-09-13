@@ -501,6 +501,20 @@ A failed result carries `retryable`, `precondition` or `fatal`. `retryable` gets
 backoff (`<key>#<n>`). `precondition` means the world moved: re-read and decide again. `fatal` sets
 `failed: action_failed`.
 
+Provider answers are independent intents keyed by `(runId, generation, requestId)`, with no action
+dependencies. A fresh, hydrated Codex observation cancels pending/running answers and scheduled
+retries whose exact request is no longer pending, including after a generation change. Request IDs
+are opaque: concurrent requests remain answerable; a larger ID alone does not supersede another.
+Unavailable, wrong-session, pre-launch, and `notLoaded` readings cannot retire answers. Cancellation
+also removes obsolete dependencies from previously persisted pending answers. Late receipts are
+consumed without resurrecting canceled work, including when the provider resolved an answer before
+its executor receipt reached reconcile.
+
+The adapter's `StaleCodexRequestError` (missing pending request or changed generation) is a terminal
+`precondition`, never an automatic retry. Reconcile requests another provider observation. Transient
+answer failures use `retry.maxAttempts` (3 by default); the final failed attempt immediately sets
+`failed: action_failed` and Needs-you error attention, even if another task flag prevents retries.
+
 | | Codex headless | Codex interactive | Claude headless | Claude interactive |
 |---|---|---|---|---|
 | start | `thread/start` (read-only sandbox for reviewers) | `thread/start`, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>` |
