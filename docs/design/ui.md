@@ -24,6 +24,16 @@ round trip. Inactive mode effects are suspended: terminal viewers detach while h
 again when shown, without stopping their native panes or agents. No hidden spare window is created.
 Closing a window closes only its viewers; the coordinator owns durable task state.
 
+## Tracker list
+
+Stage headers are buttons: click or press Enter/Space to collapse or expand them. Each header
+always shows the total matching task count. Done and Canceled start with the 20 most recently
+transitioned tasks, ordered by `stageEnteredAt` descending; Load N more reveals the next 20 (or
+the remaining count). Other stages remain unlimited and follow the selected column sort.
+Collapse and loaded-page settings stay in each window's memory, including across view switches;
+new windows start expanded with the initial limit. Keyboard task navigation skips collapsed and
+unloaded rows. Task summaries, model labels and progress indicators remain visible per row.
+
 ## Workbench
 
 - **Sidebar:** a native space → tab → pane tree, grouped by host generation/session and window

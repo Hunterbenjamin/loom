@@ -7,6 +7,8 @@ import {
 } from "@loom/core";
 import { type Snapshot, STAGES } from "../fixtures/index.js";
 import {
+  LIST_PAGE_SIZE,
+  type ListSections,
   matchesView,
   type SortKey,
   type State,
@@ -190,25 +192,67 @@ export interface Group {
 
 /** List rows are grouped by stage and then flattened, so one virtualizer covers headers too. */
 export type ListItem =
-  | { kind: "header"; stage: Stage; count: number }
+  | { kind: "header"; stage: Stage; count: number; collapsed: boolean }
+  | { kind: "load-more"; stage: "done" | "canceled"; count: number }
   | { kind: "row"; row: Row };
 
-export const groupRows = memo1((rows: Row[]): ListItem[] => {
-  const byStage = new Map<Stage, Row[]>();
-  for (const row of rows) {
-    const list = byStage.get(row.task.stage);
-    if (list) list.push(row);
-    else byStage.set(row.task.stage, [row]);
-  }
-  const items: ListItem[] = [];
-  for (const stage of STAGES) {
-    const group = byStage.get(stage);
-    if (!group || group.length === 0) continue;
-    items.push({ kind: "header", stage, count: group.length });
-    for (const row of group) items.push({ kind: "row", row });
-  }
-  return items;
-});
+const defaultSections: ListSections = {};
+
+export const groupRows = memo1(
+  (rows: Row[], sections: ListSections = defaultSections): ListItem[] => {
+    const byStage = new Map<Stage, Row[]>();
+    for (const row of rows) {
+      const list = byStage.get(row.task.stage);
+      if (list) list.push(row);
+      else byStage.set(row.task.stage, [row]);
+    }
+    const items: ListItem[] = [];
+    for (const stage of STAGES) {
+      const group = byStage.get(stage);
+      if (!group || group.length === 0) continue;
+      const collapsed = sections[stage]?.collapsed ?? false;
+      items.push({ kind: "header", stage, count: group.length, collapsed });
+      if (collapsed) continue;
+      if (stage === "done" || stage === "canceled") {
+        // Transition time, not creation age or the chosen column sort.
+        group.sort(
+          (a, b) =>
+            Date.parse(b.task.stageEnteredAt) -
+              Date.parse(a.task.stageEnteredAt) ||
+            a.task.id.localeCompare(b.task.id),
+        );
+        const limit = sections[stage]?.visibleCount ?? LIST_PAGE_SIZE;
+        for (const row of group.slice(0, limit))
+          items.push({ kind: "row", row });
+        if (group.length > limit) {
+          items.push({
+            kind: "load-more",
+            stage,
+            count: Math.min(LIST_PAGE_SIZE, group.length - limit),
+          });
+        }
+      } else {
+        for (const row of group) items.push({ kind: "row", row });
+      }
+    }
+    return items;
+  },
+);
+
+export function selectedListItems(state: State): ListItem[] {
+  return groupRows(selectedRows(state), state.ui.listSections);
+}
+
+const listTaskRows = memo1((items: ListItem[]): Row[] =>
+  items.flatMap((item) => (item.kind === "row" ? [item.row] : [])),
+);
+
+/** Cursor consumers must agree with the rendered ordering and visibility. */
+export function cursorRows(state: State): Row[] {
+  return state.ui.pane === "list" && state.ui.view !== "needs-you"
+    ? listTaskRows(selectedListItems(state))
+    : selectedRows(state);
+}
 
 export const viewCounts = memo1(
   (snapshot: Snapshot, repo: string): Record<ViewId, number> => {
