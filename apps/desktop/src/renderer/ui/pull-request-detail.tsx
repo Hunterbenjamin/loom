@@ -2,8 +2,16 @@ import type { PullRequestCommand, PullRequestDetailRow } from "@loom/protocol";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  deleteDisabledReason,
+  mergeDisabledReason,
+} from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import type { UiState } from "../store/store.js";
+import {
+  PULL_REQUEST_ACTION_EVENT,
+  type PullRequestActionRequest,
+} from "./pull-request-commands.js";
 
 const Files = lazy(() =>
   import("./diff.js").then((m) => ({ default: m.PullRequestFiles })),
@@ -13,16 +21,6 @@ type Confirmation =
   | { kind: "merge"; headSha: Detail["headSha"]; base: string }
   | { kind: "close" };
 const TABS = ["Description", "Checks", "Files", "Commits"] as const;
-
-export function mergeDisabledReason(pr: Detail): string | null {
-  if (pr.state !== "open") return "The pull request is not open.";
-  if (pr.draft) return "The pull request is a draft.";
-  if (pr.mergeable === "conflicting") return "Resolve merge conflicts first.";
-  if (pr.mergeable !== "mergeable") return "Mergeability is not yet known.";
-  if (pr.checks === "failure") return "Checks have failed.";
-  if (pr.checks === "pending") return "Checks are pending.";
-  return null;
-}
 
 export function PullRequestDetail({
   selection,
@@ -54,17 +52,30 @@ export function PullRequestDetail({
     : pr
       ? mergeDisabledReason(pr)
       : "Waiting for pull request detail.";
-  const deleteReason = !pr
-    ? "Waiting for pull request detail."
-    : pr.state === "open"
-      ? "Close or merge the pull request first."
-      : pr.branchExists === false
-        ? "Branch deleted."
-        : pr.branchExists === null
-          ? "Branch existence is unknown."
-          : pr.head === pr.base
-            ? "The base branch cannot be deleted."
-            : null;
+  const deleteReason = pr
+    ? deleteDisabledReason(pr)
+    : "Waiting for pull request detail.";
+  const actionBar = useRef<HTMLElement>(null);
+
+  // Palette and shortcuts activate the same guarded native controls as a click.
+  useEffect(() => {
+    const activate = (event: Event) => {
+      const request = (event as CustomEvent<PullRequestActionRequest>).detail;
+      if (
+        request.repoId !== selection.repoId ||
+        request.number !== selection.number ||
+        submitting.current ||
+        document.querySelector("dialog[open]")
+      )
+        return;
+      actionBar.current
+        ?.querySelector<HTMLElement>(`[data-pr-action="${request.action}"]`)
+        ?.click();
+    };
+    window.addEventListener(PULL_REQUEST_ACTION_EVENT, activate);
+    return () =>
+      window.removeEventListener(PULL_REQUEST_ACTION_EVENT, activate);
+  }, [selection.repoId, selection.number]);
 
   async function run(command: PullRequestCommand) {
     if (submitting.current) return;
@@ -95,14 +106,20 @@ export function PullRequestDetail({
 
   return (
     <div className="detail pr-detail" data-testid="pull-request-detail">
-      <header className="detail-head">
+      <header className="detail-head" ref={actionBar}>
         <div className="detail-meta">
           <span className="mono faint">#{selection.number}</span>
           {header ? <span className="chip">{header.state}</span> : null}
           {header?.draft ? <span className="chip">Draft</span> : null}
           <span className="spacer" />
           {header ? (
-            <a href={header.url} target="_blank" rel="noreferrer">
+            <a
+              data-pr-action="open"
+              aria-keyshortcuts="o"
+              href={header.url}
+              target="_blank"
+              rel="noreferrer"
+            >
               Open on GitHub
             </a>
           ) : null}
@@ -122,6 +139,8 @@ export function PullRequestDetail({
         <div className="pr-actions">
           <button
             type="button"
+            data-pr-action="merge"
+            aria-keyshortcuts="m"
             disabled={busy || !!reason}
             title={reason ?? undefined}
             onClick={() =>
@@ -133,6 +152,8 @@ export function PullRequestDetail({
           </button>
           <button
             type="button"
+            data-pr-action="delete"
+            aria-keyshortcuts="d"
             disabled={busy || connection || !!deleteReason}
             title={deleteReason ?? undefined}
             onClick={() => void run({ kind: "delete_branch", ...selection })}
@@ -148,6 +169,8 @@ export function PullRequestDetail({
           </button>
           <button
             type="button"
+            data-pr-action="refresh"
+            aria-keyshortcuts="r"
             disabled={busy || connection}
             onClick={() =>
               void run({

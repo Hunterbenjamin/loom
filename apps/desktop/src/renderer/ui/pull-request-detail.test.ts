@@ -15,6 +15,7 @@ import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
 import { Detail } from "./detail.js";
 import { useShortcuts } from "./keys.js";
+import { Palette } from "./palette.js";
 import { PullRequestDetail } from "./pull-request-detail.js";
 
 vi.mock("@pierre/diffs/react", () => ({
@@ -79,6 +80,7 @@ function setup(change: Partial<PullRequestDetailRow["detail"]> = {}) {
         // biome-ignore lint/correctness/noChildrenProp: typed provider children
         children: [
           createElement(Keyboard, { key: "keys" }),
+          createElement(Palette, { key: "palette" }),
           createElement(PullRequestDetail, { key: "detail", selection }),
         ],
       }),
@@ -299,9 +301,12 @@ test("detail scopes follow selection and visibility, task PR links open in-app",
   act(() => h.store.setTrackerVisible(true));
   expect(pullRequestSubscriptions(h.store.getState())).toEqual([
     { kind: "pull_request", repoId: h.row.repoId, number: h.row.number },
+    { kind: "pull_requests", repoId: h.row.repoId, state: "open" },
   ]);
   act(() => h.store.setTrackerVisible(false));
-  expect(pullRequestSubscriptions(h.store.getState())).toEqual([]);
+  expect(pullRequestSubscriptions(h.store.getState())).toEqual([
+    { kind: "pull_requests", repoId: h.row.repoId, state: "open" },
+  ]);
   const task = h.fixture.tasks[0];
   if (!task) throw new Error("Missing task");
   act(() => {
@@ -323,4 +328,134 @@ test("detail scopes follow selection and visibility, task PR links open in-app",
     repoId: task.repoId,
     number: h.row.number,
   });
+});
+
+function press(
+  key: string,
+  target: EventTarget = window,
+  extra: KeyboardEventInit = {},
+) {
+  act(() => {
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key,
+        bubbles: true,
+        cancelable: true,
+        ...extra,
+      }),
+    );
+  });
+}
+
+test("PR shortcuts reuse confirmation and guarded controls, while typing and dialogs retain their keys", async () => {
+  const h = setup();
+  const link = h.host.querySelector<HTMLAnchorElement>(
+    '[data-pr-action="open"]',
+  );
+  if (!link) throw new Error("Missing GitHub link");
+  const open = vi.spyOn(link, "click").mockImplementation(() => {});
+  press("o");
+  expect(open).toHaveBeenCalledOnce();
+  press("d");
+  expect(h.sender).not.toHaveBeenCalled();
+  const input = document.createElement("input");
+  h.host.append(input);
+  for (const key of ["m", "d", "o", "r"]) press(key, input);
+  press("m", window, { ctrlKey: true });
+  press("m", window, { repeat: true });
+  expect(h.host.querySelector("dialog")).toBeNull();
+  expect(h.sender).not.toHaveBeenCalled();
+  press("m");
+  expect(h.host.querySelector("dialog")?.open).toBe(true);
+  expect(h.host.querySelector("dialog")?.textContent).toContain(
+    h.row.detail.headSha,
+  );
+  press("r");
+  press("o");
+  expect(h.sender).not.toHaveBeenCalled();
+  expect(open).toHaveBeenCalledOnce();
+  await h.click("Cancel");
+  await act(async () => press("r"));
+  expect(h.sender).toHaveBeenCalledExactlyOnceWith({
+    kind: "refresh_pull_requests",
+    repoId: h.row.repoId,
+    state: "open",
+  });
+  h.sender.mockClear();
+  act(() => {
+    h.row.detail.state = "merged";
+    h.update();
+  });
+  press("m");
+  expect(h.host.querySelector("dialog")).toBeNull();
+  await act(async () => press("d"));
+  expect(h.sender).toHaveBeenCalledExactlyOnceWith({
+    kind: "delete_branch",
+    repoId: h.row.repoId,
+    number: h.row.number,
+  });
+  h.sender.mockClear();
+  act(() => h.store.setConnection("disconnected"));
+  await act(async () => {
+    press("d");
+    press("r");
+  });
+  expect(h.sender).not.toHaveBeenCalled();
+});
+
+test("palette exposes PR actions and disabled reasons, and merge opens the same confirmation", async () => {
+  const h = setup({ checks: "pending" });
+  act(() => h.store.setPalette(true));
+  const item = (action: string) => {
+    const element = h.host.querySelector<HTMLElement>(
+      `[cmdk-item][data-value^="pull-request-${action} "]`,
+    );
+    if (!element) throw new Error(`Missing palette command ${action}`);
+    return element;
+  };
+  expect(item("merge").getAttribute("aria-disabled")).toBe("true");
+  expect(item("merge").title).toBe("Checks are pending.");
+  expect(item("delete").getAttribute("aria-disabled")).toBe("true");
+  expect(item("open").textContent).toContain("o");
+  expect(item("refresh").textContent).toContain("r");
+  press("m", h.host.querySelector("input") ?? window);
+  expect(h.host.querySelector("dialog")).toBeNull();
+  act(() => {
+    h.row.detail.checks = "success";
+    h.update();
+  });
+  await act(async () => item("merge").click());
+  expect(h.store.getState().ui.palette).toBe(false);
+  expect(h.host.querySelector("dialog")?.open).toBe(true);
+  expect(h.sender).not.toHaveBeenCalled();
+  await h.click("Confirm squash merge");
+  expect(h.sender).toHaveBeenCalledOnce();
+});
+
+test("a pending command cannot be submitted again through shortcuts or the palette", async () => {
+  const h = setup({ state: "closed" });
+  let finish!: (outcome: AckOutcome) => void;
+  h.sender.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  press("d");
+  press("d");
+  act(() => h.store.setPalette(true));
+  act(() =>
+    h.host
+      .querySelector<HTMLElement>(
+        '[cmdk-item][data-value^="pull-request-delete "]',
+      )
+      ?.click(),
+  );
+  expect(h.sender).toHaveBeenCalledOnce();
+  await act(async () =>
+    finish({
+      ok: false,
+      error: { code: "guard_failed", message: "Branch protected", details: [] },
+    }),
+  );
 });

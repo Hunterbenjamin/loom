@@ -4,7 +4,7 @@ import { minutesBefore } from "../fixtures/ids.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
 import { emptySnapshot } from "../live/snapshot.js";
-import { selectedPullRequests } from "./pull-requests.js";
+import { readyToMergeCount, selectedPullRequests } from "./pull-requests.js";
 import { createStore } from "./store.js";
 
 test("live snapshots and PR patches update rows and retain the selected repo/number", () => {
@@ -86,4 +86,70 @@ test("PR lists, counts and subscriptions follow exactly one selected repository"
       { kind: "pull_requests", repoId: repo.id, state: "open" },
     ]);
   }
+});
+
+test("readiness follows GitHub patches and the selected repository, independent of list filters", async () => {
+  const fixture = buildSnapshot();
+  const first = fixture.pullRequests[0];
+  if (!first) throw new Error("Missing PR");
+  fixture.pullRequests = [
+    {
+      ...first,
+      checks: "success",
+      mergeable: "mergeable",
+      draft: false,
+      state: "open",
+    },
+    {
+      ...first,
+      number: 901,
+      checks: "none",
+      mergeable: "mergeable",
+      draft: false,
+      state: "open",
+    },
+    ...(
+      [
+        { checks: "pending" },
+        { checks: "failure" },
+        { draft: true },
+        { mergeable: "unknown" },
+        { mergeable: "conflicting" },
+        { state: "merged" },
+        { state: "closed" },
+      ] as const
+    ).map((change, index) => ({ ...first, number: 902 + index, ...change })),
+  ];
+  const store = createStore(fixture);
+  expect(readyToMergeCount(store.getState())).toBe(2);
+  store.setPrQuery("nothing matches");
+  store.setPrState("closed");
+  expect(readyToMergeCount(store.getState())).toBe(2);
+  const wire = toSnapshot(fixture);
+  const client = stateFromSnapshot(wire.meta, wire.body);
+  const patch = {
+    type: "patch" as const,
+    seq: wire.meta.seq + 1,
+    now: wire.meta.now,
+    changes: [
+      {
+        op: "upsert" as const,
+        collection: "pull_request" as const,
+        value: {
+          ...first,
+          checks: "success" as const,
+          mergeable: "mergeable" as const,
+          draft: false,
+          state: "merged" as const,
+        },
+      },
+    ],
+  };
+  expect(applyPatch(client, patch).ok).toBe(true);
+  store.applyProtocol(client, patch);
+  expect(readyToMergeCount(store.getState())).toBe(1);
+  const other = fixture.repos[1];
+  if (!other) throw new Error("Missing repository");
+  await store.setRepo(other.id);
+  expect(readyToMergeCount(store.getState())).toBe(0);
 });

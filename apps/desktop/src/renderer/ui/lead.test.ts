@@ -118,6 +118,9 @@ for (const live of [false, true])
       ),
     );
     expect(host.querySelector(".bottom-bar")?.textContent).toContain(
+      "Ready to merge · 1",
+    );
+    expect(host.querySelector(".bottom-bar")?.textContent).toContain(
       live ? "connected · dev" : "fixtures · fixtures",
     );
     expect(host.querySelector(".lead-toggle")?.textContent).toContain("Main");

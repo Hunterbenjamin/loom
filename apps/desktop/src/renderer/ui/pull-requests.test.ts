@@ -171,7 +171,13 @@ test("j/k follows displayed order, search owns typing, and task links open only 
 
 test("subscriptions follow repository, state and visibility without PR details or commands", () => {
   const h = setup();
-  expect(pullRequestSubscriptions(h.store.getState())).toEqual([]);
+  expect(pullRequestSubscriptions(h.store.getState())).toEqual([
+    {
+      kind: "pull_requests",
+      repoId: h.store.getState().ui.repo,
+      state: "open",
+    },
+  ]);
   act(() => h.store.setTrackerVisible(true));
   expect(pullRequestSubscriptions(h.store.getState())).toHaveLength(1);
   const repo = h.store.getState().snapshot.repos[0];
@@ -185,11 +191,23 @@ test("subscriptions follow repository, state and visibility without PR details o
     { kind: "pull_requests", repoId: repo.id, state: "closed" },
   ]);
   act(() => h.store.setView("all"));
-  expect(pullRequestSubscriptions(h.store.getState())).toEqual([]);
+  expect(pullRequestSubscriptions(h.store.getState())).toEqual([
+    {
+      kind: "pull_requests",
+      repoId: h.store.getState().ui.repo,
+      state: "open",
+    },
+  ]);
   act(() => h.store.setView("pull-requests"));
   expect(h.store.getState().ui.prState).toBe("closed");
   act(() => h.store.setTrackerVisible(false));
-  expect(pullRequestSubscriptions(h.store.getState())).toEqual([]);
+  expect(pullRequestSubscriptions(h.store.getState())).toEqual([
+    {
+      kind: "pull_requests",
+      repoId: h.store.getState().ui.repo,
+      state: "open",
+    },
+  ]);
   expect(createStore().getState().ui.prState).toBe("open");
 });
 
