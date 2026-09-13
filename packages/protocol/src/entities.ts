@@ -92,6 +92,7 @@ export const attentionReason = z.enum([
   "failed",
   "run_vanished",
   "stalled",
+  "idle_without_submission",
   "status_unknown",
   "observability_failure",
   "over_budget",
@@ -271,6 +272,7 @@ export const run = z.strictObject({
     .nullable(),
   seenAt: isoTime.nullable().optional(),
   unknownSince: isoTime.nullable().optional(),
+  idleSince: isoTime.nullable().optional(),
   observedAttempt: count.optional(),
   retryBaseAttempt: count.optional(),
 });

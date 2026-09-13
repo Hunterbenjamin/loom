@@ -29,6 +29,7 @@ export const ATTENTION_LABELS: Record<AttentionReason, string> = {
   failed: "Failed",
   run_vanished: "Run vanished",
   stalled: "Stalled",
+  idle_without_submission: "Stopped without submitting",
   status_unknown: "Status unknown",
   observability_failure: "Observability failure",
   over_budget: "Over budget",

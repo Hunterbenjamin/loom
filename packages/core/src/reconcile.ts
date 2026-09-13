@@ -36,7 +36,7 @@ export interface RetryPolicy {
 
 export interface ReconcileConfig {
   retry: RetryPolicy;
-  /** No provider activity for this long while working: `stalled` attention. Nothing is killed. */
+  /** Grace for working stalls and idle runs awaiting submission. Attention only; nothing is killed. */
   stallAfterMs: number;
   /** A run may be `unknown` this long before it gets `status_unknown` attention. */
   unknownGraceMs: number;

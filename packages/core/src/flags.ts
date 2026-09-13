@@ -166,6 +166,28 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
           else schedules.push({ at, why: "stall_check" });
         }
       }
+      if (
+        run.status === "idle" &&
+        !input.blocked &&
+        !input.failed &&
+        ((input.stage === "planning" && run.role === "planner") ||
+          (input.stage === "in_progress" && run.role === "implementer") ||
+          (input.stage === "in_review" && run.role === "reviewer")) &&
+        !input.messages.some(
+          (m) =>
+            m.runId === run.id &&
+            (m.status === "pending" || m.status === "sent"),
+        ) &&
+        !input.questions.some((q) => q.runId === run.id && q.answer === null)
+      ) {
+        // Legacy idle runs have no interval yet; use their last native activity.
+        const since = run.idleSince ?? run.lastActivityAt ?? run.launchedAt;
+        if (since) {
+          const at = later(since, input.stallAfterMs);
+          if (at <= input.now) fromRun("idle_without_submission", run.id);
+          else schedules.push({ at, why: "stall_check" });
+        }
+      }
       if (run.status === "unknown" && run.unknownSince) {
         const at = later(run.unknownSince, input.unknownGraceMs);
         if (at <= input.now) fromRun("observability_failure", run.id);

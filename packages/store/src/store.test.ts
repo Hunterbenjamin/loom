@@ -122,6 +122,23 @@ describe("task transactions", () => {
       restarted.runs(taskId).find((r) => r.id === run.id)?.pendingDialog,
     ).toEqual(run.pendingDialog);
   });
+  it("retains idle submission attention and its run interval across reopen", async () => {
+    const store = await seeded();
+    const state = richState();
+    const run = required(state.runs[0]);
+    run.idleSince = now;
+    state.task.attention = {
+      reasons: ["idle_without_submission"],
+      reasonSince: { idle_without_submission: now },
+      since: now,
+    };
+    expect(store.commit(taskId, result(state), 0).ok).toBe(true);
+    store.close();
+    const restarted = await open();
+    const restored = restarted.loadTaskState(taskId);
+    expect(restored.runs.find((r) => r.id === run.id)?.idleSince).toBe(now);
+    expect(restored.task.attention).toEqual(state.task.attention);
+  });
   it("round-trips every Phase 1b field through commit and reopen", async () => {
     const store = await seeded(),
       state = richState();
