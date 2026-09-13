@@ -97,6 +97,7 @@ export interface UiState {
 
 export interface State {
   snapshot: Snapshot;
+  pullRequestLists: Entities["pull_requests"][];
   pullRequestDetails: PullRequestDetailRow[];
   ui: UiState;
   live: boolean;
@@ -208,6 +209,7 @@ export function createStore(
     | undefined;
   let state: State = {
     snapshot,
+    pullRequestLists: [],
     pullRequestDetails: live
       ? []
       : buildPullRequestDetails(snapshot.pullRequests),
@@ -371,6 +373,10 @@ export function createStore(
       state = {
         ...state,
         snapshot: projectSnapshot(state.snapshot, client, patch),
+        pullRequestLists:
+          !patch || patch.changes.some((c) => c.collection === "pull_requests")
+            ? [...client.collections.pull_requests.values()]
+            : state.pullRequestLists,
         pullRequestDetails:
           !patch ||
           patch.changes.some((c) => c.collection === "pull_request_detail")

@@ -31,3 +31,7 @@ metadata/commit content is synthetic, and the diff changes a fictional `example.
 They cover repository listings, rich detail, commit pagination, and the diff media type
 without retaining email addresses or requiring GitHub access. HTTP 204, missing-ref 422,
 other 422 failures, and branch-read 404 envelopes are explicitly generated in tests.
+
+`pull-requests-graphql.json` is a derived GraphQL list fixture using the PR metadata in
+`pull-detail.json`, with a successful rollup and approved review decision. List tests derive
+state, draft, failure, null-author, pagination and malformed-response cases from it.

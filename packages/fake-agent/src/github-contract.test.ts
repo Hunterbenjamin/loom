@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import type { GitHubAdapter, PullRequestDetail, Sha } from "@loom/core";
 import { describe, expect, it } from "vitest";
+import { createGitHubAdapter } from "../../adapters/github/src/index.js";
 import {
+  graphqlNode,
+  graphqlPage,
+  http,
   ok,
   pr,
   root,
@@ -38,14 +42,14 @@ async function contract(kind: "fake" | "gh"): Promise<GitHubAdapter> {
     merged_at: null,
   });
   stub.set(`${pr}/commits?per_page=100`, rawCommits);
-  stub.set(
-    `${root}/pulls?state=open&sort=created&direction=desc&per_page=100`,
-    [raw],
-  );
-  stub.set(
-    `${root}/pulls?state=closed&sort=created&direction=desc&per_page=100`,
-    [raw],
-  );
+  const listState = (state: "OPEN" | "CLOSED" | "MERGED") => {
+    for (const filter of ["OPEN", "CLOSED", "MERGED"])
+      stub.set(
+        `graphql:${filter}:`,
+        graphqlPage(filter === state ? [graphqlNode] : []),
+      );
+  };
+  listState("OPEN");
   const detail = await stub.adapter.readPullRequest(repo, raw.number);
   if (kind === "fake") {
     const fake = new FakeGitHub(new FakeClock(), repo, raw.head.ref);
@@ -67,8 +71,13 @@ async function contract(kind: "fake" | "gh"): Promise<GitHubAdapter> {
       });
       return ok("HTTP/2.0 204 No Content\nContent-Length: 0\n\n");
     }
-    if (args.includes("close")) stub.set(pr, { ...raw, merged: false });
-    else stub.set(pr, raw);
+    if (args.includes("close")) {
+      stub.set(pr, { ...raw, merged: false });
+      listState("CLOSED");
+    } else {
+      stub.set(pr, raw);
+      listState("MERGED");
+    }
     return ok();
   });
   return stub.adapter;
@@ -161,4 +170,60 @@ it("fake GitHub supports multiple off-pipeline PRs and isolated branch deletion"
     truncated: false,
     observedAt: clock.now(),
   });
+});
+
+it("fake GraphQL maps all list states, draft, failed checks and changes requested through the real adapter", async () => {
+  const fake = new FakeGitHub(new FakeClock(), repo, raw.head.ref);
+  const base = await (await contract("gh")).readPullRequest(repo, raw.number);
+  fake.setPullRequest({
+    ...base,
+    number: 1,
+    draft: true,
+    checks: "failure",
+    review: "changes_requested",
+  });
+  fake.setPullRequest({ ...base, number: 2, state: "merged" });
+  fake.setPullRequest({ ...base, number: 3, state: "closed" });
+  const calls: string[][] = [];
+  const adapter = createGitHubAdapter({
+    excludedAuthors: [],
+    run: async (args, input) => {
+      calls.push(args);
+      return ok(http(await fake.graphql(input ?? "")));
+    },
+  });
+  expect(await adapter.listPullRequests(repo, "open")).toMatchObject([
+    {
+      number: 1,
+      state: "open",
+      draft: true,
+      checks: "failure",
+      review: "changes_requested",
+    },
+  ]);
+  expect(await adapter.listPullRequests(repo, "merged")).toMatchObject([
+    { number: 2, state: "merged" },
+  ]);
+  expect(await adapter.listPullRequests(repo, "closed")).toMatchObject([
+    { number: 3, state: "closed" },
+  ]);
+  expect(calls).toHaveLength(3);
+  expect(calls.every((args) => args[1] === "graphql")).toBe(true);
+});
+
+it("120 merged PRs require two GraphQL pages and no per-PR detail calls", async () => {
+  const fake = new FakeGitHub(new FakeClock(), repo, raw.head.ref);
+  const base = await (await contract("gh")).readPullRequest(repo, raw.number);
+  for (let number = 1; number <= 120; number++)
+    fake.setPullRequest({ ...base, number, state: "merged" });
+  let calls = 0;
+  const adapter = createGitHubAdapter({
+    excludedAuthors: [],
+    run: async (_args, input) => {
+      calls++;
+      return ok(http(await fake.graphql(input ?? "")));
+    },
+  });
+  expect(await adapter.listPullRequests(repo, "merged")).toHaveLength(120);
+  expect(calls).toBe(2);
 });

@@ -29,6 +29,14 @@ export function PullRequestsView() {
   const store = useStoreApi();
   const rows = useStore(selectedPullRequests, shallowArray);
   const status = useStore((s) => s.ui.prState);
+  const loading = useStore((s) =>
+    s.pullRequestLists.some(
+      (list) =>
+        list.repoId === s.ui.repo &&
+        list.state === s.ui.prState &&
+        list.loading,
+    ),
+  );
   const query = useStore((s) => s.ui.prQuery);
   const cursor = useStore((s) => s.ui.prCursor);
   const now = useStore((s) => s.snapshot.now);
@@ -90,9 +98,11 @@ export function PullRequestsView() {
       <div className="list" ref={scroller} data-testid="pull-requests-list">
         {rows.length === 0 ? (
           <div className="pad faint" role="status">
-            {query.trim()
-              ? "No pull requests match this filter."
-              : `No ${status} pull requests in the current snapshot.`}
+            {loading
+              ? "Loading pull requests…"
+              : query.trim()
+                ? "No pull requests match this filter."
+                : `No ${status} pull requests in the current snapshot.`}
           </div>
         ) : null}
         <table

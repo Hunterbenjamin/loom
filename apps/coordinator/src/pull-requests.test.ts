@@ -1,12 +1,19 @@
-import { GitHubError } from "@loom/adapter-github";
+import { createGitHubAdapter, GitHubError } from "@loom/adapter-github";
 import type { PullRequestDetail } from "@loom/core";
 import { FakeClock, FakeGitHub, loadScenarios } from "@loom/fake-agent";
-import { pullRequestKey, repoId, type Subscription, sha } from "@loom/protocol";
+import {
+  pullRequestKey,
+  pullRequestListKey,
+  repoId,
+  type Subscription,
+  sha,
+} from "@loom/protocol";
 import { afterEach, expect, test, vi } from "vitest";
 import { LoomClient } from "./client.js";
 import { classify } from "./executor.js";
 import { PullRequestViews } from "./pull-requests.js";
 import { createHarness, type Harness, ScenarioDriver } from "./test-support.js";
+import { PublishedRows } from "./views.js";
 
 const head = sha.parse("a".repeat(40));
 const nextHead = sha.parse("b".repeat(40));
@@ -90,6 +97,9 @@ test("repository lists include off-pipeline PRs, join only this repo's task bran
     detail(2, { createdAt: "2026-09-13T00:00:00.000Z" as typeof at }),
   );
   const reader = await connect(h, [listScope(h), detailScope(h)]);
+  await vi.waitFor(() =>
+    expect(reader.state?.collections.pull_request_detail.size).toBe(1),
+  );
   const rows = [...(reader.state?.collections.pull_request.values() ?? [])];
   expect(rows.map((r) => r.number)).toEqual([2, 1]);
   expect(rows.find((r) => r.number === 1)?.taskId).toBe(task.task.id);
@@ -345,6 +355,7 @@ test("a patch read racing a push retains the previous complete detail", async ()
   const scope: Subscription = { kind: "pull_request", repoId: id, number: 1 };
   views.subscriptions([scope]);
   await views.ensure([scope]);
+  await vi.waitFor(() => expect(replace).toHaveBeenCalledTimes(2));
   replace.mockClear();
   vi.spyOn(github, "readPullRequestPatch").mockImplementation(async () => {
     github.setPullRequest(detail(1, { headSha: nextHead }));
@@ -353,5 +364,155 @@ test("a patch read racing a push retains the previous complete detail", async ()
   clock.advance(30_000);
   await vi.waitFor(() => expect(onError).toHaveBeenCalled());
   expect(replace).not.toHaveBeenCalled();
+  await views.stop();
+});
+
+function deferred() {
+  let release = () => {};
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
+
+test("a first snapshot and subscription ack arrive while GitHub is blocked, then rows arrive in a patch", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail());
+  const gate = deferred();
+  const read = h.adapters.github.listPullRequests;
+  const lists = vi
+    .spyOn(h.adapters.github, "listPullRequests")
+    .mockImplementation(async (...args) => {
+      await gate.promise;
+      return read(...args);
+    });
+  try {
+    const connection = connect(h, [listScope(h)]);
+    let connected = false;
+    void connection.then(() => {
+      connected = true;
+    });
+    await vi.waitFor(() => expect(connected).toBe(true));
+    const client = await connection;
+    expect(client.state?.collections.pull_request.size).toBe(0);
+    const key = pullRequestListKey(h.repo.id, "open");
+    expect(client.state?.collections.pull_requests.get(key)?.loading).toBe(
+      true,
+    );
+    const other = await connect(h, []);
+    await other.subscribe([listScope(h)]);
+    expect(other.state?.collections.pull_requests.get(key)?.loading).toBe(true);
+    expect(lists).toHaveBeenCalledTimes(1);
+    gate.release();
+    await vi.waitFor(() => {
+      expect(client.state?.collections.pull_request.size).toBe(1);
+      expect(other.state?.collections.pull_request.size).toBe(1);
+      expect(client.state?.collections.pull_requests.get(key)?.loading).toBe(
+        false,
+      );
+    });
+  } finally {
+    gate.release();
+  }
+});
+
+test("a slow merged scope does not queue open or detail reads, and duplicate subscribers share each read", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail());
+  h.github.setPullRequest(detail(2, { state: "merged" }));
+  const gate = deferred();
+  const read = h.adapters.github.listPullRequests;
+  const lists = vi
+    .spyOn(h.adapters.github, "listPullRequests")
+    .mockImplementation(async (repo, state) => {
+      if (state === "merged") await gate.promise;
+      return read(repo, state);
+    });
+  const merged: Subscription = {
+    kind: "pull_requests",
+    repoId: h.repo.id,
+    state: "merged",
+  };
+  try {
+    const slow = await connect(h, [merged]);
+    const fast = await connect(h, [listScope(h), detailScope(h)]);
+    await connect(h, [merged, listScope(h)]);
+    await vi.waitFor(() =>
+      expect(fast.state?.collections.pull_request_detail.size).toBe(1),
+    );
+    expect(
+      fast.state?.collections.pull_request.get(pullRequestKey(h.repo.id, 1)),
+    ).toBeDefined();
+    expect(
+      slow.state?.collections.pull_requests.get(
+        pullRequestListKey(h.repo.id, "merged"),
+      )?.loading,
+    ).toBe(true);
+    expect(lists).toHaveBeenCalledTimes(2);
+    gate.release();
+    await vi.waitFor(() =>
+      expect(fast.state?.collections.pull_request.size).toBe(2),
+    );
+  } finally {
+    gate.release();
+  }
+});
+
+test("unchanged GraphQL polls publish no patch and failed reads retain cached rows", async () => {
+  const clock = new FakeClock();
+  const fake = new FakeGitHub(clock, "example/repo", "feat/pr-1");
+  fake.setPullRequest(detail());
+  const run = vi.fn(async (_args: string[], input?: string) => ({
+    stdout: `HTTP/2.0 200 OK\nContent-Type: application/json\n\n${JSON.stringify(await fake.graphql(input ?? ""))}`,
+    stderr: "",
+    exitCode: 0,
+  }));
+  const github = createGitHubAdapter({
+    excludedAuthors: [],
+    run,
+    now: () => new Date(clock.now()),
+  });
+  const id = repoId.parse("repo");
+  const published = new PublishedRows();
+  const patches = vi.fn();
+  const onError = vi.fn();
+  const views = new PullRequestViews({
+    github,
+    repo: () => ({ id, github: "example/repo" }) as never,
+    tasks: () => [],
+    replace: (owner, rows) => {
+      const changes = published.replace(owner, null, rows);
+      if (changes.length) patches(changes);
+    },
+    after: clock.after.bind(clock),
+    action: async () => {},
+    changed: () => {},
+    onError,
+  });
+  const scope: Subscription = {
+    kind: "pull_requests",
+    repoId: id,
+    state: "open",
+  };
+  views.subscriptions([scope]);
+  await views.ensure([scope]);
+  await vi.waitFor(() => expect(patches).toHaveBeenCalledTimes(3));
+  const initial = published.rows();
+  patches.mockClear();
+  await views.command({
+    kind: "refresh_pull_requests",
+    repoId: id,
+    state: "open",
+  });
+  clock.advance(60_000);
+  await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(3));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(patches).not.toHaveBeenCalled();
+  run.mockRejectedValueOnce(new Error("GitHub unavailable"));
+  await expect(
+    views.command({ kind: "refresh_pull_requests", repoId: id, state: "open" }),
+  ).rejects.toThrow();
+  expect(published.rows()).toEqual(initial);
+  expect(patches).not.toHaveBeenCalled();
   await views.stop();
 });

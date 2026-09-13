@@ -1,0 +1,41 @@
+{
+  "data": {
+    "repository": {
+      "pullRequests": {
+        "nodes": [
+          {
+            "number": 15477,
+            "title": "Improve tree shaking",
+            "author": {
+              "login": "contributor"
+            },
+            "headRefName": "edison/perf/treeshaking",
+            "baseRefName": "minor",
+            "headRefOid": "05c50f86b5fb9a95f30a4116e3bf4ab4d4bafa64",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "reviewDecision": "APPROVED",
+            "updatedAt": "2026-09-10T08:09:22Z",
+            "createdAt": "2026-09-09T00:00:00Z",
+            "url": "https://github.com/vuejs/core/pull/15477",
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "state": "SUCCESS"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "cursor-1"
+        }
+      }
+    }
+  }
+}

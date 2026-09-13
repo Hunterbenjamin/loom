@@ -9,6 +9,7 @@ import type {
   Sha,
   WorktreePath,
 } from "@loom/core";
+import { z } from "zod";
 import type { FakeClock } from "./clock.js";
 import { Hints } from "./providers.js";
 
@@ -331,6 +332,9 @@ export class FakeGitHub implements GitHubAdapter {
   }
   readPullRequest: GitHubAdapter["readPullRequest"] = async (repo, number) => {
     this.scope(repo);
+    return this.pullRequestDetail(number);
+  };
+  private pullRequestDetail(number: number): PullRequestDetail {
     const pr = this.requirePr(number);
     const detail = this.details.get(number);
     const latest = new Map<string, string>();
@@ -372,7 +376,7 @@ export class FakeGitHub implements GitHubAdapter {
         ...check,
       })),
     });
-  };
+  }
   listPullRequests: GitHubAdapter["listPullRequests"] = async (repo, state) => {
     this.scope(repo);
     const prs = [...(this.pr ? [this.pr] : []), ...this.additional.values()];
@@ -390,13 +394,76 @@ export class FakeGitHub implements GitHubAdapter {
         mergedAt: _at,
         mergeCommitSha: _sha,
         ...summary
-      } = await this.readPullRequest(repo, pr.number);
+      } = this.pullRequestDetail(pr.number);
       values.push(summary);
     }
     return values.sort(
       (a, b) => b.createdAt.localeCompare(a.createdAt) || b.number - a.number,
     );
   };
+  /** The native GraphQL list response, used to exercise the real adapter without gh. */
+  async graphql(input: string) {
+    const { variables } = z
+      .object({
+        query: z.string().min(1),
+        variables: z.object({
+          owner: z.string(),
+          name: z.string(),
+          state: z.enum(["OPEN", "MERGED", "CLOSED"]),
+          cursor: z
+            .string()
+            .regex(/^cursor-\d+$/)
+            .nullable(),
+        }),
+      })
+      .parse(JSON.parse(input));
+    const state = { OPEN: "open", MERGED: "merged", CLOSED: "closed" } as const;
+    const rows = await this.listPullRequests(
+      `${variables.owner}/${variables.name}`,
+      state[variables.state],
+    );
+    const start = variables.cursor ? Number(variables.cursor.slice(7)) : 0;
+    const page = rows.slice(start, start + 100);
+    return {
+      data: {
+        repository: {
+          pullRequests: {
+            nodes: page.map((row) => ({
+              number: row.number,
+              title: row.title,
+              author: row.author ? { login: row.author } : null,
+              headRefName: row.head,
+              baseRefName: row.base,
+              headRefOid: row.headSha,
+              isDraft: row.draft,
+              mergeable: row.mergeable.toUpperCase(),
+              reviewDecision:
+                row.review === "none" ? null : row.review.toUpperCase(),
+              updatedAt: row.updatedAt,
+              createdAt: row.createdAt,
+              url: row.url,
+              commits: {
+                nodes: [
+                  {
+                    commit: {
+                      statusCheckRollup:
+                        row.checks === "none"
+                          ? null
+                          : { state: row.checks.toUpperCase() },
+                    },
+                  },
+                ],
+              },
+            })),
+            pageInfo: {
+              hasNextPage: start + 100 < rows.length,
+              endCursor: page.length ? `cursor-${start + page.length}` : null,
+            },
+          },
+        },
+      },
+    };
+  }
   readPullRequestPatch: GitHubAdapter["readPullRequestPatch"] = async (
     repo,
     number,
