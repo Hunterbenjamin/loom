@@ -66,6 +66,8 @@ export interface FileChange {
 
 export interface GitAdapter {
   realpath(path: string): Promise<WorktreePath>;
+  /** Read the checkout's actual branch without changing it; null means detached HEAD. */
+  currentBranch(path: WorktreePath): Promise<string | null>;
   readWorktree(
     path: WorktreePath,
     baseBranch: string,

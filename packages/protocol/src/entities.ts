@@ -577,6 +577,7 @@ export const humanCommand = z.union([
   }),
   z.strictObject({ type: z.literal("send_message"), runId, text }),
   z.strictObject({ type: z.literal("retry") }),
+  z.strictObject({ type: z.literal("restart_run"), runId }),
   z.strictObject({ type: z.literal("grant_review_round") }),
   z.strictObject({ type: z.literal("waive_finding"), findingId, note: text }),
   z.strictObject({ type: z.literal("cancel"), reason: text }),

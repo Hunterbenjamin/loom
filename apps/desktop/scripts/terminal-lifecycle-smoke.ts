@@ -11,7 +11,13 @@ import type { WorktreePath } from "../../../packages/core/src/index.js";
 import { createHarness } from "../../coordinator/src/test-support.js";
 
 declare const window: {
-  loom: { store: { getState(): { connection: string } } };
+  loom: {
+    store: {
+      getState(): { connection: string; snapshot: { tasks: { id: string }[] } };
+      open(id: string): void;
+      setTab(tab: string): void;
+    };
+  };
   loomHost: { setMode(mode: string): Promise<void> };
 };
 const directory = await mkdtemp(join(tmpdir(), "loom-terminal-lifecycle-"));
@@ -133,9 +139,66 @@ try {
   await row("Named terminal").waitFor({ state: "detached", timeout: 10000 });
   assert.equal(await page.locator(".wb-tabs [aria-pressed]").count(), 0);
   await page.screenshot({ path: "/tmp/loom-terminal-lifecycle-verified.png" });
+  await h.git("switch", "-c", "feat/terminal-branch-check");
+  const task = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Task terminal fixture",
+    description: "No agent or worktree",
+  });
+  h.coordinator.submitHuman(task.task.id, {
+    type: "cancel",
+    reason: "closed fixture",
+  });
+  await h.coordinator.settle();
+  await page.evaluate(() => window.loomHost.setMode("tracker"));
+  await page.waitForFunction(
+    (id) =>
+      window.loom.store
+        .getState()
+        .snapshot.tasks.some((task) => task.id === id),
+    task.task.id,
+  );
+  await page.evaluate((id) => {
+    window.loom.store.open(id);
+    window.loom.store.setTab("terminal");
+  }, task.task.id);
+  await page
+    .locator(".terminal-tab .terminal-bar")
+    .getByText(/^pid /)
+    .waitFor();
+  assert.equal(
+    await page.locator("select[aria-label='Terminal run']").count(),
+    0,
+  );
+  assert.match(
+    await page.locator(".terminal-tab").innerText(),
+    /Project root · feat\/terminal-branch-check/,
+  );
+  const fallback = (await host.listPanes()).find(
+    (p) => p.windowName === `${task.task.id} terminal`,
+  );
+  assert.ok(fallback);
+  assert.equal(fallback.startCwd, h.repo.root);
+  await page.evaluate(() => window.loom.store.setTab("activity"));
+  await page.evaluate(() => window.loom.store.setTab("terminal"));
+  await page
+    .locator(".terminal-tab .terminal-bar")
+    .getByText(/^pid /)
+    .waitFor();
+  const reopened = (await host.listPanes()).filter(
+    (p) => p.windowName === `${task.task.id} terminal`,
+  );
+  assert.deepEqual(
+    reopened.map((p) => p.ref),
+    [fallback.ref],
+  );
+  assert.equal(
+    await h.git("branch", "--show-current"),
+    "feat/terminal-branch-check",
+  );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: existing-session selection, exact native close, empty-state mode switch, named creation, session reuse, native exit removal",
+    "PASS: terminal lifecycle, automatic task terminal, project root fallback, actual branch preserved, task shell reuse",
   );
 } finally {
   await app?.close();

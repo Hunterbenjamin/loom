@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadScenarios } from "@loom/fake-agent";
 import { expect, test, vi } from "vitest";
@@ -76,6 +76,131 @@ test("all roles use configured Codex settings through store, recipes, turns, and
     h = await h.restart();
     for (const run of h.store.loadTaskState(created.task.id).runs)
       expect(run.reasoningEffort).toBe("medium");
+  } finally {
+    await h.close();
+  }
+}, 30_000);
+
+test("restart replaces Claude with Sol on the same dirty worktree and retires first", async () => {
+  let h = await createHarness({
+    config: {
+      models: { codex: "gpt-5.6-sol", claude: "old-claude" },
+      codexReasoningEffort: "medium",
+    },
+  });
+  try {
+    const created = h.coordinator.createTask({
+      repoId: h.repo.id,
+      title: "Replace planner",
+      description: "Continue existing work",
+    });
+    h.coordinator.submitHuman(created.task.id, { type: "move", to: "todo" });
+    await h.coordinator.settle();
+    const before = h.store.loadTaskState(created.task.id);
+    const old = before.runs.find((r) => r.role === "planner");
+    if (!old || !before.worktree) throw new Error("Missing planner");
+    expect(old.provider).toBe("claude");
+    const file = join(before.worktree.path, "unfinished.txt");
+    await writeFile(file, "keep this work\n");
+    h.config.providerOverrides.planner = "codex";
+    const closed = vi.spyOn(h.providers.claude, "closeHeadless");
+    const start = vi.spyOn(h.providers.codex, "startThread");
+    h.coordinator.submitHuman(created.task.id, {
+      type: "restart_run",
+      runId: old.id,
+    });
+    await h.coordinator.settle();
+    const state = h.store.loadTaskState(created.task.id);
+    const replacement = state.runs.find(
+      (r) => r.id !== old.id && r.role === "planner",
+    );
+    expect(replacement).toMatchObject({
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "medium",
+      worktreePath: old.worktreePath,
+    });
+    expect(replacement?.sessionId).not.toBe(old.sessionId);
+    expect(state.task.stage).toBe("planning");
+    expect(await readFile(file, "utf8")).toBe("keep this work\n");
+    expect(closed).toHaveBeenCalledWith(old.sessionId);
+    expect(closed.mock.invocationCallOrder[0]).toBeLessThan(
+      start.mock.invocationCallOrder[0] ?? 0,
+    );
+    if (!replacement) throw new Error("Missing replacement");
+    expect(h.coordinator.recipes.get(replacement.id)).toMatchObject({
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "medium",
+    });
+    const count = start.mock.calls.length;
+    h.coordinator.submitHuman(created.task.id, {
+      type: "restart_run",
+      runId: old.id,
+    });
+    await h.coordinator.settle();
+    expect(start).toHaveBeenCalledTimes(count);
+    h = await h.restart();
+    expect(
+      h.store
+        .loadTaskState(created.task.id)
+        .runs.find((r) => r.id === replacement?.id),
+    ).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "medium" });
+  } finally {
+    await h.close();
+  }
+}, 30_000);
+
+test("replacement waits through failed retirement and restart, then uses its captured model", async () => {
+  let h = await createHarness({
+    config: {
+      models: { codex: "old-codex", claude: "fake-claude" },
+      codexReasoningEffort: "medium",
+    },
+  });
+  try {
+    const created = h.coordinator.createTask({
+      repoId: h.repo.id,
+      title: "Continue implementation",
+      description: "Keep the existing work",
+      size: "small",
+    });
+    h.coordinator.submitHuman(created.task.id, { type: "move", to: "todo" });
+    await h.coordinator.settle();
+    const before = h.store.loadTaskState(created.task.id);
+    const old = before.runs.find((r) => r.role === "implementer");
+    if (!old?.pane) throw new Error("Missing interactive run");
+    h.config.models.codex = "gpt-5.6-sol";
+    const close = vi
+      .spyOn(h.paneHost, "closePane")
+      .mockRejectedValueOnce(new Error("temporary pane failure"));
+    const start = vi.spyOn(h.providers.codex, "startThread");
+    h.coordinator.submitHuman(created.task.id, {
+      type: "restart_run",
+      runId: old.id,
+    });
+    await h.coordinator.settle();
+    expect(close).toHaveBeenCalledWith(old.pane);
+    expect(start).not.toHaveBeenCalled();
+    expect(
+      h.store.loadTaskState(created.task.id).desiredRun?.replacement?.model,
+    ).toBe("gpt-5.6-sol");
+    h = await h.restart();
+    h.clock.advance(20_000);
+    await h.coordinator.settle();
+    const state = h.store.loadTaskState(created.task.id);
+    const replacement = state.runs.find(
+      (r) => r.id !== old.id && r.role === "implementer",
+    );
+    expect(replacement).toMatchObject({
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "medium",
+    });
+    expect(state.task.stage).toBe("in_progress");
+    expect(state.plan).toEqual(before.plan);
+    expect(state.task.worktreePath).toBe(before.task.worktreePath);
+    expect(state.desiredRun).toBeNull();
   } finally {
     await h.close();
   }

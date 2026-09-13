@@ -103,6 +103,7 @@ kbd {
 .shell {
   display: grid;
   grid-template-columns: 232px 1fr;
+  grid-template-rows: minmax(0, 1fr) 34px;
   height: 100%;
 }
 
@@ -966,13 +967,11 @@ ul.plain {
   resize: vertical;
 }
 
-/* Shared window chrome. Lead overlays the Tracker so the list never resizes on toggle. */
-.shell {
-  padding-bottom: 34px;
-}
+/* Reserve a layout row in both window modes; only the optional Lead panel overlays content. */
 .bottom-bar {
-  position: fixed;
-  inset: auto 0 0;
+  position: relative;
+  grid-column: 1 / -1;
+  flex: none;
   height: 34px;
   z-index: 40;
   display: flex;

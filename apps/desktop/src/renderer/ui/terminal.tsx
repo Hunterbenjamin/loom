@@ -2,13 +2,14 @@
 // Terminals are for humans: nothing here parses output or decides anything.
 
 import type { RunId, Task } from "@loom/core";
+import type { AckResult } from "@loom/protocol";
 import { FitAddon } from "@xterm/addon-fit";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { memo, useEffect, useRef, useState } from "react";
-import { shallowArray, useStore } from "../store/react.js";
+import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { terminalsForTask } from "../store/selectors.js";
 import { kittyEncode } from "./kitty.js";
 
@@ -38,15 +39,7 @@ export function TerminalTab({
     if (activeRunId !== selectedRunId) setActiveRunId(selectedRunId);
   }, [activeRunId, selectedRunId]);
 
-  if (runs.length === 0) {
-    return (
-      <div className="terminal-empty faint">
-        {task.stage === "done" || task.stage === "canceled"
-          ? "Task is done"
-          : "No agent is running for this task"}
-      </div>
-    );
-  }
+  if (runs.length === 0) return <TaskShellTerminal task={task} theme={theme} />;
 
   return (
     <div className="terminal-tab">
@@ -84,6 +77,101 @@ export function TerminalTab({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function TaskShellTerminal({
+  task,
+  theme,
+}: {
+  task: Task;
+  theme: "dark" | "light";
+}) {
+  const store = useStoreApi();
+  const live = useStore((s) => s.live);
+  const contextKey = useStore((s) =>
+    JSON.stringify(
+      s.snapshot.runs
+        .filter((run) => run.taskId === task.id && !run.endedAt)
+        .map((run) => [
+          run.id,
+          run.pane,
+          run.pane &&
+            s.panes.find(
+              (p) =>
+                p.hostGeneration === run.pane?.hostGeneration &&
+                p.paneId === run.pane?.paneId,
+            )?.dead,
+        ]),
+    ),
+  );
+  const [retry, setRetry] = useState(0);
+  const [terminal, setTerminal] = useState<Extract<
+    AckResult,
+    { kind: "task_terminal" }
+  > | null>(null);
+  const [error, setError] = useState("");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Re-resolve when task/run identity changes or the human retries, without remounting for activity updates.
+  useEffect(() => {
+    if (!live) return;
+    let disposed = false;
+    setError("");
+    void store
+      .command({ kind: "open_task_terminal", taskId: task.id })
+      .then((outcome) => {
+        if (disposed) return;
+        if (!outcome.ok) throw new Error(outcome.error.message);
+        if (
+          outcome.result.kind !== "task_terminal" ||
+          outcome.result.taskId !== task.id
+        )
+          throw new Error("Task terminal was not confirmed");
+        const next = outcome.result;
+        setTerminal((previous) =>
+          JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
+        );
+      })
+      .catch((error: unknown) => {
+        if (!disposed) setError(String(error));
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [store, task.id, task.stage, task.worktreePath, live, contextKey, retry]);
+  const selected = terminal?.taskId === task.id ? terminal : null;
+  return (
+    <div className="terminal-tab">
+      {error ? (
+        <div role="alert">
+          {error}
+          <button type="button" onClick={() => setRetry((n) => n + 1)}>
+            Retry terminal
+          </button>
+        </div>
+      ) : live && !selected ? (
+        <p role="status">Opening task terminal…</p>
+      ) : null}
+      {selected && (
+        <div className="terminal-bar" role="status">
+          {selected.source === "agent"
+            ? "Agent terminal"
+            : selected.source === "worktree"
+              ? "Task worktree"
+              : "Project root"}
+          {" · "}
+          {selected.branch ?? "detached HEAD"}
+        </div>
+      )}
+      {(!live || selected) && (
+        <TerminalSession
+          key={task.id}
+          label={task.id}
+          pane={selected?.target}
+          theme={theme}
+          live={live}
+        />
+      )}
     </div>
   );
 }

@@ -61,6 +61,7 @@ export const command = z.union([
   z.strictObject({ kind: z.literal("open_operator_terminal") }),
   z.strictObject({ kind: z.literal("stop_operator_session") }),
   z.strictObject({ kind: z.literal("operator_status") }),
+  z.strictObject({ kind: z.literal("open_task_terminal"), taskId }),
   z.strictObject({
     kind: z.literal("open_workbench_terminal"),
     key: z.string().uuid(),
@@ -156,6 +157,13 @@ export const ackResult = z.union([
       .nullable(),
   }),
   z.strictObject({ kind: z.literal("operator_state"), state: operatorState }),
+  z.strictObject({
+    kind: z.literal("task_terminal"),
+    taskId,
+    target: paneIdentity,
+    source: z.enum(["agent", "worktree", "project"]),
+    branch: z.string().nullable(),
+  }),
   z.strictObject({ kind: z.literal("scratch_created"), pane: paneView }),
   z.strictObject({ kind: z.literal("terminal_closed"), target: paneIdentity }),
   z.strictObject({ kind: z.literal("lead_stopped") }),

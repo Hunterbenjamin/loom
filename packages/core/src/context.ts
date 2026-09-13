@@ -223,8 +223,13 @@ export class Context {
   ): void {
     this.state.desiredRun = { role, round, resume };
   }
-  end(run: Run, reason: RunEndReason, interrupt = false): void {
-    if (run.endedAt) return;
+  end(
+    run: Run,
+    reason: RunEndReason,
+    interrupt = false,
+    terminate = false,
+  ): void {
+    if (run.endedAt && !terminate) return;
     // For Loom-launched runs, cancel pending actions and manage capacity.
     // For external runs, skip those steps (they never counted toward capacity).
     if (run.origin === "loom") {
@@ -238,7 +243,9 @@ export class Context {
         }
       for (const row of this.state.outbox)
         if (
-          (row.status === "pending" || row.status === "running") &&
+          (row.status === "pending" ||
+            row.status === "running" ||
+            (terminate && row.status === "failed")) &&
           row.action &&
           "runId" in row.action &&
           row.action.runId === run.id &&
@@ -255,7 +262,7 @@ export class Context {
       );
       if (["starting", "working", "blocked"].includes(run.status))
         this.reserved[run.provider]--;
-      if (interrupt && run.status === "working")
+      if (interrupt && !terminate && run.status === "working")
         this.emit(`interrupt_run:${run.id}#${run.attempts}:${reason}`, {
           kind: "interrupt_run",
           runId: run.id,
@@ -264,11 +271,15 @@ export class Context {
     }
     // Both Loom and external runs: emit stop_run for headless mode (cleanup)
     // and set end state.
-    if (run.mode === "headless")
-      this.emit(`stop_run:${run.id}#${run.attempts}`, {
-        kind: "stop_run",
-        runId: run.id,
-      });
+    if (run.mode === "headless" || terminate)
+      this.emit(
+        `stop_run:${run.id}#${run.attempts}${terminate ? ":terminate" : ""}`,
+        {
+          kind: "stop_run",
+          runId: run.id,
+          ...(terminate ? { terminate: true } : {}),
+        },
+      );
     run.status = "ended";
     run.blockedOn = null;
     run.endedAt = this.now;
