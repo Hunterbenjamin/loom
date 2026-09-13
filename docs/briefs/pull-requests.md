@@ -144,3 +144,13 @@ Reviewed files are coordinator-owned, scoped to repository, PR number and head S
 existing `save_review_state` viewed-file contract with a PR target. Marking a file collapses it;
 new heads reset the visible marks. Commit-only views cannot mark the entire PR reviewed.
 Reviews slice 5 remains separate.
+
+## Superseded by Reviews slice 5
+
+Command+Enter joins the existing merge shortcuts and opens the exact-head confirmation from
+Overview or Diff, including focused page inputs. Explicit issue links are visible in both PR
+and issue detail, backed by the same saved coordinator relation; relinking and restarting preserve
+the correct reverse references without changing task branches or workflow PR identity. Newly
+observed merges in PR lists/detail invalidate and enqueue matching branch tasks immediately, so
+normal GitHub observation reaches Done without waiting for the task poll. Manual references alone
+do not move stages. Fixture mode covers every Reviews section and the Overview/Diff content.

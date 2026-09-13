@@ -703,6 +703,8 @@ it("PR pins and explicit issue links survive reopening without changing the task
     taskId,
   });
   expect(reopened.loadTaskState(taskId)).toEqual(before);
+  expect(reopened.linkedPullRequests(repo.id, taskId)).toEqual([42]);
+  expect(reopened.linkedPullRequests("another-repo", taskId)).toEqual([]);
   expect(reopened.pullRequestPreferences(repo.id, 43)).toEqual({
     pinned: false,
     taskId: null,

@@ -156,6 +156,23 @@ export class Store {
       )
       .run(`pr:${JSON.stringify([repoId, number])}`, JSON.stringify(value));
   }
+  /** Reverse projection of the same durable links, independent of GitHub cache/subscriptions. */
+  linkedPullRequests(repoId: string, taskId: TaskId): number[] {
+    const keys = this.db
+      .prepare(
+        "SELECT key FROM meta WHERE key LIKE 'pr:%' AND json_extract(value, '$.taskId') = ?",
+      )
+      .pluck()
+      .all(taskId);
+    return keys
+      .flatMap((key) => {
+        const [repo, number] = z
+          .tuple([z.string(), z.number().int().positive()])
+          .parse(JSON.parse(z.string().parse(key).slice(3)));
+        return repo === repoId ? [number] : [];
+      })
+      .sort((a, b) => a - b);
+  }
   pullRequestViewedFiles(repoId: string, number: number, headSha: string) {
     const raw = this.db
       .prepare("SELECT value FROM meta WHERE key = ?")

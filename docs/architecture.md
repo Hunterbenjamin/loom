@@ -537,3 +537,11 @@ comparison metadata, never patch guesses. Missing comparison metadata, binary da
 and parse failures are explicit errors. Contents are bounded at 2 MiB per side; whitespace-filtered
 patches are computed in the adapter with a one-second computation limit. No local checkout or
 provider session is involved. The UI continues to use Pierre CodeView and its bounded worker pool.
+
+Reviews polish projects the reverse of each saved PR-to-issue link into task inbox metadata;
+there is still one durable relation, and no workflow PR or branch is rewritten. Link commands
+publish both sides before acknowledging, including removal from the previous issue on relink.
+Newly observed merges in either PR lists or detail are hints to invalidate the matching task
+branch's observation cache and enqueue reconciliation immediately, regardless of a manual issue
+reference. GitHub's task observation alone supplies the merged fact that makes the task Done.
+Cache invalidation generations prevent pre-hint reads from restoring a stale conditional body.

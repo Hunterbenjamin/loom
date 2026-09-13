@@ -39,6 +39,7 @@ const reading = async <T>(
 
 /** Conditional GitHub reads: the ETag and the last body belong to the coordinator, not to core. */
 export class PullRequestCache {
+  private readonly generations = new Map<string, number>();
   private entries = new Map<
     string,
     { etag: string | null; value: PullRequestObservation | null }
@@ -49,6 +50,7 @@ export class PullRequestCache {
     branch: string,
   ): Promise<PullRequestObservation | null> {
     const key = `${repo} ${branch}`;
+    const generation = this.generations.get(key) ?? 0;
     const cached = this.entries.get(key);
     const result = await adapters.github.findPullRequest({
       repo,
@@ -60,11 +62,15 @@ export class PullRequestCache {
         throw new Error("GitHub answered not-modified without a cached body");
       return cached.value;
     }
-    this.entries.set(key, { etag: result.etag, value: result.value });
+    // An observation started before a merge hint must not refill the invalidated cache.
+    if ((this.generations.get(key) ?? 0) === generation)
+      this.entries.set(key, { etag: result.etag, value: result.value });
     return result.value;
   }
   forget(repo: string, branch: string): void {
-    this.entries.delete(`${repo} ${branch}`);
+    const key = `${repo} ${branch}`;
+    this.generations.set(key, (this.generations.get(key) ?? 0) + 1);
+    this.entries.delete(key);
   }
 }
 

@@ -33,6 +33,18 @@ export function Detail({ task }: { task: Task }) {
   const repo = useStore((s) =>
     s.snapshot.repos.find((item) => item.id === task.repoId),
   );
+  const linkedPrNumbers = useStore(
+    (s) =>
+      s.live
+        ? (s.inbox.find((row) => row.taskId === task.id)?.linkedPrNumbers ?? [])
+        : s.snapshot.pullRequests
+            .filter((pr) => pr.repoId === task.repoId && pr.taskId === task.id)
+            .map((pr) => pr.number),
+    shallowArray,
+  );
+  const prNumbers = [
+    ...new Set([...(task.prNumber ? [task.prNumber] : []), ...linkedPrNumbers]),
+  ];
 
   return (
     <div className="detail" data-testid="detail" data-task={task.id}>
@@ -50,19 +62,20 @@ export function Detail({ task }: { task: Task }) {
         <div className="detail-meta faint">
           <span>{repo?.github}</span>
           {task.branch ? <span className="mono">{task.branch}</span> : null}
-          {task.prNumber ? (
+          {prNumbers.map((number) => (
             <button
+              key={number}
               type="button"
               onClick={() =>
                 store.openPullRequest({
                   repoId: task.repoId,
-                  number: task.prNumber as number,
+                  number,
                 })
               }
             >
-              PR #{task.prNumber}
+              PR #{number}
             </button>
-          ) : null}
+          ))}
           <span>in this stage {since(now, task.stageEnteredAt)}</span>
           <span>v{task.version}</span>
         </div>

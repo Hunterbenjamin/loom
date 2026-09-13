@@ -270,6 +270,7 @@ export type ReviewStateChange = z.output<typeof reviewStateChange>;
 
 /** Small task-list metadata for the inbox; no detail subscriptions or Git reads required. */
 export const taskInbox = z.strictObject({
+  linkedPrNumbers: z.array(z.number().int().positive()).optional(),
   forHuman: z
     .object({ occurrence: z.string(), summary: z.string(), noteId: z.string() })
     .nullable()

@@ -259,7 +259,7 @@ export function PullRequestDetail({
           <button
             type="button"
             data-pr-action="merge"
-            aria-keyshortcuts="m"
+            aria-keyshortcuts="m Meta+Enter"
             disabled={busy || !!reason}
             title={reason ?? undefined}
             onClick={() =>

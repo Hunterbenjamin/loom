@@ -276,6 +276,22 @@ export class Coordinator {
         this.protocol.publish(this.published.replace(owner, null, rows)),
       after: this.after,
       action: (command) => this.executor.pullRequest(command),
+      linksChanged: async (repo) => {
+        for (const task of this.store.tasks())
+          if (task.repoId === repo.id)
+            this.protocol.publish(await this.refreshTask(task.id));
+      },
+      merged: (repo, head) => {
+        for (const task of this.store.tasks())
+          if (
+            task.repoId === repo.id &&
+            task.branch === head &&
+            task.stage !== "done"
+          ) {
+            this.pullRequests.forget(repo.github, head);
+            this.loop.enqueue(task.id);
+          }
+      },
       changed: (repo) => {
         for (const task of this.store.tasks())
           if (task.repoId === repo.id && task.branch) {

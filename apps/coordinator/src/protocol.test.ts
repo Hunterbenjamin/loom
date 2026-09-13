@@ -282,6 +282,7 @@ test("list clients receive plan version and core-derived inbox metadata without 
   expect(client.state?.collections.inbox.get(created.task.id)).toEqual({
     taskId: created.task.id,
     forHuman: null,
+    linkedPrNumbers: [],
     reasonRuns: {},
     reviewedHead: null,
     planVersion: null,
