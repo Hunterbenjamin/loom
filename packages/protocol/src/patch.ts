@@ -38,6 +38,10 @@ const remove = <N extends CollectionName>(name: N) =>
   });
 
 export const change = z.union([
+  upsert("pull_request"),
+  remove("pull_request"),
+  upsert("pull_request_detail"),
+  remove("pull_request_detail"),
   upsert("operator"),
   remove("operator"),
   upsert("note"),
@@ -105,6 +109,8 @@ export interface ClientState {
 }
 
 const emptyCollections = (): ClientState["collections"] => ({
+  pull_request: new Map(),
+  pull_request_detail: new Map(),
   operator: new Map(),
   note: new Map(),
   pane_inventory: new Map(),

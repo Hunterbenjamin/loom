@@ -216,6 +216,8 @@ export function toSnapshot(fixture: Snapshot): {
   return {
     meta: { seq: 1, now: fixture.now, epoch: "fixtures" },
     body: {
+      pullRequests: [],
+      pullRequestDetails: [],
       operators: [],
       notes: [],
       panes: [],

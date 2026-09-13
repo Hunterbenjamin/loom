@@ -1,3 +1,8 @@
+import {
+  pullRequestDetailRow,
+  pullRequestKey,
+  pullRequestRow,
+} from "./pull-requests.js";
 // The entity registry, and the snapshot built out of it. A client's state has exactly this shape:
 // a full snapshot on connect, then patches that upsert and delete rows of the same collections.
 
@@ -56,6 +61,18 @@ import {
  * task-list level and reaches every client; the rest follow subscriptions.
  */
 export const collections = {
+  pull_request: {
+    value: pullRequestRow,
+    key: z.string().min(1),
+    keyOf: (v: z.output<typeof pullRequestRow>) =>
+      pullRequestKey(v.repoId, v.number),
+  },
+  pull_request_detail: {
+    value: pullRequestDetailRow,
+    key: z.string().min(1),
+    keyOf: (v: z.output<typeof pullRequestDetailRow>) =>
+      pullRequestKey(v.repoId, v.number),
+  },
   operator: {
     value: operatorState,
     key: z.literal("operator"),
@@ -158,6 +175,8 @@ export function keyOf<N extends CollectionName>(
 }
 
 export const snapshotBody = z.strictObject({
+  pullRequests: z.array(pullRequestRow).default([]),
+  pullRequestDetails: z.array(pullRequestDetailRow).default([]),
   operators: z.array(operatorState).default([]),
   notes: z.array(taskNote).default([]),
   paneInventory: z.array(paneInventoryState).default([]),
@@ -183,6 +202,8 @@ export const snapshotBody = z.strictObject({
 
 /** Which snapshot collection each patch collection lands in. */
 export const COLLECTION_FIELDS = {
+  pull_request: "pullRequests",
+  pull_request_detail: "pullRequestDetails",
   operator: "operators",
   note: "notes",
   pane_inventory: "paneInventory",
@@ -209,6 +230,8 @@ export const COLLECTION_FIELDS = {
 export type SnapshotBody = z.output<typeof snapshotBody>;
 
 export const emptySnapshotBody = (): SnapshotBody => ({
+  pullRequests: [],
+  pullRequestDetails: [],
   operators: [],
   notes: [],
   paneInventory: [],

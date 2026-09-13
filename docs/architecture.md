@@ -49,7 +49,7 @@ carry for them are in [`docs/design/ui.md`](design/ui.md).
 | Fact | Owner | Loom's copy |
 |---|---|---|
 | Task fields, stage, plans, findings, test results, approvals, run records | Coordinator (SQLite + artifact files) | Authoritative |
-| Branches, PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time |
+| Branches, PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time; repository PR lists and subscribed detail/patch projections are disposable, including PRs without tasks |
 | Diffs | The worktree or the PR | Computed on demand |
 | Session transcripts and live status | Codex daemon / Claude Code | Cache + references |
 | Terminal processes | tmux, only while its server is alive | References (`{hostGeneration, sessionName, windowId, paneId}`), plus each run's intended command line and environment, so Loom can relaunch it. Pane IDs restart at `%0` after a server death, so every ref is scoped to a host generation |
@@ -80,7 +80,13 @@ Done is derived from GitHub: a task is Done only once its PR is merged.
   | Human PR comments | Imported as findings |
   | Typing into an agent's terminal | Shows as activity only |
   | Moving a card while an agent is running | The coordinator interrupts the run |
-- **GitHub:** poll with conditional requests, because webhooks can't reach localhost.
+- **GitHub:** poll with conditional requests, because webhooks can't reach localhost. Repository PR
+  lists use the adapter's native ETags every 60 seconds while a window subscribes to that repo/state;
+  detail and capped patches refresh every 30 seconds while the PR is open in a window. Identical
+  scopes share one poll, and disconnect/unsubscribe cancels it when the last viewer leaves.
+  PR commands run through the executor, always refresh their owner after success or failure, and
+  invalidate linked tasks' observations. Failed reads retain the last good projection and read time.
+  A detail read brackets its patch read with head/base checks to reject a concurrent push.
 
 ## Agent integration
 
@@ -336,6 +342,13 @@ that crosses providers goes only through artifacts.
   line disappeared.
 - The coordinator records an approval against three things: the head commit, a snapshot of the findings, and the CI state.
   Any new commit voids it. "Request changes" turns the human's comments into blocking findings.
+- Repository PR commands also go through the executor, independently of task stages. They re-read
+  the head the human named and refuse open draft PRs, unknown/conflicting mergeability and pending
+  or failed CI; zero checks is allowed. They always request squash and the matching head, with no
+  auto-merge or override. Adapter precondition errors have the same classification as task `merge_pr`.
+  A merge initiated from a PR view reaches task Done only through the existing GitHub observation
+  path. Close and remote branch deletion re-read the owner and are idempotent; no local checkout is
+  changed. No durable task or approval is invented for an off-pipeline PR.
 - Merging runs `gh pr merge --squash --match-head-commit <approvedSHA>`, or adds `--auto` while CI is still
   running. GitHub won't let you approve your own PR. If you want approvals to count on GitHub itself,
   have agents push as a bot or GitHub App identity.

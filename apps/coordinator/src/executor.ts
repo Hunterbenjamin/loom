@@ -1,5 +1,7 @@
 import { isStaleEntry } from "@loom/adapter-claude";
 import { StaleCodexRequestError } from "@loom/adapter-codex";
+import { GitHubError } from "@loom/adapter-github";
+import { type PullRequestCommand, pullRequestDetail } from "@loom/protocol";
 import { observeRun } from "./observe.js";
 // The executor (brief §2). It claims outbox rows, rechecks the claim immediately before any side
 // effect, maps every `Action` kind to the adapter that owns it, and records the outcome with
@@ -36,7 +38,9 @@ export class PreconditionFailed extends Error {}
 /** Don't retry; the task is flagged failed. */
 export class Fatal extends Error {}
 
-const classify = (error: unknown): ActionError => {
+export const classify = (error: unknown): ActionError => {
+  if (error instanceof GitHubError)
+    return { code: error.code, message: error.message };
   const message = error instanceof Error ? error.message : String(error);
   if (
     error instanceof PreconditionFailed ||
@@ -77,6 +81,55 @@ export interface ExecutorDeps {
 export class Executor {
   private draining: Promise<number> | null = null;
   constructor(private readonly deps: ExecutorDeps) {}
+
+  /** Repository actions have no task/outbox identity; execute once and re-read before retry. */
+  async pullRequest(command: PullRequestCommand): Promise<void> {
+    const repo = this.deps.repoById(command.repoId);
+    if (command.kind === "refresh_pull_requests") return;
+    const github = this.deps.adapters.github;
+    const pr = pullRequestDetail.parse(
+      await github.readPullRequest(repo.github, command.number),
+    );
+    switch (command.kind) {
+      case "merge_pull_request":
+        if (pr.headSha !== command.matchHeadSha)
+          throw new PreconditionFailed(
+            "PR head changed; refresh and confirm the new head SHA",
+          );
+        if (
+          pr.state !== "merged" &&
+          (pr.state !== "open" ||
+            pr.draft ||
+            pr.mergeable !== "mergeable" ||
+            !["success", "none"].includes(pr.checks))
+        )
+          throw new PreconditionFailed(
+            "PR must be open, ready, mergeable and have no pending or failed checks",
+          );
+        await github.mergePullRequest({
+          repo: repo.github,
+          number: command.number,
+          matchHeadSha: command.matchHeadSha,
+          deleteBranch: command.deleteBranch,
+          auto: false,
+        });
+        return;
+      case "close_pull_request":
+        await github.closePullRequest(repo.github, command.number);
+        return;
+      case "delete_branch":
+        if (
+          pr.state === "open" ||
+          pr.head === pr.base ||
+          pr.head === repo.baseBranch
+        )
+          throw new PreconditionFailed(
+            "Only a merged or closed PR's non-base branch can be deleted",
+          );
+        await github.deleteBranch(repo.github, pr.head);
+        return;
+    }
+  }
 
   /** Runs every claimable row, one at a time, until none is left. Safe to call concurrently. */
   drain(): Promise<number> {
