@@ -4,7 +4,10 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
 import { pane } from "../../../../../packages/protocol/src/pane-fixture.js";
-import { meta } from "../../../../../packages/protocol/src/test-support.js";
+import {
+  meta,
+  snapshot,
+} from "../../../../../packages/protocol/src/test-support.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
 import { Sidebar } from "./sidebar.js";
@@ -31,6 +34,8 @@ test("renders linked and unlinked spaces, independent collapses, filtering and p
     store.applyProtocol(
       stateFromSnapshot(meta, {
         ...emptySnapshotBody(),
+        repos: snapshot().repos,
+        projects: snapshot().projects,
         panes: [pane, { ...linked, attention }],
       }),
     );

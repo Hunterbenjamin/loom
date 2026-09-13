@@ -44,7 +44,7 @@ import {
 import { classify, Executor } from "./executor.js";
 import { inspectTask } from "./inspect.js";
 import type { LaunchDeps } from "./launch.js";
-import { LeadSession, migrateLead } from "./lead.js";
+import { LeadSession, legacyLeadPort, migrateLead } from "./lead.js";
 import { Loop } from "./loop.js";
 import { createMcpHost } from "./mcp-host.js";
 import { observe as observeOwners, PullRequestCache } from "./observe.js";
@@ -362,7 +362,8 @@ export class Coordinator {
     const mcpPort =
       this.config.mcpPort ||
       [...this.leads.values()].find((lead) => lead.mcpPort)?.mcpPort ||
-      this.operator.mcpPort;
+      this.operator.mcpPort ||
+      (await legacyLeadPort(this.store.dataDirectory));
     try {
       this.mcp = await serveHttp(this.mcpOptions(), mcpPort);
     } catch (error) {
@@ -1067,7 +1068,12 @@ export class Coordinator {
               this.config.baseBranch,
           );
           this.store.selectRepo(repo.id);
-          this.leadFor(repo.id);
+          const lead = this.leadFor(repo.id);
+          if (!lead.sessionId) {
+            await migrateLead(this.store.dataDirectory, this.store.repos()[0]);
+            await lead.load();
+            await lead.recover();
+          }
           this.publishRepos();
           await this.publishLead();
           return { ok: true, result: { kind: "repo_added", repoId: repo.id } };

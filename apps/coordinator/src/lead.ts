@@ -355,6 +355,20 @@ export class LeadSession {
   }
 }
 
+/** Keep a legacy process's endpoint stable even before its first repository is registered. */
+export async function legacyLeadPort(dataDirectory: string): Promise<number> {
+  try {
+    return recipeSchema.parse(
+      JSON.parse(
+        await readFile(join(dataDirectory, "lead", "recipe.json"), "utf8"),
+      ),
+    ).mcpPort;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw error;
+  }
+}
+
 /** Atomic destination recipe is the migration commit. The old source is retired only afterwards. */
 export async function migrateLead(
   dataDirectory: string,
