@@ -94,6 +94,7 @@ set -g aggressive-resize on
 set -s extended-keys always
 set -s extended-keys-format csi-u
 set -as terminal-features ",xterm*:extkeys:sync"
+set -as terminal-overrides ",xterm*:smcup@:rmcup@"
 set -g remain-on-exit on
 set -g update-environment ""
 set -g destroy-unattached off

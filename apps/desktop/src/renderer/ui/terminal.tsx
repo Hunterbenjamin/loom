@@ -300,6 +300,16 @@ export const TerminalSession = memo(function TerminalSession({
     const onWheel = (event: WheelEvent) => {
       event.stopPropagation();
       event.preventDefault();
+      const steps = Math.max(
+        1,
+        Math.min(10, Math.round(Math.abs(event.deltaY) / 24)),
+      );
+      // In the normal buffer the viewer owns the history (the host no longer uses the alternate
+      // screen for its client): scroll locally, so a selection can extend through it.
+      if (terminal.buffer?.active?.type !== "alternate") {
+        terminal.scrollLines?.(event.deltaY < 0 ? -steps : steps);
+        return;
+      }
       if (!hostWantsMouse) return;
       const screen = element.querySelector<HTMLElement>(".xterm-screen");
       const box = screen?.getBoundingClientRect();
@@ -309,11 +319,7 @@ export const TerminalSession = memo(function TerminalSession({
       const col = cell((event.clientX - box.left) / box.width, terminal.cols);
       const row = cell((event.clientY - box.top) / box.height, terminal.rows);
       const button = event.deltaY < 0 ? 64 : 65;
-      const lines = Math.max(
-        1,
-        Math.min(10, Math.round(Math.abs(event.deltaY) / 24)),
-      );
-      for (let i = 0; i < lines; i++)
+      for (let i = 0; i < steps; i++)
         window.loomTerminal.write(id, `\x1b[<${button};${col};${row}M`);
     };
     element.addEventListener("wheel", onWheel, {
