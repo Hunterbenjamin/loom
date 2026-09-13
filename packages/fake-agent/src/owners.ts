@@ -222,6 +222,27 @@ export class FakePaneHost implements PaneHost {
       worktreePath: pane.startCwd,
     });
   };
+  closeWindow: PaneHost["closeWindow"] = async (ref) => {
+    this.closeWhere(
+      (p) =>
+        p.ref.sessionName === ref.sessionName &&
+        p.ref.windowId === ref.windowId,
+    );
+  };
+  closeSession: PaneHost["closeSession"] = async (ref) => {
+    this.closeWhere((p) => p.ref.sessionName === ref.sessionName);
+  };
+  private closeWhere(matches: (p: PaneObservation) => boolean) {
+    for (const [key, pane] of [...this.panes]) {
+      if (!matches(pane)) continue;
+      this.panes.delete(key);
+      this.hints.emit({
+        source: "pane_host",
+        sessionId: null,
+        worktreePath: pane.startCwd,
+      });
+    }
+  }
   subscribe = this.hints.subscribe;
   exit(ref: PaneRef, exitCode: number) {
     const p = this.live(ref);

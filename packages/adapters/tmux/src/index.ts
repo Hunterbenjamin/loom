@@ -744,6 +744,30 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
       });
     },
 
+    closeWindow(ref) {
+      return exclusive(async () => {
+        const row = await rowFor(ref);
+        if (!row || row.sessionName !== ref.sessionName) return;
+        await tmux(["kill-window", "-t", row.windowId]).catch((error) => {
+          if (!(error instanceof TmuxError) || error.code !== "not_found")
+            throw error;
+        });
+      });
+    },
+
+    closeSession(ref) {
+      return exclusive(async () => {
+        const row = await rowFor(ref);
+        if (!row || row.sessionName !== ref.sessionName) return;
+        await tmux(["kill-session", "-t", `=${row.sessionName}`]).catch(
+          (error) => {
+            if (!(error instanceof TmuxError) || error.code !== "not_found")
+              throw error;
+          },
+        );
+      });
+    },
+
     subscribe(onHint: OnHint) {
       void ensureServer().catch((error: Error) => input.onError?.(error));
       return startMonitor({

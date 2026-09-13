@@ -239,7 +239,7 @@ const TabGrid = memo(function TabGrid({
             <button
               type="button"
               aria-label="Close panel"
-              title="Hide view; the terminal keeps running"
+              title="Close and kill this terminal"
               onClick={() => close(p.id)}
             >
               ×
@@ -556,6 +556,26 @@ export function Workbench() {
       ts.map((t) => ({ ...t, panels: t.panels.filter((p) => p.id !== id) })),
     );
   };
+  /** Closing is killing: the pane's process ends on the host, then its viewer goes. */
+  const killPanel = (id: string) => {
+    const panel = tabs.flatMap((t) => t.panels).find((p) => p.id === id);
+    if (!panel?.target) return close(id);
+    void store
+      .command({
+        kind: "close_terminal",
+        target: {
+          hostGeneration: panel.target.hostGeneration,
+          sessionName: panel.target.sessionName,
+          windowId: panel.target.windowId,
+          paneId: panel.target.paneId,
+        },
+        scope: "pane",
+      })
+      .then((outcome) => {
+        if (outcome.ok) close(id);
+        else window.alert(outcome.error.message);
+      });
+  };
   const dispatch = (action: Action) => {
     const tab = tabs.find((t) => t.id === active);
     if (action === "commands") {
@@ -582,7 +602,7 @@ export function Workbench() {
       setHelp(true);
       return;
     }
-    if (action === "close") return close(focused);
+    if (action === "close") return killPanel(focused);
     if (action === "zoom") {
       setZoom((z) => (z ? null : focused));
       return;
@@ -732,7 +752,7 @@ export function Workbench() {
                 focused={focused}
                 focus={focus}
                 zoom={active === t.id ? zoom : null}
-                close={close}
+                close={killPanel}
               />
             ))}
             {!tabs.length && (

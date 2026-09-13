@@ -110,6 +110,8 @@ export const command = z.union([
   z.strictObject({
     kind: z.literal("close_terminal"),
     target: paneIdentity,
+    /** What to kill: the pane, its whole tmux window (a tab), or its whole session (a space). */
+    scope: z.enum(["pane", "window", "session"]).optional(),
   }),
   z.strictObject({
     kind: z.literal("create_scratch"),

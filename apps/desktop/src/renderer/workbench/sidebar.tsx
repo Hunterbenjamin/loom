@@ -144,15 +144,6 @@ export function Sidebar({
       : undefined;
   const isSelected = (pane: PaneView) =>
     !!selectedPane && paneKey(pane) === paneKey(selectedPane);
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  const expanded = (key: string) => !!filter.trim() || !collapsed.has(key);
-  const toggle = (key: string) =>
-    setCollapsed((previous) => {
-      const next = new Set(previous);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
   const [menu, setMenu] = useState<{
     kind: "space" | "tab" | "pane";
     key: string;
@@ -253,15 +244,6 @@ export function Sidebar({
                     className="wb-space-row"
                     {...rowMenu("space", space.key)}
                   >
-                    <button
-                      type="button"
-                      className="wb-disclosure"
-                      aria-label={`Toggle ${space.label} tabs`}
-                      aria-expanded={expanded(space.key)}
-                      onClick={() => toggle(space.key)}
-                    >
-                      {expanded(space.key) ? "⌄" : "›"}
-                    </button>
                     <RenameRow
                       kind="space"
                       pane={space.tabs[0]?.panes[0]?.pane}
@@ -288,46 +270,43 @@ export function Sidebar({
                       </span>
                     </RenameRow>
                   </div>
-                  {expanded(space.key) &&
-                    space.tabs.map((tab) => (
-                      <section
-                        className="wb-tree-tab"
-                        key={tab.key}
-                        aria-label={tab.name}
+                  {space.tabs.map((tab) => (
+                    <section
+                      className="wb-tree-tab"
+                      key={tab.key}
+                      aria-label={tab.name}
+                    >
+                      <div
+                        className="wb-tab-row"
+                        aria-current={
+                          selectedTab === tab.key ||
+                          (selectedPane && tabKey(selectedPane) === tab.key)
+                            ? "true"
+                            : undefined
+                        }
+                        {...rowMenu("tab", tab.key)}
                       >
-                        <div
-                          className="wb-tab-row"
-                          aria-current={
-                            selectedTab === tab.key ||
-                            (selectedPane && tabKey(selectedPane) === tab.key)
-                              ? "true"
-                              : undefined
+                        <RenameRow
+                          kind="tab"
+                          pane={tab.panes[0]?.pane}
+                          name={tab.name}
+                          ariaLabel={`Open tab ${tab.name}`}
+                          disabled={
+                            !rowPanes("tab", tab.key).some(
+                              (pane) =>
+                                !unavailable && !pane.unavailable && !pane.dead,
+                            )
                           }
-                          {...rowMenu("tab", tab.key)}
+                          toggle={() =>
+                            openGroup(rowPanes("tab", tab.key), tab.name)
+                          }
                         >
-                          <RenameRow
-                            kind="tab"
-                            pane={tab.panes[0]?.pane}
-                            name={tab.name}
-                            ariaLabel={`Open tab ${tab.name}`}
-                            disabled={
-                              !rowPanes("tab", tab.key).some(
-                                (pane) =>
-                                  !unavailable &&
-                                  !pane.unavailable &&
-                                  !pane.dead,
-                              )
-                            }
-                            toggle={() =>
-                              openGroup(rowPanes("tab", tab.key), tab.name)
-                            }
-                          >
-                            <Status state={tab.indicator} />
-                            <span className="wb-tree-name">{tab.name}</span>
-                          </RenameRow>
-                        </div>
-                      </section>
-                    ))}
+                          <Status state={tab.indicator} />
+                          <span className="wb-tree-name">{tab.name}</span>
+                        </RenameRow>
+                      </div>
+                    </section>
+                  ))}
                 </section>
               ))}
               {!tree.length && (
@@ -488,11 +467,51 @@ export function Sidebar({
               },
             },
             {
-              label: "Close panel",
-              disabled: !hasPanels(menuRows),
+              label:
+                menu.kind === "space"
+                  ? "Close space"
+                  : menu.kind === "tab"
+                    ? "Close tab"
+                    : "Close pane",
+              disabled: !liveRows.length,
               reason:
-                "Hide this row’s viewers in the current tab; processes keep running",
-              run: () => hidePanels(menuRows),
+                menu.kind === "space"
+                  ? "Kills every process in this space"
+                  : menu.kind === "tab"
+                    ? "Kills every process in this tab"
+                    : "Kills this pane's process",
+              run: () => {
+                const target = liveRows[0];
+                if (!target) return;
+                const count = liveRows.length;
+                if (
+                  menu.kind !== "pane" &&
+                  !window.confirm(
+                    `Close ${menu.kind} "${menuName ?? ""}" and kill ${count} process${count === 1 ? "" : "es"}?`,
+                  )
+                )
+                  return;
+                void store
+                  .command({
+                    kind: "close_terminal",
+                    target: {
+                      hostGeneration: target.hostGeneration,
+                      sessionName: target.sessionName,
+                      windowId: target.windowId,
+                      paneId: target.paneId,
+                    },
+                    scope:
+                      menu.kind === "space"
+                        ? "session"
+                        : menu.kind === "tab"
+                          ? "window"
+                          : "pane",
+                  })
+                  .then((outcome) => {
+                    if (outcome.ok) hidePanels(menuRows);
+                    else window.alert(outcome.error.message);
+                  });
+              },
             },
           ]}
         />

@@ -284,6 +284,10 @@ export interface PaneHost {
   closePane(ref: PaneRef): Promise<void>;
   /** Explicit human close of a terminal from this host's inventory, including untagged shells. */
   closeTerminal(ref: PaneRef): Promise<void>;
+  /** Kills every pane in the ref's window (a Workbench tab). Idempotent. */
+  closeWindow(ref: PaneRef): Promise<void>;
+  /** Kills the ref's whole session (a Workbench space). Idempotent. */
+  closeSession(ref: PaneRef): Promise<void>;
   subscribe(onHint: OnHint): Unsubscribe;
 }
 

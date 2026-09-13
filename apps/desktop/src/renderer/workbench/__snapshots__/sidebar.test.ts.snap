@@ -1,5 +1,30 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`renders spaces and agents, always-expanded tabs, filtering and pinned controls 1`] = `
+[
+  {
+    "branch": "fix/delivery-race",
+    "name": "Open space t-1 · Fix delivery race",
+    "text": "t-1 · Fix delivery race",
+  },
+  {
+    "branch": null,
+    "name": "Open tab implementer",
+    "text": "implementer",
+  },
+  {
+    "branch": "—",
+    "name": "Open space research",
+    "text": "research",
+  },
+  {
+    "branch": null,
+    "name": "Open tab shell",
+    "text": "shell",
+  },
+]
+`;
+
 exports[`renders spaces and agents, independent collapses, filtering and pinned controls 1`] = `
 [
   {

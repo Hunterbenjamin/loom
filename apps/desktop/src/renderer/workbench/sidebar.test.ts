@@ -16,7 +16,7 @@ import { Sidebar } from "./sidebar.js";
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-test("renders spaces and agents, independent collapses, filtering and pinned controls", async () => {
+test("renders spaces and agents, always-expanded tabs, filtering and pinned controls", async () => {
   const store = createStore(undefined, true, "test");
   const linked = {
     ...pane,
@@ -144,25 +144,23 @@ test("renders spaces and agents, independent collapses, filtering and pinned con
     expect(element.querySelector(".wb-spaces-footer")?.textContent).toBe(
       "newmenu",
     );
-    const disclosure =
-      space?.querySelector<HTMLButtonElement>(".wb-disclosure");
-    await act(async () => disclosure?.click());
-    expect(disclosure?.getAttribute("aria-expanded")).toBe("false");
-    expect(space?.querySelector(".wb-tree-tab")).toBeNull();
+    // Spaces are never collapsible: their tabs are always shown.
+    expect(space?.querySelector(".wb-disclosure")).toBeNull();
+    expect(space?.querySelector(".wb-tree-tab")).not.toBeNull();
     await act(async () => publish(true));
     expect(space?.querySelector(".wb-status")?.textContent).toBe("●");
     await act(async () => render("cdx"));
     expect(space?.querySelector(".wb-tree-tab")).not.toBeNull();
     expect(element.querySelector('[aria-label="research"]')).toBeNull();
     await act(async () => render());
-    expect(space?.querySelector(".wb-tree-tab")).toBeNull();
+    expect(space?.querySelector(".wb-tree-tab")).not.toBeNull();
     await act(async () =>
       element
         .querySelector<HTMLButtonElement>('[title="Open Main terminal"]')
         ?.click(),
     );
     expect(openPinned).toHaveBeenCalledWith("main");
-    // A second window gets fresh in-memory expansion state.
+    // A second window shows the same always-expanded tree.
     const second = document.createElement("div");
     const secondRoot = createRoot(second);
     await act(async () =>
@@ -184,9 +182,8 @@ test("renders spaces and agents, independent collapses, filtering and pinned con
         }),
       ),
     );
-    expect(
-      second.querySelector(".wb-disclosure")?.getAttribute("aria-expanded"),
-    ).toBe("true");
+    expect(second.querySelector(".wb-disclosure")).toBeNull();
+    expect(second.querySelector(".wb-tree-tab")).not.toBeNull();
     await act(async () => secondRoot.unmount());
   } finally {
     await act(async () => root.unmount());

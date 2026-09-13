@@ -1061,18 +1061,35 @@ export class Coordinator {
             );
           // A task's supervisor would recover an unannounced terminal death. Require
           // its normal stop control instead of reporting a close that immediately reopens.
+          const scope = command.scope ?? "pane";
+          const inScope = (pane: {
+            sessionName: string;
+            windowId: string;
+            paneId: string;
+          }) =>
+            pane.sessionName === ref.sessionName &&
+            (scope === "session" ||
+              (pane.windowId === ref.windowId &&
+                (scope === "window" || pane.paneId === ref.paneId)));
           const active = this.store
             .tasks()
             .flatMap((task) => this.store.runs(task.id))
             .find(
               (run) =>
-                !run.endedAt && run.pane && paneKey(run.pane) === paneKey(ref),
+                !run.endedAt &&
+                run.pane &&
+                run.pane.hostGeneration === ref.hostGeneration &&
+                inScope(run.pane),
             );
           if (active)
             throw new Error(
               "Stop the running task before closing its agent terminal",
             );
-          await this.adapters.paneHost.closeTerminal(ref);
+          if (scope === "session")
+            await this.adapters.paneHost.closeSession(ref);
+          else if (scope === "window")
+            await this.adapters.paneHost.closeWindow(ref);
+          else await this.adapters.paneHost.closeTerminal(ref);
           if (await this.adapters.paneHost.getPane(ref))
             throw new Error("Terminal closure was not confirmed");
           await this.inventory.refresh();
