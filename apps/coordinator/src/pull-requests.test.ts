@@ -812,3 +812,112 @@ test("commit/file reads are scoped to the observed PR head and its commit/file m
   h.github.setPullRequest(detail(1, { headSha: nextHead }));
   expect(await client.command(command)).toMatchObject({ ok: false });
 });
+
+test("explicit issue links publish in both directions, relink, and survive restart without PR subscriptions", async () => {
+  let h = await setup();
+  const first = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "First link",
+    description: "",
+  }).task;
+  const second = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Second link",
+    description: "",
+  }).task;
+  const client = await connect(h, [
+    { kind: "views", views: ["all"], repoIds: null },
+  ]);
+  const link = (taskKey: string) =>
+    client.command({
+      kind: "link_pull_request",
+      repoId: h.repo.id,
+      number: 1,
+      taskKey,
+    });
+  expect(await link(first.id)).toMatchObject({ ok: true });
+  expect(await link(first.id)).toMatchObject({ ok: true });
+  expect(
+    client.state?.collections.inbox.get(first.id)?.linkedPrNumbers,
+  ).toEqual([1]);
+  expect(await link(second.id)).toMatchObject({ ok: true });
+  expect(
+    client.state?.collections.inbox.get(first.id)?.linkedPrNumbers,
+  ).toEqual([]);
+  expect(
+    client.state?.collections.inbox.get(second.id)?.linkedPrNumbers,
+  ).toEqual([1]);
+  expect(h.store.loadTaskState(second.id).task).toMatchObject({
+    branch: null,
+    prNumber: null,
+    stage: "backlog",
+  });
+  h = await h.restart();
+  harnesses[harnesses.length - 1] = h;
+  const reopened = await connect(h, [
+    { kind: "views", views: ["all"], repoIds: null },
+  ]);
+  expect(
+    reopened.state?.collections.inbox.get(second.id)?.linkedPrNumbers,
+  ).toEqual([1]);
+  h.github.setPullRequest(detail());
+  const prClient = await connect(h, [detailScope(h)]);
+  await vi.waitFor(() =>
+    expect(
+      prClient.state?.collections.pull_request_detail.get(
+        pullRequestKey(h.repo.id, 1),
+      )?.taskId,
+    ).toBe(second.id),
+  );
+});
+
+test.each(["list", "detail"] as const)(
+  "a newly observed merged PR in %s immediately queues its branch task, independent of a manual link",
+  async (surface) => {
+    const h = await setup();
+    const task = h.coordinator.createTask({
+      repoId: h.repo.id,
+      title: "Branch task",
+      description: "",
+    }).task;
+    h.coordinator.submitHuman(task.id, { type: "move", to: "todo" });
+    await h.coordinator.settle();
+    const branch = h.store.loadTaskState(task.id).task.branch;
+    if (!branch) throw new Error("Missing branch");
+    const other = h.coordinator.createTask({
+      repoId: h.repo.id,
+      title: "Manual reference",
+      description: "",
+    }).task;
+    h.store.setPullRequestPreferences(h.repo.id, 1, { taskId: other.id });
+    h.github.setPullRequest(
+      detail(1, {
+        head: branch,
+        state: "merged",
+        mergedAt: at,
+        mergeCommitSha: head,
+      }),
+    );
+    const clockBefore = h.clock.now();
+    await connect(h, [
+      surface === "detail"
+        ? detailScope(h)
+        : { kind: "pull_requests", repoId: h.repo.id, state: "merged" },
+    ]);
+    const find = vi.spyOn(h.adapters.github, "findPullRequest");
+    await vi.waitFor(() =>
+      expect(
+        h.logs.some((log) =>
+          log.includes(surface === "detail" ? "detail/checks" : "list"),
+        ),
+      ).toBe(true),
+    );
+    await h.coordinator.settle();
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({ branch, etag: null }),
+    );
+    expect(h.store.loadTaskState(task.id).task.stage).toBe("done");
+    expect(h.store.loadTaskState(other.id).task.stage).toBe("backlog");
+    expect(h.clock.now()).toBe(clockBefore);
+  },
+);

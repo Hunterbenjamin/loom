@@ -123,6 +123,7 @@ export async function taskRows(
     row("task", { ...state.task, attention: derived.attention }),
     row("inbox", {
       taskId,
+      linkedPrNumbers: deps.store.linkedPullRequests(state.task.repoId, taskId),
       forHuman: human
         ? {
             occurrence: human.occurrence,

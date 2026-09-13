@@ -98,7 +98,7 @@ test("renders the reference sections, compact glyph rows and viewer count", () =
     "Needs attention1▾",
     "Waiting1▾",
     "Created by you1▾",
-    "Completed2▸",
+    "Completed24▸",
   ]);
   expect(h.host.querySelector('[data-view="pull-requests"]')?.textContent).toBe(
     "Reviews3",
@@ -157,13 +157,13 @@ test("keyboard skips collapsed sections; Enter opens the PR and issue links open
   expect(h.store.getState().ui.openTask).toBe(task.textContent);
   expect(h.store.getState().ui.openPr).toBeNull();
   key("Escape");
-  const header = h.button("Completed2▸");
+  const header = h.button("Completed24▸");
   key("Enter", header);
   expect(h.store.getState().ui.openPr).toBeNull();
   act(() => header.click());
-  expect(h.rows()).toHaveLength(5);
-  expect(h.host.querySelectorAll(".pr-merged")).toHaveLength(1);
-  expect(h.host.querySelectorAll(".pr-closed")).toHaveLength(1);
+  expect(h.rows()).toHaveLength(23);
+  expect(h.host.querySelectorAll(".pr-merged")).toHaveLength(10);
+  expect(h.host.querySelectorAll(".pr-closed")).toHaveLength(10);
 });
 
 test("Completed starts collapsed, loads 20 at a time, newest completion first, and retains presentation state", () => {
