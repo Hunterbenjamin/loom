@@ -316,6 +316,18 @@ test("an app merge reaches Done only through the existing task observation path"
   );
   await h.coordinator.settle();
   expect(h.store.loadTaskState(task.task.id).task.stage).toBe("done");
+  // A later PR command must not wake the finished task's Codex app-server (2026-09-13: every
+  // PR view command started one per finished task, serially, holding up live reconciles).
+  const codex = vi.spyOn(h.adapters, "codex");
+  expect(
+    await client.command({
+      kind: "refresh_pull_requests",
+      repoId: h.repo.id,
+      state: "open",
+    }),
+  ).toMatchObject({ ok: true });
+  await h.coordinator.settle();
+  expect(codex).not.toHaveBeenCalledWith(task.task.id);
 }, 30_000);
 
 test("polling deduplicates windows, uses 60/30 seconds, and cancels on unsubscribe and disconnect", async () => {

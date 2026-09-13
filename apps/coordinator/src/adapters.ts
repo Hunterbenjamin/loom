@@ -54,6 +54,8 @@ export function codexPerTask(
     async stopCodexServer(taskId) {
       const adapter = servers.get(taskId);
       if (!adapter) return;
+      // Forget it first: the count stays honest, and a later use starts a fresh server.
+      servers.delete(taskId);
       await adapter.stopServer().catch(() => undefined);
     },
     codexServerCount() {

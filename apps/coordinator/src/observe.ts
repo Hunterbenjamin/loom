@@ -287,14 +287,17 @@ export async function observe(
   // Live runs, plus each role's latest run even when it has ended: a human retry relaunches
   // that run, and core rotates its session only on `resumable: false` from a real read. Without
   // the observation every retry of a Codex run whose rollout was gone resumed the dead thread
-  // and vanished again (2026-09-12, five attempts on the Workbench task).
+  // and vanished again (2026-09-12, five attempts on the Workbench task). A done or canceled task
+  // can't be retried, and reading its ended Codex run would start that task's app-server.
+  const retryable = !["done", "canceled"].includes(state.task.stage);
   const latestByRole = new Map<string, (typeof state.runs)[number]>();
   for (const r of state.runs)
     if (r.origin === "loom") latestByRole.set(r.role, r);
   const live = state.runs.filter(
     (r) =>
       r.origin === "loom" &&
-      (!r.endedAt || (latestByRole.get(r.role) === r && r.sessionId)),
+      (!r.endedAt ||
+        (retryable && latestByRole.get(r.role) === r && r.sessionId)),
   );
   const runs = await Promise.all(
     live.map((run) => observeRun(deps.adapters, now, run)),
