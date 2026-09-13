@@ -112,7 +112,7 @@ export function reconcileStages(c: Context): void {
           (pr.ci.headSha !== pr.headSha ||
             !["success", "none"].includes(pr.ci.conclusion) ||
             pr.mergeable !== "mergeable" ||
-            Date.parse(c.now) - Date.parse(pr.ci.observedAt) >
+            Date.parse(c.now) - Date.parse(c.observations.github?.at ?? "") >
               state.config.githubPollMs * 2)
         ) {
           c.voidApprovals("stage_left");
@@ -168,7 +168,7 @@ export function reconcileStages(c: Context): void {
     !openBlocking(state.findings) &&
     pr.ci.headSha === pr.headSha &&
     ["success", "none"].includes(pr.ci.conclusion) &&
-    Date.parse(c.now) - Date.parse(pr.ci.observedAt) <=
+    Date.parse(c.now) - Date.parse(c.observations.github?.at ?? "") <=
       state.config.githubPollMs * 2 &&
     pr.mergeable === "mergeable" &&
     !state.approvals.some(

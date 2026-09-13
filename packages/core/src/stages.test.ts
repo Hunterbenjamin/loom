@@ -336,7 +336,7 @@ describe("guarded automatic merge policy", () => {
     );
   });
 
-  it("limits auto-small to small tasks and waits on pending or stale CI", () => {
+  it("limits auto-small to small tasks and waits on pending CI or a stale GitHub observation", () => {
     const normal = fixture("awaiting_approval");
     normal.state.task.mergePolicy = "auto-small";
     normal.state.task.size = "normal";
@@ -354,12 +354,20 @@ describe("guarded automatic merge policy", () => {
 
     const stale = fixture("awaiting_approval");
     stale.state.task.mergePolicy = "auto-all";
-    if (stale.observations.github?.ok && stale.observations.github.value)
-      stale.observations.github.value.ci.observedAt =
-        "2026-09-11T00:00:00.000Z" as never;
+    if (stale.observations.github?.ok)
+      stale.observations.github.at = "2026-09-11T00:00:00.000Z" as never;
     expect(fixed(stale.state, stale.observations).next.task.stage).toBe(
       "awaiting_approval",
     );
+  });
+
+  it("accepts a fresh unchanged GitHub read with a cached CI timestamp", () => {
+    const f = fixture("awaiting_approval");
+    f.state.task.mergePolicy = "auto-all";
+    if (f.observations.github?.ok && f.observations.github.value)
+      f.observations.github.value.ci.observedAt =
+        "2026-09-11T00:00:00.000Z" as never;
+    expect(fixed(f.state, f.observations).next.task.stage).toBe("merging");
   });
 
   it("voids a policy approval and cancels its merge when the PR closes", () => {
