@@ -228,6 +228,28 @@ test("a token maps to its run, and a different run's token cannot reach this tas
   );
 }, 30_000);
 
+test("a live run's token stays valid when the coordinator's recipe drifts from the store", async () => {
+  const h = await harness();
+  const taskId = start(h);
+  const driver = new ScenarioDriver(h, await scenarios("walking-skeleton"));
+  await driver.run({ until: () => stageOf(h, taskId) === "in_progress" });
+  const implementer = h.coordinator.recipes
+    .all()
+    .find((r) => r.role === "implementer");
+  if (!implementer) throw new Error("Missing implementer recipe");
+  // The store is the only authority on liveness. A recipe whose attempt counter is behind or
+  // ahead of the run (a restart mid-relaunch, a second coordinator on the same directory) must
+  // not refuse an agent that the store says is current: that left a rebased branch unsubmittable.
+  await h.coordinator.recipes.save({
+    ...implementer,
+    attempt: implementer.attempt + 5,
+  });
+  expect(h.coordinator.resolveRunToken(implementer.token)).toMatchObject({
+    runId: implementer.runId,
+    active: true,
+  });
+}, 30_000);
+
 test("CI failing after approval voids it and sends the task back to the implementer", async () => {
   const h = await harness();
   const taskId = start(h);

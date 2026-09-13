@@ -39,6 +39,7 @@ export interface McpHostDeps {
   repo(taskId: TaskId): Repo;
   /** Bounded: an input is consumed within one pass per input queued ahead of it. */
   maxPasses?: number;
+  log?: (message: string) => void;
 }
 
 const findingViews = (
@@ -159,33 +160,43 @@ export function createMcpHost(deps: McpHostDeps): {
   };
 
   /**
-   * Ended, superseded, canceled and completed runs are inactive. The mapping is retained either
-   * way, so a stale token answers `stale_run` and an unknown one answers `unknown_run`.
+   * Ended, superseded, canceled and completed runs are inactive. The store is the only authority:
+   * the recipe maps a token to its run and nothing more, so a coordinator whose memory has drifted
+   * from the store cannot refuse a live run. A state that fails to load is a host failure the
+   * agent should retry, never a verdict on the run. The mapping is retained either way, so a stale
+   * token answers `stale_run` and an unknown one answers `unknown_run`.
    */
   const resolveToken = (
     token: string,
-  ): { runId: RunId; active: boolean } | null => {
+  ): { runId: RunId; active: boolean; reason?: string } | null => {
     const recipe = deps.recipes.resolve(token);
     if (!recipe) return null;
     let state: TaskState;
     try {
       state = deps.store.loadTaskState(recipe.taskId);
-    } catch {
-      return { runId: recipe.runId, active: false };
+    } catch (error) {
+      deps.log?.(
+        `MCP: task state for ${recipe.runId} failed to load: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
     }
     const run = state.runs.find((r) => r.id === recipe.runId);
     const current = state.runs
       .filter((r) => r.origin === "loom" && r.role === run?.role)
       .at(-1);
-    return {
-      runId: recipe.runId,
-      active:
-        !!run &&
-        !run.endedAt &&
-        run.attempts === recipe.attempt &&
-        current?.id === run.id &&
-        !["done", "canceled"].includes(state.task.stage),
-    };
+    // Each reason names the fact a stale answer rests on, for the coordinator log.
+    const reason = !run
+      ? "run not in task state"
+      : run.endedAt
+        ? `run ended (${run.endReason ?? "no reason"})`
+        : current?.id !== run.id
+          ? `superseded by ${current?.id ?? "none"}`
+          : ["done", "canceled"].includes(state.task.stage)
+            ? `task is ${state.task.stage}`
+            : null;
+    return reason
+      ? { runId: recipe.runId, active: false, reason }
+      : { runId: recipe.runId, active: true };
   };
 
   /**

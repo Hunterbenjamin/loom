@@ -153,6 +153,7 @@ export const configSchema = z
       })
       .default({ baseMs: 10_000, capMs: 300_000, maxAttempts: 3 }),
     stallAfterMs: z.number().int().positive().default(900_000),
+    fixRoundStallAfterMs: z.number().int().positive().default(300_000),
     unknownGraceMs: z.number().int().positive().default(60_000),
     deliveryTimeoutMs: z.number().int().positive().default(10_000),
     githubPollMs: z.number().int().positive().default(60_000),
@@ -183,6 +184,7 @@ export const reconcileConfig = (config: CoordinatorConfig): ReconcileConfig => {
   return {
     retry: config.retry,
     stallAfterMs: config.stallAfterMs,
+    fixRoundStallAfterMs: config.fixRoundStallAfterMs,
     unknownGraceMs: config.unknownGraceMs,
     deliveryTimeoutMs: config.deliveryTimeoutMs,
     githubPollMs: config.githubPollMs,
@@ -340,6 +342,7 @@ export function settingsDefaultsForConfig(
       retryCapMs: config.retry.capMs,
       retryMaxAttempts: config.retry.maxAttempts,
       stallAfterMs: config.stallAfterMs,
+      fixRoundStallAfterMs: config.fixRoundStallAfterMs,
       unknownGraceMs: config.unknownGraceMs,
       deliveryTimeoutMs: config.deliveryTimeoutMs,
       githubPollMs: config.githubPollMs,
@@ -398,6 +401,7 @@ export function applyStoredSettingsToConfig(
     maxAttempts: value.runtime.retryMaxAttempts,
   };
   target.stallAfterMs = value.runtime.stallAfterMs;
+  target.fixRoundStallAfterMs = value.runtime.fixRoundStallAfterMs;
   target.unknownGraceMs = value.runtime.unknownGraceMs;
   target.deliveryTimeoutMs = value.runtime.deliveryTimeoutMs;
   target.githubPollMs = value.runtime.githubPollMs;

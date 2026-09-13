@@ -39,6 +39,7 @@ function attentionFor(state: TaskState, now: string) {
     questions: state.questions,
     messages: state.messages,
     stallAfterMs: state.config.stallAfterMs,
+    fixRoundStallAfterMs: state.config.fixRoundStallAfterMs,
     unknownGraceMs: state.config.unknownGraceMs,
   });
 }

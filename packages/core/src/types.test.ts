@@ -112,6 +112,7 @@ const state: TaskState = {
     models: { codex: "test", claude: "test" },
     retry: { baseMs: 10_000, capMs: 300_000, maxAttempts: 3 },
     stallAfterMs: 15 * 60_000,
+    fixRoundStallAfterMs: 5 * 60_000,
     unknownGraceMs: 60_000,
     deliveryTimeoutMs: 10_000,
     githubPollMs: 60_000,

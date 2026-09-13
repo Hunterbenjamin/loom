@@ -68,6 +68,7 @@ import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
 import { registerRepo } from "./repos.js";
 import { ProtocolServer } from "./server.js";
+import { runShell, type Shell } from "./shell.js";
 import { openTaskTerminal } from "./task-terminal.js";
 import {
   changesRow,
@@ -98,6 +99,8 @@ export interface CoordinatorOptions {
   log?: (message: string) => void;
   /** Skip the protocol listener (the CLI's one-shot commands do not need it). */
   serveProtocol?: boolean;
+  /** Runs a repository's WORKFLOW `setup` command in a new worktree. Injected in tests. */
+  shell?: Shell;
 }
 
 export interface CreateTaskInput {
@@ -591,6 +594,8 @@ export class Coordinator {
       config: this.config,
       launch: this.launchDeps(),
       pullRequests: this.pullRequests,
+      workflow: this.workflow,
+      shell: options.shell ?? runShell,
       repo: (taskId) => this.repo(taskId),
       repoById: (repoId) => this.repoById(repoId),
       schedule: (taskId, at, why) => this.schedule(taskId, at, why),
@@ -922,6 +927,7 @@ export class Coordinator {
       loop: this.loop,
       workflow: this.workflow,
       repo: (taskId) => this.repo(taskId),
+      log: (message) => this.log(message),
     });
     return {
       host,

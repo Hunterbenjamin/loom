@@ -418,8 +418,11 @@ that crosses providers goes only through artifacts.
 
 - The reviewer has the same task-worktree write/commit access and launch paths as the implementer
   in both interactive and headless modes. Only planners retain Codex's read-only sandbox and
-  Claude's disallowed edit tools. Reviewers run tests and read the diff against the accepted plan
-  and AGENTS.md. Most reviews should change nothing: no restyling, refactoring or scope expansion.
+  Claude's disallowed edit tools. Reviewers read the diff against the accepted plan and AGENTS.md
+  beside the implementer's recorded test results; they do not rerun the suite. CI on the pull
+  request is the merge gate, and the implementer already ran the changed packages' tests and the
+  typecheck. A reviewer runs a test only to confirm a suspected bug or after an inline fix.
+  Most reviews should change nothing: no restyling, refactoring or scope expansion.
   Fix only actual bugs, failing or missing tests required by the plan, or AGENTS.md violations;
   commit each fix separately with a message naming the finding.
 - `submit_review` accepts the clean task-branch HEAD at the round head or a descendant. Git supplies
@@ -471,7 +474,8 @@ that crosses providers goes only through artifacts.
 | Failure | Handling |
 |---|---|
 | UI closed or crashed | Nothing happens. On reopen, the UI reconnects and gets a fresh snapshot. |
-| Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, panes, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts). |
+| Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, panes, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts).<br>An agent's MCP token is judged live or stale by the store alone; the launch recipe only maps the token to its run. Nothing the coordinator holds in memory can refuse a run the store says is current. |
+| Idle after a fix round | A run that goes idle without submitting after Loom sent it a fix round (findings or a rebase) raises `idle_without_submission` after `fixRoundStallAfterMs` (5 minutes) instead of the full `stallAfterMs`: it already knows what to do. |
 | Pane host stop, crash or kill | Every pane process dies, shells included (spikes 05 and 06). The host has no restore feature and needs none: Loom recreates the server, its sessions and each run's pane from stored state — session or thread ID, cwd, full command line and environment. Pane IDs restart at `%0`, so stale refs name nothing and every ref carries its host generation. Measured at about 30 s to a fresh reply from both providers. A Codex turn in flight completes because its app-server runs outside the pane host; Claude's is lost and re-sent. |
 | Codex app-server restart | Desired thread subscriptions survive the connection generation and are resumed/hydrated before retrying reads. An unavailable owner leaves runs `unknown`; after `unknownGraceMs` they raise `observability_failure`. Interrupted or completed turns without a Loom submission remain live and can raise `idle_without_submission`; they are not inferred ended. |
 | Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, flag the issue failed and notify the human (see `docs/design/core.md` §3). |

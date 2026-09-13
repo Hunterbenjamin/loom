@@ -32,6 +32,8 @@ import { checkPanePromptGate, checkSendGate } from "./gate.js";
 import { type LaunchDeps, startRun } from "./launch.js";
 import { indexChanges, mapFindings } from "./mapping.js";
 import type { PullRequestCache } from "./observe.js";
+import type { Shell } from "./shell.js";
+import type { WorkflowReader } from "./workflow.js";
 
 /** The world moved on: re-read and decide again. Never a retry of the same intent. */
 export class PreconditionFailed extends Error {}
@@ -67,6 +69,9 @@ export interface ExecutorDeps {
   config: CoordinatorConfig;
   launch: LaunchDeps;
   pullRequests: PullRequestCache;
+  workflow: WorkflowReader;
+  /** Runs the repository's WORKFLOW `setup` command once the worktree exists. */
+  shell: Shell;
   repo(taskId: TaskId): Repo;
   repoById(repoId: RepoId): Repo;
   /** Enqueue `reconcile(taskId)` at a time, for a `schedule` action. */
@@ -262,12 +267,18 @@ export class Executor {
     switch (action.kind) {
       case "create_worktree": {
         const repo = this.deps.repoById(action.repoId);
-        return adapters.git.createWorktree({
+        const created = await adapters.git.createWorktree({
           repoRoot: repo.root,
           path: action.path,
           branch: action.branch,
           baseBranch: action.baseBranch,
         });
+        // The repo's own setup (dependency install, generated files) runs here, once, so no
+        // agent spends a turn discovering an empty node_modules. Idempotent: a retry after a
+        // failed setup finds the same worktree and runs it again.
+        const setup = (await this.deps.workflow.read(repo.root)).setup;
+        if (setup) await this.deps.shell(setup, created.path);
+        return created;
       }
       case "write_task_files": {
         const files = action.artifacts.map(({ kind, version }) => {

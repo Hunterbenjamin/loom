@@ -345,7 +345,7 @@ while any of these reasons holds:
 | `failed` | `failed` is set |
 | `run_vanished` | An interactive run's session disappeared. Loom won't relaunch it; the human does. |
 | `stalled` | A run is `working` with no provider activity for `stallAfterMs`. Nothing is killed. |
-| `idle_without_submission` | A live Loom run stays idle for `stallAfterMs` (15 minutes by default) while its role owes a submission: planner in `planning`, implementer in `in_progress`, reviewer in `in_review`. This includes a final provider turn reported `completed` or `interrupted`: only an accepted Loom submission ends the run. Suppressed while the task is blocked/failed, a message to that run is pending/sent, or its question is unanswered. Nothing is killed or relaunched. |
+| `idle_without_submission` | A live Loom run stays idle for `stallAfterMs` (15 minutes by default; `fixRoundStallAfterMs`, 5 minutes, once a `fix_round` message to it has been delivered) while its role owes a submission: planner in `planning`, implementer in `in_progress`, reviewer in `in_review`. This includes a final provider turn reported `completed` or `interrupted`: only an accepted Loom submission ends the run. Suppressed while the task is blocked/failed, a message to that run is pending/sent, or its question is unanswered. Nothing is killed or relaunched. |
 | `status_unknown` | A run has been `unknown` for longer than `unknownGraceMs` |
 | `over_budget` | Time in stages `planning` through `awaiting_approval` exceeds `budgetMinutes` |
 
@@ -699,8 +699,12 @@ read-only and never becomes an input.
 | `report_progress` | any current run | `{summary, stepIndex, decisions[], testResults[]}` | `{recorded}` | `stepIndex` null or within the plan; nonempty test results need a fresh git HEAD |
 | `ask_human` | any current run | `{question, options[], blocking}` | `{questionId, delivery: "message"}` | — |
 | `submit_for_review` | implementer / `in_progress` | `{headSha, summary, testResults[], handoff}` | `{round}` | `headSha` = HEAD; clean tree; ahead of base; every finding `addressed` in this round names a commit |
-| `submit_review` | reviewer / `in_review` | `{reviewedSha, reviewerCommits[], summary, findings[], verdicts[], testResults[]}` | `{round, openBlocking, next}` | `reviewedSha` = clean task-branch HEAD, round head or descendant; exact complete reviewer commit list; locations exist in that commit; verdicts for addressed/disputed and open blocking findings; fixed commits and escalation reasons required |
+| `submit_review` | reviewer / `in_review` | `{reviewedSha, reviewerCommits[], summary, findings[], verdicts[], testResults[]}` | `{round, openBlocking, next}` | `reviewedSha` = clean task-branch HEAD, round head or descendant; exact complete reviewer commit list; locations exist in that commit; verdicts for addressed/disputed and open blocking findings; fixed commits and escalation reasons required. `testResults` is usually empty: the reviewer reads the implementer's results and CI is the gate |
 | `resolve_finding` | implementer / `in_progress` | `{findingId, resolution: fixed \| disputed, note, commitSha}` | `{status}` | Finding is `open` or `escalate` and belongs to the task; `fixed` needs a commit reachable from HEAD |
+
+Liveness is read from the store on every call: the launch recipe maps a token to its run and nothing
+more, so a stale answer always names a stored fact (ended, superseded, task done or canceled). A task
+state that fails to load is a host error the agent retries, never a `stale_run`.
 
 Errors: `invalid_input`, `unknown_run`, `stale_run` (the run was superseded or ended), `wrong_stage`,
 `guard_failed`. Each has `details`: one line per failed check, written for the agent to act on.
@@ -867,7 +871,7 @@ Rules that follow: one Codex app-server per task, as a Loom child process outsid
 decision is ever derived from a pane; the intended command line and environment of every interactive run
 are Loom state, never inferred from a pane's argv.
 
-Still placeholders: `unknownGraceMs` 60 s, `deliveryTimeoutMs` 10 s, `stallAfterMs` 15 min. `claude agents
+Still placeholders: `unknownGraceMs` 60 s, `deliveryTimeoutMs` 10 s, `stallAfterMs` 15 min, `fixRoundStallAfterMs` 5 min. `claude agents
 --json` took up to about 5 s to list a relaunched session, so the grace period must exceed that. Untested:
 a machine restart, a Claude permission prompt across a restart, and spooling hooks while the
 coordinator is down.

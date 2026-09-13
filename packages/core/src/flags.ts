@@ -103,6 +103,8 @@ export interface AttentionInput {
   /** A message whose delivery is uncertain needs the human. */
   messages: readonly Message[];
   stallAfterMs: number;
+  /** The idle window once Loom has sent the run a fix round: it already knows what to do. */
+  fixRoundStallAfterMs: number;
   unknownGraceMs: number;
 }
 
@@ -185,8 +187,17 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
       ) {
         // Legacy idle runs have no interval yet; use their last native activity.
         const since = run.idleSince ?? run.lastActivityAt ?? run.launchedAt;
+        // After a delivered fix round the run owes a quick turnaround, not a fresh investigation.
+        const window = input.messages.some(
+          (m) =>
+            m.runId === run.id &&
+            m.purpose === "fix_round" &&
+            m.status === "delivered",
+        )
+          ? Math.min(input.stallAfterMs, input.fixRoundStallAfterMs)
+          : input.stallAfterMs;
         if (since) {
-          const at = later(since, input.stallAfterMs);
+          const at = later(since, window);
           if (at <= input.now) fromRun("idle_without_submission", run.id);
           else schedules.push({ at, why: "stall_check" });
         }
@@ -243,6 +254,7 @@ export function attention(c: Context): void {
     questions: state.questions,
     messages: state.messages,
     stallAfterMs: state.config.stallAfterMs,
+    fixRoundStallAfterMs: state.config.fixRoundStallAfterMs,
     unknownGraceMs: state.config.unknownGraceMs,
   });
   for (const { at, why } of schedules)

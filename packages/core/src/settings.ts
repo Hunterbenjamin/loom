@@ -55,6 +55,7 @@ export interface SettingsValues {
     retryCapMs: number;
     retryMaxAttempts: number;
     stallAfterMs: number;
+    fixRoundStallAfterMs: number;
     unknownGraceMs: number;
     deliveryTimeoutMs: number;
     githubPollMs: number;
@@ -179,6 +180,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
     retryCapMs: 300_000,
     retryMaxAttempts: 3,
     stallAfterMs: 900_000,
+    fixRoundStallAfterMs: 300_000,
     unknownGraceMs: 60_000,
     deliveryTimeoutMs: 10_000,
     githubPollMs: 60_000,
@@ -434,6 +436,7 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
       "retryCapMs",
       "retryMaxAttempts",
       "stallAfterMs",
+      "fixRoundStallAfterMs",
       "unknownGraceMs",
       "deliveryTimeoutMs",
       "githubPollMs",
