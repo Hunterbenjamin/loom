@@ -304,5 +304,32 @@ to Open, and the text filter matches number, title, branches, author and linked 
 Filters and cursor live only in the window and survive view/mode switches. J/K moves the cursor,
 / focuses the filter, and Escape clears it. Rows are focusable and Enter/Space selects them;
 the task-key button opens the existing task detail and supports native keyboard activation.
-PR detail opening and actions remain slice 4; palette additions and action shortcuts remain slice 5.
+Rows now open PR detail on click or Enter/Space; palette additions and action shortcuts remain slice 5.
 Fixture mode includes linked and off-pipeline PRs in every state and badge condition.
+
+
+## Pull request detail and actions (slice 4)
+
+Selecting a PR or clicking an issue detail's PR number opens the same in-app detail frame.
+The selection is keyed by repository and number, independent of list filters, and subscribes to
+that exact PR while Tracker is visible. Closing the detail, opening an issue, or switching
+repository/view releases its detail scope. Reconnects replace the disposable projection.
+
+The header shows title, number, state, head → base, author, the last GitHub read time, and
+Open on GitHub. Description renders Markdown (including tables and task lists, without raw HTML).
+Checks lists every native run with status, conclusion, duration and link. Commits lists messages,
+authors, times and linked SHAs. Files reuses the Pierre CodeView and shared worker pool, read-only
+with no findings, replies or viewed-state writes. Empty/unparseable patches show an error. Capped
+patches announce truncation and omit the final possibly incomplete file; the full diff is on GitHub.
+HTTP(S) links open in the system browser, never in a new privileged application window.
+
+Squash and merge stays visible and explains disabled states: missing detail, disconnection, closed
+or merged PR, draft, unknown/conflicting mergeability, or pending/failed checks. No checks is allowed,
+as in the executor. Confirmation names the displayed head SHA and base, and defaults Delete branch
+after merge to checked. A changed head/base invalidates the open confirmation. Close also requires
+confirmation. Delete branch is enabled only on merged/closed PRs with an observed existing head
+branch, excluding the base branch; unknown existence stays disabled. Branch existence is a disposable
+GitHub detail fact, refreshed through the adapter using the actual head repository (including forks).
+Refresh and all mutations use existing coordinator commands, with no direct renderer GitHub access.
+Pending commands disable duplicate submissions. Outcomes and errors remain inline; merged-at and
+branch-deleted labels come from refreshed GitHub observations. No task stage is changed by the UI.

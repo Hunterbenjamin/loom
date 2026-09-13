@@ -149,12 +149,22 @@ export function PullRequestsView() {
                     height: item.size,
                     transform: `translateY(${item.start - 28}px)`,
                   }}
-                  onClick={() => store.setPrCursor(item.index)}
+                  onClick={() => {
+                    store.setPrCursor(item.index);
+                    store.openPullRequest({
+                      repoId: pr.repoId,
+                      number: pr.number,
+                    });
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
                       event.stopPropagation();
                       store.setPrCursor(item.index);
+                      store.openPullRequest({
+                        repoId: pr.repoId,
+                        number: pr.number,
+                      });
                     }
                   }}
                 >

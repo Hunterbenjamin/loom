@@ -2,7 +2,7 @@
 // no durable task state: the coordinator remains the owner.
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { app, BrowserWindow, ipcMain, Notification } from "electron";
+import { app, BrowserWindow, ipcMain, Notification, shell } from "electron";
 import { z } from "zod";
 import { connectionFromEnvironment } from "../shared/connection.js";
 import {
@@ -286,6 +286,12 @@ async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
       sandbox: false,
       backgroundThrottling: false,
     },
+  });
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    const parsed = z.url().safeParse(url);
+    if (parsed.success && /^https?:\/\//i.test(parsed.data))
+      void shell.openExternal(parsed.data);
+    return { action: "deny" };
   });
   const owner = window.webContents.id;
   windows.set(owner, { window, mode });

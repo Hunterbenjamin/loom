@@ -24,17 +24,24 @@ export function selectedPullRequests(state: State): PullRequestRow[] {
 
 /** Hidden Tracker views release their polls; open remains subscribed for the count. */
 export function pullRequestSubscriptions(state: State): Subscription[] {
-  if (!state.ui.trackerVisible || state.ui.view !== "pull-requests") return [];
-  return state.snapshot.repos
-    .filter((repo) => state.ui.repo === "all" || repo.id === state.ui.repo)
-    .flatMap((repo): Subscription[] =>
-      (state.ui.prState === "open"
-        ? ["open" as const]
-        : ["open" as const, state.ui.prState]
-      ).map((status) => ({
-        kind: "pull_requests",
-        repoId: repo.id,
-        state: status,
-      })),
-    );
+  if (!state.ui.trackerVisible) return [];
+  const detail: Subscription[] = state.ui.openPr
+    ? [{ kind: "pull_request", ...state.ui.openPr }]
+    : [];
+  if (state.ui.view !== "pull-requests") return detail;
+  return [
+    ...detail,
+    ...state.snapshot.repos
+      .filter((repo) => state.ui.repo === "all" || repo.id === state.ui.repo)
+      .flatMap((repo): Subscription[] =>
+        (state.ui.prState === "open"
+          ? ["open" as const]
+          : ["open" as const, state.ui.prState]
+        ).map((status) => ({
+          kind: "pull_requests",
+          repoId: repo.id,
+          state: status,
+        })),
+      ),
+  ];
 }

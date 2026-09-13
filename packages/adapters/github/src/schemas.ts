@@ -96,6 +96,9 @@ export const reviewComment = issueComment.extend({
 
 export const pullState = z.enum(["open", "closed", "merged"]);
 export const pullDetail = pull.extend({
+  head: head.extend({
+    repo: z.object({ full_name: repo }).nullable().optional(),
+  }),
   title: z.string(),
   user: author,
   body: z.string().nullable(),

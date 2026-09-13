@@ -51,7 +51,7 @@ carry for them are in [`docs/design/ui.md`](design/ui.md).
 | Fact | Owner | Loom's copy |
 |---|---|---|
 | Issue fields, stage, plans, findings, test results, approvals, run records | Coordinator (SQLite + artifact files) | Authoritative |
-| Branches, PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time; repository PR lists and subscribed detail/patch projections are disposable, including PRs without issues |
+| Branches (including PR head existence), PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time; repository PR lists and subscribed detail/patch projections are disposable, including PRs without issues |
 | Diffs | The worktree or the PR | Computed on demand |
 | Session transcripts and live status | Codex daemon / Claude Code | Cache + references |
 | Terminal processes | tmux, only while its server is alive | References (`{hostGeneration, sessionName, windowId, paneId}`), plus each run's intended command line and environment, so Loom can relaunch it. Pane IDs restart at `%0` after a server death, so every ref is scoped to a host generation |
@@ -84,7 +84,7 @@ Done is derived from GitHub: an issue is Done only once its PR is merged.
   | Moving a card while an agent is running | The coordinator interrupts the run |
 - **GitHub:** poll with conditional requests, because webhooks can't reach localhost. Repository PR
   lists use the adapter's native ETags every 60 seconds while a window subscribes to that repo/state;
-  detail and capped patches refresh every 30 seconds while the PR is open in a window. Identical
+  detail (including remote head-branch existence) and capped patches refresh every 30 seconds while the PR is open in a window. Identical
   scopes share one poll, and disconnect/unsubscribe cancels it when the last viewer leaves.
   PR commands run through the executor, always refresh their owner after success or failure, and
   invalidate linked issues' observations. Failed reads retain the last good projection and read time.
