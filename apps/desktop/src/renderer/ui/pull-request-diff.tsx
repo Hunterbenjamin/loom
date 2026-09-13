@@ -85,8 +85,13 @@ function DiffContent({
   const selectionVersion = useRef(0);
   const pr = row.detail;
   const selection = useMemo(
-    () => ({ repoId: row.repoId, number: row.number, headSha: pr.headSha }),
-    [row.repoId, row.number, pr.headSha],
+    () => ({
+      repoId: row.repoId,
+      number: row.number,
+      headSha: pr.headSha,
+      baseSha: pr.baseSha,
+    }),
+    [row.repoId, row.number, pr.headSha, pr.baseSha],
   );
   const patch = commitSha ? commit?.patch : row.patch;
   const files = useMemo(

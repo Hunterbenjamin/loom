@@ -241,8 +241,8 @@ export class PullRequestViews {
       command.number,
       { cached: true },
     );
-    if (pr.headSha !== command.headSha)
-      throw new Error("PR head changed; refresh the diff");
+    if (pr.headSha !== command.headSha || pr.baseSha !== command.baseSha)
+      throw new Error("PR head or base changed; refresh the diff");
     if (
       command.commitSha &&
       !pr.commits.some((c) => c.sha === command.commitSha)

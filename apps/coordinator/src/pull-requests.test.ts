@@ -774,6 +774,7 @@ test("commit/file reads are scoped to the observed PR head and its commit/file m
     repoId: h.repo.id,
     number: 1,
     headSha: head,
+    baseSha: detail().baseSha,
     commitSha: head,
   };
   expect(await client.command(command)).toMatchObject({
@@ -789,11 +790,25 @@ test("commit/file reads are scoped to the observed PR head and its commit/file m
       repoId: h.repo.id,
       number: 1,
       headSha: head,
+      baseSha: detail().baseSha,
       commitSha: null,
       path: "foreign",
       ignoreWhitespace: false,
     }),
   ).toMatchObject({ ok: false });
+  h.github.setPullRequest(detail(1, { baseSha: nextHead }));
+  expect(
+    await client.command({
+      ...command,
+      kind: "fetch_pull_request_file",
+      commitSha: null,
+      path: file.path,
+      ignoreWhitespace: false,
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: { message: "PR head or base changed; refresh the diff" },
+  });
   h.github.setPullRequest(detail(1, { headSha: nextHead }));
   expect(await client.command(command)).toMatchObject({ ok: false });
 });

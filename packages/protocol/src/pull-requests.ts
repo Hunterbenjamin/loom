@@ -133,6 +133,7 @@ export const pullRequestDiffRead = z.union([
     repoId,
     number: pullRequestNumber,
     headSha: sha,
+    baseSha: sha,
     commitSha: sha,
   }),
   z.strictObject({
@@ -140,6 +141,7 @@ export const pullRequestDiffRead = z.union([
     repoId,
     number: pullRequestNumber,
     headSha: sha,
+    baseSha: sha,
     commitSha: sha.nullable(),
     path: z.string().min(1),
     ignoreWhitespace: z.boolean(),
