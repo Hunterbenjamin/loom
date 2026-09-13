@@ -42,8 +42,14 @@ const rejected: AckOutcome = {
   },
 };
 
-function setup({ live = true, open = true, repo = "all" } = {}) {
+function setup({
+  live = true,
+  open = true,
+  repo = "all",
+  emptyRepos = false,
+} = {}) {
   const snapshot = buildSnapshot();
+  if (emptyRepos) snapshot.repos = [];
   const store = createStore(snapshot, live, "dev");
   store.setRepo(repo);
   store.setCreateIssue(open);
@@ -209,8 +215,16 @@ test("defaults to the sidebar repo and sends the complete backlog payload with m
   const newTask = body.tasks.find((task) => task.id === id);
   if (!newTask) throw new Error("Missing new task");
   expect(h.store.getState().ui.listSections.backlog?.collapsed).toBe(false);
-  newTask.stage = "in_progress";
-  act(() => h.store.applyProtocol(stateFromSnapshot(meta, body)));
+  act(() =>
+    h.store.applyProtocol(
+      stateFromSnapshot(meta, {
+        ...body,
+        tasks: body.tasks.map((task) =>
+          task.id === id ? { ...task, stage: "in_progress" } : task,
+        ),
+      }),
+    ),
+  );
   expect(
     cursorRows(h.store.getState())[h.store.getState().ui.cursor]?.task.id,
   ).toBe(id);
@@ -397,4 +411,16 @@ test("an empty repository list cannot submit", async () => {
   await h.submit();
   expect(h.send).not.toHaveBeenCalled();
   expect(h.host.textContent).toContain("No repositories available");
+});
+
+test("uses the first repository when the initial snapshot arrives with the dialog already open", () => {
+  const h = setup({ emptyRepos: true });
+  const snapshot = buildSnapshot();
+  const { meta, body } = toSnapshot(snapshot);
+  act(() => h.store.applyProtocol(stateFromSnapshot(meta, body)));
+  expect(h.get<HTMLSelectElement>("#issue-repo").value).toBe(
+    snapshot.repos[0]?.id,
+  );
+  h.cancelDialog();
+  expect(h.host.querySelector("dialog")).toBeNull();
 });

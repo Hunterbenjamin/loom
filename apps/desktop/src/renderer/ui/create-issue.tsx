@@ -23,11 +23,11 @@ export function CreateIssue() {
 function CreateIssueDialog() {
   const store = useStoreApi();
   const repos = useStore((s) => s.snapshot.repos);
-  const [initialRepo] = useState(() => {
-    const selected = store.getState().ui.repo;
-    return repos.find((r) => r.id === selected)?.id ?? repos[0]?.id ?? "";
-  });
-  const [repoId, setRepoId] = useState<string>(initialRepo);
+  const [sidebarRepo] = useState(() => store.getState().ui.repo);
+  const initialRepo =
+    repos.find((r) => r.id === sidebarRepo)?.id ?? repos[0]?.id ?? "";
+  const [chosenRepo, setRepoId] = useState<string | null>(null);
+  const repoId = chosenRepo ?? initialRepo;
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"backlog" | "todo">("backlog");
