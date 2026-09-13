@@ -16,6 +16,7 @@ import { Sidebar } from "./sidebar.js";
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (options: {
     count: number;
+    scrollMargin: number;
     getItemKey: (index: number) => string;
   }) => ({
     getTotalSize: () => options.count * 40,
@@ -23,7 +24,7 @@ vi.mock("@tanstack/react-virtual", () => ({
       Array.from({ length: options.count }, (_, index) => ({
         index,
         key: options.getItemKey(index),
-        start: index * 40,
+        start: options.scrollMargin + index * 40,
         size: 40,
       })),
     scrollToIndex() {},

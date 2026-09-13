@@ -44,6 +44,8 @@ export function PullRequestsView() {
     getScrollElement: () => scroller.current,
     estimateSize: () => 40,
     overscan: 12,
+    scrollMargin: 28,
+    scrollPaddingStart: 28,
   });
   useEffect(() => {
     const bounded = Math.max(0, Math.min(cursor, rows.length - 1));
@@ -145,7 +147,7 @@ export function PullRequestsView() {
                     left: 0,
                     right: 0,
                     height: item.size,
-                    transform: `translateY(${item.start}px)`,
+                    transform: `translateY(${item.start - 28}px)`,
                   }}
                   onClick={() => store.setPrCursor(item.index)}
                   onKeyDown={(event) => {
