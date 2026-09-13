@@ -46,6 +46,23 @@ always-on machine while the laptop and phone stay clients.
 
 From then on, all Loom work is filed as Loom tasks.
 
+### Until then: two tracks
+
+The milestone above is the bar, not the current state. Until it passes, building Loom *through*
+Loom means every runtime bug blocks the fix for itself, so Loom work runs on two tracks:
+
+- **Dev track, off-pipeline.** Loom is built by agents launched directly, one per worktree, and
+  reviewed by a human: `scripts/agent.sh` for a brief or a one-line task, or a plain Claude Code or
+  Codex session opened in a worktree from a terminal manager such as Herdr. Herdr is a cockpit for
+  the human, never part of Loom's runtime. The coordinator only adopts a session as external when
+  its cwd is a Loom task's worktree, so dev sessions in their own worktrees are invisible to it.
+- **Dogfood track, narrow.** The dev instance runs a few small tasks a day against the sandbox repo
+  as a smoke test (`scripts/smoke.sh`). A failure is never debugged in place: it is written down in
+  `docs/self-hosting-readiness.md` and fixed on the dev track.
+
+`docs/self-hosting-readiness.md` holds the exit checklist and the smoke log. When the checklist
+passes, this section is deleted and the rule above applies.
+
 ## Phase 4: the UI, built through Loom
 
 Agents build the UI screens in parallel, working against the fixed protocol and recorded sample data. The screens are:
