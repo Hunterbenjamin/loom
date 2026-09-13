@@ -76,6 +76,7 @@ describe("pane rows", () => {
       startCwd: "/real/path",
       pid: 42460,
       agent: null,
+      owner: "run-t-42-reviewer-1",
       command: "",
       dead: true,
       exitCode: 7,

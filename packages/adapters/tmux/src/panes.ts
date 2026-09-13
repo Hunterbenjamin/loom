@@ -127,6 +127,7 @@ export function toObservation(
 ): PaneObservation {
   return {
     agent,
+    owner: row.runId ?? null,
     sessionId: row.sessionId,
     windowName: row.windowName,
     title: row.title,

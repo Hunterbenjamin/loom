@@ -215,6 +215,16 @@ test("reaps a dead pane nobody owns so tmux can drop its emptied window and sess
   await inventory.refresh();
   expect(close).toHaveBeenCalledTimes(1);
   expect(list).toHaveBeenCalledTimes(2);
+  // A dead pane the host tagged with a run id is never reaped, even before the run links it.
+  list.mockResolvedValue([
+    {
+      ...dead,
+      ref: { ...dead.ref, paneId: "%10" },
+      owner: "t-1/implementer/0",
+    },
+  ]);
+  await inventory.refresh();
+  expect(close).toHaveBeenCalledTimes(1);
 });
 
 test("renamed task spaces retain their task label even when only scratch panes remain", () => {

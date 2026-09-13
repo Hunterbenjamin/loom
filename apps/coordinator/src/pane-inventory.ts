@@ -160,11 +160,17 @@ export class PaneInventory {
         // so a Loom run's death can be observed first. A dead pane nobody owns is reaped at once,
         // and tmux then drops an emptied window and session on its own.
         // The host's hint after the kill triggers the scan that drops the row; each pane is
-        // asked once, so a host that keeps reporting it never causes a kill loop.
+        // asked once, so a host that keeps reporting it never causes a kill loop. A pane the
+        // host tagged with a run id at launch is Loom's even before the run record links it:
+        // its death is an observation for the supervisor, never something to tidy away.
+        const owned = new Set(
+          panes.filter((p) => p.owner).map((p) => paneKey(p.ref)),
+        );
         for (const row of this.rows) {
           // A dead pane of a run that has ended has nothing left to observe either.
           if (
             !row.dead ||
+            owned.has(row.id) ||
             (row.runId && row.status !== "ended") ||
             row.unavailable ||
             row.sessionName.startsWith("loom-lead") ||
