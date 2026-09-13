@@ -637,7 +637,11 @@ export class Coordinator {
       },
       changed: (repo) => {
         for (const task of this.store.tasks())
-          if (task.repoId === repo.id && task.branch) {
+          if (
+            task.repoId === repo.id &&
+            task.branch &&
+            !TERMINAL.includes(task.stage)
+          ) {
             this.pullRequests.forget(repo.github, task.branch);
             this.loop.enqueue(task.id);
           }
