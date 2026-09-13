@@ -3,7 +3,7 @@ import { delivery } from "./delivery.js";
 import { attention, budget, reconcileFlags } from "./flags.js";
 import { structurallyEqual } from "./helpers.js";
 import { human } from "./human.js";
-import { observeRuns, startDesired } from "./lifecycle.js";
+import { observeRuns, retireFinishedPanes, startDesired } from "./lifecycle.js";
 import type { Reconcile } from "./reconcile.js";
 import { actionResult, retryActions } from "./results.js";
 import { reconcileStages } from "./stages.js";
@@ -65,6 +65,7 @@ export const reconcile: Reconcile = (state, observations) => {
     c.files();
   }
   startDesired(c);
+  retireFinishedPanes(c);
   delivery(c);
   attention(c);
   if (!structurallyEqual(c.state, state)) {

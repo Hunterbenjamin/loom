@@ -193,7 +193,7 @@ retry/timing thresholds. `githubPollMs` is the coordinator's polling policy; cor
 | `planning` | planner (interactive, in a pane) | |
 | `plan_approval` | nobody | Only when `requirePlanApproval`. |
 | `in_progress` | implementer (interactive, in a pane) | |
-| `in_review` | reviewer (interactive by default, with worktree write/commit access) | The implementer's session stays alive for fix rounds. |
+| `in_review` | reviewer (interactive by default, with worktree write/commit access) | The implementer's session stays alive for fix rounds. An ended interactive run's pane is closed (`stop_run` with `retire`) once its role is no longer needed: a planner's after the plan is settled, a reviewer's after its round, an implementer's when the task ends; sessions stay resumable by ID. |
 | `awaiting_approval` | nobody | Human reviews the diff. |
 | `merging` | nobody | Merge requested; waiting to see it on GitHub. |
 | `done`, `canceled` | nobody | Terminal (`canceled` can be reopened). |

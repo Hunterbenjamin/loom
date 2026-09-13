@@ -287,6 +287,11 @@ export class Executor {
       }
       case "stop_run": {
         const run = this.run(state, action.runId);
+        if (action.retire) {
+          // The run has ended and its role is done: kill the pane, keep the session resumable.
+          if (run.pane) await adapters.paneHost.closePane(run.pane);
+          return {};
+        }
         if (action.terminate) {
           if (
             run.origin !== "loom" ||
