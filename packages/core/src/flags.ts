@@ -195,7 +195,11 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
       }
     }
     for (const message of input.messages)
-      if (message.deliveryAttention) fromRun("provider_input", message.runId);
+      if (
+        message.deliveryAttention &&
+        input.runs.some((run) => run.id === message.runId && !run.endedAt)
+      )
+        fromRun("provider_input", message.runId);
     if (
       input.budgetMinutes !== null &&
       input.activeElapsedMs > input.budgetMinutes * 60_000

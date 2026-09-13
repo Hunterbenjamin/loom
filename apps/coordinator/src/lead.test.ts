@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
+import { createClaudeAdapter } from "@loom/adapter-claude";
 import type { HumanCommand, ProviderSessionId } from "@loom/core";
 import { leadToolNames } from "@loom/mcp";
 import { openStore } from "@loom/store";
@@ -55,6 +56,12 @@ async function mcp(h: Harness) {
 
 test("concurrent open commands are idempotent, private, and separate from task runs", async () => {
   const { h, cli } = await setup();
+  // Exercise production argv construction while the pane host and provider remain fake.
+  const adapter = await createClaudeAdapter({
+    mcpServer: { command: "fake", args: [] },
+  });
+  cleanups.push(() => adapter.close());
+  h.adapters.claude.interactiveArgs = adapter.interactiveArgs;
   const savedBeforeLaunch: unknown[] = [];
   const ensure = h.paneHost.ensurePane.bind(h.paneHost);
   h.paneHost.ensurePane = async (request) => {
@@ -81,6 +88,23 @@ test("concurrent open commands are idempotent, private, and separate from task r
     { sessionId: saved.sessionId, model: "fake-lead-model" },
   ]);
   expect(saved.cwd).toBe(h.store.dataDirectory);
+  expect(
+    saved.args[saved.args.indexOf("--disallowedTools") + 1].split(","),
+  ).toEqual([
+    "Bash",
+    "Edit",
+    "Write",
+    "MultiEdit",
+    "NotebookEdit",
+    "WebFetch",
+    "WebSearch",
+    "Task",
+  ]);
+  expect(saved.args[saved.args.indexOf("--tools") + 1]).toBe("Read,Glob,Grep");
+  expect(saved.args).toContain("--strict-mcp-config");
+  expect(saved.args).not.toContain("bypassPermissions");
+  expect(saved.args.at(-2)).toBe("--");
+  expect(h.paneHost.launches[0]?.args).toEqual(saved.args);
   expect(saved.args.join(" ")).toContain("Always create Loom tasks");
   expect(saved.args.join(" ")).not.toContain(saved.token);
   expect(
@@ -103,7 +127,7 @@ test("concurrent open commands are idempotent, private, and separate from task r
   expect(h.paneHost.launches).toHaveLength(2);
 });
 
-test("Lead tools share the CLI command path and inspection view; core still rejects invalid approvals", async () => {
+test("Main tools share the CLI command path and inspection view; core still rejects invalid approvals", async () => {
   const { h, cli } = await setup();
   await cli.command({ kind: "open_lead_session" });
   const client = await mcp(h);
@@ -242,7 +266,7 @@ for (const condition of ["live", "dead", "absent", "stopped"] as const)
     );
   });
 
-test("Lead status comes from the provider entry and a matching cwd", async () => {
+test("Main status comes from the provider entry and a matching cwd", async () => {
   const { h } = await setup();
   const target = await h.coordinator.lead.open();
   expect((await h.coordinator.lead.state()).status).toBe("unknown");
@@ -277,7 +301,7 @@ test("a lost pane receipt is recovered by explicit open, never by adopting the w
   const { workspaceId } = await h.paneHost.ensureWorkspace({
     taskId: "lead" as never,
     cwd,
-    label: "Lead",
+    label: "Main",
   });
   const shell = await h.paneHost.ensurePane({
     workspaceId,
@@ -303,7 +327,7 @@ test("a lost pane receipt is recovered by explicit open, never by adopting the w
   expect((await recipe(h)).pane).toBeNull();
   await h.coordinator.lead.recover();
   expect(h.paneHost.launches).toHaveLength(2);
-  await expect(h.coordinator.lead.stop()).rejects.toThrow("Open Lead");
+  await expect(h.coordinator.lead.stop()).rejects.toThrow("Open Main");
   const target = await h.coordinator.lead.open();
   expect(target.pane?.paneId).not.toBe(shell.paneId);
   expect(h.paneHost.launches).toHaveLength(2);
@@ -314,7 +338,7 @@ test("a lost pane receipt is recovered by explicit open, never by adopting the w
   expect((await h.paneHost.getPane(shell))?.dead).toBe(false);
 });
 
-test("configured MCP port wins over the Lead recipe and recovery refreshes both session types", async () => {
+test("configured MCP port wins over the Main recipe and recovery refreshes both session types", async () => {
   const { h } = await setup();
   await h.coordinator.lead.open();
   const saved = await recipe(h);
@@ -376,4 +400,114 @@ test("configured MCP port wins over the Lead recipe and recovery refreshes both 
   expect(
     h.paneHost.launches.filter((launch) => launch.runId === "lead"),
   ).toHaveLength(1);
+});
+
+test("Main note is bounded, private, instance-scoped and survives rotation and coordinator restart", async () => {
+  const { h } = await setup();
+  await h.coordinator.lead.open();
+  const first = await recipe(h);
+  const client = await mcp(h);
+  const note = "Focus on conversation and delegate the release investigation.";
+  expect(
+    await client.callTool({ name: "set_note", arguments: { note } }),
+  ).toMatchObject({
+    structuredContent: { ok: true, value: { recorded: true } },
+  });
+  expect(await h.coordinator.lead.note()).toBe(note);
+  expect(
+    (await stat(join(h.store.dataDirectory, "main-notes"))).mode & 0o777,
+  ).toBe(0o600);
+  expect(
+    (
+      await client.callTool({
+        name: "set_note",
+        arguments: { note: "x".repeat(2001) },
+      })
+    ).isError,
+  ).toBe(true);
+  expect(await h.coordinator.lead.note()).toBe(note);
+  await h.coordinator.lead.stop();
+  expect(
+    (await client.callTool({ name: "set_note", arguments: { note: "stale" } }))
+      .isError,
+  ).toBe(true);
+  await h.coordinator.stop();
+  const store = await openStore({
+    dataRoot: h.dataRoot,
+    instance: h.config.instance,
+    config: reconcileConfig(h.config),
+  });
+  const second = new Coordinator({
+    config: h.config,
+    store,
+    adapters: h.adapters,
+    serveProtocol: false,
+  });
+  cleanups.push(() => second.stop());
+  await second.start();
+  await second.lead.open();
+  const saved = JSON.parse(
+    await readFile(join(store.dataDirectory, "lead/recipe.json"), "utf8"),
+  );
+  expect(saved.sessionId).not.toBe(first.sessionId);
+  expect(saved.args.at(-1)).toContain(note);
+  expect(await second.lead.note()).toBe(note);
+  const { h: other } = await setup();
+  expect(await other.coordinator.lead.note()).toBe("");
+  await second.lead.setNote("");
+  expect(await second.lead.note()).toBe("");
+});
+
+test("opening Main requests a brief summary only when native status permits input", async () => {
+  const { h } = await setup();
+  const paste = vi.spyOn(h.paneHost, "pasteText").mockResolvedValue("written");
+  const target = await h.coordinator.lead.open();
+  expect(paste).not.toHaveBeenCalled();
+  h.providers.create(
+    "claude",
+    h.store.dataDirectory as never,
+    present(target.sessionId),
+    "interactive",
+  );
+  const entry = {
+    sessionId: present(target.sessionId),
+    cwd: h.store.dataDirectory as never,
+    status: "idle" as const,
+    rawStatus: "idle",
+    kind: "interactive" as const,
+    pid: 1,
+  };
+  h.adapters.claude.listSessions = async () => [entry];
+  await h.coordinator.lead.open();
+  expect(paste).toHaveBeenCalledExactlyOnceWith(
+    expect.anything(),
+    expect.stringContaining("Needs-you"),
+  );
+  paste.mockClear();
+  for (const status of ["busy", "waiting"] as const) {
+    h.adapters.claude.listSessions = async () => [{ ...entry, status }];
+    await h.coordinator.lead.open();
+  }
+  h.adapters.claude.listSessions = async () => [
+    { ...entry, cwd: "/unrelated" as never },
+  ];
+  await h.coordinator.lead.open();
+  expect(paste).not.toHaveBeenCalled();
+  h.adapters.claude.listSessions = async () => [entry];
+  const hooks = await h.adapters.claude.hookSummary(entry.sessionId);
+  h.adapters.claude.hookSummary = async () => ({
+    ...hooks,
+    pendingDialog: {
+      kind: "permission",
+      tool: "Read",
+      at: hooks.lastEventAt ?? ("2026-09-12T00:00:00.000Z" as never),
+    },
+  });
+  await h.coordinator.lead.open();
+  expect(paste).not.toHaveBeenCalled();
+  h.adapters.claude.listSessions = async () => {
+    throw new Error("Provider unavailable");
+  };
+  expect((await h.coordinator.lead.open()).sessionId).toBe(target.sessionId);
+  expect(paste).not.toHaveBeenCalled();
 });

@@ -138,14 +138,18 @@ Rules:
 - `--settings` is part of a Claude session's identity. Whatever relaunches a Claude agent must pass it
   again; a session running without it is unobservable even though it has the right ID.
 
-### Lead session
+### Main session
 
-The coordinator also owns one interactive Claude Lead session per instance, outside the task/run
+The coordinator also owns one interactive Claude Main session per instance, outside the task/run
 model. Its recipe and per-session credentials live under the instance data directory; its pane is
-in the fixed `loom-lead` workspace on the same private server. Lead uses a separate MCP identity
-with human-command tools. Those tools enqueue the same guarded inputs as the CLI; they do not
-change stage ownership. Task-run tools and Lead tools reject each other's identities. See
-[Lead](design/ui.md#lead) for its lifecycle, recovery and bottom-bar UI.
+in the fixed `loom-lead` workspace on the same private server. Main uses a separate MCP identity
+with human-command tools and `set_note`, which atomically replaces the instance-local
+`main-notes` document (at most 2,000 characters). Each launch includes that note as context.
+The Claude launch restricts Main to Loom MCP and read-only file tools within the instance
+directory; the agent has no terminal attach capability. Human viewers still attach to its panel.
+The human-command tools enqueue the same guarded inputs as the CLI; they do not
+change stage ownership. Task-run tools and Main tools reject each other's identities. See
+[Main](design/ui.md#main) for its lifecycle, recovery and bottom-bar UI.
 
 ### Claude Code
 

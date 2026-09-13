@@ -5,11 +5,23 @@
   background: var(--bg);
   color: var(--text);
 }
+/* Keep the hiddenInset title area in flow, above the sidebar and panel layout. */
+.wb-titlebar {
+  height: 30px;
+  flex: none;
+}
+.wb-titlebar,
+.wb-tabs {
+  -webkit-app-region: drag;
+}
+.wb-titlebar *,
+.wb-tabs * {
+  -webkit-app-region: no-drag;
+}
 .wb-body {
   display: flex;
   flex: 1;
   min-height: 0;
-  padding-top: 30px;
 }
 .wb-sidebar {
   width: 260px;
@@ -34,6 +46,7 @@
 }
 .wb-tabs {
   display: flex;
+  flex-shrink: 0;
   gap: 4px;
   padding: 6px;
   overflow: auto;

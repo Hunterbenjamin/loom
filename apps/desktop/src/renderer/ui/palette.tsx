@@ -92,6 +92,13 @@ export function Palette() {
           <Command.Group heading="Window">
             <Command.Item
               onSelect={() =>
+                run(() => window.dispatchEvent(new Event("loom:open-main")))
+              }
+            >
+              Open Main
+            </Command.Item>
+            <Command.Item
+              onSelect={() =>
                 run(() => void window.loomHost.setMode("workbench"))
               }
             >

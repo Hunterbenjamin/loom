@@ -1,3 +1,4 @@
+// Main retains internal `lead` identifiers for persisted recipes, MCP identity and clients.
 // One coordinator-owned interactive session. No task, run, stage or reconciler state.
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -10,6 +11,7 @@ import type {
   TaskId,
   WorktreePath,
 } from "@loom/core";
+import { mainNoteSchema } from "@loom/mcp";
 import {
   type LeadState,
   type LeadTarget,
@@ -20,7 +22,7 @@ import { z } from "zod";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
 import { newToken } from "./derive.js";
-import { leadBrief } from "./prompts.js";
+import { leadBrief, mainPanelBrief } from "./prompts.js";
 import { runEnvironment } from "./recipes.js";
 
 const recipeSchema = z.strictObject({
@@ -90,7 +92,7 @@ export class LeadSession {
       this.recipe.cwd !== this.deps.dataDirectory ||
       this.recipe.settingsPath !== join(this.directory, "settings.json")
     )
-      throw new Error("Lead recipe belongs to a different instance directory");
+      throw new Error("Main recipe belongs to a different instance directory");
   }
   private async save(recipe: Recipe): Promise<void> {
     const value = recipeSchema.parse(recipe);
@@ -104,6 +106,27 @@ export class LeadSession {
   }
   get paneRef() {
     return this.recipe?.pane ?? null;
+  }
+
+  async note(): Promise<string> {
+    try {
+      return mainNoteSchema.parse(
+        await readFile(join(this.deps.dataDirectory, "main-notes"), "utf8"),
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+      throw error;
+    }
+  }
+
+  setNote(note: string): Promise<{ recorded: true }> {
+    return this.exclusive(async () => {
+      const value = mainNoteSchema.parse(note);
+      const path = join(this.deps.dataDirectory, "main-notes");
+      await writeFile(`${path}.tmp`, value, { mode: 0o600 });
+      await rename(`${path}.tmp`, path);
+      return { recorded: true };
+    });
   }
 
   private async pane() {
@@ -142,7 +165,7 @@ export class LeadSession {
         const token = newToken();
         const entry = this.deps.mcpEntry(token);
         if (!("type" in entry) || entry.type !== "http")
-          throw new Error("Lead requires the coordinator HTTP endpoint");
+          throw new Error("Main requires the coordinator HTTP endpoint");
         await this.save({
           sessionId: randomUUID(),
           token,
@@ -163,7 +186,10 @@ export class LeadSession {
       }
       const pane = await this.pane();
       const ref = pane && !pane.dead ? pane.ref : await this.launch();
-      if (!this.recipe) throw new Error("Missing Lead recipe");
+      if (pane && !pane.dead)
+        // Observation or delivery failure must not prevent the human opening the conversation.
+        await this.summarizeOnOpen(ref).catch(() => {});
+      if (!this.recipe) throw new Error("Missing Main recipe");
       await this.save({ ...this.recipe, pane: ref });
       const observation = await this.deps.adapters.paneHost.getPane(ref);
       const clients = await this.deps.adapters.paneHost.listClients(ref);
@@ -196,12 +222,29 @@ export class LeadSession {
       if (!this.recipe) return;
       if (this.recipe.launched && !this.recipe.pane)
         throw new Error(
-          "Open Lead to recover its attach target before stopping it",
+          "Open Main to recover its attach target before stopping it",
         );
       const pane = await this.pane();
       await this.save({ ...this.recipe, stopped: true });
       if (pane) await this.deps.adapters.paneHost.closePane(pane.ref);
     });
+  }
+  private async summarizeOnOpen(ref: PaneRef): Promise<void> {
+    const recipe = this.recipe;
+    if (!recipe) return;
+    const [sessions, hooks] = await Promise.all([
+      this.deps.adapters.claude.listSessions(),
+      this.deps.adapters.claude.hookSummary(
+        recipe.sessionId as ProviderSessionId,
+      ),
+    ]);
+    const session = sessions.find(
+      (s) => s.sessionId === recipe.sessionId && s.cwd === recipe.cwd,
+    );
+    // Opening a human view is a hint, never permission to type into a dialog or busy turn.
+    // This read-only summary request is best effort: no polling, retries or delivery claim.
+    if (session?.status === "idle" && !hooks.pendingDialog)
+      await this.deps.adapters.paneHost.pasteText(ref, mainPanelBrief());
   }
   async state(): Promise<LeadState> {
     if (!this.recipe || this.recipe.stopped)
@@ -235,7 +278,7 @@ export class LeadSession {
   }
   private async launch(): Promise<PaneRef> {
     const recipe = this.recipe;
-    if (!recipe) throw new Error("Missing Lead recipe");
+    if (!recipe) throw new Error("Missing Main recipe");
     await this.settings();
     // A launch can die before a transcript exists. Ask the provider whether this ID resumes.
     const resume =
@@ -249,13 +292,14 @@ export class LeadSession {
       resume,
       model: recipe.model,
       settingsPath: recipe.settingsPath,
+      readOnly: true,
     });
-    args.push(leadBrief());
+    args.push("--name", "Main", "--", leadBrief(await this.note()));
     await this.save({ ...recipe, args, launched: true });
     const { workspaceId } = await this.deps.adapters.paneHost.ensureWorkspace({
       taskId: "lead" as TaskId,
       cwd: recipe.cwd as WorktreePath,
-      label: "Lead",
+      label: "Main",
     });
     const pane = await this.deps.adapters.paneHost.ensurePane({
       workspaceId,

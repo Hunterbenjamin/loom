@@ -342,6 +342,15 @@ export type DeliveryConfirmation =
   | { via: "codex_user_message_item"; turnId: string }
   | { via: "claude_user_prompt_submit"; promptId: string };
 
+/** Executor-owned timing and identity of one successful transport attempt. */
+export interface TransportAttempt {
+  startedAt: IsoTime;
+  completedAt: IsoTime;
+  sessionId: ProviderSessionId;
+  sessionEpoch: number;
+  runAttempt: number;
+}
+
 export interface Message {
   id: MessageId;
   runId: RunId;
@@ -353,7 +362,10 @@ export interface Message {
   attempts: number;
   /** Codex turn ID returned by `turn/start` or `turn/steer`. (ref) */
   transportRef: string | null;
+  /** Transport completion time; legacy records may contain reconciliation time. */
   sentAt: IsoTime | null;
+  /** Absent on records written before executor timing was persisted. */
+  transportAttempt?: TransportAttempt;
   delivered: (DeliveryConfirmation & { at: IsoTime }) | null;
   via?: import("./actions.js").SendVia;
   expectedTurnId?: string | null;

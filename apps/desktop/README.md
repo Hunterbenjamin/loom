@@ -135,7 +135,7 @@ A pane click replaces the focused viewer; Enter opens a new tab. Space and tab r
 Branches, rename, sound/flash and opening a tab row as splits belong to later Workbench v2 slices. Ctrl+A then `| - h j k l c n p x z g ?` controls
 splits, focus, tabs, close, zoom, search and help. Ctrl+A Ctrl+A sends the literal prefix; Escape or
 1.5 seconds cancels it. Drag headers to panel edges to rearrange splits. Every prefix action has a
-Command+K palette entry. Command+J and the Lead toggle/restart are shared with Tracker.
+Command+K palette entry. Command+J and the Main toggle/restart are shared with Tracker.
 
 Scratch shell creates a native shell in the selected task's recorded worktree/session. Closing a
 panel or window only detaches. Plan, diff, activity and code panels are deferred in this slice.

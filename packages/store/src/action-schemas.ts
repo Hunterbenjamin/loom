@@ -15,6 +15,7 @@ import {
   sha,
   text,
   time,
+  transportAttempt,
 } from "./schema-helpers.js";
 
 const fields = {
@@ -216,7 +217,10 @@ const outputs = {
     codexGeneration: count.nullable(),
     pane: paneRef.nullable(),
   }),
-  send_message: z.object({ transportRef: text.nullable() }),
+  send_message: z.object({
+    transportRef: text.nullable(),
+    transportAttempt: transportAttempt.optional(),
+  }),
   interrupt_run: empty,
   answer_provider_request: empty,
   stop_run: empty,

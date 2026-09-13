@@ -136,7 +136,7 @@ or review run, use **Agents → Restart with current agent settings**, or
 `pnpm loom task restart <task> <runId>`. This retires the selected agent and creates a fresh
 session on the same task/worktree, preserving its plan, findings and review round. It does not
 transfer the old provider's conversation. Use `loom task show <task>` to find the current run ID.
-The replacement waits for confirmed retirement; a stale run ID is rejected. Lead and Operator retain their separate model settings.
+The replacement waits for confirmed retirement; a stale run ID is rejected. Main and Operator retain their separate model settings.
 Reasoning is persisted with the run, outbox action, and launch recipe and passed to both the
 Codex thread and subsequent turns; the task's private TUI configuration receives it too.
 Older runs without a reasoning field retain provider defaults. These are instance environment
@@ -170,6 +170,11 @@ loom task inspect <task> [--json]
 loom task answer <task> <questionId> <answer>
 loom task answer-request <task> <runId> <requestId> accept|decline|cancel
 ```
+
+`task create <repo> <title> [description]` preserves the description exactly; quote it as
+one shell argument. Use `--` before positional text that starts with `--`. The repository's
+pnpm shell emulator keeps literal backticks and quotes intact when forwarding script arguments.
+CLI errors include the error code, message, and each validator or guard detail on its own line.
 
 `inspect` prints persisted task flags, all runs (newest last), message delivery history with
 80-character text previews, open questions, pending plan/merge/provider approvals, the last ten
@@ -210,7 +215,7 @@ Small tasks auto-generate a plan from the title (goal) and description (steps), 
 **Qualifying scope:** ~200 lines or fewer, single file, no architectural decisions. Docs, typos, comments, config updates, simple refactors.
 
 **How it works:**
-1. Task created with `--small` flag or `size: 'small'` via Lead/Operator tools.
+1. Task created with `--small` flag or `size: 'small'` via Main/Operator tools.
 2. On first reconcile, a plan is auto-generated from task title (goal) and description (steps split by newlines).
 3. Task transitions directly: `todo` → `in_progress` (no planning stage).
 4. Implementer fixes it; reviewer runs only tests for affected packages.
@@ -393,19 +398,29 @@ run, so editing WORKFLOW.md in a worktree takes effect without restarting the co
 **Note:** If WORKFLOW.md is malformed or missing, the run receives only the fixed allowlist and
 continues without error. See [WORKFLOW.md policy](./README.md#workflowmd-design-note-133-settled-here) for details.
 
-## Lead
+## Main
 
-`open_lead_session` opens the instance's interactive Claude Lead; `stop_lead_session` stops it and
+`open_lead_session` opens the instance's interactive Claude Main; `stop_lead_session` stops it and
 revokes its token. `LOOM_MODEL_LEAD` defaults to `LOOM_MODEL_CLAUDE`. Its private recipe and settings
 are in `<instance data>/lead/`, with cwd at the instance data directory. No task or run is created.
 The configured stable MCP port takes precedence over the recipe; ephemeral instances reuse the
-saved Lead port across coordinator restarts. Recovery rewrites Lead settings to the current
-endpoint and relaunches only confirmed dead Lead panes; absence requires an explicit open.
-See [the UI design](../../docs/design/ui.md#lead) for controls and tool scope.
+saved Main port across coordinator restarts. Recovery rewrites Main settings to the current
+endpoint and relaunches only confirmed dead Main panes; absence requires an explicit open.
+The internal `lead` identity and configuration names stay compatible. Main launches with Loom MCP
+and only `Read`, `Glob`, `Grep` within its instance directory; shell, editing, web and subagent tools
+are denied. Other MCP servers and terminal attach tools are unavailable to Main. Existing live
+sessions keep their launch permissions until the human restarts Main.
+
+Main introduces itself in two sentences and waits. On a subsequent panel open, the coordinator
+requests a brief Needs-you summary only if native status is idle with no pending dialog. It never
+pastes into a busy or waiting session, polls for a turn, or retries an uncertain summary delivery.
+The Main-only `set_note({note})` tool atomically replaces `<instance data>/main-notes` (max 2,000
+characters; empty clears it). Every launch includes this note as context, including session rotation.
+See [the UI design](../../docs/design/ui.md#main) for controls and tool scope.
 
 ### Operator
 
-The coordinator owns one event-driven Claude Operator, separate from task capacity and Lead.
+The coordinator owns one event-driven Claude Operator, separate from task capacity and Main.
 It starts lazily when attention, terminal run failures, pass/publish failures, or owned adapter
 stale-process diagnostics arrive. It has only Loom MCP tools: no built-in tools or terminal.
 `loom operator status [--json]` shows its session, queue, last ten decisions and rolling-hour count.
