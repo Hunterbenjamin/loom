@@ -245,12 +245,32 @@ export const TerminalSession = memo(function TerminalSession({
       macOptionClickForcesSelection: true,
       theme: THEMES[settings.current.theme],
       scrollback: 0,
+      cursorBlink: false,
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.loadAddon(new UnicodeGraphemesAddon());
     terminal.unicode.activeVersion = "15-graphemes";
     terminal.open(element);
+    // A TUI may ask for a blinking cursor (DECSCUSR 1/3/5, or DECSET 12). Keep its cursor
+    // shape but never blink: a blinking cursor over a fast-redrawing TUI reads as flicker.
+    // (Test doubles of xterm carry no parser.)
+    const parser = (terminal as { parser?: typeof terminal.parser }).parser;
+    parser?.registerCsiHandler({ intermediates: " ", final: "q" }, (params) => {
+      const style = Number(params[0] ?? 0);
+      terminal.options.cursorStyle =
+        style >= 5 ? "bar" : style >= 3 ? "underline" : "block";
+      terminal.options.cursorBlink = false;
+      return true;
+    });
+    parser?.registerCsiHandler(
+      { prefix: "?", final: "h" },
+      (params) => params.length === 1 && params[0] === 12,
+    );
+    parser?.registerCsiHandler(
+      { prefix: "?", final: "l" },
+      (params) => params.length === 1 && params[0] === 12,
+    );
     try {
       terminal.loadAddon(new WebglAddon());
     } catch {
@@ -271,6 +291,43 @@ export const TerminalSession = memo(function TerminalSession({
       sentRows = rows;
       window.loomTerminal.resize(id, cols, rows);
     };
+    // Attach once, at the size the panel has been measured to hold. Attaching first and
+    // resizing after makes the host redraw the whole screen a second time; measured first, the
+    // attach is a single draw, like a native terminal.
+    let disposed = false;
+    let spawnRequested = false;
+    const spawnClient = () => {
+      if (spawnRequested || disposed) return;
+      spawnRequested = true;
+      void window.loomTerminal
+        .spawn({
+          id,
+          cols: wanted.cols,
+          rows: wanted.rows,
+          label: settings.current.label,
+          pane,
+          shellKey,
+          shellName,
+          lead,
+          operator,
+          runId,
+        })
+        .then((result) => {
+          if (disposed) {
+            void window.loomTerminal.kill(id);
+            return;
+          }
+          spawned = true;
+          // A layout resize can land while the spawn request is in flight.
+          sendSize();
+          setCommand(result.command);
+          setStatus(`pid ${result.pid}`);
+          terminal.focus();
+        })
+        .catch((error: unknown) => {
+          if (!disposed) setStatus(String(error));
+        });
+    };
     const fitView = () => {
       const crop = viewportRef.current;
       const container = clip.current;
@@ -281,6 +338,8 @@ export const TerminalSession = memo(function TerminalSession({
           // No cell metrics yet (first paint, hidden view): report the native grid as is.
           wanted = { cols: terminal.cols, rows: terminal.rows };
           sendSize();
+          // Without layout there is nothing better to measure against; attach as is.
+          spawnClient();
           return;
         }
         const cellWidth = screen.clientWidth / terminal.cols;
@@ -290,6 +349,7 @@ export const TerminalSession = memo(function TerminalSession({
           rows: Math.max(1, Math.floor(container.clientHeight / cellHeight)),
         };
         sendSize();
+        spawnClient();
         const placement = terminalCrop(
           crop,
           screen.clientWidth,
@@ -312,6 +372,7 @@ export const TerminalSession = memo(function TerminalSession({
         fit.fit();
         wanted = { cols: terminal.cols, rows: terminal.rows };
         sendSize();
+        spawnClient();
       }
     };
     fitViewport.current = fitView;
@@ -354,36 +415,6 @@ export const TerminalSession = memo(function TerminalSession({
           : `exited ${exitCode} - reattach from the toolbar`,
       );
     });
-
-    let disposed = false;
-    void window.loomTerminal
-      .spawn({
-        id,
-        cols: wanted.cols,
-        rows: wanted.rows,
-        label: settings.current.label,
-        pane,
-        shellKey,
-        shellName,
-        lead,
-        operator,
-        runId,
-      })
-      .then((result) => {
-        if (disposed) {
-          void window.loomTerminal.kill(id);
-          return;
-        }
-        spawned = true;
-        // A layout resize can land while the spawn request is in flight.
-        sendSize();
-        setCommand(result.command);
-        setStatus(`pid ${result.pid}`);
-        terminal.focus();
-      })
-      .catch((error: unknown) => {
-        if (!disposed) setStatus(String(error));
-      });
 
     // Resize on panel resize only, debounced: the attached client owns the pane size for
     // every other viewer, and that size sticks after detach (spike 03).
