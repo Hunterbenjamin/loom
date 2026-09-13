@@ -768,12 +768,16 @@ export function Workbench() {
         if (space && rows.length) openGroup(rows, space.name);
         return;
       }
+      if (index === 0) {
+        if (state.ui.repo) openPinned("main");
+        return;
+      }
       const agent = tree
         .flatMap((space) => space.tabs.flatMap((tab) => tab.panes))
         .filter(
           ({ pane }) =>
             (pane.provider || pane.runId || pane.agent) && !pane.dead,
-        )[index];
+        )[index - 1];
       if (agent) choose(agent.pane);
       return;
     }

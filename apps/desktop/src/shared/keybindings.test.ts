@@ -20,6 +20,21 @@ test("the editable defaults include every action, direct Mac chords and legacy s
   expect(formatBindings(defaultKeybindings, "split-right")).toBe(
     "Cmd+D / Ctrl+Space then |",
   );
+  expect(
+    actions
+      .filter((action) => action.id.startsWith("agent-"))
+      .map(({ label }) => label),
+  ).toEqual([
+    "Main",
+    "Agent 1",
+    "Agent 2",
+    "Agent 3",
+    "Agent 4",
+    "Agent 5",
+    "Agent 6",
+    "Agent 7",
+    "Agent 8",
+  ]);
 });
 
 test("strict boundary rejects malformed, incomplete, ambiguous and unreachable configuration", () => {
