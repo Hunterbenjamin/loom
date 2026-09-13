@@ -108,6 +108,7 @@ export type AttentionReason =
   /** An interactive run vanished; only a human relaunches it. */
   | "run_vanished"
   | "stalled"
+  | "idle_without_submission"
   | "status_unknown"
   | "observability_failure"
   | "over_budget";
@@ -311,6 +312,8 @@ export interface Run {
   endReason: RunEndReason | null;
   seenAt?: IsoTime | null;
   unknownSince?: IsoTime | null;
+  /** Start of the current idle interval; absent on legacy runs, cleared on activity/status change. */
+  idleSince?: IsoTime | null;
   observedAttempt?: number;
   /** Attempts remain monotonic for action keys; human retry resets this budget offset. */
   retryBaseAttempt?: number;

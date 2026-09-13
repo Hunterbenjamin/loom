@@ -39,6 +39,7 @@ export function observeRuns(c: Context): void {
       continue;
     const derived = deriveStatus(run, observation);
     const provider = read(observation?.provider);
+    const previousStatus = run.status;
     run.status = derived.status;
     run.blockedOn = derived.blockedOn;
     if (
@@ -89,6 +90,15 @@ export function observeRuns(c: Context): void {
       if (activity && (!run.lastActivityAt || activity > run.lastActivityAt))
         run.lastActivityAt = activity;
     }
+    if (run.status === "idle") {
+      run.idleSince =
+        previousStatus === "idle"
+          ? (run.idleSince ?? run.lastActivityAt ?? run.launchedAt ?? c.now)
+          : c.now;
+      // A turn can start and stop between polls. Native activity starts a fresh grace period.
+      if (run.lastActivityAt && run.lastActivityAt > run.idleSince)
+        run.idleSince = run.lastActivityAt;
+    } else run.idleSince = null;
     if (run.status === "unknown") {
       run.unknownSince ??= c.now;
       delete run.pendingDialog;
@@ -218,6 +228,7 @@ function launch(c: Context, run: Run, resume: boolean): void {
   c.result.capacityVersion = c.observations.capacity.version;
   c.reserved[run.provider]++;
   run.status = "starting";
+  run.idleSince = null;
   run.endedAt = null;
   run.endReason = null;
   run.retryAt = null;

@@ -12,6 +12,7 @@ export const REASON_LABELS: Record<AttentionReason, string> = {
   failed: "Failed",
   run_vanished: "Agent session vanished",
   stalled: "No activity",
+  idle_without_submission: "Agent stopped without submitting",
   status_unknown: "Status unknown",
   observability_failure: "Cannot observe run",
   over_budget: "Over budget",

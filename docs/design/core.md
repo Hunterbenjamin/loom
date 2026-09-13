@@ -66,6 +66,7 @@ They follow the original fields in `Run`; their optional representation has thes
 |---|---|---|
 | `seenAt` | A | First authoritative evidence of this session; absent/null means never seen. Required to distinguish a not-yet-present Claude start from a vanished session after restart. |
 | `unknownSince` | A | Start of the current unknown-status interval; absent/null means no such interval. Repeated unavailable reads do not reset it. |
+| `idleSince` | A | Start of the current idle interval. Resets on a status change or new native activity, survives unchanged polls and restart. Legacy idle runs fall back to last activity or launch time. |
 | `observedAttempt` | A | Attempt whose failure was already scheduled; absent means no failure handled for this attempt. |
 | `retryBaseAttempt` | A | Monotonic attempt offset at the last human retry reset; absent means 0. Attempts themselves never reset, so action keys cannot be reused. |
 
@@ -312,6 +313,7 @@ while any of these reasons holds:
 | `failed` | `failed` is set |
 | `run_vanished` | An interactive run's session disappeared. Loom won't relaunch it; the human does. |
 | `stalled` | A run is `working` with no provider activity for `stallAfterMs`. Nothing is killed. |
+| `idle_without_submission` | A live Loom run stays idle for `stallAfterMs` (15 minutes by default) while its role owes a submission: planner in `planning`, implementer in `in_progress`, reviewer in `in_review`. Suppressed while the task is blocked/failed, a message to that run is pending/sent, or its question is unanswered. Nothing is killed or relaunched. |
 | `status_unknown` | A run has been `unknown` for longer than `unknownGraceMs` |
 | `over_budget` | Time in stages `planning` through `awaiting_approval` exceeds `budgetMinutes` |
 
