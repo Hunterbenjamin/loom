@@ -109,7 +109,9 @@ test("renders every field and badge, filters states separately and keeps the ope
     "Draft",
   ])
     expect(content).toContain(text);
-  act(() => h.store.setRepo(h.store.getState().snapshot.repos[0]?.id ?? ""));
+  act(() => {
+    void h.store.setRepo(h.store.getState().snapshot.repos[0]?.id ?? "");
+  });
   expect(h.rows()).toHaveLength(4);
   const count = () =>
     h.host.querySelector('[data-view="pull-requests"] .count')?.textContent;
