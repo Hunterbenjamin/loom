@@ -259,6 +259,7 @@ export async function observe(
           worktree,
           repo?.baseBranch ?? deps.config.baseBranch,
           [...candidates],
+          state.review?.headSha,
         ),
       )
     : null;

@@ -88,10 +88,13 @@
         "tool": "submit_review",
         "input": {
           "reviewedSha": "$HEAD",
+          "reviewerCommits": [],
           "summary": "Reviewed",
           "findings": [
             {
               "severity": "major",
+              "status": "escalate",
+              "reason": "Requires a design change",
               "title": "Fix the value",
               "body": "The value is wrong",
               "location": null
@@ -116,6 +119,7 @@
         "tool": "submit_review",
         "input": {
           "reviewedSha": "$HEAD",
+          "reviewerCommits": [],
           "summary": "Reviewed",
           "findings": [],
           "verdicts": [

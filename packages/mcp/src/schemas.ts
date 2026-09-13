@@ -29,7 +29,15 @@ const count = z.number().int().nonnegative();
 const line = z.number().int().positive();
 const role = z.enum(["planner", "implementer", "reviewer"]);
 const side = z.enum(["old", "new"]);
-const status = z.enum(["open", "addressed", "disputed", "resolved", "waived"]);
+const status = z.enum([
+  "open",
+  "addressed",
+  "disputed",
+  "resolved",
+  "fixed",
+  "escalate",
+  "waived",
+]);
 const severity = z.enum(["blocker", "major", "minor", "nit"]);
 const text = z.string();
 const nonempty = text.refine((s) => s.trim().length > 0, "Must not be blank");
@@ -103,26 +111,68 @@ export const inputSchemas = {
     testResults: z.array(testInput),
     handoff: z.strictObject({ summary: text, nextSteps: texts }),
   }),
-  submit_review: z.strictObject({
-    reviewedSha: shaSchema,
-    summary: text,
-    findings: z.array(
-      z.strictObject({
-        severity,
-        title: text,
-        body: text,
-        location: location.nullable(),
-      }),
-    ),
-    verdicts: z.array(
-      z.strictObject({
-        findingId: findingIdSchema,
-        status: z.enum(["resolved", "reopened"]),
-        note: text,
-      }),
-    ),
-    testResults: z.array(testInput),
-  }),
+  submit_review: z
+    .strictObject({
+      reviewedSha: shaSchema,
+      reviewerCommits: z.array(shaSchema),
+      summary: text,
+      findings: z.array(
+        z.strictObject({
+          severity,
+          title: text,
+          body: text,
+          location: location.nullable(),
+          status: z.enum(["open", "fixed", "escalate"]).optional(),
+          commitSha: shaSchema.optional(),
+          reason: nonempty.optional(),
+        }),
+      ),
+      verdicts: z.array(
+        z.strictObject({
+          findingId: findingIdSchema,
+          status: z.enum(["resolved", "reopened", "fixed", "escalate"]),
+          note: text,
+          commitSha: shaSchema.optional(),
+          reason: nonempty.optional(),
+        }),
+      ),
+      testResults: z.array(testInput),
+    })
+    .superRefine((review, ctx) => {
+      for (const [group, items] of [
+        ["findings", review.findings],
+        ["verdicts", review.verdicts],
+      ] as const) {
+        items.forEach((item, index) => {
+          if (
+            item.status === "fixed" &&
+            (!item.commitSha ||
+              !review.reviewerCommits.includes(item.commitSha))
+          )
+            ctx.addIssue({
+              code: "custom",
+              path: [group, index, "commitSha"],
+              message: "Fixed findings need a fixing commit in reviewerCommits",
+            });
+          if (item.status === "escalate" && !item.reason?.trim())
+            ctx.addIssue({
+              code: "custom",
+              path: [group, index, "reason"],
+              message: "Explain why this cannot be fixed safely inline",
+            });
+          if (
+            (item.status !== "fixed" && item.commitSha) ||
+            (item.status !== "escalate" && item.reason)
+          )
+            ctx.addIssue({
+              code: "custom",
+              path: [group, index],
+              message:
+                "Fix commits and escalation reasons must match the status",
+            });
+        });
+      }
+    }),
   resolve_finding: z.strictObject({
     findingId: findingIdSchema,
     resolution: z.enum(["fixed", "disputed"]),
@@ -153,7 +203,17 @@ export const outputSchemas = {
     brief: text,
     plan: planSchema.extend({ version: line }).nullable(),
     decisions: text,
-    handoff: handoff.nullable(),
+    handoff: handoff
+      .extend({
+        reviewerSubmission: z
+          .strictObject({
+            runId: runIdSchema,
+            round: count,
+            input: inputSchemas.submit_review,
+          })
+          .optional(),
+      })
+      .nullable(),
     findings: z.array(
       z.strictObject({
         id: findingIdSchema,
@@ -201,7 +261,7 @@ export const outputSchemas = {
   submit_review: z.strictObject({
     round: line,
     openBlocking: count,
-    next: z.enum(["in_progress", "awaiting_approval", "blocked"]),
+    next: z.enum(["in_review", "in_progress", "awaiting_approval", "blocked"]),
   }),
   resolve_finding: z.strictObject({ status }),
 };

@@ -422,3 +422,27 @@ describe("diffs and blobs", () => {
     );
   });
 });
+
+it("observes the complete reviewer range and refuses unrelated history", async () => {
+  const base = (await git("rev-parse", "HEAD")) as Sha;
+  await git("checkout", "-b", "feat/reviewer");
+  await save("tracked.txt", "implementation\n");
+  const roundHead = await commitAll("Implementation");
+  await save("tracked.txt", "first fix\n");
+  const first = await commitAll("Fix first finding");
+  await save("test.txt", "required test\n");
+  const second = await commitAll("Fix missing test");
+  expect(
+    (await adapter.readWorktree(repo, "main", [], roundHead)).reviewCommits,
+  ).toEqual({ baseSha: roundHead, headSha: second, commits: [first, second] });
+  expect(
+    (await adapter.readWorktree(repo, "main", [], second)).reviewCommits
+      ?.commits,
+  ).toEqual([]);
+  await git("checkout", "-b", "feat/unrelated", base);
+  await save("tracked.txt", "different history\n");
+  await commitAll("Other history");
+  expect(
+    (await adapter.readWorktree(repo, "main", [], roundHead)).reviewCommits,
+  ).toBeNull();
+});

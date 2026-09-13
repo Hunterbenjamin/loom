@@ -82,7 +82,7 @@ export async function writeCodexHomeConfig(
   await writeFile(join(home, "config.toml"), lines.join("\n"), { mode: 0o600 });
 }
 
-const READ_ONLY: Role[] = ["planner", "reviewer"];
+const READ_ONLY: Role[] = ["planner"];
 
 /** Fixed allowlist of bash command prefixes for interactive Claude runs. */
 export const FIXED_BASH_PREFIXES = [
@@ -262,8 +262,8 @@ export async function startRun(
     const started = await codex.startThread({
       cwd: action.worktreePath,
       model: action.model,
-      // Implementers get full access in their worktree (network included: `pnpm add` was
-      // blocked by workspace-write's no-network rule); planners and reviewers stay read-only.
+      // Implementers and reviewers get full access in their worktree (network included: `pnpm add` was
+      // blocked by workspace-write's no-network rule); only planners stay read-only.
       sandbox: READ_ONLY.includes(action.role)
         ? "read-only"
         : "danger-full-access",

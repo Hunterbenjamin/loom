@@ -1,6 +1,7 @@
 import type { Context } from "./context.js";
 import { openBlocking } from "./helpers.js";
 import type { FindingId } from "./ids.js";
+import { publishReview } from "./review-publication.js";
 
 export function reconcileStages(c: Context): void {
   const { task, state, pr } = c;
@@ -124,6 +125,7 @@ export function reconcileStages(c: Context): void {
       }
     }
   }
+  publishReview(c);
   if (task.stage === "todo") {
     const missing = task.blockedBy.filter(
       (id) =>
@@ -185,7 +187,9 @@ export function reviewBlocked(c: Context): boolean {
 export function finishWaivers(c: Context): void {
   if (reviewBlocked(c) && openBlocking(c.state.findings) === 0) {
     c.block(null);
-    c.stage("awaiting_approval", "All blocking findings waived");
-    c.notify("Review needs approval", `waived:${c.task.reviewRound}`);
+    if (c.state.review?.lastReviewedHead) {
+      c.state.review.publicationPending = true;
+      publishReview(c);
+    }
   }
 }

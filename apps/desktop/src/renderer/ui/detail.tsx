@@ -380,7 +380,10 @@ function Agents({ task }: { task: Task }) {
         {
           findings.filter(
             (f) =>
-              f.blocking && f.status !== "resolved" && f.status !== "waived",
+              f.blocking &&
+              f.status !== "resolved" &&
+              f.status !== "waived" &&
+              f.status !== "fixed",
           ).length
         }{" "}
         open and blocking

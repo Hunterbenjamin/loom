@@ -1,10 +1,10 @@
 import type { Context } from "./context.js";
 import { openBlocking } from "./helpers.js";
 import { error } from "./human.js";
-import type { ActionKey } from "./ids.js";
 import type { McpError, TestResultInput } from "./mcp.js";
 import type { Input } from "./observations.js";
 import type { McpReply } from "./reconcile.js";
+import { publishReview } from "./review-publication.js";
 
 export function submission(
   c: Context,
@@ -154,8 +154,10 @@ export function submission(
         (f) => f.id === findingId && f.taskId === task.id,
       );
       const failures: string[] = [];
-      if (finding?.status !== "open")
-        failures.push("Finding must be open and belong to this task");
+      if (finding?.status !== "open" && finding?.status !== "escalate")
+        failures.push(
+          "Finding must be open or escalated and belong to this task",
+        );
       if (
         resolution === "fixed" &&
         (!commitSha ||
@@ -213,15 +215,83 @@ export function submission(
     case "submit_review": {
       const review = call.input,
         failures: string[] = [];
-      if (!state.review || review.reviewedSha !== state.review.headSha)
-        failures.push("Review must match the round head");
-      if (pr && (pr.state !== "open" || pr.headSha !== review.reviewedSha))
-        failures.push("If a PR exists, it must be open with the reviewed head");
-      const required =
-        state.review?.verdictIds ??
-        state.findings
-          .filter((f) => f.status === "addressed" || f.status === "disputed")
-          .map((f) => f.id);
+      if (!state.review) failures.push("Review needs a recorded round head");
+      if (
+        !git?.exists ||
+        git.headSha !== review.reviewedSha ||
+        git.branch !== task.branch ||
+        git.path !== state.worktree?.path
+      )
+        failures.push(
+          "Submit the current HEAD in the recorded task branch and worktree",
+        );
+      if (!git || git.dirty || git.dirtyPaths.length)
+        failures.push(
+          `Clean the worktree (ignored files excluded): ${git?.dirtyPaths.join(", ") || "refresh git status"}`,
+        );
+      if (!state.worktree || !task.branch)
+        failures.push("Record the task worktree and branch first");
+      const range = git?.reviewCommits;
+      const commits =
+        review.reviewedSha === state.review?.headSha
+          ? []
+          : range?.baseSha === state.review?.headSha &&
+              range?.headSha === review.reviewedSha
+            ? range.commits
+            : null;
+      if (commits === null)
+        failures.push("Reviewed SHA must be a descendant of the round head");
+      if (
+        !commits ||
+        commits.length !== review.reviewerCommits.length ||
+        commits.some((sha, i) => review.reviewerCommits[i] !== sha) ||
+        new Set(review.reviewerCommits).size !== review.reviewerCommits.length
+      )
+        failures.push(
+          "Record every commit after the round head as reviewerCommits, oldest first",
+        );
+      if (
+        pr &&
+        (pr.state !== "open" ||
+          (pr.headSha !== state.review?.headSha &&
+            pr.headSha !== review.reviewedSha))
+      )
+        failures.push(
+          "The open PR must still have the round head or reviewed head",
+        );
+      for (const item of [...review.findings, ...review.verdicts]) {
+        if (
+          item.status === "fixed" &&
+          (!item.commitSha || !commits?.includes(item.commitSha))
+        )
+          failures.push(
+            "Each fixed finding needs its fixing commit in reviewerCommits",
+          );
+        if (item.status === "escalate" && !item.reason?.trim())
+          failures.push(
+            "Each escalated finding needs a reason it cannot be fixed safely inline",
+          );
+        if (item.status !== "fixed" && item.commitSha)
+          failures.push("Only fixed findings may name a fixing commit");
+        if (item.status !== "escalate" && item.reason)
+          failures.push(
+            "Only escalated findings may carry an escalation reason",
+          );
+      }
+      const required = [
+        ...new Set([
+          ...(state.review?.verdictIds ?? []),
+          ...state.findings
+            .filter(
+              (f) =>
+                f.status === "addressed" ||
+                f.status === "disputed" ||
+                (f.blocking &&
+                  (f.status === "open" || f.status === "escalate")),
+            )
+            .map((f) => f.id),
+        ]),
+      ];
       for (const id of required)
         if (review.verdicts.filter((v) => v.findingId === id).length !== 1)
           failures.push(`Provide exactly one verdict for ${id}`);
@@ -264,15 +334,30 @@ export function submission(
       for (const verdict of review.verdicts) {
         const finding = projected.find((f) => f.id === verdict.findingId);
         if (finding) {
-          finding.status = verdict.status === "resolved" ? "resolved" : "open";
-          if (verdict.status === "reopened") {
+          const verifyingFix =
+            finding.status === "addressed" || finding.status === "disputed";
+          finding.status =
+            verdict.status === "reopened" ? "open" : verdict.status;
+          // A reopened report alone cannot send work back to the implementer.
+          finding.blocking = verdict.status === "escalate";
+
+          if (
+            verdict.status === "reopened" ||
+            (verdict.status === "escalate" && verifyingFix)
+          ) {
             finding.reopenCount++;
             reopened = true;
           }
           finding.resolution = {
             by: "reviewer",
-            note: verdict.note,
-            commitSha: review.reviewedSha,
+            note:
+              verdict.status === "escalate"
+                ? (verdict.reason ?? "")
+                : verdict.note,
+            commitSha:
+              verdict.status === "fixed"
+                ? (verdict.commitSha ?? null)
+                : review.reviewedSha,
             at: c.now,
           };
           finding.updatedAt = c.now;
@@ -280,9 +365,7 @@ export function submission(
       }
       const count =
         openBlocking(projected) +
-        review.findings.filter(
-          (f) => f.severity === "major" || f.severity === "blocker",
-        ).length;
+        review.findings.filter((f) => f.status === "escalate").length;
       if (count === 0) {
         // Even if PR doesn't exist yet, we need a fresh GitHub read to create it
         if (!c.observations.github?.ok) {
@@ -291,6 +374,7 @@ export function submission(
         // If PR already exists, verify it's in a good state
         if (
           pr &&
+          pr.headSha === review.reviewedSha &&
           (pr.mergeable !== "mergeable" ||
             pr.ci.headSha !== review.reviewedSha ||
             pr.ci.conclusion === "failure")
@@ -310,8 +394,42 @@ export function submission(
             title: finding.title,
             body: finding.body,
             createdByRunId: run.id,
+            status: finding.status ?? "open",
+            blocking: finding.status === "escalate",
+            resolution:
+              finding.status === "fixed" || finding.status === "escalate"
+                ? {
+                    by: "reviewer",
+                    at: c.now,
+                    note:
+                      finding.status === "escalate"
+                        ? (finding.reason ?? "")
+                        : finding.body,
+                    commitSha:
+                      finding.status === "fixed"
+                        ? (finding.commitSha ?? null)
+                        : null,
+                  }
+                : null,
           });
       });
+      // The versioned handoff retains the complete authenticated submission, including commit attribution.
+      c.artifact(
+        "handoff",
+        {
+          from: "reviewer",
+          to: "implementer",
+          headSha: review.reviewedSha,
+          summary: review.summary,
+          nextSteps: [],
+          reviewerSubmission: {
+            runId: run.id,
+            round: task.reviewRound,
+            input: review,
+          },
+        },
+        run,
+      );
       tests(review.testResults);
       c.artifact("findings", state.findings, run);
       c.end(run, "submitted");
@@ -319,34 +437,20 @@ export function submission(
       if (state.review) {
         state.review.lastReviewedHead = review.reviewedSha;
         state.review.previousBlocking = count;
+        state.review.reviewerCommits = [...review.reviewerCommits];
       }
-      let next: "awaiting_approval" | "in_progress" | "blocked";
+      let next: "in_review" | "awaiting_approval" | "in_progress" | "blocked";
       if (count === 0) {
-        next = "awaiting_approval";
-        c.stage(next, "Review has no blocking findings");
-        c.notify("Review needs approval", `review:${task.reviewRound}`);
-        if (!task.prNumber && state.worktree && task.branch) {
-          const pushKey =
-            `push_branch:${task.id}:${review.reviewedSha}` as ActionKey;
-          c.emit(`open_pr:${task.id}:${task.branch}`, {
-            kind: "open_pr",
-            repoId: task.repoId,
-            branch: task.branch,
-            baseBranch: state.worktree.baseBranch,
-            title: task.title,
-            body: call.input.summary,
-          });
-          // Add push_branch as dependency: PR should be opened after push completes
-          const openPrRow = c.state.outbox.find(
-            (row) => row.key === `open_pr:${task.id}:${task.branch}`,
-          );
-          if (openPrRow?.dependsOn && !openPrRow.dependsOn.includes(pushKey)) {
-            openPrRow.dependsOn.push(pushKey);
-          }
-        }
+        if (state.review) state.review.publicationPending = true;
+        publishReview(c, review.summary);
+        next =
+          task.stage === "awaiting_approval"
+            ? "awaiting_approval"
+            : "in_review";
       } else if (
         task.reviewRound >= task.reviewRoundCap ||
         reopened ||
+        !state.findings.some((f) => f.status === "escalate" && f.blocking) ||
         (previous != null && count >= previous)
       ) {
         next = "blocked";

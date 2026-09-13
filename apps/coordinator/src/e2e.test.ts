@@ -99,47 +99,60 @@ test("a task runs Todo to Done through plan, review, a fix round and a merge", a
   );
 }, 30_000);
 
-test("interactive Claude roles launch with per-run settings and gated initial messages", async () => {
-  const h = await harness({
-    config: {
-      providerOverrides: {
-        planner: "claude",
-        implementer: "claude",
-        reviewer: "claude",
+test.each(["interactive", "headless"] as const)(
+  "Claude roles launch %s with correct edit permissions and gated initial messages",
+  async (mode) => {
+    const h = await harness({
+      config: {
+        providerOverrides: {
+          planner: "claude",
+          implementer: "claude",
+          reviewer: "claude",
+        },
       },
-    },
-  });
-  const args = vi.spyOn(h.providers.claude, "interactiveArgs");
-  const headless = vi.spyOn(h.providers.claude, "startHeadless");
-  const taskId = start(h);
-  const script = await scenarios("walking-skeleton");
-  for (const scenario of script) scenario.agent.provider = "claude";
-  await new ScenarioDriver(h, script).run();
-  await h.coordinator.settle();
-  const state = h.store.loadTaskState(taskId);
-  expect(state.task.stage).toBe("awaiting_approval");
-  expect(headless).not.toHaveBeenCalled();
-  const messages = h.store.messages(taskId);
-  for (const run of h.store.runs(taskId)) {
-    const recipe = h.coordinator.recipes.get(run.id);
-    expect(run.mode).toBe("interactive");
-    expect(run.pane).not.toBeNull();
-    expect(args).toHaveBeenCalledWith({
-      sessionId: run.sessionId,
-      resume: false,
-      model: run.model,
-      settingsPath: recipe?.settingsPath,
-      readOnly: run.role !== "implementer",
     });
-    // A role handoff can be queued before launch and serve as that run's first message.
-    expect(messages.find((m) => m.runId === run.id)).toMatchObject({
-      status: "delivered",
-    });
-    expect(
-      h.paneHost.writes.some((write) => write.ref.paneId === run.pane?.paneId),
-    ).toBe(true);
-  }
-}, 30_000);
+    h.config.runModes = { planner: mode, implementer: mode, reviewer: mode };
+    const args = vi.spyOn(h.providers.claude, "interactiveArgs");
+    const headless = vi.spyOn(h.providers.claude, "startHeadless");
+    const taskId = start(h);
+    const script = await scenarios("walking-skeleton");
+    for (const scenario of script) {
+      scenario.agent.provider = "claude";
+      scenario.agent.mode = mode;
+    }
+    await new ScenarioDriver(h, script).run();
+    await h.coordinator.settle();
+    const state = h.store.loadTaskState(taskId);
+    expect(state.task.stage).toBe("awaiting_approval");
+    if (mode === "interactive") expect(headless).not.toHaveBeenCalled();
+    else expect(args).not.toHaveBeenCalled();
+    const messages = h.store.messages(taskId);
+    for (const run of h.store.runs(taskId)) {
+      const recipe = h.coordinator.recipes.get(run.id);
+      expect(run.mode).toBe(mode);
+      expect(run.pane === null).toBe(mode === "headless");
+      expect(mode === "interactive" ? args : headless).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: run.sessionId,
+          resume: false,
+          model: run.model,
+          settingsPath: recipe?.settingsPath,
+          readOnly: run.role === "planner",
+        }),
+      );
+      // A role handoff can be queued before launch and serve as that run's first message.
+      expect(messages.find((m) => m.runId === run.id)).toMatchObject({
+        status: "delivered",
+      });
+      expect(
+        h.paneHost.writes.some(
+          (write) => write.ref.paneId === run.pane?.paneId,
+        ),
+      ).toBe(mode === "interactive");
+    }
+  },
+  30_000,
+);
 
 test("every run's launch recipe is persisted privately before anything starts", async () => {
   const h = await harness();

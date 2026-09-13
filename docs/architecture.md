@@ -17,8 +17,8 @@ shows up in Loom.
 
 ```
 Backlog →(human) Todo →(auto) Planning →[valid plan] (optional plan approval) → In progress
-→[submit_for_review + commits] In review →[blocking findings, round < 3] In progress
-                                         →[no blocking findings]         Awaiting approval
+→[submit_for_review + commits] In review →[explicit reviewer escalation, round < 3] In progress
+                                         →[inline fixes committed, no blockers, reviewed head published] Awaiting approval
 →[human approves head SHA, CI green] Merging →[PR merged on GitHub] Done
 ```
 
@@ -104,9 +104,9 @@ Rules:
   Override per-role modes via `LOOM_RUN_MODES` (for example,
   `planner=headless,reviewer=headless`). The setting is captured only when a new run row is created;
   existing runs, retries, resumes, and externally discovered sessions retain their recorded mode.
-  Interactive planners and reviewers retain their role restrictions: Codex uses the read-only
-  sandbox; Claude disallows Edit, Write and NotebookEdit, as in headless mode, and does not receive
-  the implementer's permission bypass. Claude's tool restrictions are not a filesystem sandbox.
+  Planners retain their role restrictions in both modes: Codex uses the read-only sandbox;
+  Claude disallows Edit, Write and NotebookEdit. Reviewers use the implementer launch permissions
+  in both modes so they can edit and commit inline. Claude's tool restrictions are not a filesystem sandbox.
   Codex clients can share a live thread on the same app-server. Resume to subscribe, hydrate current state, then reconcile
   notifications. Use `turn/steer` with `expectedTurnId` for mid-turn input.
 - Codex approval requests reach all subscribed clients, including a client resuming while a request
@@ -322,8 +322,27 @@ that crosses providers goes only through artifacts.
 
 ## Review and approval
 
-- The reviewer runs in the worktree with editing disabled. It runs the tests and submits findings
-  through MCP. Codex's `review/start` can add a second opinion. CI checks from GitHub are included.
+- The reviewer has the same task-worktree write/commit access and launch paths as the implementer
+  in both interactive and headless modes. Only planners retain Codex's read-only sandbox and
+  Claude's disallowed edit tools. Reviewers run tests and read the diff against the accepted plan
+  and AGENTS.md. Most reviews should change nothing: no restyling, refactoring or scope expansion.
+  Fix only actual bugs, failing or missing tests required by the plan, or AGENTS.md violations;
+  commit each fix separately with a message naming the finding.
+- `submit_review` accepts the clean task-branch HEAD at the round head or a descendant. Git supplies
+  the complete oldest-first `roundHead..reviewedSha` range; the authenticated reviewer must record
+  exactly that range as `reviewerCommits`. This is attribution to the submitting run, not a claim
+  inferred from Git author names. A `fixed` finding/verdict names a fixing `commitSha` in that range
+  and never counts as open blocking. An `escalate` finding/verdict must carry a reason: a design
+  change, unanticipated work or work across many files that cannot safely be fixed inline. Only
+  explicit escalation sends transition 11 to the implementer; all other reviewer reports are
+  non-blocking. Human request-changes and CI recovery keep their existing paths.
+- The coordinator stores the complete review submission in the versioned handoff artifact and
+  its reviewer commit list/pending publication in review state. On convergence it emits
+  `push_branch(reviewedSha)` before `open_pr`, retaining the implementer's submit-for-review push.
+  It stays `in_review` while publication is pending, then enters `awaiting_approval` only after a
+  fresh PR observation confirms the reviewed head, positive mergeability and non-failing CI for
+  that head. This survives restart and duplicate hints; an old PR head during publication never
+  starts a spurious review round. Agents never push to the base branch or merge.
 - The diff view uses `@pierre/diffs` with `CodeView` and a bounded worker pool. Findings, human comments
   and CI annotations render in its annotation slots. It can show the whole branch or only the changes
   since the last review round. From [spike 04](../spikes/04-pierre-diffs/FINDINGS.md):

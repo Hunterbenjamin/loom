@@ -14,6 +14,8 @@ export function inspectTask(store: Store, taskId: TaskId, adapters?: Adapters) {
     addressed: 0,
     disputed: 0,
     resolved: 0,
+    fixed: 0,
+    escalate: 0,
     waived: 0,
   };
   for (const finding of state.findings) counts[finding.status]++;

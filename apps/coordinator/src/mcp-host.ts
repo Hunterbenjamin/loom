@@ -49,8 +49,8 @@ const findingViews = (
   state.findings
     .filter((f) =>
       role === "reviewer"
-        ? f.round < round
-        : ["open", "addressed", "disputed"].includes(f.status),
+        ? f.round < round || f.source !== "reviewer"
+        : ["open", "escalate", "addressed", "disputed"].includes(f.status),
     )
     .map((f) => ({
       id: f.id,
