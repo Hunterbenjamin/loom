@@ -7,7 +7,7 @@ export function selectedPullRequests(state: State): PullRequestRow[] {
   return state.snapshot.pullRequests
     .filter(
       (pr) =>
-        (repo === "all" || pr.repoId === repo) &&
+        pr.repoId === repo &&
         pr.state === prState &&
         (!needle ||
           `#${pr.number} ${pr.title} ${pr.head} ${pr.base} ${pr.author ?? ""} ${pr.taskId ?? ""}`
@@ -32,7 +32,7 @@ export function pullRequestSubscriptions(state: State): Subscription[] {
   return [
     ...detail,
     ...state.snapshot.repos
-      .filter((repo) => state.ui.repo === "all" || repo.id === state.ui.repo)
+      .filter((repo) => repo.id === state.ui.repo)
       .flatMap((repo): Subscription[] =>
         (state.ui.prState === "open"
           ? ["open" as const]

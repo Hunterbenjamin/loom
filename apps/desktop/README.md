@@ -67,7 +67,7 @@ are not attachable terminals; the existing isolated terminal harness covers PTY 
 | `LOOM_ATTACH_PANE`, `LOOM_TMUX_BIN` | Fixture-only terminal target and executable. |
 
 Tracker creates issues with `C`, the palette's **Create issue** command, or **+** beside the
-repository picker. The dialog defaults to the selected repository (the first for All), Backlog,
+repository picker. The dialog defaults to the selected repository, Backlog,
 Normal size and plan approval required. Description accepts Markdown and grows as you type;
 Command+Enter submits. Todo is labelled as starting the workflow; Small skips planning for
 one-file fixes. Escape or Cancel asks before discarding an edited draft.

@@ -1,12 +1,21 @@
 // Main retains internal `lead` identifiers for persisted recipes, MCP identity and clients.
 // One coordinator-owned interactive session. No task, run, stage or reconciler state.
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import type {
   McpServerEntry,
   PaneRef,
   ProviderSessionId,
+  Repo,
   RunId,
   TaskId,
   WorktreePath,
@@ -33,6 +42,7 @@ const recipeSchema = z.strictObject({
   launched: z.boolean(),
   mcpPort: z.number().int().min(1).max(65535),
   cwd: z.string().min(1),
+  legacyCwd: z.string().optional(),
   executable: z.string().min(1),
   settingsPath: z.string().min(1),
   args: z.array(z.string()),
@@ -48,6 +58,12 @@ const recipeSchema = z.strictObject({
 });
 type Recipe = z.output<typeof recipeSchema>;
 
+function leadDirectory(dataDirectory: string, repoId: string): string {
+  if (!/^[A-Za-z0-9_.-]+$/.test(repoId) || repoId === "." || repoId === "..")
+    throw new Error("Invalid repository directory identity");
+  return join(dataDirectory, "lead", repoId);
+}
+
 export class LeadSession {
   private recipe: Recipe | null = null;
   private tail: Promise<unknown> = Promise.resolve();
@@ -57,11 +73,12 @@ export class LeadSession {
       adapters: Adapters;
       config: CoordinatorConfig;
       dataDirectory: string;
+      repo: Repo;
       mcpEntry(token: string): McpServerEntry;
       now(): string;
     },
   ) {
-    this.directory = join(deps.dataDirectory, "lead");
+    this.directory = leadDirectory(deps.dataDirectory, deps.repo.id);
   }
   get sessionId(): string | null {
     return this.recipe?.sessionId ?? null;
@@ -71,7 +88,11 @@ export class LeadSession {
   }
   resolve(token: string) {
     return token && this.recipe?.token === token
-      ? { kind: "lead" as const, active: !this.recipe.stopped }
+      ? {
+          kind: "lead" as const,
+          repoId: this.deps.repo.id,
+          active: !this.recipe.stopped,
+        }
       : null;
   }
   private exclusive<T>(work: () => Promise<T>): Promise<T> {
@@ -89,7 +110,7 @@ export class LeadSession {
     }
     this.recipe = recipeSchema.parse(JSON.parse(raw));
     if (
-      this.recipe.cwd !== this.deps.dataDirectory ||
+      this.recipe.cwd !== this.deps.repo.root ||
       this.recipe.settingsPath !== join(this.directory, "settings.json")
     )
       throw new Error("Main recipe belongs to a different instance directory");
@@ -111,7 +132,7 @@ export class LeadSession {
   async note(): Promise<string> {
     try {
       return mainNoteSchema.parse(
-        await readFile(join(this.deps.dataDirectory, "main-notes"), "utf8"),
+        await readFile(join(this.directory, "main-notes"), "utf8"),
       );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
@@ -122,7 +143,8 @@ export class LeadSession {
   setNote(note: string): Promise<{ recorded: true }> {
     return this.exclusive(async () => {
       const value = mainNoteSchema.parse(note);
-      const path = join(this.deps.dataDirectory, "main-notes");
+      await mkdir(this.directory, { recursive: true, mode: 0o700 });
+      const path = join(this.directory, "main-notes");
       await writeFile(`${path}.tmp`, value, { mode: 0o600 });
       await rename(`${path}.tmp`, path);
       return { recorded: true };
@@ -134,7 +156,12 @@ export class LeadSession {
     if (!recipe) return null;
     if (recipe.pane) {
       const observed = await this.deps.adapters.paneHost.getPane(recipe.pane);
-      if (observed && observed.startCwd === recipe.cwd) return observed;
+      if (
+        observed &&
+        (observed.startCwd === recipe.cwd ||
+          observed.startCwd === recipe.legacyCwd)
+      )
+        return observed;
     }
     // The workspace also contains a human shell. Cwd alone must never adopt it.
     // An explicit open can recover a lost launch receipt through ensurePane's owned key.
@@ -150,6 +177,12 @@ export class LeadSession {
         return;
       }
       await this.settings();
+      if (this.recipe.legacyCwd && pane) {
+        // Retire only the recorded legacy pane before moving this same session to its project.
+        await this.deps.adapters.paneHost.closePane(pane.ref);
+        await this.launch();
+        return;
+      }
       // Absence could be an intentional close. Only a confirmed dead pane is relaunched.
       if (pane?.dead) await this.launch();
     });
@@ -173,7 +206,7 @@ export class LeadSession {
           stopped: false,
           launched: false,
           mcpPort: Number(new URL(entry.url).port),
-          cwd: this.deps.dataDirectory,
+          cwd: this.deps.repo.root,
           executable: config.claudeExecutable,
           settingsPath: join(this.directory, "settings.json"),
           args: [],
@@ -195,6 +228,7 @@ export class LeadSession {
       const clients = await this.deps.adapters.paneHost.listClients(ref);
       return leadTarget.parse({
         identity: "lead",
+        repoId: this.deps.repo.id,
         sessionId: this.recipe.sessionId,
         attach: {
           kind: "pane_host",
@@ -248,7 +282,7 @@ export class LeadSession {
   }
   async state(): Promise<LeadState> {
     if (!this.recipe || this.recipe.stopped)
-      return { id: "lead", sessionId: null, status: "stopped" };
+      return { id: this.deps.repo.id, sessionId: null, status: "stopped" };
     const sessions = await this.deps.adapters.claude
       .listSessions()
       .catch(() => []);
@@ -257,7 +291,7 @@ export class LeadSession {
         s.sessionId === this.recipe?.sessionId && s.cwd === this.recipe.cwd,
     );
     return leadState.parse({
-      id: "lead",
+      id: this.deps.repo.id,
       sessionId: this.recipe.sessionId,
       status:
         session?.status === "busy"
@@ -285,7 +319,7 @@ export class LeadSession {
       recipe.launched &&
       (await this.deps.adapters.claude.resumable(
         recipe.sessionId as ProviderSessionId,
-        recipe.cwd as WorktreePath,
+        (recipe.legacyCwd ?? recipe.cwd) as WorktreePath,
       ));
     const args = this.deps.adapters.claude.interactiveArgs({
       sessionId: recipe.sessionId as ProviderSessionId,
@@ -295,22 +329,109 @@ export class LeadSession {
       readOnly: true,
       conversationOnly: true,
     });
-    args.push("--name", "Main", "--", leadBrief(await this.note()));
+    args.push(
+      "--name",
+      "Main",
+      "--",
+      leadBrief(await this.note(), this.deps.repo.github),
+    );
     await this.save({ ...recipe, args, launched: true });
     const { workspaceId } = await this.deps.adapters.paneHost.ensureWorkspace({
-      taskId: "lead" as TaskId,
+      taskId: `lead-${this.deps.repo.id}` as TaskId,
       cwd: recipe.cwd as WorktreePath,
       label: "Main",
     });
     const pane = await this.deps.adapters.paneHost.ensurePane({
       workspaceId,
-      runId: "lead" as RunId,
+      runId: `lead-${this.deps.repo.id}` as RunId,
       cwd: recipe.cwd as WorktreePath,
       executable: recipe.executable,
       args,
       env: recipe.env,
     });
-    await this.save({ ...recipe, args, launched: true, pane });
+    const { legacyCwd: _, ...current } = recipe;
+    await this.save({ ...current, args, launched: true, pane });
     return pane;
   }
+}
+
+/** Keep a legacy process's endpoint stable even before its first repository is registered. */
+export async function legacyLeadPort(dataDirectory: string): Promise<number> {
+  try {
+    return recipeSchema.parse(
+      JSON.parse(
+        await readFile(join(dataDirectory, "lead", "recipe.json"), "utf8"),
+      ),
+    ).mcpPort;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw error;
+  }
+}
+
+/** Atomic destination recipe is the migration commit. The old source is retired only afterwards. */
+export async function migrateLead(
+  dataDirectory: string,
+  repo: Repo | undefined,
+): Promise<void> {
+  if (!repo) return;
+  const source = join(dataDirectory, "lead", "recipe.json");
+  let raw: string;
+  try {
+    raw = await readFile(source, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  const old = recipeSchema.parse(JSON.parse(raw));
+  const directory = leadDirectory(dataDirectory, repo.id);
+  const destination = join(directory, "recipe.json");
+  try {
+    const existing = recipeSchema.parse(
+      JSON.parse(await readFile(destination, "utf8")),
+    );
+    if (existing.sessionId !== old.sessionId || existing.token !== old.token)
+      throw new Error("Legacy Main conflicts with an existing repository Main");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (
+      old.cwd !== dataDirectory ||
+      old.settingsPath !== join(dataDirectory, "lead", "settings.json")
+    )
+      throw new Error(
+        "Legacy Main recipe belongs to a different instance directory",
+      );
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    for (const [from, to] of [
+      [
+        join(dataDirectory, "lead", "settings.json"),
+        join(directory, "settings.json"),
+      ],
+      [join(dataDirectory, "main-notes"), join(directory, "main-notes")],
+    ] as const) {
+      try {
+        await copyFile(from, to);
+        await chmod(to, 0o600);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    const settingsPath = join(directory, "settings.json");
+    const migrated = {
+      ...old,
+      cwd: repo.root,
+      legacyCwd: old.cwd,
+      settingsPath,
+      args: old.args.map((arg) =>
+        arg === old.settingsPath ? settingsPath : arg,
+      ),
+    };
+    await writeFile(
+      `${destination}.tmp`,
+      `${JSON.stringify(migrated, null, 2)}\n`,
+      { mode: 0o600 },
+    );
+    await rename(`${destination}.tmp`, destination);
+  }
+  await unlink(source);
 }

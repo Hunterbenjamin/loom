@@ -1,3 +1,4 @@
+import { repoId as parseRepoId } from "@loom/protocol";
 // One in-memory snapshot, one UI state, one subscription. Everything a panel renders comes
 // from here; nothing reads disk or the network during an interaction.
 
@@ -72,7 +73,7 @@ export interface UiState {
   openPr: { repoId: PullRequestRow["repoId"]; number: number } | null;
   view: ViewId;
   pane: Pane;
-  /** Repo filter; `all` means every repo. */
+  /** Coordinator projection; empty only when no repository is registered. */
   repo: string;
   cursor: number;
   openTask: TaskId | null;
@@ -110,7 +111,11 @@ export interface State {
 }
 
 export const VIEWS: { id: ViewId; label: string; hint: string }[] = [
-  { id: "all", label: "All issues", hint: "Everything in the selected repos" },
+  {
+    id: "all",
+    label: "All issues",
+    hint: "Everything in the selected repository",
+  },
   {
     id: "needs-you",
     label: "Needs you",
@@ -160,7 +165,7 @@ const initialUi: UiState = {
   openPr: null,
   view: "all",
   pane: "list",
-  repo: "all",
+  repo: "",
   cursor: 0,
   openTask: null,
   tab: "activity",
@@ -205,7 +210,7 @@ export function createStore(
     pullRequestDetails: live
       ? []
       : buildPullRequestDetails(snapshot.pullRequests),
-    ui: initialUi,
+    ui: { ...initialUi, repo: live ? "" : (snapshot.repos[0]?.id ?? "") },
     live,
     connection: live ? "connecting" : "fixtures",
     inbox: [],
@@ -215,7 +220,11 @@ export function createStore(
     panesUnavailable: false,
     runTargets: [],
     instance,
-    lead: { id: "lead", sessionId: null, status: live ? "stopped" : "idle" },
+    lead: {
+      id: parseRepoId.parse("lead"),
+      sessionId: null,
+      status: live ? "stopped" : "idle",
+    },
   };
   let send: ((command: Command) => Promise<AckOutcome>) | null = null;
   const listeners = new Set<() => void>();
@@ -370,7 +379,28 @@ export function createStore(
           !patch || patch.changes.some((c) => c.collection === "inbox")
             ? [...client.collections.inbox.values()]
             : state.inbox,
-        lead: client.collections.lead.get("lead") ?? state.lead,
+        ui: (() => {
+          const repo = client.collections.project.get("project")?.repoId ?? "";
+          return repo === state.ui.repo
+            ? state.ui
+            : {
+                ...state.ui,
+                repo,
+                cursor: 0,
+                prCursor: 0,
+                openTask: null,
+                openPr: null,
+                openRun: null,
+                openReason: null,
+              };
+        })(),
+        lead: client.collections.lead.get(
+          client.collections.project.get("project")?.repoId ?? "",
+        ) ?? {
+          id: parseRepoId.parse("lead"),
+          sessionId: null,
+          status: "stopped",
+        },
         operator: client.collections.operator.get("operator") ?? null,
         notes:
           !patch || patch.changes.some((c) => c.collection === "note")
@@ -504,8 +534,33 @@ export function createStore(
         },
       });
     },
-    setRepo(repo: string) {
-      setUi({ repo, cursor: 0, prCursor: 0, openTask: null, openPr: null });
+    async setRepo(repo: string) {
+      if (!state.snapshot.repos.some((item) => item.id === repo))
+        throw new Error("Unknown registered repository");
+      if (live) {
+        if (!send) throw new Error("Coordinator is disconnected");
+        const outcome = await send({
+          kind: "select_repo",
+          repoId: parseRepoId.parse(repo),
+        });
+        if (!outcome.ok) throw new Error(outcome.error.message);
+      } else
+        setUi({
+          repo,
+          cursor: 0,
+          prCursor: 0,
+          openTask: null,
+          openPr: null,
+          openRun: null,
+          openReason: null,
+        });
+    },
+    async addRepo() {
+      const folder = await window.loomHost.chooseRepository();
+      if (!folder) return;
+      if (!send) throw new Error("Coordinator is disconnected");
+      const outcome = await send({ kind: "add_repo", ...folder });
+      if (!outcome.ok) throw new Error(outcome.error.message);
     },
     setSort(sort: SortKey) {
       setUi(
@@ -559,7 +614,7 @@ export function createStore(
         openPr: null,
         view: "all",
         pane: "list",
-        repo,
+        ...(live ? {} : { repo }),
         query: "",
         searching: false,
         openTask: null,
@@ -692,8 +747,7 @@ export function createStore(
         api.toast("This action is not available in the live Tracker yet.");
         return;
       }
-      const repoId =
-        repo === "all" ? (state.snapshot.repos[0]?.id ?? "") : repo;
+      const repoId = repo;
       const at = minutesBefore(0);
       const id = `LOOM-${state.snapshot.tasks.length + 101}` as TaskId;
       const task: Task = {

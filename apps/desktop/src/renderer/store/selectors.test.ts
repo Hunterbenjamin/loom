@@ -24,13 +24,14 @@ describe("rowsFor", () => {
         { ...first, summary: "Explicit list summary" },
         {
           ...second,
+          repoId: first.repoId,
           summary: null,
           description: "Fallback sentence. Full detail stays hidden.",
         },
       ],
     } as Snapshot;
 
-    const rows = rowsFor(snapshot, "all", "all", "");
+    const rows = rowsFor(snapshot, "all", "repo-loom", "");
     expect(rows.find((row) => row.task.id === first.id)?.summary).toBe(
       "Explicit list summary",
     );
@@ -63,7 +64,7 @@ describe("rowsFor", () => {
       runs: [olderRun, newerRun],
     } as Snapshot;
 
-    const rows = rowsFor(testSnapshot, "all", "all", "");
+    const rows = rowsFor(testSnapshot, "all", "repo-loom", "");
     const taskRow = rows.find((r) => r.task.id === task.id);
 
     expect(taskRow).toBeDefined();
@@ -103,7 +104,7 @@ describe("rowsFor", () => {
       runs: [idleRun, endedRun],
     } as Snapshot;
 
-    const rows = rowsFor(testSnapshot, "all", "all", "");
+    const rows = rowsFor(testSnapshot, "all", "repo-loom", "");
     const taskRow = rows.find((r) => r.task.id === testTaskId);
 
     expect(taskRow).toBeDefined();
@@ -140,7 +141,7 @@ describe("rowsFor", () => {
       runs: [idleRun, workingRun],
     } as Snapshot;
 
-    const rows = rowsFor(testSnapshot, "all", "all", "");
+    const rows = rowsFor(testSnapshot, "all", "repo-loom", "");
     const taskRow = rows.find((r) => r.task.id === task.id);
 
     expect(taskRow).toBeDefined();
@@ -160,7 +161,7 @@ describe("rowsFor", () => {
       runs: [], // No runs
     };
 
-    const rows = rowsFor(testSnapshot, "all", "all", "");
+    const rows = rowsFor(testSnapshot, "all", "repo-loom", "");
     const taskRow = rows.find((r) => r.task.id === task.id);
 
     expect(taskRow).toBeDefined();
@@ -321,7 +322,7 @@ describe("list section paging", () => {
     "pages %s by exact transition time regardless of column sort",
     (stage) => {
       const store = setup(stage, 46);
-      const rows = rowsFor(store.getState().snapshot, "all", "all", "");
+      const rows = rowsFor(store.getState().snapshot, "all", "repo-loom", "");
       const before = [...rows];
       for (const sort of ["title", "age", "stage"] as const) {
         for (const descending of [false, true]) {
@@ -366,7 +367,7 @@ describe("list section paging", () => {
 
   test.each([0, 19, 20, 21, 40])("handles a section with %s tasks", (count) => {
     const store = setup("done", count);
-    const rows = rowsFor(store.getState().snapshot, "all", "all", "");
+    const rows = rowsFor(store.getState().snapshot, "all", "repo-loom", "");
     const items = groupRows(rows);
     expect(items.filter((item) => item.kind === "row")).toHaveLength(
       Math.min(count, LIST_PAGE_SIZE),
@@ -398,7 +399,7 @@ describe("list section paging", () => {
       ...task,
       stageEnteredAt: isoTime(`2026-09-13T00:00:${i === 1 ? "02" : "01"}.000Z`),
     }));
-    const rows = rowsFor(snapshot, "all", "all", "");
+    const rows = rowsFor(snapshot, "all", "repo-loom", "");
     const ids = (input: typeof rows) =>
       groupRows(input).flatMap((item) =>
         item.kind === "row" ? [item.row.task.id] : [],

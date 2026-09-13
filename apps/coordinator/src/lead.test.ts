@@ -40,7 +40,10 @@ async function setup() {
 }
 const recipe = async (h: Harness) =>
   JSON.parse(
-    await readFile(join(h.store.dataDirectory, "lead/recipe.json"), "utf8"),
+    await readFile(
+      join(h.store.dataDirectory, `lead/${h.repo.id}/recipe.json`),
+      "utf8",
+    ),
   );
 async function mcp(h: Harness) {
   const saved = await recipe(h);
@@ -69,8 +72,8 @@ test("concurrent open commands are idempotent, private, and separate from task r
     return ensure(request);
   };
   const [a, b] = await Promise.all([
-    cli.command({ kind: "open_lead_session" }),
-    cli.command({ kind: "open_lead_session" }),
+    cli.command({ kind: "open_lead_session", repoId: h.repo.id }),
+    cli.command({ kind: "open_lead_session", repoId: h.repo.id }),
   ]);
   expect(a).toEqual(b);
   expect(a).toMatchObject({
@@ -87,7 +90,7 @@ test("concurrent open commands are idempotent, private, and separate from task r
   expect(savedBeforeLaunch).toMatchObject([
     { sessionId: saved.sessionId, model: "fake-lead-model" },
   ]);
-  expect(saved.cwd).toBe(h.store.dataDirectory);
+  expect(saved.cwd).toBe(h.repo.root);
   expect(
     saved.args[saved.args.indexOf("--disallowedTools") + 1].split(","),
   ).toEqual([
@@ -108,28 +111,31 @@ test("concurrent open commands are idempotent, private, and separate from task r
   expect(saved.args.join(" ")).toContain("Always create Loom issues");
   expect(saved.args.join(" ")).not.toContain(saved.token);
   expect(
-    (await stat(join(h.store.dataDirectory, "lead/recipe.json"))).mode & 0o777,
+    (await stat(join(h.store.dataDirectory, `lead/${h.repo.id}/recipe.json`)))
+      .mode & 0o777,
   ).toBe(0o600);
-  expect(h.paneHost.launches[0]?.workspaceId).toBe("loom-lead");
+  expect(h.paneHost.launches[0]?.workspaceId).toBe(`loom-lead-${h.repo.id}`);
   const client = await mcp(h);
   expect((await client.listTools()).tools.map((t) => t.name)).toEqual(
     leadToolNames,
   );
-  expect(await cli.command({ kind: "stop_lead_session" })).toMatchObject({
+  expect(
+    await cli.command({ kind: "stop_lead_session", repoId: h.repo.id }),
+  ).toMatchObject({
     ok: true,
     result: { kind: "lead_stopped" },
   });
   expect(
     (await client.callTool({ name: "list_tasks", arguments: {} })).isError,
   ).toBe(true);
-  await cli.command({ kind: "open_lead_session" });
+  await cli.command({ kind: "open_lead_session", repoId: h.repo.id });
   expect((await recipe(h)).sessionId).not.toBe(saved.sessionId);
   expect(h.paneHost.launches).toHaveLength(2);
 });
 
 test("Main tools share the CLI command path and inspection view; core still rejects invalid approvals", async () => {
   const { h, cli } = await setup();
-  await cli.command({ kind: "open_lead_session" });
+  await cli.command({ kind: "open_lead_session", repoId: h.repo.id });
   const client = await mcp(h);
   const call = async (name: string, input: Record<string, unknown>) =>
     (await client.callTool({ name, arguments: input })).structuredContent;
@@ -218,13 +224,13 @@ test("Main tools share the CLI command path and inspection view; core still reje
 for (const condition of ["live", "dead", "absent", "stopped"] as const)
   test(`restart preserves identity and MCP endpoint; ${condition} pane follows recovery policy`, async () => {
     const { h } = await setup();
-    const first = await h.coordinator.lead.open();
+    const first = await h.coordinator.leadFor(h.repo.id).open();
     const saved = await recipe(h);
     const url = present(h.coordinator.mcpUrl).toString();
     const sessionId = saved.sessionId as ProviderSessionId;
     h.providers.create(
       "claude",
-      h.store.dataDirectory as never,
+      h.repo.root as never,
       sessionId,
       "interactive",
     );
@@ -234,7 +240,7 @@ for (const condition of ["live", "dead", "absent", "stopped"] as const)
         1,
       );
     if (condition === "absent") h.paneHost.restart();
-    if (condition === "stopped") await h.coordinator.lead.stop();
+    if (condition === "stopped") await h.coordinator.leadFor(h.repo.id).stop();
     await h.coordinator.stop();
     const store = await openStore({
       dataRoot: h.dataRoot,
@@ -250,29 +256,33 @@ for (const condition of ["live", "dead", "absent", "stopped"] as const)
     cleanups.push(() => second.stop());
     await second.start();
     expect(present(second.mcpUrl).toString()).toBe(url);
-    expect(second.lead.sessionId).toBe(sessionId);
+    expect(second.leadFor(h.repo.id).sessionId).toBe(sessionId);
     expect(h.paneHost.launches).toHaveLength(condition === "dead" ? 2 : 1);
     if (condition === "dead")
       expect(h.paneHost.launches[1]?.args).toContain("--resume");
     if (condition === "live")
-      expect((await second.lead.open()).pane?.paneId).toBe(first.pane?.paneId);
+      expect((await second.leadFor(h.repo.id).open()).pane?.paneId).toBe(
+        first.pane?.paneId,
+      );
     if (condition === "absent") {
-      await second.lead.open();
+      await second.leadFor(h.repo.id).open();
       expect(h.paneHost.launches).toHaveLength(2);
     }
     expect(second.resolveRunToken(saved.token)).toBeNull();
-    expect(second.lead.resolve(saved.token)?.active).toBe(
+    expect(second.leadFor(h.repo.id).resolve(saved.token)?.active).toBe(
       condition !== "stopped",
     );
   });
 
 test("Main status comes from the provider entry and a matching cwd", async () => {
   const { h } = await setup();
-  const target = await h.coordinator.lead.open();
-  expect((await h.coordinator.lead.state()).status).toBe("unknown");
+  const target = await h.coordinator.leadFor(h.repo.id).open();
+  expect((await h.coordinator.leadFor(h.repo.id).state()).status).toBe(
+    "unknown",
+  );
   h.providers.create(
     "claude",
-    h.store.dataDirectory as never,
+    h.repo.root as never,
     present(target.sessionId),
     "interactive",
   );
@@ -284,22 +294,24 @@ test("Main status comes from the provider entry and a matching cwd", async () =>
     h.adapters.claude.listSessions = async () => [
       {
         sessionId: present(target.sessionId),
-        cwd: h.store.dataDirectory as never,
+        cwd: h.repo.root as never,
         status: provider,
         rawStatus: provider,
         kind: "interactive",
         pid: 1,
       },
     ];
-    expect((await h.coordinator.lead.state()).status).toBe(expected);
+    expect((await h.coordinator.leadFor(h.repo.id).state()).status).toBe(
+      expected,
+    );
   }
 });
 
 test("a lost pane receipt is recovered by explicit open, never by adopting the workspace's human shell", async () => {
   const { h } = await setup();
-  const cwd = h.store.dataDirectory as never;
+  const cwd = h.repo.root as never;
   const { workspaceId } = await h.paneHost.ensureWorkspace({
-    taskId: "lead" as never,
+    taskId: `lead-${h.repo.id}` as never,
     cwd,
     label: "Main",
   });
@@ -321,26 +333,28 @@ test("a lost pane receipt is recovered by explicit open, never by adopting the w
     }
     return ref;
   };
-  await expect(h.coordinator.lead.open()).rejects.toThrow(
+  await expect(h.coordinator.leadFor(h.repo.id).open()).rejects.toThrow(
     "Lost launch receipt",
   );
   expect((await recipe(h)).pane).toBeNull();
-  await h.coordinator.lead.recover();
+  await h.coordinator.leadFor(h.repo.id).recover();
   expect(h.paneHost.launches).toHaveLength(2);
-  await expect(h.coordinator.lead.stop()).rejects.toThrow("Open Main");
-  const target = await h.coordinator.lead.open();
+  await expect(h.coordinator.leadFor(h.repo.id).stop()).rejects.toThrow(
+    "Open Main",
+  );
+  const target = await h.coordinator.leadFor(h.repo.id).open();
   expect(target.pane?.paneId).not.toBe(shell.paneId);
   expect(h.paneHost.launches).toHaveLength(2);
-  await h.coordinator.lead.stop();
+  await h.coordinator.leadFor(h.repo.id).stop();
   expect((await h.paneHost.getPane(shell))?.dead).toBe(false);
-  await h.coordinator.lead.open();
+  await h.coordinator.leadFor(h.repo.id).open();
   expect(h.paneHost.launches).toHaveLength(3);
   expect((await h.paneHost.getPane(shell))?.dead).toBe(false);
 });
 
 test("configured MCP port wins over the Main recipe and recovery refreshes both session types", async () => {
   const { h } = await setup();
-  await h.coordinator.lead.open();
+  await h.coordinator.leadFor(h.repo.id).open();
   const saved = await recipe(h);
   const task = h.coordinator.createTask({
     repoId: h.repo.id,
@@ -396,15 +410,17 @@ test("configured MCP port wins over the Main recipe and recovery refreshes both 
       settingsPath,
       expect.objectContaining({ type: "http", url }),
     );
-  expect(second.lead.sessionId).toBe(saved.sessionId);
+  expect(second.leadFor(h.repo.id).sessionId).toBe(saved.sessionId);
   expect(
-    h.paneHost.launches.filter((launch) => launch.runId === "lead"),
+    h.paneHost.launches.filter(
+      (launch) => launch.runId === `lead-${h.repo.id}`,
+    ),
   ).toHaveLength(1);
 });
 
 test("Main note is bounded, private, instance-scoped and survives rotation and coordinator restart", async () => {
   const { h } = await setup();
-  await h.coordinator.lead.open();
+  await h.coordinator.leadFor(h.repo.id).open();
   const first = await recipe(h);
   const client = await mcp(h);
   const note = "Focus on conversation and delegate the release investigation.";
@@ -413,9 +429,10 @@ test("Main note is bounded, private, instance-scoped and survives rotation and c
   ).toMatchObject({
     structuredContent: { ok: true, value: { recorded: true } },
   });
-  expect(await h.coordinator.lead.note()).toBe(note);
+  expect(await h.coordinator.leadFor(h.repo.id).note()).toBe(note);
   expect(
-    (await stat(join(h.store.dataDirectory, "main-notes"))).mode & 0o777,
+    (await stat(join(h.store.dataDirectory, `lead/${h.repo.id}/main-notes`)))
+      .mode & 0o777,
   ).toBe(0o600);
   expect(
     (
@@ -425,8 +442,8 @@ test("Main note is bounded, private, instance-scoped and survives rotation and c
       })
     ).isError,
   ).toBe(true);
-  expect(await h.coordinator.lead.note()).toBe(note);
-  await h.coordinator.lead.stop();
+  expect(await h.coordinator.leadFor(h.repo.id).note()).toBe(note);
+  await h.coordinator.leadFor(h.repo.id).stop();
   expect(
     (await client.callTool({ name: "set_note", arguments: { note: "stale" } }))
       .isError,
@@ -445,40 +462,43 @@ test("Main note is bounded, private, instance-scoped and survives rotation and c
   });
   cleanups.push(() => second.stop());
   await second.start();
-  await second.lead.open();
+  await second.leadFor(h.repo.id).open();
   const saved = JSON.parse(
-    await readFile(join(store.dataDirectory, "lead/recipe.json"), "utf8"),
+    await readFile(
+      join(store.dataDirectory, `lead/${h.repo.id}/recipe.json`),
+      "utf8",
+    ),
   );
   expect(saved.sessionId).not.toBe(first.sessionId);
   expect(saved.args.at(-1)).toContain(note);
-  expect(await second.lead.note()).toBe(note);
+  expect(await second.leadFor(h.repo.id).note()).toBe(note);
   const { h: other } = await setup();
-  expect(await other.coordinator.lead.note()).toBe("");
-  await second.lead.setNote("");
-  expect(await second.lead.note()).toBe("");
+  expect(await other.coordinator.leadFor(other.repo.id).note()).toBe("");
+  await second.leadFor(h.repo.id).setNote("");
+  expect(await second.leadFor(h.repo.id).note()).toBe("");
 });
 
 test("opening Main requests a brief summary only when native status permits input", async () => {
   const { h } = await setup();
   const paste = vi.spyOn(h.paneHost, "pasteText").mockResolvedValue("written");
-  const target = await h.coordinator.lead.open();
+  const target = await h.coordinator.leadFor(h.repo.id).open();
   expect(paste).not.toHaveBeenCalled();
   h.providers.create(
     "claude",
-    h.store.dataDirectory as never,
+    h.repo.root as never,
     present(target.sessionId),
     "interactive",
   );
   const entry = {
     sessionId: present(target.sessionId),
-    cwd: h.store.dataDirectory as never,
+    cwd: h.repo.root as never,
     status: "idle" as const,
     rawStatus: "idle",
     kind: "interactive" as const,
     pid: 1,
   };
   h.adapters.claude.listSessions = async () => [entry];
-  await h.coordinator.lead.open();
+  await h.coordinator.leadFor(h.repo.id).open();
   expect(paste).toHaveBeenCalledExactlyOnceWith(
     expect.anything(),
     expect.stringContaining("Needs-you"),
@@ -486,12 +506,12 @@ test("opening Main requests a brief summary only when native status permits inpu
   paste.mockClear();
   for (const status of ["busy", "waiting"] as const) {
     h.adapters.claude.listSessions = async () => [{ ...entry, status }];
-    await h.coordinator.lead.open();
+    await h.coordinator.leadFor(h.repo.id).open();
   }
   h.adapters.claude.listSessions = async () => [
     { ...entry, cwd: "/unrelated" as never },
   ];
-  await h.coordinator.lead.open();
+  await h.coordinator.leadFor(h.repo.id).open();
   expect(paste).not.toHaveBeenCalled();
   h.adapters.claude.listSessions = async () => [entry];
   const hooks = await h.adapters.claude.hookSummary(entry.sessionId);
@@ -503,11 +523,209 @@ test("opening Main requests a brief summary only when native status permits inpu
       at: hooks.lastEventAt ?? ("2026-09-12T00:00:00.000Z" as never),
     },
   });
-  await h.coordinator.lead.open();
+  await h.coordinator.leadFor(h.repo.id).open();
   expect(paste).not.toHaveBeenCalled();
   h.adapters.claude.listSessions = async () => {
     throw new Error("Provider unavailable");
   };
-  expect((await h.coordinator.lead.open()).sessionId).toBe(target.sessionId);
+  expect((await h.coordinator.leadFor(h.repo.id).open()).sessionId).toBe(
+    target.sessionId,
+  );
   expect(paste).not.toHaveBeenCalled();
+});
+
+test("each repository has a private Main, scoped tools, notes and independent recovery", async () => {
+  const { h, cli } = await setup();
+  const other = {
+    ...h.repo,
+    root: h.dataRoot as typeof h.repo.root,
+    id: "second" as typeof h.repo.id,
+    github: "test/second",
+  };
+  h.store.putRepo(other);
+  const a = await h.coordinator.leadFor(h.repo.id).open();
+  const b = await h.coordinator.leadFor(other.id).open();
+  const saved = await recipe(h);
+  const secondSaved = JSON.parse(
+    await readFile(
+      join(h.store.dataDirectory, "lead/second/recipe.json"),
+      "utf8",
+    ),
+  );
+  expect(a.sessionId).not.toBe(b.sessionId);
+  expect(saved.token).not.toBe(secondSaved.token);
+  expect(saved.args.at(-1)).toContain(h.repo.github);
+  expect(secondSaved.args.at(-1)).toContain(other.github);
+  expect(b.pane?.sessionName).toBe("loom-lead-second");
+  await h.coordinator.leadFor(other.id).setNote("Second project only");
+  expect(await h.coordinator.leadFor(h.repo.id).note()).toBe("");
+  const foreign = h.coordinator.createTask({
+    repoId: other.id,
+    title: "Other",
+    description: "Other project",
+  });
+  const client = await mcp(h);
+  expect(
+    (await client.callTool({ name: "list_tasks", arguments: {} }))
+      .structuredContent,
+  ).toEqual({ ok: true, value: [] });
+  for (const name of ["inspect_task", "retry_task", "cancel_task"])
+    await expect(
+      client.callTool({
+        name,
+        arguments: {
+          taskId: foreign.task.id,
+          ...(name === "cancel_task" ? { reason: "test" } : {}),
+        },
+      }),
+    ).rejects.toThrow("Loom host could not complete the request");
+  expect(
+    (
+      await client.callTool({
+        name: "create_task",
+        arguments: {
+          title: "Default",
+          description: "Scoped",
+          summary: "Default project",
+          providers: null,
+          requirePlanApproval: null,
+          blockedBy: [],
+          budgetMinutes: null,
+        },
+      })
+    ).isError,
+  ).not.toBe(true);
+  expect(h.store.tasks().find((t) => t.title === "Default")?.repoId).toBe(
+    h.repo.id,
+  );
+  await expect(
+    client.callTool({
+      name: "create_task",
+      arguments: {
+        repoId: other.id,
+        title: "Wrong",
+        description: "Wrong",
+        summary: "Wrong project",
+        providers: null,
+        requirePlanApproval: null,
+        blockedBy: [],
+        budgetMinutes: null,
+      },
+    }),
+  ).rejects.toThrow("Loom host could not complete the request");
+  expect(
+    h.store.tasks().find((task) => task.title === "Wrong"),
+  ).toBeUndefined();
+  await cli.command({ kind: "select_repo", repoId: other.id });
+  expect(h.paneHost.launches).toHaveLength(2);
+  for (const target of [a, b])
+    h.paneHost.exit(
+      {
+        ...present(target.pane),
+        windowId: present(target.pane).windowId as string,
+      },
+      1,
+    );
+  await h.coordinator.stop();
+  const store = await openStore({
+    dataRoot: h.dataRoot,
+    instance: h.config.instance,
+    config: reconcileConfig(h.config),
+  });
+  const restarted = new Coordinator({
+    config: h.config,
+    store,
+    adapters: h.adapters,
+    serveProtocol: false,
+  });
+  cleanups.push(() => restarted.stop());
+  await restarted.start();
+  expect(restarted.leadFor(h.repo.id).sessionId).toBe(a.sessionId);
+  expect(restarted.leadFor(other.id).sessionId).toBe(b.sessionId);
+  expect(h.paneHost.launches).toHaveLength(4);
+  await restarted.leadFor(h.repo.id).stop();
+  expect((await restarted.leadFor(other.id).open()).sessionId).toBe(
+    b.sessionId,
+  );
+});
+
+test("startup migrates the legacy recipe once to the first registered repository and keeps identity", async () => {
+  const { mkdir, rename, writeFile } = await import("node:fs/promises");
+  const { migrateLead } = await import("./lead.js");
+  const { h } = await setup();
+  await h.coordinator.leadFor(h.repo.id).open();
+  const saved = await recipe(h);
+  await h.coordinator.leadFor(h.repo.id).stop();
+  const { workspaceId } = await h.paneHost.ensureWorkspace({
+    taskId: "lead" as never,
+    cwd: h.store.dataDirectory as never,
+    label: "Legacy Main",
+  });
+  const legacyPane = await h.paneHost.ensurePane({
+    workspaceId,
+    runId: "lead" as never,
+    cwd: h.store.dataDirectory as never,
+    executable: "fake",
+    args: [],
+    env: {},
+  });
+  h.providers.create(
+    "claude",
+    h.store.dataDirectory as never,
+    saved.sessionId as ProviderSessionId,
+    "interactive",
+  );
+  await h.coordinator.stop();
+  const legacy = join(h.store.dataDirectory, "lead");
+  await mkdir(legacy, { recursive: true });
+  await rename(join(legacy, h.repo.id), join(h.dataRoot, "saved-main"));
+  await writeFile(
+    join(legacy, "recipe.json"),
+    JSON.stringify({
+      ...saved,
+      cwd: h.store.dataDirectory,
+      settingsPath: join(legacy, "settings.json"),
+      pane: legacyPane,
+    }),
+  );
+  await writeFile(
+    join(h.store.dataDirectory, "main-notes"),
+    "Retained context",
+  );
+  const store = await openStore({
+    dataRoot: h.dataRoot,
+    instance: h.config.instance,
+    config: reconcileConfig(h.config),
+  });
+  const restarted = new Coordinator({
+    config: h.config,
+    store,
+    adapters: h.adapters,
+    serveProtocol: false,
+  });
+  cleanups.push(() => restarted.stop());
+  await restarted.start();
+  const migrated = await recipe(h);
+  expect((await h.paneHost.getPane(legacyPane))?.dead).toBe(true);
+  expect(migrated.pane.sessionName).toBe(`loom-lead-${h.repo.id}`);
+  expect(migrated.args).toContain("--resume");
+  const launches = h.paneHost.launches.length;
+  expect(migrated).toMatchObject({
+    sessionId: saved.sessionId,
+    token: saved.token,
+    cwd: h.repo.root,
+    settingsPath: join(legacy, h.repo.id, "settings.json"),
+  });
+  expect(await restarted.leadFor(h.repo.id).note()).toBe("Retained context");
+  await expect(readFile(join(legacy, "recipe.json"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  await migrateLead(h.store.dataDirectory, h.repo);
+  expect(await recipe(h)).toEqual(migrated);
+  expect(h.paneHost.launches).toHaveLength(launches);
+  // Simulate a crash after the destination commit but before retiring the source.
+  await writeFile(join(legacy, "recipe.json"), JSON.stringify(saved));
+  await migrateLead(h.store.dataDirectory, h.repo);
+  expect(await recipe(h)).toEqual(migrated);
+  expect(h.paneHost.launches).toHaveLength(launches);
 });

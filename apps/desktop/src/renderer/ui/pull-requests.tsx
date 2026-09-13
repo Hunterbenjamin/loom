@@ -32,7 +32,6 @@ export function PullRequestsView() {
   const query = useStore((s) => s.ui.prQuery);
   const cursor = useStore((s) => s.ui.prCursor);
   const now = useStore((s) => s.snapshot.now);
-  const allRepos = useStore((s) => s.ui.repo === "all");
   const repos = useStore((s) => s.snapshot.repos);
   const scroller = useRef<HTMLDivElement>(null);
   const virtual = useVirtualizer({
@@ -172,13 +171,7 @@ export function PullRequestsView() {
                     <span className="id" title={repo?.github}>
                       #{pr.number}
                     </span>
-                    <span
-                      className="text"
-                      title={`${allRepos ? `${repo?.github} · ` : ""}${pr.title}`}
-                    >
-                      {allRepos ? (
-                        <span className="faint">{repo?.github} · </span>
-                      ) : null}
+                    <span className="text" title={pr.title}>
                       {pr.title}
                     </span>
                     {pr.draft ? <span className="chip">Draft</span> : null}

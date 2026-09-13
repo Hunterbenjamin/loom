@@ -1,13 +1,30 @@
+import { useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
 import { viewCounts } from "../store/selectors.js";
 import { VIEWS } from "../store/store.js";
 
 export function Sidebar() {
   const store = useStoreApi();
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const choose = async (value: string) => {
+    setBusy(true);
+    setError("");
+    try {
+      if (value === "__add__") await store.addRepo();
+      else await store.setRepo(value);
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Could not open repository",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
   const connection = useStore((s) => s.connection);
   const needsYou = useStore((s) =>
     s.snapshot.tasks
-      .filter((t) => s.ui.repo === "all" || t.repoId === s.ui.repo)
+      .filter((t) => t.repoId === s.ui.repo)
       .reduce((n, t) => n + t.attention.reasons.length, 0),
   );
   const repos = useStore((s) => s.snapshot.repos);
@@ -23,18 +40,25 @@ export function Sidebar() {
           className="repo-select"
           aria-label="Repository"
           value={repo}
-          onChange={(event) => store.setRepo(event.target.value)}
+          disabled={busy}
+          onChange={(event) => void choose(event.target.value)}
         >
-          <option value="all">All repositories</option>
+          {!repo ? (
+            <option value="" disabled>
+              Open repository
+            </option>
+          ) : null}
           {repos.map((item) => (
             <option key={item.id} value={item.id}>
               {item.github}
             </option>
           ))}
+          <option value="__add__">Add repository…</option>
         </select>
         <button
           type="button"
           className="create-issue-button"
+          disabled={!repo}
           aria-label="Create issue"
           title="Create issue (C)"
           onClick={() => store.setCreateIssue(true)}
@@ -43,6 +67,11 @@ export function Sidebar() {
         </button>
       </div>
 
+      {error ? (
+        <div className="pad" role="alert">
+          {error}
+        </div>
+      ) : null}
       <div className="sidebar-section">Views</div>
       {VIEWS.map((item) => (
         <button
@@ -91,5 +120,39 @@ export function Sidebar() {
         <kbd>⌘K</kbd>
       </div>
     </nav>
+  );
+}
+
+export function OpenRepository() {
+  const store = useStoreApi();
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="pad">
+      <h2>Open repository</h2>
+      <p>Choose a project folder to get started.</p>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError("");
+          try {
+            await store.addRepo();
+          } catch (error) {
+            setError(
+              error instanceof Error
+                ? error.message
+                : "Could not open repository",
+            );
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Open repository…
+      </button>
+      {error ? <div role="alert">{error}</div> : null}
+    </div>
   );
 }

@@ -18,6 +18,7 @@ import {
   isoTime,
   path,
   providerSessionId,
+  repoId,
   runId,
   sha,
   taskId,
@@ -283,10 +284,10 @@ export type TaskInbox = z.output<typeof taskInbox>;
 // Instance-level Lead identity; it is not a task or run.
 export const leadTarget = runTarget
   .omit({ runId: true, taskId: true })
-  .extend({ identity: z.literal("lead") });
+  .extend({ identity: z.literal("lead"), repoId });
 export type LeadTarget = z.output<typeof leadTarget>;
 export const leadState = z.strictObject({
-  id: z.literal("lead"),
+  id: repoId,
   sessionId: providerSessionId.nullable(),
   status: z.enum(["working", "idle", "waiting", "unknown", "stopped"]),
 });

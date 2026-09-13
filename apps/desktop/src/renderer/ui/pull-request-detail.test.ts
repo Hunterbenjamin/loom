@@ -42,7 +42,6 @@ function setup(change: Partial<PullRequestDetailRow["detail"]> = {}) {
   const store = createStore(fixture, true);
   store.setConnection("connected");
   const selection = { repoId: row.repoId, number: row.number };
-  store.openPullRequest(selection);
   const wire = toSnapshot(fixture);
   const update = () =>
     store.applyProtocol(
@@ -52,6 +51,7 @@ function setup(change: Partial<PullRequestDetailRow["detail"]> = {}) {
       }),
     );
   update();
+  store.openPullRequest(selection);
   const sender = vi.fn(
     async (
       _command: import("@loom/protocol").Command,

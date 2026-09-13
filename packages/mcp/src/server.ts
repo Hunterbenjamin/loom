@@ -35,7 +35,7 @@ import {
 
 export type McpIdentity =
   | { runId: RunId; active: boolean; kind?: "run" }
-  | { kind: "lead"; active: boolean }
+  | { kind: "lead"; active: boolean; repoId: string }
   | { kind: "operator"; active: boolean };
 
 export type McpInput = Extract<Input, { type: "mcp" }>;
@@ -300,7 +300,11 @@ export function createMcpServer(
         if (!options.leadHost) throw new Error("Main unavailable");
         return reply({
           ok: true,
-          value: await options.leadHost.invoke(name, parsed.data),
+          value: await options.leadHost.invoke(
+            name,
+            parsed.data,
+            identity.repoId,
+          ),
         });
       } catch {
         throw new Error("Loom host could not complete the request");

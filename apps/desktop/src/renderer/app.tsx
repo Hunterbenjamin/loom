@@ -13,7 +13,7 @@ import { LeadBar } from "./ui/lead.js";
 import { ListView } from "./ui/list.js";
 import { Palette, StagePicker } from "./ui/palette.js";
 import { PullRequestsView } from "./ui/pull-requests.js";
-import { Sidebar } from "./ui/sidebar.js";
+import { OpenRepository, Sidebar } from "./ui/sidebar.js";
 
 const PullRequestDetail = lazy(() =>
   import("./ui/pull-request-detail.js").then((m) => ({
@@ -29,6 +29,7 @@ export function App() {
     return () => store.setTrackerVisible(false);
   }, [store]);
 
+  const repo = useStore((s) => s.ui.repo);
   const theme = useStore((s) => s.ui.theme);
   const waiting = useStore(
     (s) =>
@@ -56,7 +57,9 @@ export function App() {
   }, [needsYou]);
   const task = useStore((s) =>
     s.ui.openTask
-      ? (s.snapshot.tasks.find((t) => t.id === s.ui.openTask) ?? null)
+      ? (s.snapshot.tasks.find(
+          (t) => t.id === s.ui.openTask && t.repoId === s.ui.repo,
+        ) ?? null)
       : null,
   );
   const openPr = useStore((s) => s.ui.openPr);
@@ -142,6 +145,8 @@ export function App() {
         >
           {waiting ? (
             <div className="pad faint">Waiting for the coordinator…</div>
+          ) : !repo ? (
+            <OpenRepository />
           ) : view === "pull-requests" ? (
             <PullRequestsView />
           ) : view === "needs-you" ? (

@@ -1,4 +1,4 @@
-import { paneIdentity, runId } from "@loom/protocol";
+import { paneIdentity, repoId, runId } from "@loom/protocol";
 import { z } from "zod";
 import type { ConnectionConfig } from "./connection.js";
 export const ptySpawnRequest = z.strictObject({
@@ -7,7 +7,7 @@ export const ptySpawnRequest = z.strictObject({
   rows: z.number().int().min(1).max(1000),
   label: z.string().max(200),
   runId: runId.nullable().optional(),
-  lead: z.boolean().optional(),
+  lead: repoId.optional(),
   operator: z.boolean().optional(),
   shellKey: z.string().uuid().optional(),
   shellName: z
@@ -27,7 +27,7 @@ export interface PtySpawnRequest {
   rows: number;
   /** Shown in the panel header so the human knows what they are typing into. */
   label: string;
-  lead?: boolean;
+  lead?: string;
   operator?: boolean;
   shellKey?: string;
   shellName?: string;
@@ -60,6 +60,7 @@ export const windowMode = z.enum(["tracker", "workbench"]);
 export type WindowMode = z.output<typeof windowMode>;
 
 export interface HostBridge {
+  chooseRepository(): Promise<{ root: string; github: string } | null>;
   keybindings(): Promise<import("./keybindings.js").KeybindingsState>;
   onKeybindingsChanged(
     listener: (state: import("./keybindings.js").KeybindingsState) => void,

@@ -634,6 +634,26 @@ describe("schema drift detection", () => {
   });
 });
 
+it("remembers one selected repository per instance across reopen and refuses unknown IDs", async () => {
+  const store = await open();
+  expect(store.selectedRepo()).toBeNull();
+  store.putRepo(repo);
+  expect(store.selectedRepo()).toBe(repo.id);
+  const second = {
+    ...repo,
+    id: "another" as typeof repo.id,
+    root: "/tmp/another" as typeof repo.root,
+  };
+  store.putRepo(second);
+  expect(store.selectedRepo()).toBe(repo.id);
+  store.selectRepo(second.id);
+  expect(() => store.selectRepo("missing")).toThrow(
+    "Unknown registered repository",
+  );
+  expect((await open()).selectedRepo()).toBe(second.id);
+  expect((await open("other")).selectedRepo()).toBeNull();
+});
+
 it("persists inline-review publication and fixing/escalation evidence across restart", async () => {
   const store = await seeded();
   const state = richState();
