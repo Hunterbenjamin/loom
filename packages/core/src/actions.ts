@@ -104,7 +104,7 @@ export type Action = ActionBase &
         answers: Record<string, string[]> | null;
       }
     /** Release a headless run's process or subscription. Never closes an interactive pane. */
-    | { kind: "stop_run"; runId: RunId }
+    | { kind: "stop_run"; runId: RunId; terminate?: boolean }
     | {
         kind: "push_branch";
         worktreePath: WorktreePath;

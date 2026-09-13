@@ -89,6 +89,21 @@ function renderTerminal(snapshot: Snapshot) {
   const task = snapshot.tasks[0];
   if (!task) throw new Error("No task");
   const store = createStore(snapshot, true, "dev");
+  store.setSender(async () => ({
+    ok: true,
+    result: {
+      kind: "task_terminal",
+      taskId: task.id,
+      target: {
+        hostGeneration: "loom-test#1",
+        sessionName: "task-shell",
+        windowId: "@1",
+        paneId: "%1",
+      },
+      source: task.stage === "done" ? "project" : "worktree",
+      branch: "feat/current-branch",
+    },
+  }));
   const spawn = vi.fn(
     async (request: import("../../shared/ipc.js").PtySpawnRequest) => ({
       pid: 123,
@@ -198,11 +213,21 @@ test("run changes detach and mount only changed clients and select the newest fa
   expect(active?.getAttribute("aria-controls")).toContain(newest.id);
 });
 
-test("empty and completed tasks show concise states without attaching", () => {
+test("empty and completed tasks automatically attach their resolved shell", async () => {
   const first = terminalFixture();
   const empty = renderTerminal(first.snapshot);
-  expect(empty.host.textContent).toContain("No agent is running for this task");
-  expect(empty.spawn).not.toHaveBeenCalled();
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(empty.host.textContent).toContain(
+    "Task worktree · feat/current-branch",
+  );
+  expect(empty.spawn).toHaveBeenCalledWith(
+    expect.objectContaining({
+      pane: expect.objectContaining({ sessionName: "task-shell" }),
+      runId: null,
+    }),
+  );
 
   act(() => {
     for (const cleanup of cleanups.splice(0)) cleanup();
@@ -216,6 +241,14 @@ test("empty and completed tasks show concise states without attaching", () => {
     tasks: [doneTask],
     runs: [stale],
   });
-  expect(done.host.textContent).toContain("Task is done");
-  expect(done.spawn).not.toHaveBeenCalled();
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(done.host.textContent).toContain("Project root · feat/current-branch");
+  expect(done.spawn).toHaveBeenCalledWith(
+    expect.objectContaining({
+      pane: expect.objectContaining({ sessionName: "task-shell" }),
+      runId: null,
+    }),
+  );
 });

@@ -131,7 +131,12 @@ LOOM_CODEX_REASONING_EFFORT=medium
 
 Restart the coordinator after changing its environment. These settings apply to newly created
 runs, including future roles on existing tasks. Existing runs and retries keep their recorded
-provider, model, and reasoning level. Lead and Operator retain their separate model settings.
+provider, model, and reasoning level. To explicitly replace a current planning, implementation,
+or review run, use **Agents → Restart with current agent settings**, or
+`pnpm loom task restart <task> <runId>`. This retires the selected agent and creates a fresh
+session on the same task/worktree, preserving its plan, findings and review round. It does not
+transfer the old provider's conversation. Use `loom task show <task>` to find the current run ID.
+The replacement waits for confirmed retirement; a stale run ID is rejected. Lead and Operator retain their separate model settings.
 Reasoning is persisted with the run, outbox action, and launch recipe and passed to both the
 Codex thread and subsequent turns; the task's private TUI configuration receives it too.
 Older runs without a reasoning field retain provider defaults. These are instance environment

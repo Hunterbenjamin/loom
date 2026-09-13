@@ -173,3 +173,12 @@ an agent uses its existing agent/task controls. Opening a workspace reserves its
 name without creating a shell; a session is created only when a real agent or explicitly requested
 human terminal needs a pane. The brief bootstrap process used while setting its environment is
 removed before launch returns, leaving no spare terminal.
+
+### Automatic task terminal
+
+Task detail's Terminal tab has no run dropdown. It opens a live recorded agent terminal immediately;
+multiple live runs retain their own tabs and attached clients. With no live terminal, it opens
+a reusable human shell in the task's worktree. With no surviving worktree, it opens at the
+project root and shows that checkout's actual branch without changing it. Historical run selection
+cannot override this task-scoped resolution. Run identity changes re-resolve the target; routine
+activity updates do not remount the terminal. Missing host observations surface a retryable error.

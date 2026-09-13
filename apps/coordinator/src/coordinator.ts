@@ -48,6 +48,7 @@ import { attentionOccurrence } from "./operator-policy.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
 import { ProtocolServer } from "./server.js";
+import { openTaskTerminal } from "./task-terminal.js";
 import {
   changesRow,
   PublishedRows,
@@ -778,6 +779,20 @@ export class Coordinator {
             ok: true,
             result: { kind: "operator_state", state: this.operator.state() },
           };
+        case "open_task_terminal": {
+          const taskId = command.taskId as TaskId;
+          const state = this.store.loadTaskState(taskId);
+          const repo = this.store
+            .repos()
+            .find((repo) => repo.id === state.task.repoId);
+          if (!repo) throw new Error("Task project is unavailable");
+          const terminal = await openTaskTerminal(state, repo, this.adapters);
+          await this.inventory.refresh();
+          return {
+            ok: true,
+            result: { kind: "task_terminal", taskId, ...terminal },
+          };
+        }
         case "open_operator_terminal":
         case "open_workbench_terminal":
         case "open_pane_session": {

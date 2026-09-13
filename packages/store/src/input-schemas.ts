@@ -144,6 +144,7 @@ const commandSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("send_message"), runId: id, text }),
   z.object({ type: z.literal("retry") }),
+  z.object({ type: z.literal("restart_run"), runId: id }),
   z.object({ type: z.literal("grant_review_round") }),
   z.object({ type: z.literal("waive_finding"), findingId: id, note: text }),
   z.object({ type: z.literal("cancel"), reason: text }),

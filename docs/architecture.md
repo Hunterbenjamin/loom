@@ -220,8 +220,13 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   A host restart kills every pane process, and Loom relaunches runs from stored recipes.
 - The terminal sidebar is a projection of live native panes, independent of task history and local
   view layout. No default shell is recreated on render or navigation. New Terminal and Split are the
-  only shell-creation paths, and capture the native identity before mounting a viewer. This follows
+  explicit Workbench shell-creation paths, and capture the native identity before mounting a viewer. This follows
   [Herdr's pane close/runtime lifecycle](https://github.com/herdrdev/herdr/blob/d184b41fa36923c132629af725ff98bb02aa1b61/src/app/api/panes.rs#L1853).
+- Task detail's Terminal tab resolves through `open_task_terminal`: a live recorded agent pane
+  takes precedence; otherwise a task-keyed human shell opens in the surviving worktree or the
+  configured project root. Reopening reuses that shell. The coordinator reads and displays the
+  actual Git branch, including detached HEAD, and never checks out a branch when opening a terminal.
+  Native lookup failures are errors rather than permission to launch a competing shell.
 - **Shift+Enter needs `extended-keys always`, `extended-keys-format csi-u` and
   `terminal-features ",xterm*:extkeys"`**, loaded before the pane exists — and still needs the
   renderer's CSI-u shim. Changing the options afterwards does not reach an existing pane.
@@ -278,6 +283,15 @@ runs, including later roles on existing tasks; they never migrate an existing pr
 Models remain configurable per provider, with explicit `LOOM_CODEX_REASONING_EFFORT` for Codex.
 The coordinator captures model and reasoning in durable run/action/recipe records before launch;
 retries preserve them, and Codex turns and the private TUI config receive the captured settings.
+
+A human can explicitly replace the current planning, implementation or review run with
+`restart_run`, naming the current run ID. The coordinator snapshots the current provider/model/
+reasoning settings, supersedes the old run, and durably requests its retirement. Only after
+retirement succeeds does it launch a new run/session with a distinct ID in the same worktree.
+Retries retain the selected run's settings; replacement retains the task's stage, artifacts,
+findings and review round. Old run records and provider transcripts remain available. A repeated
+command for the superseded ID cannot launch another replacement. Unknown retirement state blocks
+launch rather than allowing two agents to edit the same worktree.
 
 Agents hand off through artifacts, not transcripts. Each task's artifacts live in the coordinator's data directory.
 Agents reach them through `get_task_context`, and as files in `<worktree>/.task/`, which is kept out of git via `.git/info/exclude`.

@@ -6,7 +6,7 @@ export type Brand<T, B extends string> = T & { readonly [brand]: B };
 
 export type RepoId = Brand<string, "RepoId">;
 export type TaskId = Brand<string, "TaskId">;
-/** Deterministic: `${taskId}/${role}/${round}`, stable across attempts. See docs/design/core.md, "IDs". */
+/** `${taskId}/${role}/${round}`, or that prefix plus `/restart/${inputId}`; stable across retries. */
 export type RunId = Brand<string, "RunId">;
 export type ArtifactId = Brand<string, "ArtifactId">;
 export type FindingId = Brand<string, "FindingId">;
