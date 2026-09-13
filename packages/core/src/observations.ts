@@ -211,6 +211,10 @@ export interface PaneObservation {
   pid: number;
   /** The foreground command's name. A hint for humans, never an identity. */
   command: string;
+  /** The agent CLI found in the pane's process tree, if any; a process fact, not a status. */
+  agent?: "codex" | "claude" | null;
+  /** The run id the host recorded on the pane at launch: Loom's pane, whatever its state. */
+  owner?: string | null;
   dead: boolean;
   /** The exit status of a dead pane; null while it lives. */
   exitCode: number | null;

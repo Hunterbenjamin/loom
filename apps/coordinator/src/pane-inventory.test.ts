@@ -185,6 +185,48 @@ test("assembles task branches and caches unlinked cwd reads per refresh, isolati
   await inventory.stop();
 });
 
+test("reaps a dead pane nobody owns so tmux can drop its emptied window and session", async () => {
+  const host = new FakePaneHost();
+  const dead = {
+    ...observation,
+    ref: { ...observation.ref, paneId: "%9" },
+    dead: true,
+    exitCode: 0,
+  };
+  const list = vi
+    .spyOn(host, "listPanes")
+    .mockResolvedValue([{ ...observation, dead: false }, dead]);
+  vi.spyOn(host, "listClients").mockResolvedValue([]);
+  const close = vi.spyOn(host, "closeTerminal").mockResolvedValue();
+  const inventory = new PaneInventory(
+    host,
+    { currentBranch: vi.fn().mockResolvedValue("main") },
+    () => ({ states: [], now, leadPane: null, leadWaiting: false }),
+    () => {},
+  );
+  await inventory.refresh();
+  expect(close).toHaveBeenCalledExactlyOnceWith({
+    hostGeneration: dead.ref.hostGeneration,
+    sessionName: dead.ref.sessionName,
+    windowId: dead.ref.windowId,
+    paneId: "%9",
+  });
+  // Reported again before the host drops it: no second kill, the row waits for the next scan.
+  await inventory.refresh();
+  expect(close).toHaveBeenCalledTimes(1);
+  expect(list).toHaveBeenCalledTimes(2);
+  // A dead pane the host tagged with a run id is never reaped, even before the run links it.
+  list.mockResolvedValue([
+    {
+      ...dead,
+      ref: { ...dead.ref, paneId: "%10" },
+      owner: "t-1/implementer/0",
+    },
+  ]);
+  await inventory.refresh();
+  expect(close).toHaveBeenCalledTimes(1);
+});
+
 test("renamed task spaces retain their task label even when only scratch panes remain", () => {
   const { state } = fixture();
   if (!state.worktree) throw new Error("Missing worktree fixture");

@@ -81,9 +81,10 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   screen to that pane's native cell rectangle, so sibling output and borders are not duplicated.
   Filtering never removes panes from the selected window. Selecting another
   space replaces the right panel; there are no free-floating or mixed-space viewer tabs.
-  Right-click or Shift+F10 offers Open/Open space, Copy attach command and Close panel. Copy uses
-  the coordinator's quoted attach argv for the first live pane. Close panel only detaches viewers,
-  including human shells, and never stops a native pane. It remains available during outages.
+  Right-click or Shift+F10 offers Open/Open space, Copy attach command and Close pane/tab/space.
+  Copy uses the coordinator's quoted attach argv for the first live pane. Closing is killing: the
+  close entries send `close_terminal` with the row's scope and the host kills the pane, window or
+  session; tab and space closes ask once first. Spaces are never collapsible.
   Rename is available inline; its menu entry remains unavailable.
 - **Branch:** space rows show the coordinator's `panes.branch`: the linked issue's branch, or Git's
   `rev-parse --abbrev-ref HEAD` at the first native pane's start cwd for an unlinked space.
@@ -127,12 +128,12 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   defaults and show an error in the Workbench bottom bar. Saving a valid file updates every
   open window, including its shortcut map and palette. This file is user configuration;
   it stores no layout or issue state.
-  Ctrl+A then `|` / `-` splits right/down; `h j k l` focuses left/down/up/right;
+  Ctrl+Space then `|` / `-` splits right/down; `h j k l` focuses left/down/up/right;
   `c` names and creates a terminal; `n` / `p` switches tabs; `x` closes a terminal
   (or hides a supervised agent view); `z` toggles zoom; `g` focuses the fuzzy agent filter;
   `?` opens the map. The configurable prefix expires after **3 seconds** by default, with
   an armed indicator in the bottom bar. Modifier presses preserve it. Escape or window blur
-  cancels it; an unknown suffix cancels and passes through. Ctrl+A Ctrl+A sends literal Ctrl+A
+  cancels it; an unknown suffix cancels and passes through. Ctrl+Space Ctrl+Space sends literal Ctrl+Space
   to the focused terminal. Repeated keydowns do not repeat commands; composition is left alone.
   Direct Mac defaults: Cmd+D / Cmd+Shift+D split right/down; Cmd+Alt+Arrow focuses a direction;
   Cmd+T names a new tab; Cmd+Shift+] / Cmd+Shift+[ switches next/previous tab; Cmd+W closes the
@@ -148,9 +149,15 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   navigation clears any hiding filter and selects the first flagged pane in sidebar order.
   The Main toggle retains Tracker's existing inbox reason count and restart behavior.
 - **Terminals:** each panel owns an independent authenticated attach client. Mode/window teardown
-  kills only that client. Close panel only detaches the viewer. Electron keys resources by webContents and panel/client identity,
+  kills only that client. The panel's close control kills its pane through the coordinator. Electron keys resources by webContents and panel/client identity,
   including pending spawns and late exit callbacks. Metadata patches update labels without
   rendering or remounting terminal components; theme changes update xterm options in place.
+  Scrollback and selection work as in Herdr: the client attaches without the alternate screen,
+  and on attach the main process reads the pane's history from the host (`capture-pane`, up to
+  the terminal history limit) and replays it into the viewer ahead of the host's first redraw,
+  so the wheel scrolls the viewer's own buffer and a drag can select up through history.
+  Releasing the mouse copies the selection and clears it. Only a pane on the alternate screen
+  (a pager, an editor) receives the wheel itself, as mouse reports through tmux.
 
 ## Pane host
 

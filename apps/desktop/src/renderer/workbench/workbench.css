@@ -184,8 +184,7 @@
   color: var(--text);
 }
 .wb-terminals {
-  flex: 0 1 auto;
-  max-height: 50%;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -258,15 +257,7 @@
 .wb-tab-row {
   display: flex;
   align-items: baseline;
-  padding-left: calc(12px + 2ch);
-}
-.wb-tab-row .wb-tree-row {
-  padding-left: 8px;
-}
-.wb-disclosure {
-  flex: none;
-  padding: 3px 0;
-  width: 1ch;
+  padding-left: calc(1ch + 8px);
 }
 .wb-sidebar .dead,
 .wb-sidebar button:disabled {
@@ -279,19 +270,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.wb-status {
-  display: inline-block;
-  flex: none;
-  width: 1ch;
-  text-align: center;
-  font: inherit;
-}
-.wb-status.waiting {
-  color: var(--warn);
-}
-.wb-status.failed {
-  color: var(--danger);
-}
+
 .wb-muted,
 .wb-terminals > [role="status"] {
   color: var(--wb-dim);
@@ -406,20 +385,7 @@
 .wb-space-row {
   display: flex;
   align-items: baseline;
-  padding-left: 8px;
 }
 .wb-space {
   flex: 1;
-}
-.wb-status.working {
-  color: var(--accent);
-}
-.wb-status.finished {
-  color: var(--good);
-}
-.wb-status.unknown {
-  color: var(--violet);
-}
-.wb-status.idle {
-  color: var(--text-dim);
 }

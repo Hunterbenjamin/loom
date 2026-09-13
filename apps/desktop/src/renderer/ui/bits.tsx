@@ -1,5 +1,8 @@
 import type { Run, Task } from "@loom/core";
 import { memo } from "react";
+import { agentState } from "../workbench/agents.js";
+import type { Indicator } from "../workbench/selectors.js";
+import { Status } from "../workbench/status.js";
 import {
   ATTENTION_LABELS,
   RUN_STATUS_LABELS,
@@ -22,26 +25,15 @@ export function AttentionChips({ task }: { task: Task }) {
   );
 }
 
-// Map run status to dot glyph: working/starting (animated), blocked (attention), idle/ended (stage), failed/unknown (status)
-// Priority order: working > blocked > idle > ended > unknown
-const DOT: Partial<Record<Run["status"], string>> = {
-  starting: "dot-animated", // Animated circular progress indicator
-  working: "dot-animated", // Animated circular progress indicator
-  blocked: "dot-attention", // Static attention glyph for blocked/waiting
-  idle: "dot-stage", // Stage glyph for idle
-  failed: "dot-failed", // Failed glyph
-  ended: "dot-stage", // Stage glyph for terminal status
-  unknown: "dot-unknown", // Unknown glyph
-};
-
+/** The same glyph set as the Workbench sidebar: spinner, red, blue, hollow circle. */
 export const RunDot = memo(function RunDot({ run }: { run: Run | null }) {
   if (!run) return <span className="dot faint" title="No run" />;
-  const glyph = DOT[run.status] ?? "dot-unknown";
   return (
     <span
-      className={`dot ${glyph}`}
       title={`${run.role} · ${run.provider} · ${RUN_STATUS_LABELS[run.status]}`}
-    />
+    >
+      <Status state={agentState(run) as Indicator} />
+    </span>
   );
 });
 

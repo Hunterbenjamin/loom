@@ -932,6 +932,7 @@ export class Coordinator {
     return {
       host,
       buildAnchor,
+      log: (message: string) => this.log(`MCP: ${message}`),
       resolveToken: (token: string) =>
         [...this.leads.values()]
           .map((lead) => lead.resolve(token))
@@ -1382,16 +1383,29 @@ export class Coordinator {
             !scratchTarget
           )
             throw new Error("Split requires a target pane");
+          // A new space opens at the selected project's root, so its shell is in the repo.
+          const newSpace =
+            command.kind === "open_workbench_terminal" && !scratchTarget
+              ? (command.workspace as string | undefined)
+              : undefined;
+          const selectedRepoId = newSpace ? this.store.selectedRepo() : null;
+          const spaceRoot = selectedRepoId
+            ? this.repoById(selectedRepoId).root
+            : null;
           const ref =
             command.kind === "open_workbench_terminal"
               ? await this.adapters.paneHost.createScratch({
-                  workspaceId: scratchPane?.workspaceId ?? "loom-workbench",
+                  workspaceId:
+                    newSpace ?? scratchPane?.workspaceId ?? "loom-workbench",
                   target: scratchTarget,
                   split: command.split as "right" | "below" | undefined,
                   createWorkspace: true,
                   key: command.key as string,
                   label: (command.label as string | undefined) ?? "Terminal",
-                  cwd: scratchPane?.startCwd ?? (homedir() as WorktreePath),
+                  cwd:
+                    spaceRoot ??
+                    scratchPane?.startCwd ??
+                    (homedir() as WorktreePath),
                   executable: process.env.SHELL || "/bin/sh",
                   args: ["-l"],
                   env: runEnvironment(process.env, {}),
@@ -1442,18 +1456,35 @@ export class Coordinator {
             );
           // A task's supervisor would recover an unannounced terminal death. Require
           // its normal stop control instead of reporting a close that immediately reopens.
+          const scope = command.scope ?? "pane";
+          const inScope = (pane: {
+            sessionName: string;
+            windowId: string;
+            paneId: string;
+          }) =>
+            pane.sessionName === ref.sessionName &&
+            (scope === "session" ||
+              (pane.windowId === ref.windowId &&
+                (scope === "window" || pane.paneId === ref.paneId)));
           const active = this.store
             .tasks()
             .flatMap((task) => this.store.runs(task.id))
             .find(
               (run) =>
-                !run.endedAt && run.pane && paneKey(run.pane) === paneKey(ref),
+                !run.endedAt &&
+                run.pane &&
+                run.pane.hostGeneration === ref.hostGeneration &&
+                inScope(run.pane),
             );
           if (active)
             throw new Error(
               "Stop the running task before closing its agent terminal",
             );
-          await this.adapters.paneHost.closeTerminal(ref);
+          if (scope === "session")
+            await this.adapters.paneHost.closeSession(ref);
+          else if (scope === "window")
+            await this.adapters.paneHost.closeWindow(ref);
+          else await this.adapters.paneHost.closeTerminal(ref);
           if (await this.adapters.paneHost.getPane(ref))
             throw new Error("Terminal closure was not confirmed");
           await this.inventory.refresh();

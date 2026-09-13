@@ -101,7 +101,7 @@ test("renders the reference sections, compact glyph rows and viewer count", () =
     "Completed24▸",
   ]);
   expect(h.host.querySelector('[data-view="pull-requests"]')?.textContent).toBe(
-    "Reviews3",
+    "Review3",
   );
   expect(h.host.querySelector("thead")).toBeNull();
   expect(
@@ -110,7 +110,7 @@ test("renders the reference sections, compact glyph rows and viewer count", () =
   expect(
     h.host.querySelectorAll('.review-status[aria-label="Checks pending"]'),
   ).toHaveLength(1);
-  expect(h.host.querySelectorAll(".pr-open")).toHaveLength(5); // sidebar plus rows
+  expect(h.host.querySelectorAll(".pr-open")).toHaveLength(4); // rows; the nav uses its own icon
   act(() => h.button("Created").click());
   expect(h.rows()).toHaveLength(2);
   expect(

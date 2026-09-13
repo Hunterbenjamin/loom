@@ -36,6 +36,7 @@ import {
 } from "../fixtures/index.js";
 import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
 import { projectSnapshot } from "../live/snapshot.js";
+import { paneIndicator } from "../workbench/selectors.js";
 import { createPaneTransitionDetector } from "./pane-transitions.js";
 import { selectedPullRequests } from "./pull-requests.js";
 import { cursorRows } from "./selectors.js";
@@ -110,6 +111,10 @@ export interface State {
   inbox: TaskInbox[];
   panes: PaneView[];
   panesUnavailable: boolean;
+  /** Pane keys whose latest finish the human has looked at; in memory, per window. */
+  readFinished: ReadonlySet<string>;
+  /** Main finished a turn and the human has not looked at it since. */
+  mainFinished: boolean;
   runTargets: RunTarget[];
   lead: LeadState;
   notes: Entities["note"][];
@@ -117,24 +122,23 @@ export interface State {
   settings: SettingsDocument[];
 }
 
+/** The Tracker's three destinations. Other view ids remain reachable by keyboard and palette. */
 export const VIEWS: { id: ViewId; label: string; hint: string }[] = [
   {
-    id: "all",
-    label: "All issues",
-    hint: "Everything in the selected repository",
-  },
-  {
     id: "needs-you",
-    label: "Needs you",
-    hint: "Attention flags, blocked and failed",
+    label: "Inbox",
+    hint: "Everything that needs you: questions, approvals, blocked and failed",
   },
-  { id: "in-progress", label: "In progress", hint: "Planning through review" },
   {
-    id: "awaiting-approval",
-    label: "Awaiting approval",
-    hint: "Plan and merge approvals",
+    id: "all",
+    label: "Issues",
+    hint: "Every issue in the selected repository",
   },
-  { id: "done", label: "Done", hint: "Merged or canceled" },
+  {
+    id: "pull-requests",
+    label: "Review",
+    hint: "Pull requests to review and merge",
+  },
 ];
 
 const IN_PROGRESS: Stage[] = [
@@ -225,6 +229,8 @@ export function createStore(
     notes: [],
     panes: [],
     panesUnavailable: false,
+    readFinished: new Set<string>(),
+    mainFinished: false,
     runTargets: [],
     instance,
     settings: [],
@@ -338,6 +344,26 @@ export function createStore(
     },
     toggleChimeMuted() {
       setUi({ chimeMuted: !state.ui.chimeMuted });
+    },
+    /** The human looked at Main: its finished dot clears. */
+    markMainRead() {
+      if (!state.mainFinished) return;
+      state = { ...state, mainFinished: false };
+      emit();
+    },
+    /** The human opened or focused these panes: their finished dots clear. */
+    markPanesRead(
+      panes: readonly Pick<PaneView, "hostGeneration" | "paneId">[],
+    ) {
+      const keys = panes
+        .map((pane) => JSON.stringify([pane.hostGeneration, pane.paneId]))
+        .filter((key) => !state.readFinished.has(key));
+      if (!keys.length) return;
+      state = {
+        ...state,
+        readFinished: new Set([...state.readFinished, ...keys]),
+      };
+      emit();
     },
     setChimeMuted(chimeMuted: boolean) {
       setUi({ chimeMuted });
@@ -461,9 +487,38 @@ export function createStore(
               state.panesUnavailable,
             )
           : [];
+      if (transitions.length) {
+        // A fresh finish is unread until the human looks at that pane again.
+        const byRun = new Map(state.snapshot.runs.map((run) => [run.id, run]));
+        const read = new Set(state.readFinished);
+        for (const pane of transitions)
+          if (
+            paneIndicator(pane, pane.runId ? byRun.get(pane.runId) : undefined)
+              .tone === "finished"
+          )
+            read.delete(JSON.stringify([pane.hostGeneration, pane.paneId]));
+        if (read.size !== state.readFinished.size)
+          state = { ...state, readFinished: read };
+      }
+      // Main is not a task run: its turn boundaries come from the lead state. Working → idle
+      // is a finish (unread until looked at), working → waiting needs the human; both chime.
+      let leadTransition: PaneView | undefined;
+      if (
+        previous.lead.status === "working" &&
+        (state.lead.status === "idle" || state.lead.status === "waiting")
+      ) {
+        if (state.lead.status === "idle")
+          state = { ...state, mainFinished: true };
+        leadTransition = state.panes.find(
+          (pane) =>
+            pane.sessionName === `loom-lead-${state.ui.repo}` && !pane.dead,
+        );
+      }
       emit();
       for (const pane of transitions)
         for (const listener of transitionListeners) listener(pane);
+      if (leadTransition)
+        for (const listener of transitionListeners) listener(leadTransition);
     },
     openAttention(
       task: TaskId,

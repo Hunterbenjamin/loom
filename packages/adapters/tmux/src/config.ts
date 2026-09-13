@@ -14,7 +14,10 @@ export const CONFIG_LINES = [
   // `extended-keys-format` arrived in tmux 3.5; Ubuntu's 3.4 (GitHub's runners) rejects it and
   // aborts the whole config. `if-shell -F` evaluates the format in tmux itself, no shell.
   "if-shell -F '#{>=:#{version},3.5}' 'set -s extended-keys-format csi-u'",
-  'set -as terminal-features ",xterm*:extkeys"',
+  'set -as terminal-features ",xterm*:extkeys:sync"',
+  // No alternate screen for the client: what scrolls off the top lands in the viewer's own
+  // scrollback, so scrolling and selection through history work like a native terminal.
+  'set -as terminal-overrides ",xterm*:smcup@:rmcup@"',
   // A dead pane keeps its exit status, which is the only exit fact the host supplies.
   "set -g remain-on-exit on",
   // Attaching a client must never add variables to a pane's environment (spike 06 §3).

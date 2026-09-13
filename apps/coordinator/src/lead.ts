@@ -31,7 +31,7 @@ import { z } from "zod";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
 import { newToken } from "./derive.js";
-import { leadBrief, mainPanelBrief } from "./prompts.js";
+import { leadBrief } from "./prompts.js";
 import { runEnvironment } from "./recipes.js";
 
 const recipeSchema = z.strictObject({
@@ -218,10 +218,9 @@ export class LeadSession {
         });
       }
       const pane = await this.pane();
+      // Opening the conversation is looking, not asking (decision 2026-09-13): a live Main gets
+      // no prompt on open. Only a first launch speaks, with its introduction.
       const ref = pane && !pane.dead ? pane.ref : await this.launch();
-      if (pane && !pane.dead)
-        // Observation or delivery failure must not prevent the human opening the conversation.
-        await this.summarizeOnOpen(ref).catch(() => {});
       if (!this.recipe) throw new Error("Missing Main recipe");
       await this.save({ ...this.recipe, pane: ref });
       const observation = await this.deps.adapters.paneHost.getPane(ref);
@@ -262,23 +261,6 @@ export class LeadSession {
       await this.save({ ...this.recipe, stopped: true });
       if (pane) await this.deps.adapters.paneHost.closePane(pane.ref);
     });
-  }
-  private async summarizeOnOpen(ref: PaneRef): Promise<void> {
-    const recipe = this.recipe;
-    if (!recipe) return;
-    const [sessions, hooks] = await Promise.all([
-      this.deps.adapters.claude.listSessions(),
-      this.deps.adapters.claude.hookSummary(
-        recipe.sessionId as ProviderSessionId,
-      ),
-    ]);
-    const session = sessions.find(
-      (s) => s.sessionId === recipe.sessionId && s.cwd === recipe.cwd,
-    );
-    // Opening a human view is a hint, never permission to type into a dialog or busy turn.
-    // This read-only summary request is best effort: no polling, retries or delivery claim.
-    if (session?.status === "idle" && !hooks.pendingDialog)
-      await this.deps.adapters.paneHost.pasteText(ref, mainPanelBrief());
   }
   async state(): Promise<LeadState> {
     if (!this.recipe || this.recipe.stopped)
@@ -326,8 +308,8 @@ export class LeadSession {
       resume,
       model: recipe.model,
       settingsPath: recipe.settingsPath,
-      readOnly: true,
-      conversationOnly: true,
+      // Main is the brain with hands (decision 2026-09-13): the same access the human has.
+      readOnly: false,
     });
     args.push(
       "--name",

@@ -17,7 +17,7 @@ export const terminalName = (pane: PaneView) =>
         `Terminal ${pane.paneId.slice(1)}`;
 
 const indicators = {
-  waiting: { tone: "waiting", icon: "◐", label: "Needs you", priority: 0 },
+  waiting: { tone: "waiting", icon: "●", label: "Needs you", priority: 0 },
   failed: { tone: "failed", icon: "!", label: "Failed", priority: 1 },
   unknown: {
     tone: "unknown",
@@ -26,7 +26,7 @@ const indicators = {
     priority: 2,
   },
   working: { tone: "working", icon: "◌", label: "Working", priority: 3 },
-  finished: { tone: "finished", icon: "✓", label: "Done", priority: 4 },
+  finished: { tone: "finished", icon: "●", label: "Finished", priority: 4 },
   idle: { tone: "idle", icon: "○", label: "Idle", priority: 5 },
 };
 export type Indicator = (typeof indicators)[keyof typeof indicators];
@@ -74,7 +74,7 @@ export function paneIndicator(pane: PaneView, run?: Run): Indicator {
 export const paneName = (pane: PaneView) =>
   pane.role
     ? [pane.role, pane.provider].filter(Boolean).join(" · ")
-    : pane.command || "Unknown process";
+    : (pane.agent ?? pane.command ?? "Unknown process");
 export const spaceKey = (pane: PaneView) =>
   JSON.stringify([pane.hostGeneration, pane.sessionId ?? pane.sessionName]);
 export const tabKey = (pane: PaneView) =>
@@ -121,8 +121,20 @@ export function spaces(
   filter = "",
   runs: readonly Run[] = [],
   includePinned = false,
+  /** Panes whose latest finish the human has already looked at: shown idle, not finished. */
+  read?: ReadonlySet<string>,
 ): TreeSpace[] {
   const byRun = new Map(runs.map((run) => [run.id, run]));
+  const indicatorFor = (pane: PaneView) => {
+    const state = paneIndicator(
+      pane,
+      pane.runId ? byRun.get(pane.runId) : undefined,
+    );
+    return state.tone === "finished" &&
+      read?.has(JSON.stringify([pane.hostGeneration, pane.paneId]))
+      ? indicators.idle
+      : state;
+  };
   const groups = new Map<string, TreeSpace>();
   const tabs = new Map<string, TreeTab>();
   const sorted = [...panes]
@@ -171,10 +183,7 @@ export function spaces(
     tab.panes.push({
       pane,
       name: paneName(pane),
-      indicator: paneIndicator(
-        pane,
-        pane.runId ? byRun.get(pane.runId) : undefined,
-      ),
+      indicator: indicatorFor(pane),
     });
   }
   const words = filter.trim().toLowerCase().split(/\s+/);

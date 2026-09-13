@@ -76,7 +76,9 @@ const findingViews = (
 
 export function createMcpHost(deps: McpHostDeps): {
   host: McpHost;
-  resolveToken(token: string): { runId: RunId; active: boolean } | null;
+  resolveToken(
+    token: string,
+  ): { runId: RunId; active: boolean; reason?: string } | null;
   buildAnchor(input: {
     runId: RunId;
     reviewedSha: Sha;

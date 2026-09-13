@@ -8,6 +8,7 @@ import type {
   WorktreePath,
 } from "@loom/core";
 import { z } from "zod";
+import { detectAgent, type ProcessRow, readProcesses } from "./agents.js";
 import { baseEnv, createCli, TmuxError, withUtf8Locale } from "./cli.js";
 import {
   configFile,
@@ -214,6 +215,7 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
   async function observe(
     row: PaneRow,
     hostGeneration?: string,
+    processes?: readonly ProcessRow[],
   ): Promise<PaneObservation> {
     const startCwd = (await realpath(row.startPath).catch(
       () => row.startPath,
@@ -222,6 +224,7 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
       row,
       hostGeneration ?? (await ensureServer()),
       startCwd,
+      processes && !row.dead ? detectAgent(row.pid, processes) : null,
     );
   }
 
@@ -569,7 +572,10 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
     async listPanes() {
       const snapshot = await rows();
       const hostGeneration = generation as string;
-      return Promise.all(snapshot.map((row) => observe(row, hostGeneration)));
+      const processes = await readProcesses();
+      return Promise.all(
+        snapshot.map((row) => observe(row, hostGeneration, processes)),
+      );
     },
 
     pasteText(ref, text) {
@@ -739,6 +745,30 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
           if (!(error instanceof TmuxError) || error.code !== "not_found")
             throw error;
         });
+      });
+    },
+
+    closeWindow(ref) {
+      return exclusive(async () => {
+        const row = await rowFor(ref);
+        if (!row || row.sessionName !== ref.sessionName) return;
+        await tmux(["kill-window", "-t", row.windowId]).catch((error) => {
+          if (!(error instanceof TmuxError) || error.code !== "not_found")
+            throw error;
+        });
+      });
+    },
+
+    closeSession(ref) {
+      return exclusive(async () => {
+        const row = await rowFor(ref);
+        if (!row || row.sessionName !== ref.sessionName) return;
+        await tmux(["kill-session", "-t", `=${row.sessionName}`]).catch(
+          (error) => {
+            if (!(error instanceof TmuxError) || error.code !== "not_found")
+              throw error;
+          },
+        );
       });
     },
 

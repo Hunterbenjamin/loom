@@ -123,8 +123,11 @@ export function toObservation(
   row: PaneRow,
   hostGeneration: string,
   startCwd: WorktreePath,
+  agent: "codex" | "claude" | null = null,
 ): PaneObservation {
   return {
+    agent,
+    owner: row.runId ?? null,
     sessionId: row.sessionId,
     windowName: row.windowName,
     title: row.title,

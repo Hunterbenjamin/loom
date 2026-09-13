@@ -311,6 +311,8 @@ export const paneView = paneIdentity
     windowLayout: z.string().max(65536).optional(),
     title: z.string().nullable(),
     command: z.string(),
+    /** The agent CLI in the pane's process tree, when the host found one. */
+    agent: z.enum(["codex", "claude"]).nullable().optional(),
     startCwd: worktreePath,
     branch: z.string().min(1).nullable(),
     dead: z.boolean(),

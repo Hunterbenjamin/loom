@@ -301,12 +301,17 @@ export function createGitAdapter(
           "Refusing push: local branch head differs from expectedHeadSha",
         );
       // Push the immutable checked commit, so a concurrent local commit cannot slip into the push.
+      // A lease names the remote head Loom observed: the push replaces exactly that and nothing
+      // newer, which is what a rebased branch needs and a blind force would not guarantee.
+      const lease = req.leaseSha ? sha.parse(req.leaseSha) : null;
       await git(path, [
         "-c",
         "push.followTags=false",
         "push",
         "--porcelain",
-        "--no-force",
+        lease
+          ? `--force-with-lease=refs/heads/${req.branch}:${lease}`
+          : "--no-force",
         "--recurse-submodules=no",
         remote,
         `${expected}:refs/heads/${req.branch}`,

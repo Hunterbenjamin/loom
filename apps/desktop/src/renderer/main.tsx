@@ -10,6 +10,7 @@ import {
 import { createRoot } from "react-dom/client";
 import { TrackerClient } from "../shared/client.js";
 import { connectionConfig } from "../shared/connection.js";
+import { defaultKeybindings } from "../shared/keybindings.js";
 
 const App = lazy(() => import("./app.js").then((m) => ({ default: m.App })));
 const Workbench = lazy(() =>
@@ -75,7 +76,8 @@ async function synchronizeNativeSettings() {
       version: 1 as const,
       prefix: appearance.keyPrefix,
       prefixTimeoutMs: appearance.keyTimeoutMs,
-      bindings: appearance.keybindings,
+      // Actions added since the bindings were stored keep their defaults.
+      bindings: { ...defaultKeybindings.bindings, ...appearance.keybindings },
     },
   };
   const fingerprint = JSON.stringify(native);

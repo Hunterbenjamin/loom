@@ -193,7 +193,7 @@ retry/timing thresholds. `githubPollMs` is the coordinator's polling policy; cor
 | `planning` | planner (interactive, in a pane) | |
 | `plan_approval` | nobody | Only when `requirePlanApproval`. |
 | `in_progress` | implementer (interactive, in a pane) | |
-| `in_review` | reviewer (interactive by default, with worktree write/commit access) | The implementer's session stays alive for fix rounds. |
+| `in_review` | reviewer (interactive by default, with worktree write/commit access) | The implementer's session stays alive for fix rounds. An ended interactive run's pane is closed (`stop_run` with `retire`) once its role is no longer needed: a planner's after the plan is settled, a reviewer's after its round, an implementer's when the task ends; sessions stay resumable by ID. |
 | `awaiting_approval` | nobody | Human reviews the diff. |
 | `merging` | nobody | Merge requested; waiting to see it on GitHub. |
 | `done`, `canceled` | nobody | Terminal (`canceled` can be reopened). |
@@ -228,6 +228,7 @@ a committed launch/session result and an authoritative usable reading before the
 | 15 | awaiting_approval | merging | H `approve(headSha)` | `headSha` = PR head = last reviewed head; 0 open blocking; CI for that head `success`, `pending` or `none`; PR positively `mergeable` | Insert merge Approval (head, findings snapshot, CI); `merge_pr(matchHeadSha, auto = CI pending)` |
 | 16 | awaiting_approval, merging | in_review | R new commit: PR head ≠ last reviewed head | — | Void approval (`new_commit`); `disable_auto_merge` if enabled; `map_findings` to the new head; `reviewRound += 1`; start reviewer |
 | 17 | awaiting_approval, merging | in_progress | R CI `failure` on the head | — | One blocking `ci` finding per failed check (deduped by check-run ID); void approval (`ci_failed`); `disable_auto_merge` if enabled; `send_message` fix round to the implementer (resuming its run if it ended) |
+| 17b | in_review (publication pending), awaiting_approval, merging | in_progress | R PR `conflicting` with base (or `merge-tree` conflicts) | 0 open blocking | Void approval (`stage_left`); `send_message` rebase fix round to the implementer (no findings: rebase onto base, resolve, re-run tests, submit for review again); the rebased head gets a new review round (#9). Without this a reviewed branch that conflicts after a merge waits forever for a mergeable PR. |
 | 18 | awaiting_approval | in_progress | H `request_changes(findings)` | At least one finding | Store them as blocking `human` findings; `send_message` fix round to the implementer (resuming its run if it ended). Doesn't count against the cap. |
 | 19 | in_review | in_progress | H `request_changes(findings)` | At least one finding | Store them as blocking `human` findings; void approval (`stage_left`); clear review state (end current reviewer round); `send_message` fix round to the implementer (resuming its run if it ended). Doesn't count against the cap. |
 | 20 | merging | awaiting_approval | R `merge_pr` failed with `precondition` (head moved, not mergeable) | — | Void approval; `notify`. If the head moved, #16 applies instead. |
@@ -666,7 +667,7 @@ sessionId}`) that only enqueue passes; nothing parses terminal output.
 
 | Adapter | Reads (observations) | Writes (actions) |
 |---|---|---|
-| `GitAdapter` | `realpath`, `readWorktree`, `changedFiles` (NUL-delimited metadata, renames, hunks), `readBlob` | `createWorktree`, `push` (refuses any head except the expected one; never forces), `writeTaskFiles` (and `.git/info/exclude`) |
+| `GitAdapter` | `realpath`, `readWorktree`, `changedFiles` (NUL-delimited metadata, renames, hunks), `readBlob` | `createWorktree`, `push` (refuses any head except the expected one; forces only with a lease on the remote head Loom last observed, for rebased branches), `writeTaskFiles` (and `.git/info/exclude`) |
 | `GitHubAdapter` | `findPullRequest` (conditional, ETag) | `openPullRequest` (idempotent), `mergePullRequest` (squash, `--match-head-commit`, optional `--auto`), `disableAutoMerge` |
 | `PaneHost` | `getPane`, `listPanes`, `listClients`, `subscribe` | `ensureWorkspace`, `ensurePane` (allowlisted environment, no shell), `pasteText` (refuses `/` and `!`; returns only `"written"`), `sendKey` (Escape), `attachArgs`, `closePane` |
 | `CodexAdapter` | `readThread`, `resumeThread`, `readRateLimits`, `generation`, `subscribe` | `startThread`, `startTurn`, `steerTurn`, `interruptTurn`, `answerRequest` (rejects a stale generation), `unsubscribe`, `attachArgs` |

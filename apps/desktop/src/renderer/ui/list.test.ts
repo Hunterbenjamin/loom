@@ -130,7 +130,7 @@ test("collapses to the total header, expands again, and retains window-only sett
   expect(h.rows("canceled")).toHaveLength(20);
   expect(h.host.textContent).toContain("Keep this summary");
   expect(
-    h.host.querySelector('[data-task="active"] .dot-animated'),
+    h.host.querySelector('[data-task="active"] .wb-status.working'),
   ).not.toBeNull();
   expect(h.host.querySelector('[data-task="active"]')?.textContent).toContain(
     "test-model",

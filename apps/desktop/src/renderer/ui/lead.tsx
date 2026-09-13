@@ -50,6 +50,10 @@ export function LeadBar({
   const theme = useStore((s) => s.ui.theme);
   const live = useStore((s) => s.live);
   const [open, setOpen] = useState(false);
+  // An open Main panel is being looked at: a finish seen there is read at once.
+  useEffect(() => {
+    if (open && status !== "working") store.markMainRead();
+  }, [open, status, store]);
   const [height, setHeight] = useState(() =>
     Math.round(window.innerHeight / 3),
   );

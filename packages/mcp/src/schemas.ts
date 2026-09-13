@@ -65,6 +65,16 @@ export const planSchema = z.strictObject({
   openQuestions: texts,
   suggestedImplementer: z.enum(["codex", "claude"]).nullable(),
 });
+/**
+ * A plan as stored, which may be Loom's own: a small task's auto-generated plan carries its
+ * description as steps and nothing else (core, stages.ts). Agents must submit more
+ * (`planSchema`); the context tool must report what exists.
+ */
+const storedPlanSchema = planSchema.extend({
+  goal: text,
+  steps: z.array(z.strictObject({ title: text, detail: text })),
+  acceptanceCriteria: texts,
+});
 const testInput = z.strictObject({
   command: text,
   outcome: z.enum(["passed", "failed", "skipped", "errored"]),
@@ -201,7 +211,7 @@ export const outputSchemas = {
       headSha: shaSchema.nullable(),
     }),
     brief: text,
-    plan: planSchema.extend({ version: line }).nullable(),
+    plan: storedPlanSchema.extend({ version: line }).nullable(),
     decisions: text,
     handoff: handoff
       .extend({

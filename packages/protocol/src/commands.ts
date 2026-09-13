@@ -107,6 +107,14 @@ export const command = z.union([
     kind: z.literal("open_workbench_terminal"),
     target: paneIdentity.optional(),
     split: z.enum(["right", "below"]).optional(),
+    /** A new space: the tmux session to create, opened at the selected project's root. */
+    workspace: z
+      .string()
+      .trim()
+      .min(1)
+      .max(40)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9 _-]*$/)
+      .optional(),
     key: z.string().uuid(),
     label: z
       .string()
@@ -123,6 +131,8 @@ export const command = z.union([
   z.strictObject({
     kind: z.literal("close_terminal"),
     target: paneIdentity,
+    /** What to kill: the pane, its whole tmux window (a tab), or its whole session (a space). */
+    scope: z.enum(["pane", "window", "session"]).optional(),
   }),
   z.strictObject({
     kind: z.literal("create_scratch"),

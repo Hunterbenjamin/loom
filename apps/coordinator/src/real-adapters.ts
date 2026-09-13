@@ -82,6 +82,7 @@ export async function createRealAdapters(
           )
           .map((run) => run.sessionId as NonNullable<typeof run.sessionId>),
       onDiagnostic: (event) => diagnostic({ ...event, taskId }),
+      onLog: (message) => console.log(`${taskId}: ${message}`),
     }),
   );
   return {

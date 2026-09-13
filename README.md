@@ -25,6 +25,20 @@ up to 2,000 characters in the instance's `main-notes` document across session re
 
 ## Development
 
+Run the dev instance (coordinator and desktop app) with the launcher; both live in windows on the
+instance's private tmux server, so they survive your terminal and restart independently:
+
+```sh
+pnpm dev                    # start both
+pnpm dev:restart            # restart both, coordinator first (after merges that touch either)
+scripts/dev.sh restart app  # just the app, after a main-process or preload change
+scripts/dev.sh status       # what is running, and one app-server per task
+scripts/dev.sh logs         # follow the coordinator log
+```
+
+It reads `~/.loom/dev/env`, which must export `LOOM_INSTANCE`, `LOOM_DATA_ROOT` and `LOOM_TOKEN`.
+
+
 ```sh
 pnpm install
 pnpm test

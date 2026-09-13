@@ -323,6 +323,38 @@ const COMPLETION: Record<Run["role"], string> = {
     "Review the branch against the plan by reading the diff and the implementer's recorded test results; do not rerun the test suite, CI is the gate. Run a test only to confirm a suspected bug or after an inline fix. Call `submit_review` once with every finding and a verdict for each addressed or disputed one. Your work is complete only when `submit_review` has succeeded.",
 };
 
+/**
+ * Closing is killing (decision 2026-09-13): an interactive run whose role the task no longer
+ * needs must not leave a pane open. A planner's pane goes once the plan is settled, a reviewer's
+ * once its review round is over, an implementer's once the task has ended. Only the pane closes;
+ * the session stays resumable through its recorded ID. The key is stable, so the action is
+ * emitted once per attempt however many passes see the same ended run.
+ */
+export function retireFinishedPanes(c: Context): void {
+  const stage = c.task.stage;
+  for (const run of c.state.runs) {
+    if (
+      run.origin !== "loom" ||
+      run.mode !== "interactive" ||
+      !run.pane ||
+      run.status !== "ended"
+    )
+      continue;
+    const needed =
+      run.role === "planner"
+        ? stage === "planning" || stage === "plan_approval"
+        : run.role === "reviewer"
+          ? stage === "in_review"
+          : stage !== "done" && stage !== "canceled" && stage !== "backlog";
+    if (needed) continue;
+    c.emit(`stop_run:${run.id}#${run.attempts}:retire`, {
+      kind: "stop_run",
+      runId: run.id,
+      retire: true,
+    });
+  }
+}
+
 export function startDesired(c: Context): void {
   if (
     c.task.blocked ||

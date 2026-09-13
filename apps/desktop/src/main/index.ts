@@ -7,6 +7,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   Notification,
   shell,
 } from "electron";
@@ -24,6 +25,12 @@ import { resolveAttach } from "./attach.js";
 import { watchKeybindings } from "./keybindings.js";
 import { readNativeSettings, writeNativeSettings } from "./native-settings.js";
 import { OwnedResources } from "./ownership.js";
+import {
+  type PaneHost,
+  paneHostOf,
+  paneOnAlternateScreen,
+  readPaneHistory,
+} from "./pane-history.js";
 import { repositoryFolder } from "./repository.js";
 
 ipcMain.handle("app:choose-repository", async (event) => {
@@ -48,6 +55,12 @@ const pty = require("node-pty") as typeof import("node-pty");
 
 // A window Chromium thinks is covered stops requestAnimationFrame, which stalls both the
 // terminal and the Playwright harness (spike 03).
+// A DevTools port for driving the dev app from a script (Playwright over CDP); dev only.
+if (process.env.LOOM_DEBUG_PORT)
+  app.commandLine.appendSwitch(
+    "remote-debugging-port",
+    process.env.LOOM_DEBUG_PORT,
+  );
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
@@ -57,6 +70,10 @@ interface Session {
   chunks: string[];
   timer: NodeJS.Timeout | null;
   lastFlush: number;
+  /** The tmux pane behind an attach, for its history and its alternate-screen state. */
+  pane: PaneHost | null;
+  /** Output is held back until the pane's history has been replayed ahead of it. */
+  holding: boolean;
 }
 
 const notified = new Set<string>();
@@ -147,7 +164,7 @@ function command(): { file: string; args: string[] } {
 
 function flush(window: BrowserWindow, id: string): void {
   const session = sessions.get(window.webContents.id, id);
-  if (!session || session.chunks.length === 0) return;
+  if (!session || session.holding || session.chunks.length === 0) return;
   const data = session.chunks.join("");
   session.chunks = [];
   if (session.timer) clearTimeout(session.timer);
@@ -224,19 +241,59 @@ function wire(): void {
           COLORTERM: "truecolor",
         },
       });
-      const session: Session = { proc, chunks: [], timer: null, lastFlush: 0 };
+      const pane = resolved
+        ? paneHostOf(resolved.argv, target?.pane?.paneId)
+        : null;
+      const history = request.history;
+      const replay = pane !== null && (history?.lines ?? 0) > 0;
+      const session: Session = {
+        proc,
+        chunks: [],
+        timer: null,
+        lastFlush: 0,
+        pane,
+        holding: replay,
+      };
       if (!sessions.finish(event.sender.id, request.id, token, session))
         throw new Error("Panel closed");
+      // The host resizes the pane to this client as it attaches, which moves lines between
+      // the screen and the history; so the history is read once the first redraw is in, and
+      // that redraw waits for it, so the viewer gets history first and the live screen after.
+      const release = (history: string) => {
+        if (!session.holding) return;
+        session.holding = false;
+        if (sessions.get(event.sender.id, request.id) !== session) return;
+        if (history && !window.isDestroyed())
+          window.webContents.send("pty:history", request.id, history);
+        flush(window, request.id);
+      };
+      let capturing = false;
       // Coalesce for a frame, so a flood is a handful of IPC messages instead of thousands.
       proc.onData((data) => {
         if (sessions.get(event.sender.id, request.id) !== session) return;
         session.chunks.push(data);
+        if (session.holding) {
+          if (capturing || !pane || !history) return;
+          capturing = true;
+          const timer = setTimeout(() => release(""), 2_000);
+          void readPaneHistory(pane, history)
+            .catch((error: unknown) => {
+              console.warn(`pane history for ${pane.paneId}: ${String(error)}`);
+              return "";
+            })
+            .then((history) => {
+              clearTimeout(timer);
+              release(history);
+            });
+          return;
+        }
         if (Date.now() - session.lastFlush > 8) flush(window, request.id);
         else if (!session.timer)
           session.timer = setTimeout(() => flush(window, request.id), 4);
       });
       proc.onExit(({ exitCode, signal }) => {
         if (sessions.get(event.sender.id, request.id) !== session) return;
+        session.holding = false;
         flush(window, request.id);
         sessions.delete(event.sender.id, request.id, session);
         const info: PtyExit = { exitCode, signal: signal ?? 0 };
@@ -271,6 +328,16 @@ function wire(): void {
 
   // Closing a panel detaches, exactly like closing a terminal window: SIGHUP, and the agent
   // behind an attach keeps running (spike 03).
+  ipcMain.handle("pty:pane-flags", async (event, id: string) => {
+    owned(event.sender);
+    const pane =
+      typeof id === "string" ? sessions.get(event.sender.id, id)?.pane : null;
+    if (!pane) return { alternate: false };
+    return {
+      alternate: await paneOnAlternateScreen(pane).catch(() => false),
+    };
+  });
+
   ipcMain.handle("pty:kill", (event, id: string) => {
     owned(event.sender);
     return sessions.kill(event.sender.id, id);
@@ -374,6 +441,29 @@ async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
 }
 
 app.whenReady().then(async () => {
+  // Electron's default File menu binds Cmd+W to Close Window, which quits a one-window app and
+  // steals the Workbench's own Cmd+W. Close Window stays in the menu, without an accelerator.
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
+      { role: "editMenu" },
+      { role: "viewMenu" },
+      {
+        label: "Window",
+        submenu: [
+          { role: "minimize" },
+          { role: "zoom" },
+          { type: "separator" },
+          { role: "front" },
+          { type: "separator" },
+          {
+            label: "Close Window",
+            click: () => BrowserWindow.getFocusedWindow()?.close(),
+          },
+        ],
+      },
+    ]),
+  );
   wire();
   await createWindow(
     process.env.LOOM_WINDOW_MODE === "workbench"

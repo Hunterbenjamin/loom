@@ -18,7 +18,7 @@ test("the editable defaults include every action, direct Mac chords and legacy s
   expect(defaultKeybindings.prefixTimeoutMs).toBe(3000);
   expect(defaultKeybindings.bindings.close).toEqual(["Cmd+W", "Prefix x"]);
   expect(formatBindings(defaultKeybindings, "split-right")).toBe(
-    "Cmd+D / Ctrl+A then |",
+    "Cmd+D / Ctrl+Space then |",
   );
 });
 
@@ -39,7 +39,7 @@ test("strict boundary rejects malformed, incomplete, ambiguous and unreachable c
     "Prefix ",
     "Cmd+J",
     "Cmd+Shift+W",
-    "Ctrl+A",
+    "Ctrl+Space",
     "Cmd+T",
     "Prefix Escape",
     "Prefix Cmd+Shift+W",

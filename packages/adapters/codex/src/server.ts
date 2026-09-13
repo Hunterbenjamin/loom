@@ -18,6 +18,7 @@ import type { AdapterDiagnostic } from "@loom/core";
 import { z } from "zod";
 import {
   inspectProcess,
+  orphanServers,
   ownerSchema,
   type ProcessOwner,
   sameProcess,
@@ -64,6 +65,8 @@ export class TaskServer {
     readonly liveSessionOwners: () => Promise<
       readonly string[]
     > = async () => [],
+    /** Routine recovery notes for the coordinator log; never events. */
+    readonly onLog?: (message: string) => void,
   ) {
     if (!isAbsolute(directory))
       throw new Error("Codex task directory must be absolute");
@@ -199,6 +202,34 @@ export class TaskServer {
         });
         throw new Error(message);
       });
+    }
+    // Whatever the socket said, no second server for this task may keep running: two servers on
+    // one thread store make every session fail with a thread-store conflict.
+    for (const pid of await orphanServers(this.socket)) {
+      if (pid === stale?.pid) continue;
+      // Routine recovery, not a bug: log it, never raise it as an event.
+      this.onLog?.(
+        `Terminating an orphaned app-server (pid ${pid}) for this task`,
+      );
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        continue;
+      }
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline) {
+        try {
+          process.kill(pid, 0);
+        } catch {
+          break;
+        }
+        await delay(50);
+      }
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        /* already gone */
+      }
     }
     await this.removeFiles();
     this.owner = null;

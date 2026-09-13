@@ -140,6 +140,19 @@ kbd {
   color: var(--text-faint);
 }
 
+.sidebar-views {
+  padding: 6px 0;
+}
+
+.view-item .view-icon {
+  flex: none;
+  color: var(--text-dim);
+}
+
+.view-item[aria-current="page"] .view-icon {
+  color: var(--text);
+}
+
 .view-item {
   display: flex;
   align-items: center;
@@ -240,8 +253,9 @@ kbd {
   display: grid;
   grid-template-columns: var(--cols);
   align-items: center;
+  gap: 8px;
   height: 28px;
-  padding: 0 12px;
+  padding: 0 22px;
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
@@ -263,13 +277,18 @@ kbd {
   background: none;
 }
 
+/* Issue rows follow the reviews list: padded, rounded, no hairlines. */
+.issues-list {
+  padding: 0 12px 12px;
+}
+
 .row {
   display: grid;
   grid-template-columns: var(--cols);
   align-items: center;
-  height: var(--row);
-  padding: 0 12px;
-  border-bottom: 1px solid var(--line);
+  height: 40px;
+  padding: 0 10px;
+  border-radius: var(--radius);
   gap: 8px;
   cursor: default;
 }
@@ -280,7 +299,6 @@ kbd {
 
 .row[data-cursor="true"] {
   background: var(--bg-active);
-  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .group-header,
@@ -300,15 +318,13 @@ kbd {
 .group-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: var(--row);
-  padding: 0 12px;
-  background: var(--bg-raised);
-  border-bottom: 1px solid var(--line);
+  gap: 6px;
+  height: 30px;
+  margin: 5px 0;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--bg-hover);
   color: var(--text-dim);
-  font-size: 11px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
 }
 
 .cell-title {
@@ -392,53 +408,6 @@ kbd {
   border-radius: 50%;
   background: var(--text-faint);
   flex: none;
-}
-
-/* Animated progress indicator for working status */
-.dot.dot-animated {
-  background: conic-gradient(
-    var(--good) 0deg,
-    var(--good) 270deg,
-    transparent 270deg
-  );
-  animation: dot-rotate 1.5s linear infinite;
-  contain: paint;
-}
-
-/* Attention glyph for blocked/waiting status */
-.dot.dot-attention {
-  background: var(--warn);
-}
-
-/* Stage glyph for idle/ended status */
-.dot.dot-stage {
-  background: var(--text-dim);
-}
-
-/* Failed glyph */
-.dot.dot-failed {
-  background: var(--danger);
-}
-
-/* Unknown glyph */
-.dot.dot-unknown {
-  background: var(--violet);
-}
-
-@keyframes dot-rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dot.dot-animated {
-    animation: none;
-    background: var(--good);
-  }
 }
 
 /* ------------------------------------------------------------------ board */
@@ -1226,11 +1195,7 @@ ul.plain {
   min-width: 0;
   flex: 1;
 }
-.create-issue-button {
-  flex: 0 0 28px;
-  font-size: 20px;
-  -webkit-app-region: no-drag;
-}
+
 .create-issue-dialog {
   width: 640px;
   max-width: calc(100vw - 40px);
@@ -1851,6 +1816,33 @@ ul.plain {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Status glyphs shared by the Workbench sidebar and the issue list: one character wide. */
+.wb-status {
+  display: inline-block;
+  flex: none;
+  width: 1ch;
+  text-align: center;
+  font: inherit;
+}
+.wb-status.waiting {
+  color: var(--danger);
+}
+.wb-status.failed {
+  color: var(--danger);
+}
+.wb-status.working {
+  color: var(--good);
+}
+.wb-status.finished {
+  color: var(--accent);
+}
+.wb-status.unknown {
+  color: var(--violet);
+}
+.wb-status.idle {
+  color: var(--text-dim);
 }
 .pr-detail .tab-body[data-tab-body="Diff"] > .pr-diff {
   flex: 1;

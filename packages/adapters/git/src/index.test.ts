@@ -289,8 +289,27 @@ describe("worktree actions", () => {
         branch: "main",
         expectedHeadSha: diverged,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/non-fast-forward/);
     expect(await command(remote, "rev-parse", "main")).toBe(head);
+    // A rebased branch replaces exactly the remote head Loom observed, and nothing newer.
+    await expect(
+      adapter.push({
+        worktreePath: repo,
+        branch: "main",
+        expectedHeadSha: diverged,
+        leaseSha: old,
+      }),
+    ).rejects.toThrow(/lease refused/);
+    expect(await command(remote, "rev-parse", "main")).toBe(head);
+    expect(
+      await adapter.push({
+        worktreePath: repo,
+        branch: "main",
+        expectedHeadSha: diverged,
+        leaseSha: head,
+      }),
+    ).toEqual({ remoteHeadSha: diverged });
+    expect(await command(remote, "rev-parse", "main")).toBe(diverged);
   });
   it("writes task files repeatedly and excludes them in the shared Git directory", async () => {
     const work = await adapter.createWorktree({

@@ -4,11 +4,14 @@ export function NewTerminalDialog({
   initialName,
   create,
   cancel,
+  kind = "terminal",
 }: {
   initialName: string;
   create: (name: string) => Promise<void>;
   cancel: () => void;
+  kind?: "terminal" | "space";
 }) {
+  const noun = kind === "space" ? "space" : "terminal";
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(initialName);
@@ -39,8 +42,10 @@ export function NewTerminalDialog({
           });
         }}
       >
-        <h2 id="new-terminal-title">New terminal</h2>
-        <label htmlFor="terminal-name">Terminal name</label>
+        <h2 id="new-terminal-title">New {noun}</h2>
+        <label htmlFor="terminal-name">
+          {kind === "space" ? "Space name" : "Terminal name"}
+        </label>
         <input
           ref={input}
           id="terminal-name"
@@ -57,7 +62,7 @@ export function NewTerminalDialog({
             Cancel
           </button>
           <button type="submit" disabled={!name.trim() || busy}>
-            {busy ? "Creating…" : "Create terminal"}
+            {busy ? "Creating…" : `Create ${noun}`}
           </button>
         </div>
       </form>

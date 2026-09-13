@@ -582,3 +582,35 @@ it("a config change does not migrate a retry to another provider or model", () =
     reasoningEffort: "high",
   });
 });
+
+describe("retiring finished interactive panes", () => {
+  const ended = (stage: Parameters<typeof fixture>[0]) => {
+    const f = fixture(stage);
+    const planner = f.state.runs[0] as Run;
+    planner.mode = "interactive";
+    planner.status = "ended";
+    planner.endReason = "submitted";
+    planner.endedAt = now;
+    return { f, planner };
+  };
+  it("closes a submitted planner's pane once the plan is settled, exactly once", () => {
+    const { f, planner } = ended("in_progress");
+    const r = fixed(f.state, f.observations);
+    const key = `stop_run:${planner.id}#${planner.attempts}:retire`;
+    expect(r.actions.find((a) => a.key === key)).toMatchObject({
+      kind: "stop_run",
+      runId: planner.id,
+      retire: true,
+    });
+    expect(r.next.runs[0]?.status).toBe("ended");
+  });
+  it("keeps the planner's pane while the plan can still be rejected", () => {
+    const { f, planner } = ended("plan_approval");
+    const r = reconcile(f.state, f.observations);
+    expect(
+      r.actions.some(
+        (a) => a.kind === "stop_run" && a.runId === planner.id && a.retire,
+      ),
+    ).toBe(false);
+  });
+});

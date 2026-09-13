@@ -12,7 +12,6 @@ import {
   matchesView,
   type SortKey,
   type State,
-  VIEWS,
   type ViewId,
 } from "./store.js";
 
@@ -267,10 +266,19 @@ export const viewCounts = memo1(
         (pr) => pr.state === "open" && pr.repoId === repo,
       ).length,
     };
+    // Every task view keeps a count, not only the three the sidebar lists: the palette and the
+    // keyboard still reach the others.
+    const taskViews = [
+      "all",
+      "needs-you",
+      "in-progress",
+      "awaiting-approval",
+      "done",
+    ] as const;
     for (const task of snapshot.tasks) {
       if (task.repoId !== repo) continue;
-      for (const view of VIEWS)
-        if (matchesView(task, view.id)) counts[view.id] += 1;
+      for (const view of taskViews)
+        if (matchesView(task, view)) counts[view] += 1;
     }
     return counts;
   },

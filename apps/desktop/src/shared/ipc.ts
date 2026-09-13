@@ -17,6 +17,18 @@ export const ptySpawnRequest = z.strictObject({
     .regex(/^[^\p{Cc}]+$/u)
     .optional(),
   pane: paneIdentity.optional(),
+  /**
+   * The pane's history to replay into the viewer on attach: how many lines, whether wrapped
+   * lines are joined (only when the pane spans the window's full width, so they wrap the same
+   * way again) and the screen column the pane starts at.
+   */
+  history: z
+    .strictObject({
+      lines: z.number().int().min(0).max(200_000),
+      join: z.boolean(),
+      column: z.number().int().min(0).max(1000),
+    })
+    .optional(),
 });
 /** The contract between the renderer and the Electron main process. */
 
@@ -31,6 +43,7 @@ export interface PtySpawnRequest {
   shellName?: string;
   pane?: import("@loom/protocol").PaneIdentity;
   runId?: import("@loom/core").RunId | null;
+  history?: { lines: number; join: boolean; column: number };
 }
 
 export interface PtySpawnResult {
@@ -50,7 +63,11 @@ export interface TerminalBridge {
   resize(id: string, cols: number, rows: number): void;
   kill(id: string): Promise<boolean>;
   onData(id: string, fn: (data: string) => void): void;
+  /** The pane's scrollback, sent once before the first output so the viewer can replay it. */
+  onHistory?(id: string, fn: (history: string) => void): void;
   onExit(id: string, fn: (info: PtyExit) => void): void;
+  /** Whether the pane's program is on the alternate screen, where the host owns scrolling. */
+  paneFlags?(id: string): Promise<{ alternate: boolean }>;
   off(id: string): void;
 }
 

@@ -395,19 +395,22 @@ export function human(
               : null;
       const pendingReplacement =
         state.desiredRun?.replacement || state.desiredRun?.fresh;
-      const run = pendingReplacement
-        ? undefined
-        : state.runs.findLast(
-            (r) =>
-              r.origin === "loom" &&
-              r.endReason !== "superseded" &&
-              (failedId
-                ? r.id === failedId
-                : r.role === role &&
-                  (!r.endedAt ||
-                    r.endReason === "vanished" ||
-                    r.status === "failed")),
-          );
+      // A failed action (a push, say) is retried on its own: the runs are healthy and stay.
+      const actionOnly = task.failed?.reason === "action_failed" && !failedId;
+      const run =
+        pendingReplacement || actionOnly
+          ? undefined
+          : state.runs.findLast(
+              (r) =>
+                r.origin === "loom" &&
+                r.endReason !== "superseded" &&
+                (failedId
+                  ? r.id === failedId
+                  : r.role === role &&
+                    (!r.endedAt ||
+                      r.endReason === "vanished" ||
+                      r.status === "failed")),
+            );
       const failedActions = state.outbox.filter(
         (row) =>
           row.status === "failed" &&

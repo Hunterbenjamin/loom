@@ -83,11 +83,16 @@ export interface GitAdapter {
     branch: string;
     baseBranch: string;
   }): Promise<ActionOutputs["create_worktree"]>;
-  /** Refuses unless the local branch head equals `expectedHeadSha`. Never forces. */
+  /**
+   * Refuses unless the local branch head equals `expectedHeadSha`. Never forces blindly: with
+   * `leaseSha`, the remote head Loom last observed, the push is `--force-with-lease` on exactly
+   * that head, so a rebased branch (a rebase round) replaces only what Loom has already seen.
+   */
   push(req: {
     worktreePath: WorktreePath;
     branch: string;
     expectedHeadSha: Sha;
+    leaseSha?: Sha | null;
   }): Promise<ActionOutputs["push_branch"]>;
   /** Writes `<worktree>/.task/` and keeps `.task/` in `.git/info/exclude`. */
   writeTaskFiles(
@@ -360,6 +365,10 @@ export interface PaneHost {
   closePane(ref: PaneRef): Promise<void>;
   /** Explicit human close of a terminal from this host's inventory, including untagged shells. */
   closeTerminal(ref: PaneRef): Promise<void>;
+  /** Kills every pane in the ref's window (a Workbench tab). Idempotent. */
+  closeWindow(ref: PaneRef): Promise<void>;
+  /** Kills the ref's whole session (a Workbench space). Idempotent. */
+  closeSession(ref: PaneRef): Promise<void>;
   subscribe(onHint: OnHint): Unsubscribe;
 }
 
@@ -401,8 +410,15 @@ export interface CodexAdapter {
     threadId: ProviderSessionId;
     turnId: string;
   }): Promise<void>;
-  /** `thread/resume`: subscribe and return the hydrated snapshot. */
-  resumeThread(threadId: ProviderSessionId): Promise<CodexThreadObservation>;
+  /**
+   * `thread/resume`: subscribe and return the hydrated snapshot. `config` is the thread's own
+   * overrides (its Loom MCP registration above all): a task's app-server is shared by every run
+   * of the task, so a thread resumed without them falls back to whatever the last launch wrote.
+   */
+  resumeThread(
+    threadId: ProviderSessionId,
+    options?: { config?: Record<string, unknown> },
+  ): Promise<CodexThreadObservation>;
   readThread(threadId: ProviderSessionId): Promise<CodexThreadObservation>;
   unsubscribe(threadId: ProviderSessionId): Promise<void>;
   /** Rejects if `generation` isn't current: request IDs restart with the server. */
@@ -460,8 +476,6 @@ export interface ClaudeAdapter {
    * `--settings` file with HTTP hooks, the SessionStart command hook and Loom's MCP server.
    */
   interactiveArgs(req: {
-    /** Conversation sessions: only Loom MCP and read-only file tools, confined to cwd. */
-    conversationOnly?: boolean;
     sessionId: ProviderSessionId;
     resume: boolean;
     model: string;

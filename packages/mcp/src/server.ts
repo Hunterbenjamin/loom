@@ -33,7 +33,7 @@ import {
 } from "./schemas.js";
 
 export type McpIdentity =
-  | { runId: RunId; active: boolean; kind?: "run" }
+  | { runId: RunId; active: boolean; kind?: "run"; reason?: string }
   | { kind: "lead"; active: boolean; repoId: string };
 
 export type McpInput = Extract<Input, { type: "mcp" }>;
@@ -45,6 +45,8 @@ export interface McpHost {
 }
 export interface McpServerOptions {
   host: McpHost;
+  /** Receives the cause of a host failure that the agent only sees as a generic error. */
+  log?: (message: string) => void;
   leadHost?: LeadHost;
   /** Re-read authoritative liveness on every call; null means an unknown token. */
   resolveToken(token: string): McpIdentity | null | Promise<McpIdentity | null>;
@@ -99,8 +101,12 @@ async function invoke(
     return failure("unknown_run", "The token does not identify a run");
   if (identity.kind === "lead")
     return failure("guard_failed", "Main identity cannot call task-run tools");
-  if (!identity.active)
+  if (!identity.active) {
+    options.log?.(
+      `Stale token for ${identity.runId}: ${identity.reason ?? "no reason recorded"}`,
+    );
     return failure("stale_run", "The run has ended or was superseded");
+  }
   const runId = runIdSchema.parse(identity.runId);
   if (name === "get_task_context")
     return {
@@ -264,7 +270,10 @@ export function createMcpServer(
             identity.repoId,
           ),
         });
-      } catch {
+      } catch (error) {
+        options.log?.(
+          `Main tool ${name} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
         throw new Error("Loom host could not complete the request");
       }
     }
@@ -279,8 +288,12 @@ export function createMcpServer(
           request.params.arguments ?? {},
         ),
       );
-    } catch {
-      // Do not echo host errors: they may contain tokens, paths or provider payloads.
+    } catch (error) {
+      // Do not echo host errors: they may contain tokens, paths or provider payloads. The
+      // coordinator's own log gets the cause, so a refused call at launch is diagnosable.
+      options.log?.(
+        `Tool ${name} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error("Loom host could not complete the request");
     }
   });

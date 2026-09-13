@@ -33,7 +33,9 @@ describe("RunDot", () => {
       container.remove();
     });
 
-    const span = container.querySelector("span");
+    const span =
+      container.querySelector<HTMLElement>(".wb-status") ??
+      container.querySelector("span");
     if (!span) throw new Error("RunDot did not render a span");
     return span;
   }
@@ -44,69 +46,70 @@ describe("RunDot", () => {
     expect(dot.className).toContain("faint");
   });
 
-  test("renders animated dot for working status", () => {
+  test("renders the working spinner glyph for working status", () => {
     const fixture = buildSnapshot();
     const run = fixture.runs.find((r) => r.status === "working");
     if (!run) throw new Error("No working run in fixture");
 
     const dot = renderDot(run);
-    expect(dot.className).toContain("dot");
-    expect(dot.className).toContain("dot-animated");
+    expect(dot.className).toContain("wb-status");
+    expect(dot.className).toContain("working");
   });
 
-  test("renders animated dot for starting status", () => {
+  test("renders the working spinner glyph for starting status", () => {
     const fixture = buildSnapshot();
     let run = fixture.runs[0];
     if (!run) throw new Error("No run in fixture");
 
     run = { ...run, status: "starting" as const };
     const dot = renderDot(run);
-    expect(dot.className).toContain("dot");
-    expect(dot.className).toContain("dot-animated");
+    expect(dot.className).toContain("wb-status");
+    expect(dot.className).toContain("working");
   });
 
-  test("renders attention dot for blocked status", () => {
+  test("renders the needs-you glyph for blocked status", () => {
     const fixture = buildSnapshot();
     let run = fixture.runs[0];
     if (!run) throw new Error("No run in fixture");
 
     run = { ...run, status: "blocked" as const, blockedOn: "permission" };
     const dot = renderDot(run);
-    expect(dot.className).toContain("dot");
-    expect(dot.className).toContain("dot-attention");
+    expect(dot.className).toContain("wb-status");
+    expect(dot.className).toContain("waiting");
   });
 
-  test("renders stage dot for idle status", () => {
+  test("renders the idle glyph for idle status", () => {
     const fixture = buildSnapshot();
     let run = fixture.runs[0];
     if (!run) throw new Error("No run in fixture");
 
-    run = { ...run, status: "idle" as const };
+    // A finished turn shows the blue dot instead; a plain idle run shows the hollow circle.
+    run = { ...run, status: "idle" as const, lastTurn: null };
     const dot = renderDot(run);
-    expect(dot.className).toContain("dot");
-    expect(dot.className).toContain("dot-stage");
+    expect(dot.className).toContain("wb-status");
+    expect(dot.className).toContain("idle");
   });
 
-  test("renders stage dot for ended status", () => {
+  test("renders the finished glyph for a submitted run", () => {
     const fixture = buildSnapshot();
     let run = fixture.runs[0];
     if (!run) throw new Error("No run in fixture");
 
     run = { ...run, status: "ended" as const, endReason: "submitted" };
     const dot = renderDot(run);
-    expect(dot.className).toContain("dot");
-    expect(dot.className).toContain("dot-stage");
+    expect(dot.className).toContain("wb-status");
+    expect(dot.className).toContain("finished");
   });
 
-  test("renders failed dot for failed status", () => {
+  test("renders the failed glyph for failed status", () => {
     const fixture = buildSnapshot();
     let run = fixture.runs[0];
     if (!run) throw new Error("No run in fixture");
 
     run = { ...run, status: "failed" as const };
     const dot = renderDot(run);
-    expect(dot.className).toContain("dot");
-    expect(dot.className).toContain("dot-failed");
+    expect(dot.className).toContain("wb-status");
+    expect(dot.className).toContain("failed");
   });
 
   test("renders unknown dot for unknown status", () => {
@@ -116,8 +119,8 @@ describe("RunDot", () => {
 
     run = { ...run, status: "unknown" as const };
     const dot = renderDot(run);
-    expect(dot.className).toContain("dot");
-    expect(dot.className).toContain("dot-unknown");
+    expect(dot.className).toContain("wb-status");
+    expect(dot.className).toContain("unknown");
   });
 
   test("includes title with role, provider, and status", () => {
@@ -130,9 +133,10 @@ describe("RunDot", () => {
     }
 
     const dot = renderDot(run);
-    expect(dot.title).toContain(run.role);
-    expect(dot.title).toContain(run.provider);
-    expect(dot.title).toContain("Working");
+    const title = dot.closest<HTMLElement>("[title]")?.title ?? "";
+    expect(title).toContain(run.role);
+    expect(title).toContain(run.provider);
+    expect(title).toContain("Working");
   });
 });
 

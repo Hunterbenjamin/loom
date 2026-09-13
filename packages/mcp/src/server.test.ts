@@ -79,6 +79,20 @@ test("lists all tools with input and output schemas; context never enters the in
   expect(host.inputs).toEqual([]);
   expect(host.passes).toBe(0);
 });
+test("get_task_context reports an auto-generated plan with no acceptance criteria", async () => {
+  const { call, host } = await connect();
+  host.state.plan = {
+    ...plan,
+    acceptanceCriteria: [],
+    steps: [{ title: "Remove the banner", detail: "" }],
+    version: 1,
+    accepted: true,
+  } as typeof host.state.plan;
+  expect(await call("get_task_context", {})).toMatchObject({
+    ok: true,
+    value: { plan: { acceptanceCriteria: [], version: 1 } },
+  });
+});
 test("submit_plan reconciles and returns the committed plan version", async () => {
   const { call, host } = await connect(setup("planning", "planner"));
   expect(await call("submit_plan", { plan })).toEqual({

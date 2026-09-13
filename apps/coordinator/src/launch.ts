@@ -55,20 +55,18 @@ export interface LaunchDeps {
 export async function writeCodexHomeConfig(
   dataDirectory: string,
   action: StartRunAction,
-  entry: McpServerEntry,
 ): Promise<void> {
-  if (!("url" in entry)) return;
   const home = join(dataDirectory, "codex", action.taskId, "codex-home");
   await mkdir(home, { recursive: true, mode: 0o700 });
-  const headers = Object.entries(entry.headers ?? {})
-    .map(([k, v]) => `${JSON.stringify(k)} = ${JSON.stringify(v)}`)
-    .join(", ");
   const access = action.access ?? "full";
   const sandbox = READ_ONLY.includes(action.role)
     ? "read-only"
     : access === "approval-gated"
       ? "workspace-write"
       : "danger-full-access";
+  // No `[mcp_servers.loom]` here: the app-server is shared by every run of the task, and a
+  // token in its config is the last launch's, which every other thread would then present.
+  // Each thread carries its own registration on start and on resume (`codexThreadConfig`).
   const lines = [
     `model = ${JSON.stringify(action.model)}`,
     ...(action.reasoningEffort
@@ -77,15 +75,22 @@ export async function writeCodexHomeConfig(
     `approval_policy = ${JSON.stringify(access === "approval-gated" ? "on-request" : "never")}`,
     `sandbox_mode = ${JSON.stringify(sandbox)}`,
     "",
-    "[mcp_servers.loom]",
-    `url = ${JSON.stringify(entry.url)}`,
-    `http_headers = { ${headers} }`,
-    "",
   ];
   await writeFile(join(home, "config.toml"), lines.join("\n"), { mode: 0o600 });
 }
 
 const READ_ONLY: Role[] = ["planner"];
+
+/** A Codex thread's own overrides: its run's Loom registration and reasoning effort. */
+export function codexThreadConfig(
+  entry: McpServerEntry,
+  reasoningEffort?: string | null,
+): Record<string, unknown> {
+  return {
+    mcp_servers: { loom: codexMcpServer(entry) },
+    ...(reasoningEffort ? { model_reasoning_effort: reasoningEffort } : {}),
+  };
+}
 
 /** Fixed allowlist of bash command prefixes for interactive Claude runs. */
 export const FIXED_BASH_PREFIXES = [
@@ -249,17 +254,19 @@ export async function startRun(
   }
 
   if (deps.dataDirectory)
-    await writeCodexHomeConfig(
-      deps.dataDirectory,
-      action,
-      deps.mcpEntry(token),
-    );
+    await writeCodexHomeConfig(deps.dataDirectory, action);
   const codex = await adapters.codex(action.taskId);
   // A repeated `start_run` must adopt the recorded thread, not open a second one.
   let threadId = action.sessionId;
   let generation = codex.generation();
+  const threadConfig = codexThreadConfig(
+    deps.mcpEntry(token),
+    action.reasoningEffort,
+  );
   if (threadId && action.resume) {
-    const snapshot = await codex.resumeThread(threadId);
+    const snapshot = await codex.resumeThread(threadId, {
+      config: threadConfig,
+    });
     generation = snapshot.generation;
   } else if (threadId) {
     const snapshot = await codex.readThread(threadId);
@@ -277,12 +284,7 @@ export async function startRun(
           : "danger-full-access",
       approvalPolicy: access === "approval-gated" ? "on-request" : "never",
       developerInstructions: prompt,
-      config: {
-        mcp_servers: { loom: codexMcpServer(deps.mcpEntry(token)) },
-        ...(action.reasoningEffort
-          ? { model_reasoning_effort: action.reasoningEffort }
-          : {}),
-      },
+      config: threadConfig,
     });
     threadId = started.threadId;
     generation = started.generation;

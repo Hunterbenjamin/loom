@@ -29,7 +29,12 @@ import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
 import { checkPanePromptGate, checkSendGate } from "./gate.js";
-import { type LaunchDeps, startRun } from "./launch.js";
+import {
+  codexThreadConfig,
+  type LaunchDeps,
+  relaunchFromRecipe,
+  startRun,
+} from "./launch.js";
 import { indexChanges, mapFindings } from "./mapping.js";
 import type { PullRequestCache } from "./observe.js";
 import type { Shell } from "./shell.js";
@@ -329,6 +334,11 @@ export class Executor {
       }
       case "stop_run": {
         const run = this.run(state, action.runId);
+        if (action.retire) {
+          // The run has ended and its role is done: kill the pane, keep the session resumable.
+          if (run.pane) await adapters.paneHost.closePane(run.pane);
+          return {};
+        }
         if (action.terminate) {
           if (
             run.origin !== "loom" ||
@@ -349,6 +359,23 @@ export class Executor {
                 throw error;
               }
             };
+            // A coordinator that restarted after this run ended has not resumed its thread, and
+            // the adapter refuses to read an unresumed thread. Resume first; a thread that is
+            // gone falls through to the resumable check below.
+            const recipe = this.deps.launch.recipes.get(run.id);
+            await codex
+              .resumeThread(
+                sessionId,
+                recipe
+                  ? {
+                      config: codexThreadConfig(
+                        this.deps.launch.mcpEntry(recipe.token),
+                        run.reasoningEffort,
+                      ),
+                    }
+                  : undefined,
+              )
+              .catch(() => undefined);
             let observation = await read();
             const turn = observation?.turns.at(-1);
             if (turn?.status === "inProgress") {
@@ -418,6 +445,7 @@ export class Executor {
           worktreePath: action.worktreePath,
           branch: action.branch,
           expectedHeadSha: action.expectedHeadSha,
+          leaseSha: observation.remoteHeadSha,
         });
       }
       case "open_pr": {
@@ -560,6 +588,28 @@ export class Executor {
       }
     };
     const output = await transport();
+    // A Codex TUI attaches with `codex resume`, which fails until the thread has its first turn;
+    // a pane launched before that message may have died in the race. Now that the message is in,
+    // put the pane back from its recipe. Only the pane changes; the thread is untouched.
+    if (run.mode === "interactive" && run.provider === "codex") {
+      const live = run.pane
+        ? await adapters.paneHost.getPane(run.pane).catch(() => null)
+        : null;
+      const recipe = this.deps.launch.recipes.get(run.id);
+      const workspaceId = state.worktree?.paneWorkspaceId;
+      if ((!live || live.dead) && recipe && workspaceId) {
+        try {
+          const pane = await relaunchFromRecipe(
+            this.deps.launch,
+            recipe,
+            workspaceId,
+          );
+          this.deps.store.updateRunPane(action.taskId, run.id, pane);
+        } catch {
+          // The next observation reports the pane's state; the message itself was delivered.
+        }
+      }
+    }
     return {
       ...output,
       transportAttempt: {

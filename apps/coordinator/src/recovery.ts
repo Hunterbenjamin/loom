@@ -9,7 +9,7 @@ import type { ActionResult, InputId, Repo, TaskId } from "@loom/core";
 import type { RunningAction, Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import type { LaunchDeps } from "./launch.js";
-import { relaunchFromRecipe } from "./launch.js";
+import { codexThreadConfig, relaunchFromRecipe } from "./launch.js";
 import type { RecipeStore } from "./recipes.js";
 
 export interface RecoveryDeps {
@@ -217,7 +217,18 @@ export async function recover(
         // A Codex turn in flight survived, because its app-server lives outside the pane host.
         try {
           const codex = await deps.adapters.codex(task.id);
-          await codex.resumeThread(run.sessionId);
+          const recipe = deps.recipes.get(run.id);
+          await codex.resumeThread(
+            run.sessionId,
+            recipe
+              ? {
+                  config: codexThreadConfig(
+                    deps.launch.mcpEntry(recipe.token),
+                    run.reasoningEffort,
+                  ),
+                }
+              : undefined,
+          );
           report.resumedCodex.push(run.id);
         } catch (error) {
           deps.log(

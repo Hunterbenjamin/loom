@@ -211,6 +211,10 @@ Rules:
   pane to a run, and records it before launch (principle 7).
 - Run one Codex app-server per issue as a Loom child process, never in a pane. Outside the pane host a
   mid-flight turn completes through a host restart; in a pane it ends interrupted (spike 05).
+  The server is shared by every run of the issue, so its `config.toml` names no Loom MCP server:
+  each thread carries its own registration (its run's token) as a config override on
+  `thread/start` and again on every `thread/resume`. A token in the shared config would be the
+  last launch's, and every other thread would present it and be answered `stale_run`.
   On coordinator recovery, reconnect to the issue's private socket and verify the reported
   `CODEX_HOME`. Persist its PID and process birth time in the private issue directory; verify both
   birth time and the exact issue socket in its command before signaling a recovered process.
@@ -317,8 +321,10 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   panes laid out from tmux's `window_layout`. These are disposable native facts in the inventory.
   Workbench clients use the native window size and crop their screen to the target pane rectangle;
   Dockview resizing scales the view without changing the native window layout.
-  Closing a Workbench panel only detaches its client; it never ends a shell or agent. Explicit
-  stop controls and `close_terminal` remain separate native lifecycle operations.
+  Closing in the Workbench is killing (decision 2026-09-13): Close pane, tab and space send
+  `close_terminal` with a `pane`, `window` or `session` scope, and the coordinator kills that
+  much on the pane host, refusing while a live Loom run sits inside the scope. The viewer goes
+  once the host confirms. Mode and window teardown still only detach clients.
 - Workbench New tab and Split use the idempotent scratch-shell path: a generation-scoped target
   resolves the selected space, and Split creates a pane in that target's window. Stale or dead
   targets fail; they never create a replacement space. With no selection, New terminal creates

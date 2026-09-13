@@ -251,26 +251,23 @@ test("Workbench reserves a draggable title area and keeps tab controls interacti
   }
 });
 
-test("panel close only detaches, stays hidden on patches, and reopens from its tab", async () => {
+test("panel close kills the pane through the coordinator and drops its viewer", async () => {
   const h = await harness();
   try {
     await act(async () => h.button("Close panel").click());
-    expect(h.send).not.toHaveBeenCalled();
-    expect(h.native.size).toBe(1);
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(0);
-    await act(async () => {
-      h.native.set(pane.id, { ...pane, branch: "changed" });
-      h.publish();
+    expect(h.send).toHaveBeenCalledExactlyOnceWith({
+      kind: "close_terminal",
+      target: {
+        hostGeneration: pane.hostGeneration,
+        sessionName: pane.sessionName,
+        windowId: pane.windowId,
+        paneId: pane.paneId,
+      },
+      scope: "pane",
     });
+    expect(h.native.size).toBe(0);
     expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(0);
-    await act(async () => h.button("Open tab shell").click());
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
-    await act(async () => {
-      h.native.set(pane.id, { ...pane, dead: true });
-      h.publish();
-    });
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(0);
-    expect(h.button("Open tab shell").disabled).toBe(true);
+    expect(h.element.querySelector('[aria-label="Open tab shell"]')).toBeNull();
   } finally {
     await h.close();
   }
@@ -424,7 +421,7 @@ const contextMenu = async (button: HTMLElement) => {
   );
 };
 
-test("pane menu opens, copies the coordinator attach argv safely, and closes just its viewer", async () => {
+test("pane menu opens, copies the coordinator attach argv safely, and close kills the pane", async () => {
   const sibling = {
     ...pane,
     id: JSON.stringify([pane.hostGeneration, "%8"]),
@@ -490,11 +487,6 @@ test("pane menu opens, copies the coordinator attach argv safely, and closes jus
     expect(writeText).toHaveBeenCalledExactlyOnceWith(
       `'env' 'TMUX_TMPDIR=/tmp/private space' 'tmux' '-L' 'loom-test' 'attach-session' '-t' 'research'"'"'quoted'`,
     );
-    await contextMenu(h.button("Open agent research shell %8"));
-    await act(async () => h.button("Close panel").click());
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
-    expect(h.native.size).toBe(2);
-    expect(h.send).toHaveBeenCalledTimes(1);
     // Keyboard opening and Escape restore the row without triggering Workbench bindings.
     await act(async () =>
       h.button("Open agent research shell %8").dispatchEvent(
@@ -520,13 +512,28 @@ test("pane menu opens, copies the coordinator attach argv safely, and closes jus
     expect(document.activeElement).toBe(
       h.button("Open agent research shell %8"),
     );
+    // Close pane kills the row's process; the other viewer is untouched.
+    await contextMenu(h.button("Open agent research shell %8"));
+    await act(async () => h.button("Close pane").click());
+    expect(h.send).toHaveBeenLastCalledWith({
+      kind: "close_terminal",
+      target: {
+        hostGeneration: sibling.hostGeneration,
+        sessionName: sibling.sessionName,
+        windowId: sibling.windowId,
+        paneId: sibling.paneId,
+      },
+      scope: "pane",
+    });
+    expect(h.native.size).toBe(1);
+    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(1);
   } finally {
     clipboard.mockRestore();
     await h.close();
   }
 });
 
-test("menu tracks unavailable inventory, retains viewer-only close, and reports copy failures", async () => {
+test("menu tracks unavailable inventory, disables close without live panes, and reports copy failures", async () => {
   const h = await harness();
   const clipboard = vi.spyOn(navigator.clipboard, "writeText");
   try {
@@ -548,10 +555,7 @@ test("menu tracks unavailable inventory, retains viewer-only close, and reports 
     expect(h.button("Open").disabled).toBe(true);
     expect(h.button("Open space").disabled).toBe(true);
     expect(h.button("Copy attach command").disabled).toBe(true);
-    expect(h.button("Close panel").disabled).toBe(false);
-    await act(async () => h.button("Close panel").click());
-    expect(h.element.querySelectorAll("[data-attached-pane]")).toHaveLength(0);
-    expect(h.native.size).toBe(1);
+    expect(h.button("Close tab").disabled).toBe(true);
     expect(h.send).toHaveBeenCalledTimes(1);
   } finally {
     clipboard.mockRestore();
@@ -559,7 +563,7 @@ test("menu tracks unavailable inventory, retains viewer-only close, and reports 
   }
 });
 
-test("rename patches keep viewers mounted and close remains viewer only", async () => {
+test("rename patches keep viewers mounted and close kills the pane", async () => {
   const h = await harness();
   try {
     const count = terminalRenders.mock.calls.length;
@@ -575,7 +579,9 @@ test("rename patches keep viewers mounted and close remains viewer only", async 
     expect(h.element.querySelector('[title="Renamed space"]')).not.toBeNull();
     expect(h.button("Renamed tab")).toBeDefined();
     await act(async () => h.button("Close panel").click());
-    expect(h.send).not.toHaveBeenCalled();
+    expect(h.send).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ kind: "close_terminal", scope: "pane" }),
+    );
   } finally {
     await h.close();
   }

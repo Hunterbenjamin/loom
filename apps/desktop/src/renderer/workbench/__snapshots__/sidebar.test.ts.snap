@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`renders spaces and agents, independent collapses, filtering and pinned controls 1`] = `
+exports[`renders spaces and agents, always-expanded tabs, filtering and pinned controls 1`] = `
 [
   {
     "branch": "fix/delivery-race",
