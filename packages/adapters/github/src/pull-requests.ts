@@ -4,10 +4,7 @@ import type {
   PullRequestDetail,
   PullRequestSummary,
 } from "@loom/core";
-import { z } from "zod";
-import { Api, type Pages } from "./api.js";
-import { branchExists } from "./branches.js";
-import { readCi } from "./checks.js";
+import { readDetail } from "./detail.js";
 import {
   type GhRunner,
   GitHubError,
@@ -22,7 +19,7 @@ const LIST_QUERY = `query($owner: String!, $name: String!, $state: PullRequestSt
   repository(owner: $owner, name: $name) {
     pullRequests(first: 100, states: [$state], after: $cursor, orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes {
-        number title author { login } headRefName baseRefName headRefOid
+        number title author { login } headRefName baseRefName headRefOid baseRefOid
         isDraft mergeable reviewDecision updatedAt createdAt url
         commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
       }
@@ -39,7 +36,7 @@ export function pullRequestReads(
   GitHubAdapter,
   "listPullRequests" | "readPullRequest" | "readPullRequestPatch"
 > {
-  const cache = new Map<string, Pages>();
+  const cache = new Map<string, PullRequestDetail>();
   const lists = new Map<string, PullRequestSummary[]>();
   const patches = new Map<
     string,
@@ -57,106 +54,6 @@ export function pullRequestReads(
       const oldest = map.keys().next().value;
       if (oldest !== undefined) map.delete(oldest);
     }
-  };
-  const read = async (
-    api: Api,
-    repo: string,
-    number: number,
-  ): Promise<PullRequestDetail> => {
-    const endpoint = `repos/${repo}/pulls/${number}`;
-    const initial = (await api.get(endpoint, s.pullDetail)).value;
-    const ci = await readCi(api, repo, initial.head.sha, now());
-    const reviews = await api.all(
-      `${endpoint}/reviews?per_page=100`,
-      z.array(s.review),
-    );
-    // Comments and pending reviews do not supersede a reviewer's latest decision.
-    const latest = new Map<string, z.infer<typeof s.review>>();
-    for (const review of reviews) {
-      if (
-        !review.user ||
-        review.state === "PENDING" ||
-        review.state === "COMMENTED"
-      )
-        continue;
-      if (!review.submitted_at)
-        throw new GitHubError("fatal", "GitHub review has no submission time");
-      const key = review.user.login.toLowerCase();
-      const previous = latest.get(key);
-      if (
-        !previous ||
-        review.submitted_at > (previous.submitted_at ?? "") ||
-        (review.submitted_at === previous.submitted_at &&
-          review.id > previous.id)
-      )
-        latest.set(key, review);
-    }
-    const decisions = [...latest.values()];
-    const commits = await api.all(
-      `${endpoint}/commits?per_page=100`,
-      z.array(s.commit),
-    );
-    const final = (await api.get(endpoint, s.pullDetail)).value;
-    if (
-      final.head.sha !== initial.head.sha ||
-      final.base.ref !== initial.base.ref ||
-      final.updated_at !== initial.updated_at ||
-      final.commits !== initial.commits
-    )
-      throw new GitHubError("retryable", "GitHub PR changed during read");
-    // GitHub limits the PR commits endpoint to 250; never silently expose an incomplete list.
-    if (commits.length !== final.commits)
-      throw new GitHubError("retryable", "GitHub PR commits are incomplete");
-    return {
-      branchExists:
-        final.head.repo === undefined
-          ? null
-          : final.head.repo === null
-            ? false
-            : await branchExists(
-                run,
-                final.head.repo.full_name,
-                final.head.ref,
-              ),
-      number: final.number,
-      title: final.title,
-      author: final.user?.login ?? null,
-      state: final.merged ? "merged" : final.state,
-      head: final.head.ref,
-      base: final.base.ref,
-      headSha: final.head.sha,
-      createdAt: final.created_at,
-      updatedAt: final.updated_at,
-      draft: final.draft,
-      mergeable:
-        final.mergeable === null
-          ? "unknown"
-          : final.mergeable
-            ? "mergeable"
-            : "conflicting",
-      checks: ci.conclusion,
-      review: decisions.some((r) => r.state === "CHANGES_REQUESTED")
-        ? "changes_requested"
-        : decisions.some((r) => r.state === "APPROVED")
-          ? "approved"
-          : "none",
-      url: final.html_url,
-      observedAt: now(),
-      body: final.body ?? "",
-      mergedAt: final.merged_at,
-      mergeCommitSha: final.merged ? final.merge_commit_sha : null,
-      commits: commits.map((c) => ({
-        sha: c.sha,
-        message: c.commit.message,
-        author: c.author?.login ?? null,
-        committedAt: c.commit.committer?.date ?? null,
-        url: c.html_url,
-      })),
-      checkRuns: ci.checks,
-      additions: final.additions,
-      deletions: final.deletions,
-      changedFiles: final.changed_files,
-    };
   };
   return {
     async listPullRequests(repo, state) {
@@ -213,6 +110,7 @@ export function pullRequestReads(
             head: pull.headRefName,
             base: pull.baseRefName,
             headSha: pull.headRefOid,
+            baseSha: pull.baseRefOid,
             draft: pull.isDraft,
             mergeable:
               pull.mergeable === "MERGEABLE"
@@ -267,20 +165,35 @@ export function pullRequestReads(
       remember(lists, key, mapped);
       return structuredClone(mapped);
     },
-    async readPullRequest(repo, number) {
+    async readPullRequest(repo, number, options) {
       s.repo.parse(repo);
       s.id.parse(number);
       const key = `detail:${repo}:${number}`;
-      const api = new Api(run, cache.get(key));
-      const value = await read(api, repo, number);
-      remember(cache, key, api.pages);
-      return value;
+      const value = await readDetail(
+        run,
+        now,
+        repo,
+        number,
+        options?.cached ? cache.get(key) : undefined,
+      );
+      remember(cache, key, value);
+      return structuredClone(value);
     },
-    async readPullRequestPatch(repo, number) {
+    async readPullRequestPatch(repo, number, range) {
+      s.sha.parse(range.baseSha);
+      s.sha.parse(range.headSha);
       s.repo.parse(repo);
       s.id.parse(number);
-      const key = `${repo}:${number}`;
+      const key = `${repo}:${number}:${range.baseSha}:${range.headSha}`;
       const cached = patches.get(key);
+      if (cached)
+        return {
+          headSha: range.headSha,
+          baseSha: range.baseSha,
+          patch: cached.patch,
+          truncated: cached.truncated,
+          observedAt: now(),
+        };
       const args = [
         "api",
         "--hostname",
@@ -290,26 +203,13 @@ export function pullRequestReads(
         "--include",
         "--header",
         "Accept: application/vnd.github.diff",
-        `repos/${repo}/pulls/${number}`,
+        `repos/${repo}/compare/${range.baseSha}...${range.headSha}`,
       ];
-      if (cached?.etag) args.push("--header", `If-None-Match: ${cached.etag}`);
       // Header allowance is bounded too; the returned body is capped separately.
       const raw = await run(args, undefined, {
         stdoutLimit: PATCH_LIMIT + 64 * 1024,
       });
       const result = response(raw);
-      if (result.status === 304) {
-        if (!cached)
-          throw new GitHubError(
-            "retryable",
-            "GitHub returned 304 without a cached patch",
-          );
-        return {
-          patch: cached.patch,
-          truncated: cached.truncated,
-          observedAt: now(),
-        };
-      }
       const bytes = Buffer.from(result.body);
       if (!result.body.startsWith("diff --git "))
         throw new GitHubError("fatal", "Invalid GitHub diff response");
@@ -320,6 +220,8 @@ export function pullRequestReads(
       };
       remember(patches, key, value, 4);
       return {
+        headSha: range.headSha,
+        baseSha: range.baseSha,
         patch: value.patch,
         truncated: value.truncated,
         observedAt: now(),

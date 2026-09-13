@@ -126,6 +126,16 @@ export class OperatorStore {
       .all()
       .map((v) => operatorEvent.parse(JSON.parse(String(v))));
   }
+  /** Chat visibility is independent of whether a tool already processed the event. */
+  pendingChat(): OperatorEvent[] {
+    return this.db
+      .prepare(
+        "SELECT e.data FROM operator_events e LEFT JOIN operator_ledger l ON l.key='chat:' || e.id WHERE json_extract(e.data,'$.kind')='main_message' AND l.key IS NULL ORDER BY e.rowid LIMIT 100",
+      )
+      .pluck()
+      .all()
+      .map((v) => operatorEvent.parse(JSON.parse(String(v))));
+  }
   complete(id: string, at: string) {
     this.db
       .prepare("UPDATE operator_events SET processed_at=? WHERE id=?")

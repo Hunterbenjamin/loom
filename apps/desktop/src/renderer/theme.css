@@ -3,6 +3,7 @@
 :root {
   --row: 32px;
   --radius: 5px;
+  --titlebar-height: 30px;
   --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
   --sans:
     ui-sans-serif, -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
@@ -116,7 +117,8 @@ kbd {
 }
 
 .sidebar-top {
-  padding: 28px 10px 8px;
+  /* Clear the hidden-inset window controls, then leave room before controls begin. */
+  padding: calc(var(--titlebar-height) + 8px) 10px 8px;
   -webkit-app-region: drag;
 }
 

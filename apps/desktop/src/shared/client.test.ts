@@ -24,7 +24,7 @@ async function setup() {
     heartbeatMs: 50,
     bind: { host: "127.0.0.1", port: 0 },
     now: () => task.updatedAt,
-    snapshot: async () => rows,
+    snapshot: () => rows,
     ensure: async () => {},
     onError: (error: Error) => {
       throw error;

@@ -3,6 +3,7 @@ import { command } from "./commands.js";
 import { decodeServerFrame, encodeFrame } from "./frames.js";
 import { applyPatch, stateFromSnapshot } from "./patch.js";
 import {
+  pullRequestDetailRow,
   pullRequestKey,
   pullRequestListKey,
   pullRequestPatch,
@@ -22,6 +23,7 @@ const row = () =>
     head: "feat/example",
     base: "main",
     headSha: sha(1),
+    baseSha: sha(2),
     createdAt: meta.now,
     updatedAt: meta.now,
     observedAt: meta.now,
@@ -106,6 +108,8 @@ test("PR state changes and deletes reach only the repository list, detail only i
 test("an 8 MiB capped patch survives JSON escaping and protocol roundtrip", () => {
   const summary = row();
   const patch = {
+    headSha: summary.headSha,
+    baseSha: summary.baseSha,
     patch: "\t".repeat(8 * 1024 * 1024),
     truncated: true,
     observedAt: meta.now,
@@ -128,10 +132,35 @@ test("an 8 MiB capped patch survives JSON escaping and protocol roundtrip", () =
         additions: 0,
         deletions: 0,
         changedFiles: 0,
+        files: [],
+        reviews: [],
+        comments: [],
       },
       patch,
+      patchLoading: false,
+      patchError: null,
     },
   ];
+  const complete = body.pullRequestDetails[0];
+  expect(
+    pullRequestDetailRow.safeParse({
+      ...complete,
+      patch: null,
+      patchLoading: true,
+    }).success,
+  ).toBe(true);
+  expect(
+    pullRequestDetailRow.safeParse({
+      ...complete,
+      patch: { ...patch, headSha: sha(3) },
+    }).success,
+  ).toBe(false);
+  expect(
+    pullRequestDetailRow.safeParse({
+      ...complete,
+      patch: { ...patch, baseSha: sha(3) },
+    }).success,
+  ).toBe(false);
   const encoded = encodeFrame({
     type: "snapshot",
     ...meta,

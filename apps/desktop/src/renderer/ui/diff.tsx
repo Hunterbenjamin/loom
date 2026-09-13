@@ -318,7 +318,9 @@ function FileRow({
 export function PullRequestFiles({
   row,
 }: {
-  row: import("@loom/protocol").PullRequestDetailRow;
+  row: import("@loom/protocol").PullRequestDetailRow & {
+    patch: NonNullable<import("@loom/protocol").PullRequestDetailRow["patch"]>;
+  };
 }) {
   const theme = useStore((s) => s.ui.theme);
   const handle = useRef<CodeViewHandle<undefined, undefined>>(null);

@@ -115,6 +115,7 @@ export interface PullRequestSummary {
   head: string;
   base: string;
   headSha: Sha;
+  baseSha: Sha;
   createdAt: IsoTime;
   updatedAt: IsoTime;
   draft: boolean;
@@ -126,6 +127,39 @@ export interface PullRequestSummary {
 }
 
 export interface PullRequestDetail extends PullRequestSummary {
+  files: {
+    path: string;
+    additions: number;
+    deletions: number;
+    changeType:
+      | "ADDED"
+      | "DELETED"
+      | "MODIFIED"
+      | "RENAMED"
+      | "COPIED"
+      | "CHANGED"
+      | "UNCHANGED";
+  }[];
+  reviews: {
+    id: string;
+    author: string | null;
+    body: string;
+    state:
+      | "APPROVED"
+      | "CHANGES_REQUESTED"
+      | "COMMENTED"
+      | "DISMISSED"
+      | "PENDING";
+    submittedAt: IsoTime | null;
+    url: string;
+  }[];
+  comments: {
+    id: string;
+    author: string | null;
+    body: string;
+    createdAt: IsoTime;
+    url: string;
+  }[];
   /** null means the head repository could not be identified. */
   branchExists: boolean | null;
   body: string;
@@ -148,6 +182,8 @@ export interface PullRequestDetail extends PullRequestSummary {
 }
 
 export interface PullRequestPatch {
+  headSha: Sha;
+  baseSha: Sha;
   patch: string;
   /** At most 8 MiB of UTF-8; never treat a truncated patch as a complete diff. */
   truncated: boolean;
@@ -160,8 +196,16 @@ export interface GitHubAdapter {
     repo: string,
     state: PullRequestState,
   ): Promise<PullRequestSummary[]>;
-  readPullRequest(repo: string, number: number): Promise<PullRequestDetail>;
-  readPullRequestPatch(repo: string, number: number): Promise<PullRequestPatch>;
+  readPullRequest(
+    repo: string,
+    number: number,
+    options?: { cached?: boolean },
+  ): Promise<PullRequestDetail>;
+  readPullRequestPatch(
+    repo: string,
+    number: number,
+    range: { baseSha: Sha; headSha: Sha },
+  ): Promise<PullRequestPatch>;
   /** Idempotent, with a fresh owner read before and after a mutation. */
   closePullRequest(repo: string, number: number): Promise<void>;
   /** Remote heads only; never deletes a local branch or changes a checkout. */
@@ -362,6 +406,14 @@ export interface ClaudeAdapter {
   listSessions(): Promise<ClaudeAgentsEntry[]>;
   /** Hooks received for the session, folded. */
   hookSummary(sessionId: ProviderSessionId): Promise<ClaudeHookSummary>;
+  /** Re-read a submitted user prompt from the provider transcript, scoped to this attempt. */
+  promptReceipt(request: {
+    sessionId: ProviderSessionId;
+    cwd: WorktreePath;
+    textHash: string;
+    after: IsoTime;
+    before: IsoTime;
+  }): Promise<ClaudeHookSummary["promptSubmits"][number] | null>;
   /**
    * Writes the per-run settings file `interactiveArgs` and `startHeadless` are then given:
    * HTTP hooks pointing at this coordinator, the SessionStart command hook, and Loom's MCP

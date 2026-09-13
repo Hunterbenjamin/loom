@@ -1,5 +1,5 @@
 import type { RepoId } from "@loom/core";
-import type { PaneIdentity, PaneView } from "@loom/protocol";
+import type { LeadTarget, PaneIdentity, PaneView } from "@loom/protocol";
 import { Command } from "cmdk";
 import {
   type GridviewApi,
@@ -63,6 +63,32 @@ const Placeholder = ({ api }: IGridviewPanelProps) => (
   <div className="wb-cell" data-cell={api.id} />
 );
 const components = { cell: Placeholder };
+
+const canonicalPane = (panes: PaneView[], target: LeadTarget) =>
+  target.pane
+    ? panes.find((pane) => sameTerminal(pane, target.pane as PaneIdentity))
+    : undefined;
+
+/** Inventory and command acknowledgements share a socket but are separate frames. */
+const waitForCanonicalPane = (
+  store: ReturnType<typeof useStoreApi>,
+  target: LeadTarget,
+): Promise<PaneView | undefined> => {
+  const current = canonicalPane(store.getState().panes, target);
+  if (current) return Promise.resolve(current);
+  return new Promise((resolve) => {
+    const finish = (pane?: PaneView) => {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(pane);
+    };
+    const unsubscribe = store.subscribe(() => {
+      const pane = canonicalPane(store.getState().panes, target);
+      if (pane) finish(pane);
+    });
+    const timer = setTimeout(() => finish(), 1_500);
+  });
+};
 
 const PanelLabel = ({
   target,
@@ -289,11 +315,20 @@ const spaceTabs = (rows: PaneView[], previous: Tab[] = []): Tab[] =>
 export function Workbench() {
   const store = useStoreApi();
   const panes = useStore((s) => s.panes);
+  const repo = useStore((s) => s.ui.repo);
   const unavailable = useStore((s) => s.panesUnavailable);
   const connection = useStore((s) => s.connection);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const initialized = useRef(false);
   const hiddenPanes = useRef(new Set<string>());
+  const pinnedRequest = useRef(0);
+  const mainSelected = useRef(false);
+  const openPinnedRef = useRef<(system: "main" | "operator") => void>(() => {});
+  const [mainTarget, setMainTarget] = useState<{
+    repo: string;
+    sessionId: string;
+    pane: PaneIdentity;
+  } | null>(null);
   const [openSpace, setOpenSpace] = useState<string | null>(null);
   const [active, setActive] = useState(tabs[0]?.id ?? "");
   const [focused, setFocused] = useState(tabs[0]?.panels[0]?.id ?? "");
@@ -427,32 +462,68 @@ export function Workbench() {
   };
   const openPinned = (system: "main" | "operator") => {
     const state = store.getState();
-    // Main is one session per repository. Only that session counts; a leftover single-instance
-    // session must never be mistaken for it, and a stopped Main is relaunched before it opens.
-    const find = () => {
-      const panes = store.getState().panes.filter((p) => !p.dead);
-      if (system === "operator")
-        return panes.find((p) => p.sessionName === "loom-operator");
-      return panes.find((p) => p.sessionName === `loom-lead-${state.ui.repo}`);
-    };
-    const existing = find();
+    // Opening Main counts as looking at it: its finished dot clears.
     if (system === "main") store.markMainRead();
-    if (existing && (system !== "main" || state.lead.status !== "stopped"))
-      return openGroup([existing], system);
+    if (system === "operator") {
+      const existing = state.panes.find(
+        (pane) => pane.sessionName === "loom-operator",
+      );
+      if (existing && !existing.dead) return openGroup([existing], system);
+    }
+    const requestedRepo = state.ui.repo;
+    const request = ++pinnedRequest.current;
     void store
       .command(
         system === "main"
-          ? { kind: "open_lead_session", repoId: state.ui.repo as RepoId }
+          ? { kind: "open_lead_session", repoId: requestedRepo as RepoId }
           : { kind: "open_operator_terminal" },
       )
-      .then((result) => {
+      .then(async (result) => {
         if (!result.ok) throw new Error(result.error.message);
-        const pane = find();
+        if (system === "main") {
+          if (
+            result.result.kind !== "attach_session" ||
+            !("identity" in result.result.target) ||
+            result.result.target.identity !== "lead" ||
+            result.result.target.repoId !== requestedRepo ||
+            !result.result.target.pane ||
+            result.result.target.pane.dead
+          )
+            throw new Error("Coordinator returned an invalid Main target");
+          const target = result.result.target;
+          const sessionId = target.sessionId;
+          if (!sessionId)
+            throw new Error("Coordinator returned a Main without a session");
+          const pane = await waitForCanonicalPane(store, target);
+          if (
+            request !== pinnedRequest.current ||
+            store.getState().ui.repo !== requestedRepo
+          )
+            return;
+          if (!pane || pane.dead || pane.unavailable)
+            throw new Error("Main terminal is not available yet");
+          setMainTarget({
+            repo: requestedRepo,
+            sessionId,
+            pane: identity(pane),
+          });
+          openGroup([pane], system);
+          return;
+        }
+        const pane = store
+          .getState()
+          .panes.find((candidate) => candidate.sessionName === "loom-operator");
         if (!pane) throw new Error("Agent terminal is not available yet");
         openGroup([pane], system);
       })
       .catch((error) => setError(String(error)));
   };
+  openPinnedRef.current = openPinned;
+  useEffect(() => {
+    pinnedRequest.current += 1;
+    setMainTarget((target) => (target?.repo === repo ? target : null));
+    if (mainSelected.current) openPinnedRef.current("main");
+  }, [repo]);
   const openGroup = (rows: PaneView[], _name: string) => {
     if (store.getState().panesUnavailable || !rows[0]) return;
     hiddenPanes.current.clear();
@@ -825,6 +896,11 @@ export function Workbench() {
   const selectedPanel = tabs
     .find((tab) => tab.id === active)
     ?.panels.find((panel) => panel.id === focused);
+  mainSelected.current = !!(
+    selectedPanel?.target &&
+    mainTarget &&
+    sameTerminal(selectedPanel.target, mainTarget.pane)
+  );
   return (
     <div className="workbench">
       <div className="wb-titlebar" aria-hidden="true" />
@@ -838,7 +914,13 @@ export function Workbench() {
       )}
       <div className="wb-body">
         <Sidebar
-          selected={selectedPanel?.target}
+          selected={
+            selectedPanel?.target &&
+            mainTarget?.repo === repo &&
+            sameTerminal(selectedPanel.target, mainTarget.pane)
+              ? "main"
+              : selectedPanel?.target
+          }
           selectedSpace={openSpace ?? undefined}
           selectedTab={active}
           collapsed={sidebarCollapsed}

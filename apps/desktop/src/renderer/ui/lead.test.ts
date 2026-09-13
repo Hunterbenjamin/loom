@@ -223,6 +223,26 @@ for (const live of [false, true])
     expect(spawn.mock.calls.at(-1)?.[0].lead).toBe(secondRepo.id);
     expect(kill).toHaveBeenCalledWith(oldAttach?.id);
     expect(host.querySelector(".lead-panel")).not.toBeNull();
+    const secondAttach = spawn.mock.calls.at(-1)?.[0];
+    const beforeSwitchBack = spawn.mock.calls.length;
+    if (live) {
+      const { body, meta } = toSnapshot(fixture);
+      await act(async () => store.applyProtocol(stateFromSnapshot(meta, body)));
+    } else await act(async () => store.setRepo(firstRepo.id));
+    await vi.waitFor(() =>
+      expect(spawn).toHaveBeenCalledTimes(beforeSwitchBack + 1),
+    );
+    expect(spawn.mock.calls.at(-1)?.[0].lead).toBe(firstRepo.id);
+    expect(kill).toHaveBeenCalledWith(secondAttach?.id);
+    expect(
+      spawn.mock.calls.map(([request]) => request.lead).filter(Boolean),
+    ).toEqual([
+      firstRepo.id,
+      firstRepo.id,
+      ...(live ? [firstRepo.id] : []),
+      secondRepo.id,
+      firstRepo.id,
+    ]);
     await act(async () =>
       host
         .querySelector<HTMLButtonElement>('[aria-label="Close Main"]')

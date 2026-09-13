@@ -11,6 +11,7 @@ import {
   at,
   id,
   meta as protocolMeta,
+  snapshot,
 } from "../../../../../packages/protocol/src/test-support.js";
 import { defaultKeybindingsState } from "../../shared/keybindings.js";
 import { StoreProvider } from "../store/react.js";
@@ -41,13 +42,26 @@ vi.mock("../ui/terminal.js", async () => {
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-async function harness(initial: PaneView[] = [pane]) {
+async function harness(
+  initial: PaneView[] = [pane],
+  leadInventoryAfterAck = false,
+) {
   const store = createStore(undefined, true, "test");
+  const fixture = snapshot();
+  const firstRepo = fixture.repos[0];
+  if (!firstRepo) throw new Error("Missing fixture repository");
+  const repos = [
+    firstRepo,
+    { ...firstRepo, id: id.repo("repo-other"), github: "you/other" },
+  ];
+  let selectedRepo = firstRepo.id;
   const native = new Map(initial.map((p) => [p.id, p]));
   const publish = () =>
     store.applyProtocol(
       stateFromSnapshot(protocolMeta, {
         ...emptySnapshotBody(),
+        repos,
+        projects: [{ id: "project", repoId: selectedRepo }],
         panes: [...native.values()],
       }),
     );
@@ -88,6 +102,72 @@ async function harness(initial: PaneView[] = [pane]) {
       publish();
       return { ok: true, result: { kind: "scratch_created", pane: created } };
     }
+    if (command.kind === "open_lead_session") {
+      const sessionName = `loom-lead-${command.repoId}`;
+      const suffix = command.repoId === firstRepo.id ? "77" : "78";
+      const existing = [...native.values()].find(
+        (candidate) => candidate.sessionName === sessionName,
+      );
+      const lead =
+        existing ??
+        ({
+          ...pane,
+          id: JSON.stringify([pane.hostGeneration, `%${suffix}`]),
+          paneId: `%${suffix}`,
+          windowId: `@${suffix}`,
+          sessionName,
+          sessionId: `$${suffix}`,
+          windowName: "Main native",
+          provider: "claude",
+        } satisfies PaneView);
+      if (leadInventoryAfterAck)
+        setTimeout(() => {
+          native.set(lead.id, lead);
+          publish();
+        });
+      else {
+        native.set(lead.id, lead);
+        publish();
+      }
+      return {
+        ok: true,
+        result: {
+          kind: "attach_session",
+          target: {
+            identity: "lead",
+            repoId: command.repoId,
+            sessionId: id.session(
+              `00000000-0000-4000-8000-0000000000${suffix}`,
+            ),
+            attach: {
+              kind: "pane_host",
+              argv: ["tmux"],
+              cwd: lead.startCwd,
+              env: {},
+            },
+            pane: {
+              hostGeneration: lead.hostGeneration,
+              sessionName: lead.sessionName,
+              windowId: lead.windowId,
+              paneId: lead.paneId,
+              dead: false,
+              exitStatus: null,
+              attachedClients: 0,
+              size: null,
+              observedAt: at("2026-09-13T00:00:00.000Z"),
+            },
+          },
+        },
+      };
+    }
+    if (command.kind === "select_repo") {
+      selectedRepo = command.repoId;
+      publish();
+      return {
+        ok: true,
+        result: { kind: "repo_selected", repoId: command.repoId },
+      };
+    }
     throw new Error(`Unexpected command: ${command.kind}`);
   });
   store.setSender(send);
@@ -113,6 +193,7 @@ async function harness(initial: PaneView[] = [pane]) {
   };
   return {
     store,
+    repos,
     native,
     publish,
     send,
@@ -134,10 +215,12 @@ test("Workbench reserves a draggable title area and keeps tab controls interacti
   const style = document.createElement("style");
   // happy-dom drops Electron's vendor property; retain its selectors for this
   // markup check. Native hit testing must also be verified in the running app.
-  style.textContent = readFileSync(
-    join(import.meta.dirname, "workbench.css"),
-    "utf8",
-  ).replaceAll("-webkit-app-region", "--test-app-region");
+  style.textContent = [
+    readFileSync(join(import.meta.dirname, "../theme.css"), "utf8"),
+    readFileSync(join(import.meta.dirname, "workbench.css"), "utf8"),
+  ]
+    .join("\n")
+    .replaceAll("-webkit-app-region", "--test-app-region");
   document.head.append(style);
   const h = await harness();
   try {
@@ -581,6 +664,103 @@ test("pinned agents open only their native space and its windows", async () => {
         ?.getAttribute("aria-current"),
     ).toBe("true");
     expect(h.send).not.toHaveBeenCalled();
+  } finally {
+    await h.close();
+  }
+});
+
+test("pinned Main resolves its repository target and ignores legacy-name decoys", async () => {
+  const legacy = ["loom-main", "loom-lead"].map((sessionName, index) => ({
+    ...pane,
+    id: JSON.stringify([pane.hostGeneration, `%${80 + index}`]),
+    paneId: `%${80 + index}`,
+    sessionName,
+    sessionId: `$${80 + index}`,
+    windowName: `Legacy ${index}`,
+  }));
+  const h = await harness(legacy);
+  try {
+    const main = () =>
+      h.element.querySelector<HTMLButtonElement>('[data-pinned="main"]');
+    await act(async () => main()?.click());
+    expect(h.send).toHaveBeenLastCalledWith({
+      kind: "open_lead_session",
+      repoId: snapshot().repos[0]?.id,
+    });
+    expect(
+      h.element
+        .querySelector("[data-attached-pane]")
+        ?.getAttribute("data-attached-pane"),
+    ).toBe("%77");
+    expect(main()?.getAttribute("aria-current")).toBe("true");
+    await act(async () => main()?.click());
+    expect(
+      h.send.mock.calls.filter(
+        ([command]) => command.kind === "open_lead_session",
+      ),
+    ).toHaveLength(2);
+    expect(
+      [...h.native.values()].filter((candidate) =>
+        candidate.sessionName.startsWith("loom-lead-"),
+      ),
+    ).toHaveLength(1);
+    await act(async () => h.store.setRepo(h.repos[1]?.id ?? ""));
+    await vi.waitFor(() =>
+      expect(
+        h.element
+          .querySelector("[data-attached-pane]")
+          ?.getAttribute("data-attached-pane"),
+      ).toBe("%78"),
+    );
+    expect(
+      h.element
+        .querySelector("[data-attached-pane]")
+        ?.getAttribute("data-attached-pane"),
+    ).toBe("%78");
+    await act(async () => h.store.setRepo(h.repos[0]?.id ?? ""));
+    await vi.waitFor(() =>
+      expect(
+        h.element
+          .querySelector("[data-attached-pane]")
+          ?.getAttribute("data-attached-pane"),
+      ).toBe("%77"),
+    );
+    expect(
+      h.element
+        .querySelector("[data-attached-pane]")
+        ?.getAttribute("data-attached-pane"),
+    ).toBe("%77");
+    expect(
+      [...h.native.values()].filter((candidate) =>
+        candidate.sessionName.startsWith("loom-lead-"),
+      ),
+    ).toHaveLength(2);
+  } finally {
+    await h.close();
+  }
+});
+
+test("pinned Main waits for its exact pane when acknowledgement arrives first", async () => {
+  const decoy = {
+    ...pane,
+    id: JSON.stringify([pane.hostGeneration, "%76"]),
+    paneId: "%76",
+    sessionName: "loom-main",
+  };
+  const h = await harness([decoy], true);
+  try {
+    await act(async () =>
+      h.element
+        .querySelector<HTMLButtonElement>('[data-pinned="main"]')
+        ?.click(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        h.element
+          .querySelector("[data-attached-pane]")
+          ?.getAttribute("data-attached-pane"),
+      ).toBe("%77"),
+    );
   } finally {
     await h.close();
   }

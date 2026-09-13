@@ -52,7 +52,8 @@ export interface ProtocolServerDeps {
   bind: { host: string; port: number };
   now(): string;
   /** Everything currently published, used for a snapshot and for a resync. */
-  snapshot(scope: readonly Subscription[]): Promise<Row[]>;
+  // Capture cached rows synchronously with the stream sequence after ensure completes.
+  snapshot(scope: readonly Subscription[]): Row[];
   /** Runs one command and answers with its `ackResult` payload or a typed error. */
   command(value: unknown): Promise<ServerCommandResult | ServerCommandError>;
   /** Asked when a client subscribes to something the coordinator has not published yet. */
@@ -374,7 +375,7 @@ export class ProtocolServer {
   ): Promise<void> {
     await this.deps.ensure(connection.scope);
     const scope = scopeOf(connection.scope);
-    const rows = (await this.deps.snapshot(connection.scope)).filter((entry) =>
+    const rows = this.deps.snapshot(connection.scope).filter((entry) =>
       entry.collection === "task"
         ? taskInScope(scope, entry.value as never) ||
           scope.tasks.has((entry.value as { id: string }).id)

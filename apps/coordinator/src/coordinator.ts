@@ -260,6 +260,7 @@ export class Coordinator {
       onResult: (taskId) => this.loop.enqueue(taskId),
     });
     this.prViews = new PullRequestViews({
+      log: (message) => this.log(message),
       github: this.adapters.github,
       repo: (id) => this.repoById(id),
       tasks: () => this.store.tasks(),
@@ -327,10 +328,7 @@ export class Coordinator {
       heartbeatMs: this.config.heartbeatMs,
       bind: this.config.bind,
       now: () => this.now(),
-      snapshot: async (scope) => {
-        await this.ensure(scope);
-        return this.published.rows();
-      },
+      snapshot: () => this.published.rows(),
       command: (value) => this.command(value),
       ensure: (scope) => this.ensure(scope),
       scopesChanged: (scope) => this.prViews.subscriptions(scope),
@@ -954,6 +952,13 @@ export class Coordinator {
           });
           return { ok: true, result: { kind: "notification", notice } };
         }
+        case "retry_operator_session":
+          await this.operator.retry();
+          await this.publishOperator();
+          return {
+            ok: true,
+            result: { kind: "operator_state", state: this.operator.state() },
+          };
         case "open_operator_session":
           await this.operator.open();
           await this.publishOperator();

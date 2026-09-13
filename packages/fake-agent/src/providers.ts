@@ -45,6 +45,7 @@ export interface FakeSession {
   queue: Delivery[];
   dropDelivery: boolean;
   answer: "accept" | "decline" | "answer" | null;
+  transcript: ClaudeSessionObservation["hooks"]["promptSubmits"];
 }
 export class FakeProviders {
   readonly sessions = new Map<ProviderSessionId, FakeSession>();
@@ -116,6 +117,7 @@ export class FakeProviders {
       queue: [],
       dropDelivery: false,
       answer: null,
+      transcript: [],
     });
     return id;
   }
@@ -170,6 +172,11 @@ export class FakeProviders {
       if (!s.value.agentsEntry) throw new Error("Claude session has vanished");
       s.value.agentsEntry.status = s.value.agentsEntry.rawStatus = "busy";
       s.value.hooks.promptSubmits.push({
+        promptId: message.turnId,
+        textHash: hash,
+        at: this.clock.now(),
+      });
+      s.transcript.push({
         promptId: message.turnId,
         textHash: hash,
         at: this.clock.now(),
@@ -462,6 +469,18 @@ export class FakeProviders {
     subscribe: this.hints.subscribe,
   };
   readonly claude: ClaudeAdapter = {
+    promptReceipt: async (request) => {
+      const session = this.get(request.sessionId);
+      if (session.cwd !== request.cwd) return null;
+      return structuredClone(
+        session.transcript.find(
+          (p) =>
+            p.textHash === request.textHash &&
+            p.at >= request.after &&
+            p.at <= request.before,
+        ) ?? null,
+      );
+    },
     listSessions: async () =>
       [...this.sessions.values()].flatMap((s) =>
         s.value.provider === "claude" && s.value.agentsEntry

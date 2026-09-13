@@ -654,6 +654,15 @@ attempt metadata prevents an old session or run attempt's send from being confir
 into its replacement. For ambiguous timeout delivery, notify and set existing `provider_input` attention.
 Native executor idempotence checks remain necessary: core never infers delivery from transport success.
 
+The instance Operator uses the same session/hash/attempt receipt rule outside task runs. Its
+startup and every pump also re-read the native Claude transcript when UserPromptSubmit was lost;
+a timestamped user submission in that session is equivalent delivery evidence. Native idle can
+finish a confirmed turn whose Stop hook was lost. An unconfirmed Operator attempt may retry after
+30 seconds once native idle and no pending dialog permit the paste. Busy sessions keep the attempt
+for further checks; waiting/unknown sessions cannot receive input. Genuine turn failures remain
+visible until an explicit Retry. Main chat-delivery receipts are separate from `main_message`
+processing, so an early tool reply cannot hide the human-visible prompt or double-process the event.
+
 ## 6. Adapter interfaces
 
 The TypeScript is in [`adapters.ts`](../../packages/core/src/adapters.ts). It has only the methods

@@ -120,10 +120,19 @@ test("fuzzy filter retains ancestors, matches task and native names, and keeps f
   expect(spaces([agent], "  ")).toEqual(spaces([agent]));
 });
 
-test("pinned Main and Operator sessions are excluded from the space tree", () => {
+test("only repository Main and Operator sessions are excluded from the space tree", () => {
+  const legacy = ["loom-main", "loom-lead"].map((sessionName) => ({
+    ...pane,
+    sessionName,
+  }));
+  expect(
+    rows(spaces(legacy))
+      .map((item) => item.sessionName)
+      .sort(),
+  ).toEqual(["loom-lead", "loom-main"]);
   expect(
     spaces(
-      ["loom-main", "loom-lead", "loom-operator"].map((sessionName) => ({
+      ["loom-lead-repo", "loom-operator"].map((sessionName) => ({
         ...pane,
         sessionName,
       })),

@@ -65,7 +65,8 @@ export function resolveAttach(
                 ? "lead" in runId
                   ? !("identity" in target) ||
                     target.identity !== "lead" ||
-                    target.repoId !== runId.lead
+                    target.repoId !== runId.lead ||
+                    !target.sessionId
                   : "shellKey" in runId
                     ? !("identity" in target) || target.identity !== "pane"
                     : !("identity" in target) ||

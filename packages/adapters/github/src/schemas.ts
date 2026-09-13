@@ -156,6 +156,7 @@ export const graphqlPullRequest = z.object({
   headRefName: z.string().min(1),
   baseRefName: z.string().min(1),
   headRefOid: sha,
+  baseRefOid: sha,
   isDraft: z.boolean(),
   mergeable: z.enum(["MERGEABLE", "CONFLICTING", "UNKNOWN"]),
   reviewDecision: z

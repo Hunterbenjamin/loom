@@ -84,13 +84,7 @@ export function Sidebar({
     const animations = new Set<Animation>();
     const stop = store.subscribePaneTransitions((pane) => {
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      const pinned =
-        pane.sessionName === `loom-lead-${store.getState().ui.repo}` ||
-        ["loom-lead", "loom-main"].includes(pane.sessionName)
-          ? "main"
-          : pane.sessionName === "loom-operator"
-            ? "operator"
-            : null;
+      const pinned = pane.sessionName === "loom-operator" ? "operator" : null;
       const row = [
         ...(sidebar.current?.querySelectorAll<HTMLElement>(
           "[data-pane-key], [data-pinned]",
@@ -138,6 +132,16 @@ export function Sidebar({
   const repo = useStore((s) => s.ui.repo);
   const operator = useStore((s) => s.operator);
   const [grouped, setGrouped] = useState(true);
+  const [retrying, setRetrying] = useState(false);
+  const retryOperator = async () => {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await store.command({ kind: "retry_operator_session" });
+    } finally {
+      setRetrying(false);
+    }
+  };
   const agents = tree.flatMap((space) =>
     space.tabs.flatMap((tab) =>
       tab.panes
@@ -348,38 +352,54 @@ export function Sidebar({
                   target === "main"
                     ? lead.status
                     : (operator?.status ?? "unknown");
-                const native = panes.find((pane) =>
-                  (target === "main"
-                    ? [`loom-lead-${repo}`, "loom-lead", "loom-main"]
-                    : ["loom-operator"]
-                  ).includes(pane.sessionName),
-                );
+                const native =
+                  target === "operator"
+                    ? panes.find((pane) => pane.sessionName === "loom-operator")
+                    : undefined;
                 return (
-                  <button
-                    key={target}
-                    type="button"
-                    className="wb-tree-row wb-agent-row"
-                    disabled={target === "main" && !repo}
-                    data-pinned={target}
-                    aria-current={
-                      selected === target || (native && isSelected(native))
-                        ? "true"
-                        : undefined
-                    }
-                    onClick={() => openPinned(target)}
-                    title={`Open ${target === "main" ? "Main" : "Operator"} terminal`}
-                  >
-                    <Status
-                      state={pinnedState(
-                        status,
-                        target === "main" && mainFinished,
-                      )}
-                    />
-                    <span className="wb-row-copy">
-                      <strong>{target === "main" ? "Main" : "Operator"}</strong>
-                      <small>{native?.provider ?? status}</small>
-                    </span>
-                  </button>
+                  <div key={target} className="wb-pinned-agent">
+                    <button
+                      type="button"
+                      className="wb-tree-row wb-agent-row"
+                      disabled={target === "main" && !repo}
+                      data-pinned={target}
+                      aria-current={
+                        selected === target || (native && isSelected(native))
+                          ? "true"
+                          : undefined
+                      }
+                      onClick={() => openPinned(target)}
+                      title={
+                        target === "operator" && operator?.error
+                          ? operator.error
+                          : `Open ${target === "main" ? "Main" : "Operator"} terminal`
+                      }
+                    >
+                      <Status
+                        state={pinnedState(
+                          status,
+                          target === "main" && mainFinished,
+                        )}
+                      />
+                      <span className="wb-row-copy">
+                        <strong>
+                          {target === "main" ? "Main" : "Operator"}
+                        </strong>
+                        <small>{native?.provider ?? status}</small>
+                      </span>
+                    </button>
+                    {target === "operator" && operator?.status === "error" && (
+                      <button
+                        type="button"
+                        aria-label="Retry Operator"
+                        title="Retry queued Operator input"
+                        disabled={retrying}
+                        onClick={() => void retryOperator()}
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </section>

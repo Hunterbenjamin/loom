@@ -398,3 +398,19 @@ not approval or a guarantee against later pushes. Each window subscribes to its 
 open list, including outside the PR view; the coordinator shares the existing 60-second conditional
 poll across matching windows and releases it when no window subscribes. Switching repository changes
 the scope. Detail and non-open list polls are still released when their views are hidden.
+
+## Reviews loading (slice 1)
+
+The current PR detail layout is unchanged. Description (the overview) becomes readable as soon
+as GraphQL detail arrives; Files shows **Loading diff…** until its separately published diff
+arrives. A diff failure leaves the overview readable and offers Refresh. New-head detail never
+shows an old-head diff. Metadata includes files, reviews and comments, without adding the later
+Reviews inbox, Overview rail, activity/comment controls or Reviewed-file cards.
+
+`pull_request_detail.patch` is nullable, with `patchLoading` and `patchError`. A non-null patch
+must match both detail SHAs. GitHub's REST diff has no commit identity in its response: Loom
+requests an immutable base/head comparison using cached list metadata in parallel with detail.
+Opening an uncached PR shows detail first and then requests that range. Head/base and content
+caches are disposable and shared across windows; unchanged polls only fetch live metadata/checks.
+Content edits, head/base changes and explicit refresh invalidate content. Targets on this repo:
+overview under two seconds, diff under four. Later Reviews slices own the layout redesign.
