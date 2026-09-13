@@ -304,11 +304,19 @@ export const TerminalSession = memo(function TerminalSession({
         1,
         Math.min(10, Math.round(Math.abs(event.deltaY) / 24)),
       );
-      // In the normal buffer the viewer owns the history (the host no longer uses the alternate
-      // screen for its client): scroll locally, so a selection can extend through it.
-      if (terminal.buffer?.active?.type !== "alternate") {
-        terminal.scrollLines?.(event.deltaY < 0 ? -steps : steps);
-        return;
+      // The viewer owns what has scrolled off since it attached (the host no longer uses the
+      // alternate screen for its client): scroll that locally while there is any, so a
+      // selection can extend through it. At its edges the wheel goes to tmux, which scrolls the
+      // pane's own history exactly as it did before.
+      const active = terminal.buffer?.active;
+      const up = event.deltaY < 0;
+      if (active && active.type !== "alternate") {
+        const canScrollUp = active.viewportY > 0;
+        const canScrollDown = active.viewportY < active.baseY;
+        if ((up && canScrollUp) || (!up && canScrollDown)) {
+          terminal.scrollLines?.(up ? -steps : steps);
+          return;
+        }
       }
       if (!hostWantsMouse) return;
       const screen = element.querySelector<HTMLElement>(".xterm-screen");
