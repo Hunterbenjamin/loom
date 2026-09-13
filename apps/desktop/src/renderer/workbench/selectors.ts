@@ -76,10 +76,12 @@ export const paneName = (pane: PaneView) =>
   pane.role
     ? [pane.role, pane.provider].filter(Boolean).join(" · ")
     : pane.command || "Unknown process";
-export const spaceKey = (pane: PaneView) =>
-  JSON.stringify([pane.hostGeneration, pane.sessionName]);
-export const tabKey = (pane: PaneView) =>
-  JSON.stringify([pane.hostGeneration, pane.sessionName, pane.windowId]);
+export const spaceKey = (
+  pane: Pick<PaneIdentity, "hostGeneration" | "sessionName">,
+) => JSON.stringify([pane.hostGeneration, pane.sessionName]);
+export const tabKey = (
+  pane: Pick<PaneIdentity, "hostGeneration" | "sessionName" | "windowId">,
+) => JSON.stringify([pane.hostGeneration, pane.sessionName, pane.windowId]);
 const pinned = (pane: PaneView) =>
   ["loom-lead", "loom-main", "loom-operator"].includes(pane.sessionName);
 const rollup = (states: Indicator[]) =>
