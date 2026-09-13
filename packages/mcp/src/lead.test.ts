@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { leadInputSchemas, leadToolNames } from "./lead.js";
+import { operatorInputSchemas } from "./operator.js";
 import { createMcpServer } from "./server.js";
 import { setup } from "./test-support.js";
 
@@ -33,7 +34,7 @@ async function connect(lead: boolean) {
   });
   return { client, invoke, env };
 }
-test("Lead sees only its tool set and cannot submit task-run results", async () => {
+test("Main sees only its tool set and cannot submit task-run results", async () => {
   const { client, invoke, env } = await connect(true);
   expect((await client.listTools()).tools.map((t) => t.name)).toEqual(
     leadToolNames,
@@ -50,7 +51,7 @@ test("Lead sees only its tool set and cannot submit task-run results", async () 
   expect(invoke).not.toHaveBeenCalled();
   expect(env.host.inputs).toEqual([]);
 });
-test("run tokens cannot call any Lead tool, even by naming one directly", async () => {
+test("run tokens cannot call any Main tool, even by naming one directly", async () => {
   const { client, invoke } = await connect(false);
   for (const name of leadToolNames) {
     const response = await client.callTool({ name, arguments: {} });
@@ -62,7 +63,7 @@ test("run tokens cannot call any Lead tool, even by naming one directly", async 
   }
   expect(invoke).not.toHaveBeenCalled();
 });
-test("Lead inputs are strict and validated before reaching the host", async () => {
+test("Main inputs are strict and validated before reaching the host", async () => {
   const { client, invoke } = await connect(true);
   await client.callTool({ name: "list_tasks", arguments: {} });
   expect(invoke).toHaveBeenCalledExactlyOnceWith("list_tasks", {});
@@ -132,4 +133,39 @@ test("answer_pane_prompt schema rejects invalid choices", async () => {
   expect(schema.safeParse({ taskId: "task_01", choice: 5 }).success).toBe(
     false,
   );
+});
+
+test("set_note accepts replacement and clearing, and rejects invalid or oversized input", async () => {
+  const { client, invoke } = await connect(true);
+  for (const note of ["", "x".repeat(2000)]) {
+    expect(
+      (await client.callTool({ name: "set_note", arguments: { note } }))
+        .isError,
+    ).toBe(false);
+    expect(invoke).toHaveBeenLastCalledWith("set_note", { note });
+  }
+  for (const input of [
+    {},
+    { note: 1 },
+    { note: "x".repeat(2001) },
+    { note: "ok", path: "/other" },
+  ])
+    expect(
+      (await client.callTool({ name: "set_note", arguments: input }))
+        .structuredContent,
+    ).toMatchObject({ ok: false, error: { code: "invalid_input" } });
+  expect(invoke).toHaveBeenCalledTimes(2);
+  expect(operatorInputSchemas).not.toHaveProperty("set_note");
+});
+
+test("Main is never granted terminal attach tools", async () => {
+  const { client, invoke } = await connect(true);
+  expect(
+    (await client.listTools()).tools
+      .map((t) => t.name)
+      .some((name) => /attach|terminal|shell/.test(name)),
+  ).toBe(false);
+  for (const name of ["attach_session", "open_lead_session", "create_scratch"])
+    expect((await client.callTool({ name, arguments: {} })).isError).toBe(true);
+  expect(invoke).not.toHaveBeenCalled();
 });

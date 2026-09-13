@@ -138,7 +138,7 @@ are semantic patches. No observation timestamp churn is emitted.
 
 `open_pane_session` accepts only `target: {hostGeneration, sessionName, windowId, paneId}` and returns
 an `attach_session` with `identity: "pane"`, the validated target, attach argv and current pane state.
-Run and Lead requests retain their existing forms. `create_scratch` accepts `taskId` and a UUID `key`;
+Run and Main requests retain their existing forms. `create_scratch` accepts `taskId` and a UUID `key`;
 the coordinator resolves cwd/session and returns `scratch_created` with the published pane. Clients
 must not replay scratch commands on reconnect. A terminal detaches when closed; it does not close its
 underlying pane.

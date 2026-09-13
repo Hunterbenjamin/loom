@@ -3,6 +3,7 @@ export {
   leadCommand,
   leadInputSchemas,
   leadToolNames,
+  mainNoteSchema,
 } from "./lead.js";
 export { InMemoryHost } from "./memory.js";
 export {

@@ -124,7 +124,7 @@ export async function createClaudeAdapter(
       });
     },
 
-    interactiveArgs: ({ sessionId, resume, model, settingsPath }) => [
+    interactiveArgs: ({ sessionId, resume, model, settingsPath, readOnly }) => [
       "--settings",
       settingsPath,
       "--mcp-config",
@@ -137,7 +137,21 @@ export async function createClaudeAdapter(
       // stalled a run until a human answered in tmux. Safety is the worktree, the send gate,
       // code-owned transitions and branch protection on the base branch, not per-command prompts.
       "--permission-mode",
-      "bypassPermissions",
+      readOnly ? "dontAsk" : "bypassPermissions",
+      ...(readOnly
+        ? [
+            "--restricted",
+            "--tools",
+            "Read,Glob,Grep",
+            "--allowedTools",
+            "Read,Glob,Grep",
+            "--disallowedTools",
+            "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task",
+            "--strict-mcp-config",
+            "--disable-slash-commands",
+            "--no-chrome",
+          ]
+        : []),
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {

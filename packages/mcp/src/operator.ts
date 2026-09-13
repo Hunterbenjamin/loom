@@ -4,12 +4,14 @@ import { leadInputSchemas } from "./lead.js";
 const event = z.strictObject({ eventId: z.string().min(1) });
 export const operatorInputSchemas: Record<string, z.ZodObject> = {
   ...Object.fromEntries(
-    Object.keys(leadInputSchemas).map((name) => [
-      name,
-      ["list_tasks", "list_repos", "inspect_task"].includes(name)
-        ? leadInputSchemas[name]
-        : event,
-    ]),
+    Object.keys(leadInputSchemas)
+      .filter((name) => name !== "set_note")
+      .map((name) => [
+        name,
+        ["list_tasks", "list_repos", "inspect_task"].includes(name)
+          ? leadInputSchemas[name]
+          : event,
+      ]),
   ),
   operator_events: z.strictObject({}),
   append_note: event,
