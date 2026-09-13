@@ -34,6 +34,8 @@ export interface CodexAdapterOptions {
   timeoutMs?: number;
   /** Persist the last allocated generation and seed it after a coordinator restart. */
   initialGeneration?: number;
+  /** Store-backed session owners checked immediately before recovery signals a task server. */
+  liveSessionOwners?: () => Promise<readonly ProviderSessionId[]>;
 }
 const textInput = (text: string) => [
   { type: "text" as const, text: normalizeText(text), text_elements: [] },
@@ -85,6 +87,7 @@ class AppServerAdapter implements CodexAdapter {
       options.executable ?? "codex",
       undefined,
       options.onDiagnostic,
+      options.liveSessionOwners,
     );
     this.timeoutMs = z
       .number()
@@ -132,25 +135,23 @@ class AppServerAdapter implements CodexAdapter {
       if (this.server.running && this.connection?.connected) return;
       await this.server.start();
       const deadline = Date.now() + this.timeoutMs;
-      try {
-        while (true) {
-          try {
-            await this.connect();
-            return;
-          } catch (error) {
-            if (
-              !this.server.running ||
-              Date.now() >= deadline ||
-              !(error instanceof Error) ||
-              error.message !== "Codex connection unavailable"
-            )
-              throw error;
-            await new Promise((resolve) => setTimeout(resolve, 50));
-          }
+      // A successful start/adoption followed by an observer failure is not permission to kill
+      // the task server: it may still own a live turn. Leave it for guarded recovery or an
+      // explicit stop.
+      while (true) {
+        try {
+          await this.connect();
+          return;
+        } catch (error) {
+          if (
+            !this.server.running ||
+            Date.now() >= deadline ||
+            !(error instanceof Error) ||
+            error.message !== "Codex connection unavailable"
+          )
+            throw error;
+          await new Promise((resolve) => setTimeout(resolve, 50));
         }
-      } catch (error) {
-        await this.server.stop();
-        throw error;
       }
     });
   }
@@ -169,7 +170,6 @@ class AppServerAdapter implements CodexAdapter {
     this.connection = null;
     this.currentGeneration = null;
     this.pending.clear();
-    this.subscribed.clear();
     this.errors.clear();
     const generation = ++this.counter;
     const connected = await RpcConnection.connect({
@@ -182,7 +182,6 @@ class AppServerAdapter implements CodexAdapter {
         if (generation !== this.counter) return;
         this.currentGeneration = null;
         this.pending.clear();
-        this.subscribed.clear();
         this.hint(null);
       },
     });
@@ -196,9 +195,24 @@ class AppServerAdapter implements CodexAdapter {
         throw new Error("Codex disconnected during initialize");
       this.connection = connected.connection;
       this.currentGeneration = generation;
+      await this.hydrateSubscriptions(connected.connection);
     } catch (error) {
       connected.connection.close();
       throw error;
+    }
+  }
+  /** Rebuild connection-scoped server subscriptions from durable adapter intent. */
+  private async hydrateSubscriptions(connection: RpcConnection): Promise<void> {
+    for (const threadId of this.subscribed) {
+      const params: ThreadResumeParams = { threadId, excludeTurns: false };
+      const { thread } = await connection.rpc(
+        "thread/resume",
+        params,
+        schemas.threadResult,
+      );
+      this.assertCurrent(connection);
+      await this.observe(connection, threadId as ProviderSessionId, thread);
+      this.assertCurrent(connection);
     }
   }
   private rpc() {
@@ -209,12 +223,25 @@ class AppServerAdapter implements CodexAdapter {
     return this.connection;
   }
   private async reconnectAfterDisconnection(): Promise<void> {
-    // Attempt to restart or adopt the app-server, then reconnect.
-    await this.server.start();
-    await this.connect();
+    // A dropped observer does not imply a dead owner. Reconnect to the same socket first; only a
+    // genuinely unavailable socket permits TaskServer to consider adoption or replacement.
+    try {
+      await this.connect();
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        error.message !== "Codex connection unavailable"
+      )
+        throw error;
+      await this.server.start();
+      await this.connect();
+    }
   }
-  /** Wraps an RPC action to automatically reconnect if the connection is lost. */
-  private async rpcWithReconnect<T>(action: () => Promise<T>): Promise<T> {
+  /** Reconnects lost observation, replaying only reads or actions that never reached transport. */
+  private async rpcWithReconnect<T>(
+    action: () => Promise<T>,
+    replaySafe = false,
+  ): Promise<T> {
     let originalError: Error | null = null;
     try {
       return await action();
@@ -231,12 +258,16 @@ class AppServerAdapter implements CodexAdapter {
         // Not a disconnection error; re-throw as-is
         throw error;
       }
-      // Connection lost; attempt reconnection once
+      const failedBeforeTransport =
+        message ===
+        "Codex disconnected; reconnect and resume the recorded thread";
+      // Restore observation after any connection loss. A mutation whose request may have reached
+      // Codex remains failed: its durable executor receipt and a fresh snapshot decide what follows.
       originalError = error;
       try {
         await this.reconnectAfterDisconnection();
-        // Reconnection successful; retry the action once
-        return await action();
+        if (failedBeforeTransport || replaySafe) return await action();
+        throw originalError;
       } catch (reconnectError) {
         // Reconnection failed; prefer to throw the original error if it's more informative
         const reconnectMessage =
@@ -383,7 +414,7 @@ class AppServerAdapter implements CodexAdapter {
       this.assertCurrent(connection);
       this.subscribed.add(threadId);
       return observation;
-    });
+    }, true);
   }
   async readThread(
     threadId: ProviderSessionId,
@@ -425,7 +456,7 @@ class AppServerAdapter implements CodexAdapter {
         throw error;
       }
       return this.observe(connection, threadId, thread);
-    });
+    }, true);
   }
   private async observe(
     connection: RpcConnection,
@@ -522,7 +553,7 @@ class AppServerAdapter implements CodexAdapter {
         usageAllowed: limits.ordinaryUsageAllowed,
         resetsAt: resets.length ? iso(Math.max(...resets)) : null,
       };
-    });
+    }, true);
   }
   async checkResumable(threadId: ProviderSessionId): Promise<boolean | null> {
     let probe: RpcConnection | undefined;

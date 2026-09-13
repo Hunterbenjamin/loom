@@ -339,6 +339,28 @@ If the recorded pane IDs do not match the live pane but the live pane is working
 not updated during recovery. Manually update the run record or restart the coordinator and check
 recovery logs for errors.
 
+### Bounded run and app-server recovery
+
+Task app-server recovery asks the store for every unended Codex run, across roles, with a
+recorded session. If any exists, recovery sends no signal and emits a task/session-correlated
+diagnostic; the failed provider read leaves the run `unknown`, and `observability_failure` makes it
+visible after `unknownGraceMs`. With no live owner, cleanup still revalidates PID birth time and the
+exact private socket command immediately before each signal. This guard does not apply to explicit
+task shutdown or a user-requested stop.
+
+The 2026-09-13 incident was initiated by adapter stale/orphan recovery, not by Operator: Operator
+recorded the diagnostic and attempted to route a bug. PID 22448 matched that issue's private
+app-server, so it could have hosted the live reviewer thread. The historical event did not include a
+provider session ID, so stronger attribution is not possible. New refused-recovery diagnostics carry
+the recorded session correlation. After a disconnect, existing adapter subscriptions are resumed and
+hydrated before reads retry. Persistent unknown observation and pending delivery are bounded by
+`unknownGraceMs` and `deliveryTimeoutMs`; an interrupted idle reviewer that has not submitted is
+bounded by `stallAfterMs` and remains in review with `idle_without_submission` attention.
+
+Operator bug routing remains explicit. Set `operator.repoId` in Settings (or
+`LOOM_OPERATOR_REPO`) to a registered repository. If it is absent, Operator status keeps the filing
+failure visible; Loom does not silently select a repository.
+
 ## Tests
 
 `src/*.test.ts`, against `@loom/fake-agent`'s providers, pane host and GitHub, a throwaway Git

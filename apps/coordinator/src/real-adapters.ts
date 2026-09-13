@@ -74,6 +74,13 @@ export async function createRealAdapters(
     createCodexAdapter({
       taskDirectory,
       executable: config.codexExecutable,
+      liveSessionOwners: async () =>
+        store
+          .runs(taskId)
+          .filter(
+            (run) => run.provider === "codex" && !run.endedAt && run.sessionId,
+          )
+          .map((run) => run.sessionId as NonNullable<typeof run.sessionId>),
       onDiagnostic: (event) => diagnostic({ ...event, taskId }),
     }),
   );

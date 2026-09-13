@@ -215,7 +215,10 @@ Rules:
   `CODEX_HOME`. Persist its PID and process birth time in the private issue directory; verify both
   birth time and the exact issue socket in its command before signaling a recovered process.
   Pre-pidfile servers are identified with a query scoped to that socket. Reap a verified stale
-  owner before replacing its record; refuse a foreign home or a non-socket path. Explicit shutdown
+  owner before replacing its record only when an immediate store query finds no unended Codex run
+  with a recorded session for that task. Re-check that ownership and the PID birth/socket identity
+  immediately before every recovery signal. A live session refuses recovery and emits a
+  task-correlated diagnostic; refuse a foreign home or a non-socket path. Explicit shutdown
   terminates adopted servers as well as children. Never discover or signal the shared daemon.
 - A pane is not evidence of a session. `pane_current_command` was `2.1.269` for Claude and `node` for
   Codex's launcher, and cwd identifies the issue, not the session (spike 06 §4). Reject an ambiguous
@@ -470,7 +473,7 @@ that crosses providers goes only through artifacts.
 | UI closed or crashed | Nothing happens. On reopen, the UI reconnects and gets a fresh snapshot. |
 | Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, panes, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts). |
 | Pane host stop, crash or kill | Every pane process dies, shells included (spikes 05 and 06). The host has no restore feature and needs none: Loom recreates the server, its sessions and each run's pane from stored state — session or thread ID, cwd, full command line and environment. Pane IDs restart at `%0`, so stale refs name nothing and every ref carries its host generation. Measured at about 30 s to a fresh reply from both providers. A Codex turn in flight completes because its app-server runs outside the pane host; Claude's is lost and re-sent. |
-| Codex app-server restart | Runs are `unknown` until `thread/resume`; the interrupted turn is a failed attempt and is re-sent (spike 01). |
+| Codex app-server restart | Desired thread subscriptions survive the connection generation and are resumed/hydrated before retrying reads. An unavailable owner leaves runs `unknown`; after `unknownGraceMs` they raise `observability_failure`. Interrupted or completed turns without a Loom submission remain live and can raise `idle_without_submission`; they are not inferred ended. |
 | Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, flag the issue failed and notify the human (see `docs/design/core.md` §3). |
 | Stall | No events for N minutes → set the attention flag. Don't kill it; the human may be typing. |
 | Rate limits | Codex `account/rateLimits/updated` or Claude StopFailure → the provider is cooling down until its reset. Queue new work, and offer to switch providers only for runs that haven't started. |

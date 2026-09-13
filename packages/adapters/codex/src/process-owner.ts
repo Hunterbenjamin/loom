@@ -89,8 +89,13 @@ export async function socketOwner(
 export async function terminateOwned(
   owner: ProcessOwner,
   socket: string,
+  beforeSignal?: () => Promise<void>,
 ): Promise<void> {
   for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+    // Authoritative ownership can change while recovery is inspecting the process. Check it
+    // immediately before revalidating identity and signaling; neither earlier fact authorizes a
+    // later signal.
+    await beforeSignal?.();
     if (!(await sameProcess(owner, socket))) return;
     try {
       process.kill(owner.pid, signal);
