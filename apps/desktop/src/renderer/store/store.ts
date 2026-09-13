@@ -117,24 +117,23 @@ export interface State {
   instance: string;
 }
 
+/** The Tracker's three destinations. Other view ids remain reachable by keyboard and palette. */
 export const VIEWS: { id: ViewId; label: string; hint: string }[] = [
   {
-    id: "all",
-    label: "All issues",
-    hint: "Everything in the selected repository",
-  },
-  {
     id: "needs-you",
-    label: "Needs you",
-    hint: "Attention flags, blocked and failed",
+    label: "Inbox",
+    hint: "Everything that needs you: questions, approvals, blocked and failed",
   },
-  { id: "in-progress", label: "In progress", hint: "Planning through review" },
   {
-    id: "awaiting-approval",
-    label: "Awaiting approval",
-    hint: "Plan and merge approvals",
+    id: "all",
+    label: "Issues",
+    hint: "Every issue in the selected repository",
   },
-  { id: "done", label: "Done", hint: "Merged or canceled" },
+  {
+    id: "pull-requests",
+    label: "Review",
+    hint: "Pull requests to review and merge",
+  },
 ];
 
 const IN_PROGRESS: Stage[] = [

@@ -72,34 +72,25 @@ export function Sidebar() {
           {error}
         </div>
       ) : null}
-      <div className="sidebar-section">Views</div>
-      {VIEWS.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          className="view-item"
-          aria-current={view === item.id ? "page" : undefined}
-          title={item.hint}
-          data-view={item.id}
-          onClick={() => store.setView(item.id)}
-        >
-          <span>{item.label}</span>
-          <span className="count">
-            {item.id === "needs-you" ? needsYou : counts[item.id]}
-          </span>
-        </button>
-      ))}
-
-      <button
-        type="button"
-        className="view-item"
-        data-view="pull-requests"
-        aria-current={view === "pull-requests" ? "page" : undefined}
-        onClick={() => store.setView("pull-requests")}
-      >
-        <span>Pull requests</span>
-        <span className="count">{counts["pull-requests"]}</span>
-      </button>
+      <div className="sidebar-views">
+        {VIEWS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className="view-item"
+            aria-current={view === item.id ? "page" : undefined}
+            title={item.hint}
+            data-view={item.id}
+            onClick={() => store.setView(item.id)}
+          >
+            <ViewIcon view={item.id} />
+            <span>{item.label}</span>
+            <span className="count">
+              {item.id === "needs-you" ? needsYou : counts[item.id]}
+            </span>
+          </button>
+        ))}
+      </div>
 
       <div className="pad faint" role="status">
         {connection === "connected"
@@ -120,6 +111,45 @@ export function Sidebar() {
         <kbd>⌘K</kbd>
       </div>
     </nav>
+  );
+}
+
+/** Line icons in the style of Linear's sidebar: a tray, a circled check, a pull request. */
+function ViewIcon({ view }: { view: string }) {
+  const common = {
+    width: 16,
+    height: 16,
+    viewBox: "0 0 16 16",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.5,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    className: "view-icon",
+  };
+  if (view === "needs-you")
+    return (
+      <svg {...common} aria-hidden="true">
+        <path d="M2.5 9.5V4.5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v5" />
+        <path d="M2.5 9.5h3.2l.8 1.6h3l.8-1.6h3.2v3a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z" />
+      </svg>
+    );
+  if (view === "pull-requests")
+    return (
+      <svg {...common} aria-hidden="true">
+        <circle cx="4.5" cy="3.5" r="1.5" />
+        <circle cx="4.5" cy="12.5" r="1.5" />
+        <circle cx="11.5" cy="12.5" r="1.5" />
+        <path d="M4.5 5v6" />
+        <path d="M8.5 3.5h1.5a1.5 1.5 0 0 1 1.5 1.5v6" />
+        <path d="M10 2l-1.5 1.5L10 5" />
+      </svg>
+    );
+  return (
+    <svg {...common} aria-hidden="true">
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M5.5 8.2l1.7 1.7 3.3-3.6" />
+    </svg>
   );
 }
 

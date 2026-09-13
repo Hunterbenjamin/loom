@@ -138,6 +138,19 @@ kbd {
   color: var(--text-faint);
 }
 
+.sidebar-views {
+  padding: 6px 0;
+}
+
+.view-item .view-icon {
+  flex: none;
+  color: var(--text-dim);
+}
+
+.view-item[aria-current="page"] .view-icon {
+  color: var(--text);
+}
+
 .view-item {
   display: flex;
   align-items: center;
