@@ -202,6 +202,11 @@ async function open(
   const adapters: Adapters = {
     git: git2,
     github: {
+      listPullRequests: github.listPullRequests,
+      readPullRequest: github.readPullRequest,
+      readPullRequestPatch: github.readPullRequestPatch,
+      closePullRequest: github.closePullRequest,
+      deleteBranch: github.deleteBranch,
       findPullRequest: async (request) =>
         github.findPullRequest(await scope(request)),
       openPullRequest: async (request) =>

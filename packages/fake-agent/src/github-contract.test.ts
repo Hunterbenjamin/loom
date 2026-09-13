@@ -1,0 +1,164 @@
+import { readFileSync } from "node:fs";
+import type { GitHubAdapter, PullRequestDetail, Sha } from "@loom/core";
+import { describe, expect, it } from "vitest";
+import {
+  ok,
+  pr,
+  root,
+  setup,
+} from "../../adapters/github/src/test-fixtures.js";
+import { FakeClock } from "./clock.js";
+import { FakeGitHub } from "./owners.js";
+
+const repo = "vuejs/core";
+const raw = JSON.parse(
+  readFileSync(
+    new URL(
+      "../../adapters/github/src/fixtures/pull-detail.json",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+);
+const rawCommits = JSON.parse(
+  readFileSync(
+    new URL("../../adapters/github/src/fixtures/commits.json", import.meta.url),
+    "utf8",
+  ),
+);
+const patch = "diff --git a/example.ts b/example.ts\n";
+
+async function contract(kind: "fake" | "gh"): Promise<GitHubAdapter> {
+  const stub = setup();
+  stub.set(pr, {
+    ...raw,
+    state: "open",
+    merged: false,
+    mergeable: true,
+    merged_at: null,
+  });
+  stub.set(`${pr}/commits?per_page=100`, rawCommits);
+  stub.set(
+    `${root}/pulls?state=open&sort=created&direction=desc&per_page=100`,
+    [raw],
+  );
+  stub.set(
+    `${root}/pulls?state=closed&sort=created&direction=desc&per_page=100`,
+    [raw],
+  );
+  const detail = await stub.adapter.readPullRequest(repo, raw.number);
+  if (kind === "fake") {
+    const fake = new FakeGitHub(new FakeClock(), repo, raw.head.ref);
+    fake.setPullRequest(detail, patch);
+    return fake;
+  }
+  const ref = `${root}/git/ref/heads/${encodeURIComponent(raw.head.ref)}`;
+  stub.set(ref, {
+    ref: `refs/heads/${raw.head.ref}`,
+    object: { sha: raw.head.sha },
+  });
+  stub.mutate(async (args) => {
+    if (args.includes("DELETE")) {
+      stub.routes.set(ref, {
+        stdout:
+          'HTTP/2.0 404 Not Found\nContent-Type: application/json\n\n{"message":"Not Found"}',
+        stderr: "",
+        exitCode: 1,
+      });
+      return ok("HTTP/2.0 204 No Content\nContent-Length: 0\n\n");
+    }
+    if (args.includes("close")) stub.set(pr, { ...raw, merged: false });
+    else stub.set(pr, raw);
+    return ok();
+  });
+  return stub.adapter;
+}
+
+for (const kind of ["fake", "gh"] as const)
+  describe(`GitHub contract: ${kind}`, () => {
+    it("lists and reads PRs independently of task lookup, returning detached copies", async () => {
+      const github = await contract(kind);
+      const first = await github.listPullRequests(repo, "open");
+      expect(first).toHaveLength(1);
+      expect(first[0]).toMatchObject({
+        number: raw.number,
+        title: raw.title,
+        head: raw.head.ref,
+        state: "open",
+      });
+      const detail = await github.readPullRequest(repo, raw.number);
+      detail.title = "caller mutation";
+      expect((await github.readPullRequest(repo, raw.number)).title).toBe(
+        raw.title,
+      );
+    });
+    it("closes idempotently then refreshes the owner state", async () => {
+      const github = await contract(kind);
+      await github.closePullRequest(repo, raw.number);
+      await github.closePullRequest(repo, raw.number);
+      expect((await github.readPullRequest(repo, raw.number)).state).toBe(
+        "closed",
+      );
+      expect(await github.listPullRequests(repo, "open")).toEqual([]);
+      expect(await github.listPullRequests(repo, "closed")).toHaveLength(1);
+      expect(await github.listPullRequests(repo, "merged")).toEqual([]);
+    });
+    it("rejects a stale head, then merges and deletes idempotently", async () => {
+      const github = await contract(kind);
+      const req = {
+        repo,
+        number: raw.number,
+        matchHeadSha: "a".repeat(40) as Sha,
+        auto: false,
+        deleteBranch: true,
+      };
+      await expect(github.mergePullRequest(req)).rejects.toThrow();
+      req.matchHeadSha = raw.head.sha;
+      await expect(github.mergePullRequest(req)).resolves.toEqual({
+        state: "merged",
+      });
+      await expect(github.mergePullRequest(req)).resolves.toEqual({
+        state: "merged",
+      });
+      await github.deleteBranch(repo, raw.head.ref);
+      await github.closePullRequest(repo, raw.number);
+      expect((await github.readPullRequest(repo, raw.number)).state).toBe(
+        "merged",
+      );
+      expect(await github.listPullRequests(repo, "merged")).toHaveLength(1);
+      expect(await github.listPullRequests(repo, "closed")).toEqual([]);
+    });
+  });
+
+it("fake GitHub supports multiple off-pipeline PRs and isolated branch deletion", async () => {
+  const clock = new FakeClock();
+  const fake = new FakeGitHub(clock, repo, "feat/task");
+  const github = await contract("gh");
+  const detail: PullRequestDetail = await github.readPullRequest(
+    repo,
+    raw.number,
+  );
+  fake.setPullRequest(detail, patch);
+  fake.setPullRequest(
+    { ...detail, number: 20000, head: "feat/other", createdAt: clock.now() },
+    patch,
+  );
+  expect(
+    (await fake.listPullRequests(repo, "open")).map((p) => p.number),
+  ).toEqual([20000, raw.number]);
+  await fake.mergePullRequest({
+    repo,
+    number: 20000,
+    matchHeadSha: detail.headSha,
+    auto: false,
+    deleteBranch: true,
+  });
+  expect(fake.branchExists("feat/other")).toBe(false);
+  expect(fake.branchExists(raw.head.ref)).toBe(true);
+  expect((await fake.readPullRequest(repo, raw.number)).state).toBe("open");
+  expect(await fake.readPullRequestPatch(repo, raw.number)).toEqual({
+    patch,
+    truncated: false,
+    observedAt: clock.now(),
+  });
+});

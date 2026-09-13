@@ -24,3 +24,10 @@ writes were made to manufacture a failing check or merge refusal. Unit tests exp
 derive failing/queued checks, mergeability values, review summaries, pagination, moved
 heads, auto-merge, missing fields, and CLI/API error responses from these fixtures.
 Those variations are test scenarios, not additional claims about recorded live output.
+
+Slice 1 adds `pull-detail.json`, `commits.json`, and `pull.diff`. These are **derived,
+synthetic fixtures**, not new live recordings: the existing PR identity is retained,
+metadata/commit content is synthetic, and the diff changes a fictional `example.ts`.
+They cover repository listings, rich detail, commit pagination, and the diff media type
+without retaining email addresses or requiring GitHub access. HTTP 204, missing-ref 422,
+other 422 failures, and branch-read 404 envelopes are explicitly generated in tests.
