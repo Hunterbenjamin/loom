@@ -261,6 +261,7 @@ function launch(c: Context, run: Run, resume: boolean, fresh = false): void {
     worktreePath: run.worktreePath,
     model: run.model,
     ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
+    access: run.access ?? "full",
     attempt: run.attempts,
     sessionEpoch: run.sessionEpoch,
     sessionId: run.sessionId,
@@ -416,6 +417,9 @@ export function startDesired(c: Context): void {
           )
           .at(-1);
     const providerOverride = c.state.config.providerOverrides?.[desired.role];
+    const roleProfile =
+      c.task.roleProfiles?.[desired.role] ??
+      c.state.config.roleProfiles?.[desired.role];
     if (desired.fresh && run) {
       const stopKey = `stop_run:${run.id}#${run.attempts}:terminate`;
       let stop = c.state.outbox.find((row) => row.key === stopKey);
@@ -446,20 +450,29 @@ export function startDesired(c: Context): void {
         const reasoningEffort = replacement
           ? replacement.reasoningEffort
           : provider === "codex"
-            ? c.state.config.codexReasoningEffort
+            ? (roleProfile?.reasoningEffort ??
+              c.state.config.codexReasoningEffort)
             : undefined;
         run = {
           id,
           taskId: c.task.id,
           role: desired.role,
           provider,
-          mode: c.state.config.runModes[desired.role] ?? "interactive",
+          mode:
+            replacement?.mode ??
+            roleProfile?.runMode ??
+            c.state.config.runModes[desired.role] ??
+            "interactive",
           origin: "loom",
           worktreePath: c.state.worktree.path as WorktreePath,
           round: desired.round,
           attempts: 1,
-          model: replacement?.model ?? c.state.config.models[provider],
+          model:
+            replacement?.model ??
+            roleProfile?.model ??
+            c.state.config.models[provider],
           ...(reasoningEffort ? { reasoningEffort } : {}),
+          access: replacement?.access ?? roleProfile?.access ?? "full",
           sessionId:
             provider === "claude"
               ? c.state.config.deriveClaudeSessionId(id, 0)

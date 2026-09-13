@@ -58,6 +58,58 @@ carry for them are in [`docs/design/ui.md`](design/ui.md).
 
 Done is derived from GitHub: an issue is Done only once its PR is merged.
 
+## Settings ownership and inventory
+
+The coordinator owns versioned instance defaults and sparse repository overrides in SQLite. The
+precedence is: explicit task-creation value, environment override, repository value, global value,
+built-in default. Task workflow policy is captured at creation; provider/model/reasoning/mode/access
+is captured on each run. Retries and recovery retain that recipe, while an explicit restart uses the
+current effective role profile. Live supervisor values apply immediately; the catalog labels values
+that apply to the next task, next run, or coordinator restart. Every stored mutation uses an expected
+version and appends a redacted audit row. Settings and audit schemas reject secret-bearing keys.
+At startup the coordinator opens the store with bootstrap defaults, resolves the global settings
+row, refreshes core's reconcile configuration, and only then constructs tool and GitHub adapters.
+Immediate changes replace the live reconcile configuration and reschedule affected supervisor
+timers; resetting a value re-resolves from the immutable startup/environment baseline. Provider-wide
+model environment variables are applied after each role's effective provider is selected, so a
+repository provider override cannot detach or misapply them.
+
+This is the reviewed production configuration inventory. “Exposed” means it is represented by the
+typed catalog and Settings page; environment-backed rows are visible but disabled while the variable
+is present.
+
+Repository scope is intentionally limited to role profiles, task/workflow defaults, base branch and
+serialized tests. Capacity, retry/polling, executable paths, Operator/Main, GitHub observation and
+desktop presentation are single-supervisor or single-instance facts and are editable only at Global
+defaults; repository documents show them as inherited and disabled. Existing `Repo.defaultProviders`
+remain the per-role compatibility baseline until that exact role field is overridden, so one sparse
+edit cannot reroute the other roles.
+
+| Configuration | Current code owner/location | Classification |
+|---|---|---|
+| Planner, implementer and reviewer provider (`LOOM_PROVIDER_*`), provider model (`LOOM_MODEL_CODEX`, `LOOM_MODEL_CLAUDE`), Codex reasoning (`LOOM_CODEX_REASONING_EFFORT`), `LOOM_RUN_MODES`, semantic `LOOM_AGENT_ACCESS` | `apps/coordinator/src/config.ts`, `packages/core/src/settings.ts`, run recipe and provider launch adapters | Exposed; next run. Planner read-only remains a fixed floor. |
+| Plan approval, size, budget, review-round cap, merge policy | create-task protocol/CLI and `packages/core` task policy | Exposed; captured on the next task. Explicit creation values win. |
+| Repository base branch, default providers and serialized-test flag | `packages/core` `Repo`, `apps/coordinator/src/repos.ts` | Exposed in the Repositories and role sections at global/repository scope; repository identity/root remains registration-owned. |
+| Operator/Main models and Operator repository, policy v1, auto-fix set and filing rate (`LOOM_MODEL_OPERATOR`, `LOOM_MODEL_LEAD`, `LOOM_OPERATOR_*`) | `apps/coordinator/src/operator*.ts`, `lead.ts`, `config.ts` | Exposed. Policy v1 is informational until another policy exists. |
+| Capacity, retry base/cap/attempts, stall/unknown/delivery timeouts, GitHub task poll, resync and heartbeat | `apps/coordinator/src/config.ts`, loop/executor/observation | Exposed in Advanced runtime; immediate except heartbeat, which needs restart. |
+| Worktree root and tmux/Codex/Claude executables (`LOOM_WORKTREE_ROOT`, `LOOM_TMUX`, `LOOM_CODEX`, `LOOM_CLAUDE`) | coordinator config and launch adapters | Exposed; restart required. |
+| GitHub excluded authors (`LOOM_EXCLUDED_AUTHORS`) | coordinator observation/config | Exposed; immediate. |
+| Theme, chime, startup window (`LOOM_WINDOW_MODE`), terminal history, key prefix/timeout and bindings | desktop renderer/main and coordinator settings | Exposed as instance-wide appearance/terminal defaults. The renderer imports `keybindings.json` only when those stored fields are absent, then main uses coordinator updates and keeps a derived private startup cache for the next Electron launch. |
+| `LOOM_INSTANCE`, `LOOM_DATA_ROOT` | process bootstrap before SQLite opens | Deliberately not exposed: instance identity/storage cannot move from a connected client. |
+| `LOOM_BIND`, `LOOM_MCP_PORT`, `LOOM_HOOK_PORT` | protocol/MCP/hook bootstrap | Deliberately not exposed: live edits would strand clients and runs. |
+| `LOOM_TOKEN`, `LOOM_MCP_TOKEN`, provider/GitHub credentials | protocol auth and private per-run recipes | Deliberately not exposed. Only configured/not-configured readiness leaves the coordinator. |
+| Repository root/GitHub identity; provider session IDs and private recipes | repository registration; provider/runtime owners | Deliberately not exposed as preferences. |
+| Shell, PATH, HOME, locale; WORKFLOW commands and fixed safe command allowlists; Main/Operator MCP boundaries; tmux isolation/status/mouse/resize/remain-on-exit behavior | process environment, workflow file, adapters | Deliberately not exposed: identity, security and observability invariants. |
+| `LOOM_TASKS`, `LOOM_WIDTH`, `LOOM_HEIGHT`, `LOOM_ATTACH_PANE`, `LOOM_TMUX_BIN`, `LOOM_EXIT_WHEN_INTERACTIVE`, `LOOM_REAL_PROVIDERS`, `LOOM_TEST_SLOW_GIT` | fixture/performance/test scripts | Out of scope: non-production controls. |
+| `LOOM_AGENT_EXEC`, `LOOM_ATTACH_AGENT`, `LOOM_NAMESPACE`, `LOOM_TMUX_CONF` | standalone `scripts/agent.sh` workflow | Out of scope: the independent development launcher is not coordinator configuration. |
+| Adapter command/paste/reconnect/process-owner timeouts, patch/frame/page caps and test loop caps | adapter/protocol implementation constants | Out of scope until a measured production requirement promotes one into the catalog. |
+
+Automatic merge policy never bypasses the merge path. `auto-small` applies only to captured small
+tasks and `auto-all` to every task. Core creates a policy-attributed exact-head approval only after
+the reviewer published that head, blocking findings are clear, CI for that head is successful (or
+has no checks) and fresh, and GitHub reports the PR open and mergeable. Any changed head/findings,
+failed or stale guard, failed merge precondition, or recovery observation voids that approval.
+
 ## Synchronization
 
 - **Reconcile from current state.** Every event enqueues `reconcile(taskId)`: hooks, app-server
@@ -86,6 +138,9 @@ Done is derived from GitHub: an issue is Done only once its PR is merged.
   request including check/review/mergeability summaries every 60 seconds while a window subscribes
   to that repo/state (cursor pagination above 100 rows, capped at 1,000 pages). GraphQL has no ETag;
   compare mapped rows and preserve unchanged observations so identical refreshes publish no patch.
+  Reviews list/detail summaries include GitHub viewer authorship, outstanding viewer review
+  requests, required-review status and completion time. These are disposable owner facts used
+  for inbox grouping; the renderer never guesses the human identity from a local Git author.
   First snapshots use cached rows immediately with an initial loading flag, then receive patches.
   Reads run concurrently across scopes, with at most one in flight per key.
   Each window subscribes to its selected repository's open list for the bottom-bar readiness count
@@ -506,3 +561,41 @@ core/outbox/executor path, without a submission or stage transition; automatic b
 the existing `todo` input. Runtime bug repository routing is explicit. Desktop status and authored
 notes are projections, and notification dedupe is coordinator-owned. See the
 [Operator contract](design/agents.md#operator-implementation-contract).
+
+### Repository review preferences and Overview actions
+
+Loom owns pinned PR stars and explicit issue links in SQLite metadata, keyed by repository and
+PR number; GitHub remains the owner of PR content. PR projections prefer a valid same-repository
+manual issue link over branch matching. These preferences do not rewrite branches, workflow
+state or approvals. Pin/link commands re-read local ownership before publishing; comment commands
+run through the executor and GitHub adapter, then refresh GitHub through the existing PR path.
+A hidden per-submission marker in the posted comment lets the adapter recover an uncertain write
+or repeated command by reading all comment pages. Comment text travels through stdin, never shell
+interpolation. The renderer retains only the active draft and submission identity.
+Requested reviewers come from GraphQL. Branch divergence is read from an immutable REST comparison
+and cached by both SHAs; it publishes after detail so it cannot delay Overview or diff rendering.
+No branch status is inferred from mergeability alone, except GitHub's explicit conflict state.
+
+### PR Diff review state and immutable content
+
+`save_review_state` also accepts a repository/PR target, independent of an issue. SQLite metadata
+owns its viewed-file records at one head SHA; per-file updates preserve other windows' marks and
+publish through the existing PR detail projection. The coordinator checks the current GitHub head
+and file membership before saving. A different head projects an empty viewed set. Renderer state
+contains only transient selection/settings and disposable content read results.
+
+Commit and full-file requests travel through validated coordinator commands and the GitHub adapter.
+Commit membership is checked against the observed PR head; the REST commit's first parent supplies
+its immutable comparison range. Full file reads resolve rename paths and the merge base from GitHub
+comparison metadata, never patch guesses. Missing comparison metadata, binary data, oversized files
+and parse failures are explicit errors. Contents are bounded at 2 MiB per side; whitespace-filtered
+patches are computed in the adapter with a one-second computation limit. No local checkout or
+provider session is involved. The UI continues to use Pierre CodeView and its bounded worker pool.
+
+Reviews polish projects the reverse of each saved PR-to-issue link into task inbox metadata;
+there is still one durable relation, and no workflow PR or branch is rewritten. Link commands
+publish both sides before acknowledging, including removal from the previous issue on relink.
+Newly observed merges in either PR lists or detail are hints to invalidate the matching task
+branch's observation cache and enqueue reconciliation immediately, regardless of a manual issue
+reference. GitHub's task observation alone supplies the merged fact that makes the task Done.
+Cache invalidation generations prevent pre-hint reads from restoring a stale conditional body.

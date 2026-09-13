@@ -365,6 +365,10 @@ export class FakeGitHub implements GitHubAdapter {
     return structuredClone({
       number,
       title: this.title,
+      viewerDidAuthor: true,
+      viewerReviewRequested: false,
+      reviewRequired: false,
+      completedAt: null,
       author: "human",
       head: this.branch,
       createdAt: this.createdAt,
@@ -409,6 +413,7 @@ export class FakeGitHub implements GitHubAdapter {
     for (const pr of prs) {
       if (pr.state !== state) continue;
       const {
+        requestedReviewers: _requestedReviewers,
         files: _fileDetails,
         reviews: _reviews,
         comments: _comments,
@@ -458,6 +463,11 @@ export class FakeGitHub implements GitHubAdapter {
           pullRequests: {
             nodes: page.map((row) => ({
               number: row.number,
+              viewerDidAuthor: row.viewerDidAuthor,
+              viewerLatestReviewRequest: row.viewerReviewRequested
+                ? { id: "request" }
+                : null,
+              closedAt: row.completedAt,
               title: row.title,
               author: row.author ? { login: row.author } : null,
               headRefName: row.head,
@@ -466,8 +476,11 @@ export class FakeGitHub implements GitHubAdapter {
               baseRefOid: row.baseSha,
               isDraft: row.draft,
               mergeable: row.mergeable.toUpperCase(),
-              reviewDecision:
-                row.review === "none" ? null : row.review.toUpperCase(),
+              reviewDecision: row.reviewRequired
+                ? "REVIEW_REQUIRED"
+                : row.review === "none"
+                  ? null
+                  : row.review.toUpperCase(),
               updatedAt: row.updatedAt,
               createdAt: row.createdAt,
               url: row.url,
@@ -493,6 +506,25 @@ export class FakeGitHub implements GitHubAdapter {
       },
     };
   }
+  readPullRequestCommit: GitHubAdapter["readPullRequestCommit"] = async (
+    repo,
+    number,
+    commitSha,
+  ) => {
+    const detail = await this.readPullRequest(repo, number);
+    return {
+      files: detail.files,
+      patch: await this.readPullRequestPatch(repo, number, {
+        baseSha: detail.baseSha,
+        headSha: commitSha,
+      }),
+    };
+  };
+  readPullRequestFile: GitHubAdapter["readPullRequestFile"] = async () => ({
+    old: "before\n",
+    new: "after\n",
+    patch: "--- a/example.ts\n+++ b/example.ts\n@@ -1 +1 @@\n-before\n+after\n",
+  });
   readPullRequestPatch: GitHubAdapter["readPullRequestPatch"] = async (
     repo,
     number,
@@ -514,6 +546,30 @@ export class FakeGitHub implements GitHubAdapter {
       truncated: bytes.length > limit,
       observedAt: this.clock.now(),
     };
+  };
+  readPullRequestBehind: GitHubAdapter["readPullRequestBehind"] = async (
+    repo,
+  ) => {
+    this.scope(repo);
+    return 0;
+  };
+  commentPullRequest: GitHubAdapter["commentPullRequest"] = async (
+    repo,
+    number,
+    body,
+    requestId,
+  ) => {
+    this.scope(repo);
+    const detail = this.pullRequestDetail(number);
+    if (detail.comments.some((comment) => comment.id === requestId)) return;
+    detail.comments.push({
+      id: requestId,
+      author: "human",
+      body,
+      createdAt: this.clock.now(),
+      url: detail.url,
+    });
+    this.setPullRequest(detail);
   };
   closePullRequest: GitHubAdapter["closePullRequest"] = async (
     repo,

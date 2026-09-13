@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { reviewNeedsHuman } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { viewCounts } from "../store/selectors.js";
 import { VIEWS } from "../store/store.js";
@@ -31,6 +32,12 @@ export function Sidebar() {
   const repo = useStore((s) => s.ui.repo);
   const view = useStore((s) => s.ui.view);
   const theme = useStore((s) => s.ui.theme);
+  const reviewCount = useStore(
+    (s) =>
+      s.snapshot.pullRequests.filter(
+        (pr) => pr.repoId === s.ui.repo && reviewNeedsHuman(pr),
+      ).length,
+  );
   const counts = useStore((s) => viewCounts(s.snapshot, s.ui.repo));
 
   return (
@@ -76,10 +83,25 @@ export function Sidebar() {
             <ViewIcon view={item.id} />
             <span>{item.label}</span>
             <span className="count">
-              {item.id === "needs-you" ? needsYou : counts[item.id]}
+              {item.id === "needs-you"
+                ? needsYou
+                : item.id === "pull-requests"
+                  ? reviewCount
+                  : counts[item.id]}
             </span>
           </button>
         ))}
+        <button
+          type="button"
+          className="view-item"
+          data-view="settings"
+          aria-current={view === "settings" ? "page" : undefined}
+          title="Settings"
+          onClick={() => store.setView("settings")}
+        >
+          <ViewIcon view="settings" />
+          <span>Settings</span>
+        </button>
       </div>
 
       <div className="pad faint" role="status">
@@ -133,6 +155,13 @@ function ViewIcon({ view }: { view: string }) {
         <path d="M4.5 5v6" />
         <path d="M8.5 3.5h1.5a1.5 1.5 0 0 1 1.5 1.5v6" />
         <path d="M10 2l-1.5 1.5L10 5" />
+      </svg>
+    );
+  if (view === "settings")
+    return (
+      <svg {...common} aria-hidden="true">
+        <circle cx="8" cy="8" r="2.2" />
+        <path d="M8 2.5v1.6M8 11.9v1.6M2.5 8h1.6M11.9 8h1.6M4.1 4.1l1.1 1.1M10.8 10.8l1.1 1.1M4.1 11.9l1.1-1.1M10.8 5.2l1.1-1.1" />
       </svg>
     );
   return (

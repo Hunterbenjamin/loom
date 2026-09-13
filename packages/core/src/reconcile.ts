@@ -56,6 +56,8 @@ export interface ReconcileConfig {
   /** Instance overrides apply when a role creates a new run; existing sessions retain their identity. */
   providerOverrides?: Partial<Record<Role, Provider>>;
   codexReasoningEffort?: string;
+  /** Role-specific launch defaults. A run captures these and does not drift on retry/resume. */
+  roleProfiles?: Partial<Record<Role, import("./settings.js").RoleProfile>>;
 }
 
 export interface OutboxEntry {
@@ -123,6 +125,8 @@ export interface TaskState {
       provider: Provider;
       model: string;
       reasoningEffort?: string;
+      mode?: RunMode;
+      access?: import("./settings.js").AccessPreset;
     };
   } | null;
   /** Store: accumulated active-stage milliseconds; initialize to 0. */

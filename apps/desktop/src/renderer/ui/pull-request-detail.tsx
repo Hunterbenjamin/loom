@@ -1,26 +1,29 @@
 import type { PullRequestCommand, PullRequestDetailRow } from "@loom/protocol";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   deleteDisabledReason,
   mergeDisabledReason,
 } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { terminalsForTask } from "../store/selectors.js";
 import type { UiState } from "../store/store.js";
 import {
   PULL_REQUEST_ACTION_EVENT,
   type PullRequestActionRequest,
 } from "./pull-request-commands.js";
+import { PullRequestGlyph as PrGlyph } from "./pull-request-glyph.js";
+import { ChangeCounts, PullRequestOverview } from "./pull-request-overview.js";
 
 const Files = lazy(() =>
-  import("./diff.js").then((m) => ({ default: m.PullRequestFiles })),
+  import("./pull-request-diff.js").then((m) => ({
+    default: m.PullRequestDiff,
+  })),
 );
 type Detail = PullRequestDetailRow["detail"];
 type Confirmation =
   | { kind: "merge"; headSha: Detail["headSha"]; base: string }
   | { kind: "close" };
-const TABS = ["Description", "Checks", "Files", "Commits"] as const;
+const TABS = ["Overview", "Diff"] as const;
 
 export function PullRequestDetail({
   selection,
@@ -39,8 +42,24 @@ export function PullRequestDetail({
     ),
   );
   const connection = useStore((s) => s.live && s.connection !== "connected");
-  const now = useStore((s) => s.snapshot.now);
-  const [tab, setTab] = useState<(typeof TABS)[number]>("Description");
+  const task = useStore((s) =>
+    s.snapshot.tasks.find((t) => t.id === (row?.taskId ?? summary?.taskId)),
+  );
+  const branchTask = useStore((s) => {
+    const tasks = s.snapshot.tasks.filter(
+      (t) =>
+        t.repoId === selection.repoId &&
+        t.branch === (row?.detail.head ?? summary?.head),
+    );
+    return tasks.length === 1 ? tasks[0] : undefined;
+  });
+  const agent = useStore((s) =>
+    branchTask ? terminalsForTask(s.snapshot, branchTask)[0] : undefined,
+  );
+  const [fullscreen, setFullscreen] = useState(false);
+  const [file, setFile] = useState<string | null>(null);
+  const [deleteAfterMerge, setDeleteAfterMerge] = useState(true);
+  const [tab, setTab] = useState<(typeof TABS)[number]>("Overview");
   const [confirm, setConfirm] = useState<Confirmation | null>(null);
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
@@ -55,7 +74,7 @@ export function PullRequestDetail({
   const deleteReason = pr
     ? deleteDisabledReason(pr)
     : "Waiting for pull request detail.";
-  const actionBar = useRef<HTMLElement>(null);
+  const actionBar = useRef<HTMLDivElement>(null);
 
   // Palette and shortcuts activate the same guarded native controls as a click.
   useEffect(() => {
@@ -78,7 +97,7 @@ export function PullRequestDetail({
   }, [selection.repoId, selection.number]);
 
   async function run(command: PullRequestCommand) {
-    if (submitting.current) return;
+    if (submitting.current) return false;
     submitting.current = true;
     setBusy(true);
     setOutcome("");
@@ -90,14 +109,22 @@ export function PullRequestDetail({
           ? `${ack.error.code}: ${ack.error.message}${ack.error.details.length ? `\n${ack.error.details.join("\n")}` : ""}`
           : command.kind === "refresh_pull_requests"
             ? "Refreshed from GitHub."
-            : "Action completed; GitHub state is shown below.",
+            : command.kind === "pin_pull_request"
+              ? command.pinned
+                ? "Pull request pinned."
+                : "Pull request unpinned."
+              : command.kind === "link_pull_request"
+                ? "Issue linked."
+                : "Action completed; GitHub state is shown below.",
       );
+      return ack.ok;
     } catch (error) {
       setOutcome(
         error instanceof Error
           ? error.message
           : "Command failed; refresh to check GitHub state.",
       );
+      return false;
     } finally {
       submitting.current = false;
       setBusy(false);
@@ -105,42 +132,134 @@ export function PullRequestDetail({
   }
 
   return (
-    <div className="detail pr-detail" data-testid="pull-request-detail">
-      <header className="detail-head" ref={actionBar}>
-        <div className="detail-meta">
-          <span className="mono faint">#{selection.number}</span>
-          {header ? <span className="chip">{header.state}</span> : null}
-          {header?.draft ? <span className="chip">Draft</span> : null}
-          <span className="spacer" />
-          {header ? (
-            <a
-              data-pr-action="open"
-              aria-keyshortcuts="o"
-              href={header.url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open on GitHub
-            </a>
-          ) : null}
-          <button type="button" onClick={() => store.openPullRequest(null)}>
-            Close detail <kbd>esc</kbd>
-          </button>
+    <div
+      className="detail pr-detail"
+      data-fullscreen={fullscreen}
+      data-testid="pull-request-detail"
+      ref={actionBar}
+    >
+      <header className="pr-page-head">
+        <div className="pr-breadcrumb">
+          {task ? (
+            <button type="button" onClick={() => store.open(task.id)}>
+              {task.id}
+            </button>
+          ) : (
+            <span className="faint">No issue</span>
+          )}
+          <span className="faint">›</span>
+          {header ? <PrGlyph state={header.state} /> : null}
+          <span className="pr-header-title" title={header?.title}>
+            {header?.title ?? `Pull request #${selection.number}`}
+          </span>
         </div>
-        <h2>{header?.title ?? `Pull request #${selection.number}`}</h2>
-        {header ? (
-          <div className="detail-meta faint">
-            <span className="mono">
-              {header.head} → {header.base}
-            </span>
-            <span>by {header.author ?? "Unknown author"}</span>
+        {pr ? <ChangeCounts {...pr} /> : null}
+        <button
+          type="button"
+          className="pr-icon-button"
+          aria-label={row?.pinned ? "Unpin pull request" : "Pin pull request"}
+          aria-pressed={row?.pinned ?? false}
+          disabled={busy || connection || !pr}
+          onClick={() =>
+            void run({
+              kind: "pin_pull_request",
+              ...selection,
+              pinned: !row?.pinned,
+            })
+          }
+        >
+          {row?.pinned ? "★" : "☆"}
+        </button>
+        <details className="pr-menu">
+          <summary aria-label="More pull request actions">•••</summary>
+          <div className="pr-menu-items">
+            <button
+              type="button"
+              data-pr-action="delete"
+              aria-keyshortcuts="d"
+              disabled={busy || connection || !!deleteReason}
+              title={deleteReason ?? undefined}
+              onClick={() => void run({ kind: "delete_branch", ...selection })}
+            >
+              Delete branch
+            </button>
+            <button
+              type="button"
+              disabled={busy || connection || pr?.state !== "open"}
+              onClick={() => setConfirm({ kind: "close" })}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              data-pr-action="refresh"
+              aria-keyshortcuts="r"
+              disabled={busy || connection}
+              onClick={() =>
+                void run({
+                  kind: "refresh_pull_requests",
+                  repoId: selection.repoId,
+                  state: pr?.state ?? "open",
+                })
+              }
+            >
+              Refresh
+            </button>
+            <button type="button" onClick={() => store.openPullRequest(null)}>
+              Close detail
+            </button>
           </div>
+        </details>
+        {header ? (
+          <a
+            className="pr-github-chip mono"
+            data-pr-action="open"
+            aria-keyshortcuts="o"
+            aria-label="Open on GitHub"
+            href={header.url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <PrGlyph state={header.state} />
+            loom#{selection.number}
+          </a>
         ) : null}
-        <div className="pr-actions">
+        <button
+          type="button"
+          className="pr-icon-button"
+          aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+          aria-pressed={fullscreen}
+          onClick={() => setFullscreen(!fullscreen)}
+        >
+          {fullscreen ? "↙" : "⛶"}
+        </button>
+      </header>
+      <div className="pr-toolbar">
+        <div
+          className="pr-segments"
+          role="tablist"
+          aria-label="Pull request detail"
+        >
+          {TABS.map((label) => (
+            <button
+              key={label}
+              type="button"
+              role="tab"
+              id={`pr-tab-${label}`}
+              aria-controls="pr-panel"
+              aria-selected={tab === label}
+              onClick={() => setTab(label)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="spacer" />
+        <div className="pr-merge-split">
           <button
             type="button"
             data-pr-action="merge"
-            aria-keyshortcuts="m"
+            aria-keyshortcuts="m Meta+Enter"
             disabled={busy || !!reason}
             title={reason ?? undefined}
             onClick={() =>
@@ -148,192 +267,91 @@ export function PullRequestDetail({
               setConfirm({ kind: "merge", headSha: pr.headSha, base: pr.base })
             }
           >
-            Squash and merge
+            Squash &amp; merge
           </button>
-          <button
-            type="button"
-            data-pr-action="delete"
-            aria-keyshortcuts="d"
-            disabled={busy || connection || !!deleteReason}
-            title={deleteReason ?? undefined}
-            onClick={() => void run({ kind: "delete_branch", ...selection })}
-          >
-            Delete branch
-          </button>
-          <button
-            type="button"
-            disabled={busy || connection || pr?.state !== "open"}
-            onClick={() => setConfirm({ kind: "close" })}
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            data-pr-action="refresh"
-            aria-keyshortcuts="r"
-            disabled={busy || connection}
-            onClick={() =>
-              void run({
-                kind: "refresh_pull_requests",
-                repoId: selection.repoId,
-                state: pr?.state ?? "open",
-              })
+          <details className="pr-menu">
+            <summary aria-label="Merge options">⌄</summary>
+            <div className="pr-menu-items">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={deleteAfterMerge}
+                  onChange={(event) =>
+                    setDeleteAfterMerge(event.target.checked)
+                  }
+                />
+                Delete branch after merge
+              </label>
+            </div>
+          </details>
+        </div>
+        <button
+          type="button"
+          className="pr-run-agent"
+          aria-label="Open branch agent"
+          title={agent ? "Open branch agent" : "No Loom agent on this branch"}
+          disabled={!agent || !branchTask}
+          onClick={() => {
+            if (branchTask && agent) {
+              store.open(branchTask.id);
+              store.setRun(agent.id);
+              store.setTab("terminal");
             }
-          >
-            Refresh
-          </button>
-        </div>
-        {reason ? <div className="faint">{reason}</div> : null}
-        <div role="status" className="pr-outcome">
-          {busy ? "Waiting for GitHub…" : outcome}
-          {pr?.mergedAt ? (
-            <div>Merged at {pr.mergedAt}</div>
-          ) : pr?.state === "closed" ? (
-            <div>Pull request closed.</div>
-          ) : null}
-          {pr?.branchExists === false ? <div>Branch deleted.</div> : null}
-        </div>
-        {pr ? (
-          <div className="faint">Read from GitHub at {pr.observedAt}</div>
-        ) : (
-          <div className="faint">
-            Waiting for detail. Use Refresh to retry if it does not arrive.
-          </div>
-        )}
-      </header>
-      <div className="tabs" role="tablist" aria-label="Pull request detail">
-        {TABS.map((label) => (
-          <button
-            key={label}
-            type="button"
-            role="tab"
-            id={`pr-tab-${label}`}
-            aria-controls="pr-panel"
-            aria-selected={tab === label}
-            onClick={() => setTab(label)}
-          >
-            {label}
-          </button>
-        ))}
+          }}
+        >
+          ⚑
+        </button>
       </div>
       <div
-        className="tab-body"
+        className="tab-body pr-page-body"
         role="tabpanel"
         id="pr-panel"
         aria-labelledby={`pr-tab-${tab}`}
         data-tab-body={tab}
       >
-        {pr && row ? (
-          <>
-            {tab === "Description" ? (
-              <div className="pad pr-markdown">
-                <Markdown
-                  remarkPlugins={[remarkGfm]}
-                  skipHtml
-                  components={{
-                    a: ({ children, href }) => (
-                      <a href={href} target="_blank" rel="noreferrer">
-                        {children}
-                      </a>
-                    ),
-                  }}
-                >
-                  {pr.body || "No description."}
-                </Markdown>
-              </div>
-            ) : null}
-            {tab === "Checks" ? (
-              <div className="pad">
-                <p>Checks: {pr.checks === "none" ? "No checks" : pr.checks}</p>
-                {pr.checkRuns.length ? (
-                  <table className="pr-data">
-                    <thead>
-                      <tr>
-                        <th>Check</th>
-                        <th>Status</th>
-                        <th>Duration</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pr.checkRuns.map((check) => (
-                        <tr key={check.id}>
-                          <td>
-                            {check.url ? (
-                              <a
-                                href={check.url}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {check.name}
-                              </a>
-                            ) : (
-                              check.name
-                            )}
-                          </td>
-                          <td>
-                            {check.status}
-                            {check.conclusion ? ` · ${check.conclusion}` : ""}
-                          </td>
-                          <td>
-                            {duration(check.startedAt, check.completedAt, now)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p className="faint">No check runs reported.</p>
-                )}
-              </div>
-            ) : null}
-            {tab === "Files" ? (
-              <Suspense
-                fallback={<div className="pad faint">Loading files…</div>}
-              >
-                {row.patchError ? (
-                  <div className="pad" role="alert">
-                    {row.patchError}
-                  </div>
-                ) : null}
-                {row.patch ? (
-                  <Files row={{ ...row, patch: row.patch }} />
-                ) : row.patchLoading ? (
-                  <div className="pad faint" role="status">
-                    Loading diff…
-                  </div>
-                ) : null}
-              </Suspense>
-            ) : null}
-            {tab === "Commits" ? (
-              <div className="pad">
-                {pr.commits.length ? (
-                  pr.commits.map((commit) => (
-                    <article className="pr-commit" key={commit.sha}>
-                      <a
-                        className="mono"
-                        href={commit.url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {commit.sha.slice(0, 7)}
-                      </a>
-                      <div className="pr-commit-message">{commit.message}</div>
-                      <div className="faint">
-                        {commit.author ?? "Unknown author"} ·{" "}
-                        {commit.committedAt ?? "Time unavailable"}
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <p>No commits reported.</p>
-                )}
-              </div>
-            ) : null}
-          </>
+        {reason || outcome || busy ? (
+          <div className="pr-feedback">
+            <span className="faint">{reason}</span>
+            <div role="status" className="pr-outcome">
+              {busy ? "Waiting for coordinator…" : outcome}
+            </div>
+          </div>
         ) : null}
+        {pr?.mergedAt ? (
+          <div className="pr-observed faint">
+            Merged at {pr.mergedAt}
+            {pr.branchExists === false ? " · Branch deleted." : ""}
+          </div>
+        ) : pr?.branchExists === false ? (
+          <div className="pr-observed faint">Branch deleted.</div>
+        ) : null}
+        {pr && row ? (
+          tab === "Overview" ? (
+            <PullRequestOverview
+              row={row}
+              disabled={busy || connection}
+              run={run}
+              onFile={(path) => {
+                setFile(path);
+                setTab("Diff");
+              }}
+            />
+          ) : (
+            <Suspense
+              fallback={<div className="pad faint">Loading files…</div>}
+            >
+              <Files row={row} selectedFile={file} />
+            </Suspense>
+          )
+        ) : (
+          <div className="pad faint">
+            Waiting for detail. Use Refresh to retry if it does not arrive.
+          </div>
+        )}
       </div>
       {confirm ? (
         <ConfirmAction
+          initialDeleteBranch={deleteAfterMerge}
           confirmation={confirm}
           title={header?.title ?? `#${selection.number}`}
           disabled={
@@ -367,16 +385,8 @@ export function PullRequestDetail({
   );
 }
 
-function duration(start: string | null, end: string | null, now: string) {
-  if (!start) return "—";
-  const seconds = Math.max(
-    0,
-    Math.floor((Date.parse(end ?? now) - Date.parse(start)) / 1000),
-  );
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s${end ? "" : " · running"}`;
-}
-
 function ConfirmAction({
+  initialDeleteBranch,
   confirmation,
   title,
   disabled,
@@ -384,6 +394,7 @@ function ConfirmAction({
   onCancel,
   onConfirm,
 }: {
+  initialDeleteBranch: boolean;
   confirmation: Confirmation;
   title: string;
   disabled: boolean;
@@ -392,7 +403,7 @@ function ConfirmAction({
   onConfirm(deleteBranch: boolean): void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [deleteBranch, setDeleteBranch] = useState(true);
+  const [deleteBranch, setDeleteBranch] = useState(initialDeleteBranch);
   const merge = confirmation.kind === "merge";
   useEffect(() => {
     const previous = document.activeElement;

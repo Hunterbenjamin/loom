@@ -5,10 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
-import {
-  pullRequestSubscriptions,
-  selectedPullRequests,
-} from "../store/pull-requests.js";
+import { pullRequestSubscriptions } from "../store/pull-requests.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
 import { useShortcuts } from "./keys.js";
@@ -18,7 +15,7 @@ import { Sidebar } from "./sidebar.js";
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (options: {
     count: number;
-    scrollMargin: number;
+    scrollMargin?: number;
     getItemKey: (index: number) => string;
   }) => ({
     getTotalSize: () => options.count * 40,
@@ -26,7 +23,7 @@ vi.mock("@tanstack/react-virtual", () => ({
       Array.from({ length: options.count }, (_, index) => ({
         index,
         key: options.getItemKey(index),
-        start: options.scrollMargin + index * 40,
+        start: (options.scrollMargin ?? 0) + index * 40,
         size: 40,
       })),
     scrollToIndex() {},
@@ -90,151 +87,139 @@ function key(key: string, target: EventTarget = window) {
   return event;
 }
 
-test("renders every field and badge, filters states separately and keeps the open sidebar count", () => {
+test("renders the reference sections, compact glyph rows and viewer count", () => {
   const h = setup();
   expect(h.rows()).toHaveLength(4);
-  const content = h.host.textContent;
-  for (const text of [
-    "→ main",
-    "fixture-contributor",
-    "30m",
-    "Pass",
-    "Pending",
-    "Fail",
-    "No checks",
-    "Approved",
-    "Changes requested",
-    "None",
-    "Mergeable",
-    "Conflicts",
-    "Unknown",
-    "Draft",
-  ])
-    expect(content).toContain(text);
-  act(() => {
-    void h.store.setRepo(h.store.getState().snapshot.repos[0]?.id ?? "");
-  });
-  expect(h.rows()).toHaveLength(4);
-  const count = () =>
-    h.host.querySelector('[data-view="pull-requests"] .count')?.textContent;
-  expect(count()).toBe("4");
-  act(() => h.button("Merged").click());
-  expect(h.rows()).toHaveLength(1);
-  expect(h.rows()[0]?.textContent).toContain("#205");
-  expect(count()).toBe("4");
-  act(() => h.button("Closed").click());
-  expect(h.rows()[0]?.textContent).toContain("#206");
-  act(() => h.button("Open").click());
+  const labels = [...h.host.querySelectorAll(".reviews-group")].map(
+    (b) => b.textContent,
+  );
+  expect(labels).toEqual([
+    "Ready to merge1▾",
+    "Needs attention1▾",
+    "Waiting1▾",
+    "Created by you1▾",
+    "Completed24▸",
+  ]);
+  expect(h.host.querySelector('[data-view="pull-requests"]')?.textContent).toBe(
+    "Review3",
+  );
+  expect(h.host.querySelector("thead")).toBeNull();
+  expect(
+    h.host.querySelectorAll('.review-status[aria-label="Checks failed"]'),
+  ).toHaveLength(1);
+  expect(
+    h.host.querySelectorAll('.review-status[aria-label="Checks pending"]'),
+  ).toHaveLength(1);
+  expect(h.host.querySelectorAll(".pr-open")).toHaveLength(4); // rows; the nav uses its own icon
+  act(() => h.button("Created").click());
+  expect(h.rows()).toHaveLength(2);
+  expect(
+    h
+      .rows()
+      .every((row) =>
+        [203, 204].some((n) => row.dataset.pr?.includes(String(n))),
+      ),
+  ).toBe(true);
+  expect(
+    h.host.querySelector('[data-view="pull-requests"] .count')?.textContent,
+  ).toBe("3");
+  act(() => h.button("For you").click());
   act(() => h.store.setPrQuery("KEYBOARD"));
   expect(h.rows()).toHaveLength(1);
-  expect(h.rows()[0]?.textContent).toContain("#202");
-  act(() => h.store.setPrQuery("no matching pr"));
+  expect(h.rows()[0]?.textContent).toContain("Improve keyboard navigation");
+  act(() => h.store.setPrQuery("nothing matches"));
   expect(h.rows()).toHaveLength(0);
-  expect(h.host.textContent).toContain("No pull requests match this filter.");
-  key("j");
-  key("Enter");
-  expect(h.store.getState().ui.openTask).toBeNull();
+  expect(h.host.textContent).toContain("No reviews match this filter.");
 });
 
-test("j/k follows displayed order, search owns typing, and task links open only their task", () => {
+test("keyboard skips collapsed sections; Enter opens the PR and issue links open only the issue", () => {
   const h = setup();
+  act(() => h.button("Needs attention1▾").click());
   key("j");
-  expect(h.rows()[1]?.dataset.cursor).toBe("true");
-  expect(key("Enter").defaultPrevented).toBe(true);
-  expect(h.store.getState().ui.openPr).not.toBeNull();
+  expect(h.rows()[1]?.textContent).toContain("Improve keyboard navigation");
+  key("Enter");
+  expect(h.store.getState().ui.openPr?.number).toBe(202);
   key("Escape");
   key("k");
-  expect(h.rows()[0]?.dataset.cursor).toBe("true");
-  for (let i = 0; i < 12; i++) key("j");
-  expect(h.rows().at(-1)?.dataset.cursor).toBe("true");
   key("/");
   const input = h.host.querySelector<HTMLInputElement>("[data-pr-search]");
   if (!input) throw new Error("missing search");
   expect(document.activeElement).toBe(input);
-  const cursor = h.store.getState().ui.prCursor;
-  key("k", input);
-  expect(h.store.getState().ui.prCursor).toBe(cursor);
+  key("j", input);
+  expect(h.store.getState().ui.prCursor).toBe(0);
   act(() => h.store.setPrQuery("keyboard"));
   key("Escape", input);
   expect(h.store.getState().ui.prQuery).toBe("");
   const task = h.host.querySelector<HTMLButtonElement>(".pr-task-link");
-  if (!task) throw new Error("missing task link");
+  if (!task) throw new Error("missing issue link");
   expect(key("Enter", task).defaultPrevented).toBe(false);
-  // happy-dom does not synthesize native keyboard clicks.
   act(() => task.click());
   expect(h.store.getState().ui.openTask).toBe(task.textContent);
+  expect(h.store.getState().ui.openPr).toBeNull();
   key("Escape");
-  expect(h.store.getState().ui.openTask).toBeNull();
-  act(() => h.rows()[2]?.click());
-  expect(h.store.getState().ui.prCursor).toBe(2);
-  key("e");
-  expect(h.store.getState().ui.stagePicker).toBe(false);
+  const header = h.button("Completed24▸");
+  key("Enter", header);
+  expect(h.store.getState().ui.openPr).toBeNull();
+  act(() => header.click());
+  expect(h.rows()).toHaveLength(23);
+  expect(h.host.querySelectorAll(".pr-merged")).toHaveLength(10);
+  expect(h.host.querySelectorAll(".pr-closed")).toHaveLength(10);
 });
 
-test("subscriptions follow repository, state and visibility without PR details or commands", () => {
+test("Completed starts collapsed, loads 20 at a time, newest completion first, and retains presentation state", () => {
   const h = setup();
-  expect(pullRequestSubscriptions(h.store.getState())).toEqual([
-    {
-      kind: "pull_requests",
-      repoId: h.store.getState().ui.repo,
-      state: "open",
-    },
-  ]);
-  act(() => h.store.setTrackerVisible(true));
-  expect(pullRequestSubscriptions(h.store.getState())).toHaveLength(1);
-  const repo = h.store.getState().snapshot.repos[0];
-  if (!repo) throw new Error("missing repo");
+  const wire = toSnapshot(buildSnapshot());
+  const first = wire.body.pullRequests[0];
+  if (!first) throw new Error("missing PR");
+  wire.body.pullRequests = Array.from({ length: 45 }, (_, i) => ({
+    ...first,
+    number: i + 1,
+    state: i % 2 ? ("closed" as const) : ("merged" as const),
+    completedAt: new Date(
+      Date.UTC(2026, 8, 1, 0, i),
+    ).toISOString() as typeof first.completedAt,
+  }));
+  act(() => h.store.applyProtocol(stateFromSnapshot(wire.meta, wire.body)));
+  expect(h.rows()).toHaveLength(0);
+  act(() => h.button("Completed45▸").click());
+  expect(h.rows()).toHaveLength(20);
+  expect(h.rows()[0]?.dataset.pr).toContain(",45]");
+  act(() => h.button("Load 20 more").click());
+  expect(h.rows()).toHaveLength(40);
+  act(() => h.button("Load 5 more").click());
+  expect(h.rows()).toHaveLength(45);
   act(() => {
-    h.store.setRepo(repo.id);
-    h.store.setPrState("closed");
+    h.store.setView("all");
+    h.store.setView("pull-requests");
   });
+  expect(h.rows()).toHaveLength(45);
+  act(() => h.button("Completed45▾").click());
+  key("j");
+  key("Enter");
+  expect(h.store.getState().ui.openPr).toBeNull();
+});
+
+test("subscriptions load history only while Reviews is visible", () => {
+  const h = setup();
+  const repoId = h.store.getState().ui.repo;
+  const open = { kind: "pull_requests", repoId, state: "open" };
+  expect(pullRequestSubscriptions(h.store.getState())).toEqual([open]);
+  act(() => h.store.setTrackerVisible(true));
   expect(pullRequestSubscriptions(h.store.getState())).toEqual([
-    { kind: "pull_requests", repoId: repo.id, state: "open" },
-    { kind: "pull_requests", repoId: repo.id, state: "closed" },
+    open,
+    { ...open, state: "merged" },
+    { ...open, state: "closed" },
   ]);
+  act(() => h.store.setPrTab("created"));
   act(() => h.store.setView("all"));
-  expect(pullRequestSubscriptions(h.store.getState())).toEqual([
-    {
-      kind: "pull_requests",
-      repoId: h.store.getState().ui.repo,
-      state: "open",
-    },
-  ]);
+  expect(pullRequestSubscriptions(h.store.getState())).toEqual([open]);
   act(() => h.store.setView("pull-requests"));
-  expect(h.store.getState().ui.prState).toBe("closed");
+  expect(h.store.getState().ui.prTab).toBe("created");
   act(() => h.store.setTrackerVisible(false));
-  expect(pullRequestSubscriptions(h.store.getState())).toEqual([
-    {
-      kind: "pull_requests",
-      repoId: h.store.getState().ui.repo,
-      state: "open",
-    },
-  ]);
-  expect(createStore().getState().ui.prState).toBe("open");
+  expect(pullRequestSubscriptions(h.store.getState())).toEqual([open]);
 });
 
-test("sorts by creation time and searches branch, author, number and linked key", () => {
-  const store = createStore();
-  const rows = selectedPullRequests(store.getState());
-  expect(rows.map((pr) => pr.createdAt)).toEqual(
-    rows
-      .map((pr) => pr.createdAt)
-      .sort()
-      .reverse(),
-  );
-  for (const query of [
-    "#201",
-    "fixture-contributor",
-    "feat/example-2",
-    "main",
-    rows[0]?.taskId ?? "",
-  ]) {
-    store.setPrQuery(query);
-    expect(selectedPullRequests(store.getState()).length).toBeGreaterThan(0);
-  }
-});
-
-test("shows loading from the live list state until the empty result arrives", () => {
+test("shows loading from live list state and the empty result", () => {
   const h = setup();
   const wire = toSnapshot(buildSnapshot());
   const repoId = wire.body.repos[0]?.id;
@@ -242,10 +227,8 @@ test("shows loading from the live list state until the empty result arrives", ()
   wire.body.pullRequests = [];
   wire.body.pullRequestLists = [{ repoId, state: "open", loading: true }];
   act(() => h.store.applyProtocol(stateFromSnapshot(wire.meta, wire.body)));
-  expect(h.host.textContent).toContain("Loading pull requests…");
+  expect(h.host.textContent).toContain("Loading reviews…");
   wire.body.pullRequestLists = [{ repoId, state: "open", loading: false }];
   act(() => h.store.applyProtocol(stateFromSnapshot(wire.meta, wire.body)));
-  expect(h.host.textContent).toContain(
-    "No open pull requests in the current snapshot.",
-  );
+  expect(h.host.textContent).toContain("No reviews for you.");
 });

@@ -10,6 +10,7 @@ import { type Command, runId, type Subscription } from "@loom/protocol";
 import { openReadOnlyStore, openStore } from "@loom/store";
 import { LoomClient } from "./client.js";
 import {
+  applyStoredSettingsToConfig,
   type CoordinatorConfig,
   configFromEnvironment,
   reconcileConfig,
@@ -267,11 +268,20 @@ async function serve(config: CoordinatorConfig): Promise<void> {
     instance: config.instance,
     config: reconcileConfig(config),
   });
-  const adapters = await createRealAdapters(config, store, (error) =>
+  const runtimeConfig = structuredClone(config);
+  applyStoredSettingsToConfig(
+    runtimeConfig,
+    config,
+    store.settings.read({ kind: "global" }).data,
+    true,
+  );
+  store.setReconcileConfig(reconcileConfig(runtimeConfig));
+  const adapters = await createRealAdapters(runtimeConfig, store, (error) =>
     process.stderr.write(`adapter: ${formatCliError(error)}`),
   );
   const coordinator = new Coordinator({
-    config,
+    config: runtimeConfig,
+    baselineConfig: config,
     store,
     adapters,
     log: (message) => process.stderr.write(`${message}\n`),

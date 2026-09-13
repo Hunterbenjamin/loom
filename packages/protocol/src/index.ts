@@ -29,6 +29,7 @@ export {
 export * from "./operator.js";
 export * from "./patch.js";
 export * from "./pull-requests.js";
+export * from "./settings.js";
 export * from "./snapshot.js";
 export * from "./subscriptions.js";
 export * from "./views.js";

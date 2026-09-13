@@ -63,15 +63,18 @@ export async function writeCodexHomeConfig(
   const headers = Object.entries(entry.headers ?? {})
     .map(([k, v]) => `${JSON.stringify(k)} = ${JSON.stringify(v)}`)
     .join(", ");
+  const access = action.access ?? "full";
   const sandbox = READ_ONLY.includes(action.role)
     ? "read-only"
-    : "danger-full-access";
+    : access === "approval-gated"
+      ? "workspace-write"
+      : "danger-full-access";
   const lines = [
     `model = ${JSON.stringify(action.model)}`,
     ...(action.reasoningEffort
       ? [`model_reasoning_effort = ${JSON.stringify(action.reasoningEffort)}`]
       : []),
-    'approval_policy = "never"',
+    `approval_policy = ${JSON.stringify(access === "approval-gated" ? "on-request" : "never")}`,
     `sandbox_mode = ${JSON.stringify(sandbox)}`,
     "",
     "[mcp_servers.loom]",
@@ -154,6 +157,7 @@ export async function startRun(
   state: TaskState,
 ): Promise<ActionOutputs["start_run"]> {
   const { adapters, config, recipes } = deps;
+  const access = action.access ?? "full";
   const previous = recipes.get(action.runId);
   const token =
     previous && previous.sessionEpoch === action.sessionEpoch
@@ -180,6 +184,7 @@ export async function startRun(
     ...(action.reasoningEffort
       ? { reasoningEffort: action.reasoningEffort }
       : {}),
+    access,
     attempt: action.attempt,
     sessionEpoch: action.sessionEpoch,
     sessionId: action.sessionId,
@@ -200,7 +205,7 @@ export async function startRun(
     // it again. The token goes in the sibling MCP config, never in the settings file.
     // For interactive runs, derive bash command prefixes from WORKFLOW.md.
     let bashPrefixes: string[] | undefined;
-    if (action.mode === "interactive") {
+    if (action.mode === "interactive" && access === "full") {
       bashPrefixes = await deriveBashPrefixes(
         state,
         deps.workflowReader,
@@ -233,6 +238,7 @@ export async function startRun(
       model: action.model,
       settingsPath,
       readOnly: READ_ONLY.includes(action.role),
+      approvalGated: access === "approval-gated",
     });
     const pane = await openPane(deps, state, action, {
       ...recipe,
@@ -266,7 +272,10 @@ export async function startRun(
       // blocked by workspace-write's no-network rule); only planners stay read-only.
       sandbox: READ_ONLY.includes(action.role)
         ? "read-only"
-        : "danger-full-access",
+        : access === "approval-gated"
+          ? "workspace-write"
+          : "danger-full-access",
+      approvalPolicy: access === "approval-gated" ? "on-request" : "never",
       developerInstructions: prompt,
       config: {
         mcp_servers: { loom: codexMcpServer(deps.mcpEntry(token)) },

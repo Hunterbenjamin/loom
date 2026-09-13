@@ -8,7 +8,14 @@ import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { memo, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  memo,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { terminalsForTask } from "../store/selectors.js";
 import { kittyEncode } from "./kitty.js";
@@ -18,6 +25,7 @@ const THEMES = {
   dark: { background: "#0b0c0e", foreground: "#d8dbde", cursor: "#7aa2f7" },
   light: { background: "#ffffff", foreground: "#1b1e23", cursor: "#3563c7" },
 };
+export const TerminalHistoryContext = createContext(10_000);
 
 export function TerminalTab({
   task,
@@ -205,6 +213,7 @@ export const TerminalSession = memo(function TerminalSession({
   theme: "dark" | "light";
   live: boolean;
 }) {
+  const terminalHistoryLimit = useContext(TerminalHistoryContext);
   if (panelId && window.loom) {
     window.loom.terminalRenders ??= {};
     window.loom.terminalRenders[panelId] =
@@ -227,6 +236,7 @@ export const TerminalSession = memo(function TerminalSession({
   useEffect(() => {
     if (instance.current) instance.current.options.theme = THEMES[theme];
   }, [theme]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: History is captured when this terminal attaches; changing the default must not remount active sessions.
   useEffect(() => {
     const element = host.current;
     if (!element) return;
@@ -244,7 +254,7 @@ export const TerminalSession = memo(function TerminalSession({
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
       theme: THEMES[settings.current.theme],
-      scrollback: 0,
+      scrollback: terminalHistoryLimit,
       cursorBlink: false,
     });
     const fit = new FitAddon();

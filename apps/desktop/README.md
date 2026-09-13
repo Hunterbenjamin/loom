@@ -162,13 +162,13 @@ split geometry, viewer-only menu closure and keyboard menu access in an isolated
 
 ### Workbench keybindings
 
-The Electron main process writes the full default configuration to
-`<LOOM_DATA_ROOT>/<LOOM_INSTANCE>/keybindings.json` on first launch, without overwriting an existing
-file. Edit this file in any text editor; saves (including atomic file replacements) reload in all
-open windows. No restart is needed. Invalid JSON or configuration activates the defaults and shows
-an error in the Workbench bottom bar; saving a valid file clears it. The shortcut map and command
-palette always show the bindings actually in force. This is configuration, not persisted UI state.
-Both environment variables must be set, including for a configurable fixture preview.
+The coordinator-owned Settings page stores the complete binding map, prefix and timeout. On upgrade,
+Electron reads `<LOOM_DATA_ROOT>/<LOOM_INSTANCE>/keybindings.json` as a one-time compatibility input
+only when those stored settings are absent; it never overwrites stored settings. Saved settings are
+sent to main over validated IPC immediately, update every window, and drive native shortcut
+suppression. Main keeps a private derived `desktop-settings.json` cache for startup window mode and
+does not treat it as another owner. The shortcut map and command palette always show the bindings in
+force. Both environment variables must be set for import and the startup cache.
 
 | Action ID | Direct Mac default | After Ctrl+A |
 | --- | --- | --- |

@@ -1,4 +1,10 @@
-import { pullRequestCommand } from "./pull-requests.js";
+import {
+  pullRequestCommand,
+  pullRequestCommitDiff,
+  pullRequestDiffRead,
+  pullRequestFileContents,
+  pullRequestReviewChange,
+} from "./pull-requests.js";
 // What a window asks the coordinator to do. Human commands become inputs on the task's inbox and
 // are acknowledged with the input ID; reconcile decides what happens next and the result arrives
 // as patches (principle 3: code moves tasks, and only after validating). UI-only requests answer
@@ -8,6 +14,7 @@ import { z } from "zod";
 import { humanCommand, providerRules } from "./entities.js";
 import { inputId, repoId, requestId, runId, sha, taskId } from "./ids.js";
 import { operatorState } from "./operator.js";
+import { settingsPatch, settingsScope } from "./settings.js";
 import { subscription } from "./subscriptions.js";
 import {
   leadTarget,
@@ -80,7 +87,22 @@ export const command = z.union([
   renameSpace,
   renameTab,
 
+  z.strictObject({
+    kind: z.literal("update_settings"),
+    scope: settingsScope,
+    expectedVersion: z.number().int().nonnegative(),
+    patch: settingsPatch,
+  }),
+  z.strictObject({
+    kind: z.literal("reset_settings"),
+    scope: settingsScope,
+    expectedVersion: z.number().int().nonnegative(),
+    keys: z.array(z.string().min(1)).min(1),
+  }),
+
   ...pullRequestCommand.options,
+  pullRequestReviewChange,
+  ...pullRequestDiffRead.options,
   z.strictObject({
     kind: z.literal("claim_notification"),
     noteId: z.string().min(1).max(300),
@@ -198,10 +220,27 @@ export const commandRequest = z.strictObject({
 
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
+  z.strictObject({
+    kind: z.literal("settings_updated"),
+    scope: settingsScope,
+    version: z.number().int().positive(),
+  }),
+  z.strictObject({ kind: z.literal("pull_request_review_state") }),
+  z.strictObject({
+    kind: z.literal("pull_request_commit"),
+    diff: pullRequestCommitDiff,
+  }),
+  z.strictObject({
+    kind: z.literal("pull_request_file"),
+    contents: pullRequestFileContents,
+  }),
   z.strictObject({ kind: z.literal("renamed") }),
   z.strictObject({
     kind: z.literal("pull_request_action"),
     command: z.enum([
+      "pin_pull_request",
+      "link_pull_request",
+      "comment_pull_request",
       "merge_pull_request",
       "close_pull_request",
       "delete_branch",

@@ -25,6 +25,7 @@ import type {
   PullRequestDetailRow,
   PullRequestRow,
   RunTarget,
+  SettingsDocument,
   TaskInbox,
 } from "@loom/protocol";
 import { command as commandSchema } from "@loom/protocol";
@@ -47,7 +48,8 @@ export type ViewId =
   | "in-progress"
   | "awaiting-approval"
   | "done"
-  | "pull-requests";
+  | "pull-requests"
+  | "settings";
 export type Pane = "list" | "board";
 export type TabId = "activity" | "plan" | "agents" | "terminal" | "review";
 export type SortKey =
@@ -69,7 +71,11 @@ export interface UiState {
   /** Presentation only; owned by this window and never persisted. */
   listSections: ListSections;
   trackerVisible: boolean;
-  prState: PullRequestRow["state"];
+  prTab: "for-you" | "created";
+  prSections: Partial<
+    Record<import("./pull-requests.js").ReviewSection, boolean>
+  >;
+  prCompletedCount: number;
   prQuery: string;
   prCursor: number;
   openPr: { repoId: PullRequestRow["repoId"]; number: number } | null;
@@ -115,6 +121,7 @@ export interface State {
   operator: OperatorState | null;
   notes: Entities["note"][];
   instance: string;
+  settings: SettingsDocument[];
 }
 
 /** The Tracker's three destinations. Other view ids remain reachable by keyboard and palette. */
@@ -145,6 +152,7 @@ const IN_PROGRESS: Stage[] = [
 
 export function matchesView(task: Task, view: ViewId): boolean {
   switch (view) {
+    case "settings":
     case "pull-requests":
       return false;
     case "all":
@@ -165,7 +173,9 @@ export function matchesView(task: Task, view: ViewId): boolean {
 const initialUi: UiState = {
   listSections: {},
   trackerVisible: false,
-  prState: "open",
+  prTab: "for-you",
+  prSections: {},
+  prCompletedCount: 20,
   prQuery: "",
   prCursor: 0,
   openPr: null,
@@ -229,6 +239,7 @@ export function createStore(
     mainFinished: false,
     runTargets: [],
     instance,
+    settings: [],
     lead: {
       id: parseRepoId.parse("lead"),
       sessionId: null,
@@ -360,6 +371,9 @@ export function createStore(
       };
       emit();
     },
+    setChimeMuted(chimeMuted: boolean) {
+      setUi({ chimeMuted });
+    },
     setConnection(connection: string) {
       if (connection !== "connected") paneTransitions.reset();
       state = { ...state, connection };
@@ -439,6 +453,10 @@ export function createStore(
           !patch || patch.changes.some((c) => c.collection === "note")
             ? [...client.collections.note.values()]
             : state.notes,
+        settings:
+          !patch || patch.changes.some((c) => c.collection === "settings")
+            ? [...client.collections.settings.values()]
+            : state.settings,
         panes:
           !patch || patch.changes.some((c) => c.collection === "pane")
             ? [...client.collections.pane.values()]
@@ -555,8 +573,18 @@ export function createStore(
     setTrackerVisible(trackerVisible: boolean) {
       setUi({ trackerVisible });
     },
-    setPrState(prState: PullRequestRow["state"]) {
-      setUi({ prState, prCursor: 0 });
+    setPrTab(prTab: UiState["prTab"]) {
+      setUi({ prTab, prCursor: 0 });
+    },
+    togglePrSection(section: import("./pull-requests.js").ReviewSection) {
+      const collapsed = state.ui.prSections[section] ?? section === "completed";
+      setUi({
+        prSections: { ...state.ui.prSections, [section]: !collapsed },
+        prCursor: 0,
+      });
+    },
+    loadMoreCompletedPrs() {
+      setUi({ prCompletedCount: state.ui.prCompletedCount + 20 });
     },
     setPrQuery(prQuery: string) {
       setUi({ prQuery, prCursor: 0 });

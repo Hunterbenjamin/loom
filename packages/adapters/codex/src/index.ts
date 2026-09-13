@@ -303,7 +303,7 @@ class AppServerAdapter implements CodexAdapter {
         config: z.record(z.string(), z.json()).parse(req.config),
         // Never prompt (user decision, 2026-09-12): a command the sandbox forbids fails visibly
         // in the transcript instead of parking the run on a request nobody is watching.
-        approvalPolicy: "never",
+        approvalPolicy: req.approvalPolicy ?? "never",
         approvalsReviewer: "user",
         ephemeral: false,
         historyMode: "legacy",

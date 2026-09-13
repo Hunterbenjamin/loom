@@ -23,6 +23,10 @@ const detail = (
   overrides: Partial<PullRequestDetail> = {},
 ): PullRequestDetail => ({
   branchExists: true,
+  viewerDidAuthor: true,
+  viewerReviewRequested: false,
+  reviewRequired: false,
+  completedAt: null,
   number,
   title: `PR ${number}`,
   author: "human",
@@ -599,3 +603,321 @@ test("cached list SHAs start detail and diff together; a pushed head gets its ow
     gate.release();
   }
 });
+
+test("overview commands publish durable pins and manual links, and reread comments once per intent", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail());
+  const issue = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Manually linked",
+    description: "",
+  }).task;
+  const client = await connect(h, [listScope(h), detailScope(h)]);
+  const key = pullRequestKey(h.repo.id, 1);
+  await vi.waitFor(() =>
+    expect(
+      client.state?.collections.pull_request_detail.get(key)?.patchLoading,
+    ).toBe(false),
+  );
+  const selection = { repoId: h.repo.id, number: 1 };
+  const read = () => client.state?.collections.pull_request_detail.get(key);
+  expect(
+    await client.command({
+      kind: "pin_pull_request",
+      ...selection,
+      pinned: true,
+    }),
+  ).toMatchObject({ ok: true });
+  expect(read()?.pinned).toBe(true);
+  expect(
+    await client.command({
+      kind: "link_pull_request",
+      ...selection,
+      taskKey: "missing",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "guard_failed" } });
+  expect(read()?.taskId).toBeNull();
+  expect(
+    await client.command({
+      kind: "link_pull_request",
+      ...selection,
+      taskKey: issue.id.toUpperCase(),
+    }),
+  ).toMatchObject({ ok: true });
+  expect(read()?.taskId).toBe(issue.id);
+  expect(client.state?.collections.pull_request.get(key)?.taskId).toBe(
+    issue.id,
+  );
+  expect(h.store.pullRequestPreferences(h.repo.id, 1)).toEqual({
+    pinned: true,
+    taskId: issue.id,
+  });
+  const comment = {
+    kind: "comment_pull_request" as const,
+    ...selection,
+    body: "Looks ready",
+    requestId: "b5e9155b-4c50-49b7-876b-c6cf884cc789",
+  };
+  expect(await client.command(comment)).toMatchObject({ ok: true });
+  expect(await client.command(comment)).toMatchObject({ ok: true });
+  expect(read()?.detail.comments.map((c) => c.body)).toEqual(["Looks ready"]);
+  expect(h.store.loadTaskState(issue.id).task.stage).toBe("backlog");
+});
+
+test("branch comparison never holds back overview or diff, and publishes an honest count", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail());
+  let release!: (count: number) => void;
+  h.adapters.github.readPullRequestBehind = () =>
+    new Promise((resolve) => {
+      release = resolve;
+    });
+  const client = await connect(h, [detailScope(h)]);
+  const key = pullRequestKey(h.repo.id, 1);
+  try {
+    await vi.waitFor(() =>
+      expect(
+        client.state?.collections.pull_request_detail.get(key)?.patchLoading,
+      ).toBe(false),
+    );
+    expect(
+      client.state?.collections.pull_request_detail.get(key)?.behindBy,
+    ).toBeNull();
+  } finally {
+    release(3);
+  }
+  await vi.waitFor(() =>
+    expect(
+      client.state?.collections.pull_request_detail.get(key)?.behindBy,
+    ).toBe(3),
+  );
+});
+
+test("PR Reviewed state publishes to two windows, survives reconnect, and rejects stale/foreign files", async () => {
+  const h = await setup();
+  const file = {
+    path: "a.ts",
+    additions: 1,
+    deletions: 1,
+    changeType: "MODIFIED" as const,
+  };
+  h.github.setPullRequest(detail(1, { files: [file] }));
+  const first = await connect(h, [detailScope(h)]);
+  const second = await connect(h, [detailScope(h)]);
+  await vi.waitFor(() =>
+    expect(first.state?.collections.pull_request_detail.size).toBe(1),
+  );
+  const command = {
+    kind: "save_review_state" as const,
+    repoId: h.repo.id,
+    number: 1,
+    change: {
+      headSha: head,
+      viewed: [{ fileId: file.path, path: file.path, headSha: head, at }],
+    },
+  };
+  expect(await first.command(command)).toMatchObject({ ok: true });
+  const read = (client: LoomClient) =>
+    client.state?.collections.pull_request_detail.get(
+      pullRequestKey(h.repo.id, 1),
+    )?.viewedFiles;
+  await vi.waitFor(() => expect(read(second)).toHaveLength(1));
+  expect(await first.command(command)).toMatchObject({ ok: true });
+  expect(read(second)).toHaveLength(1);
+  first.close();
+  const reopened = await connect(h, [detailScope(h)]);
+  await vi.waitFor(() => expect(read(reopened)).toHaveLength(1));
+  expect(
+    await second.command({
+      ...command,
+      change: {
+        headSha: head,
+        viewed: [{ headSha: head, at, fileId: "foreign", path: "foreign" }],
+      },
+    }),
+  ).toMatchObject({ ok: false });
+  h.github.setPullRequest(detail(1, { files: [file], headSha: nextHead }));
+  expect(await second.command(command)).toMatchObject({ ok: false });
+  await second.command({
+    kind: "refresh_pull_requests",
+    repoId: h.repo.id,
+    state: "open",
+  });
+  await vi.waitFor(() => expect(read(second)).toEqual([]));
+});
+
+test("commit/file reads are scoped to the observed PR head and its commit/file membership", async () => {
+  const h = await setup();
+  const file = {
+    path: "a.ts",
+    additions: 1,
+    deletions: 1,
+    changeType: "MODIFIED" as const,
+  };
+  h.github.setPullRequest(
+    detail(1, {
+      files: [file],
+      commits: [
+        {
+          sha: head,
+          message: "A commit",
+          author: "human",
+          committedAt: at,
+          url: "https://example.test/commit",
+        },
+      ],
+    }),
+  );
+  const client = await connect(h, [detailScope(h)]);
+  const command = {
+    kind: "fetch_pull_request_commit" as const,
+    repoId: h.repo.id,
+    number: 1,
+    headSha: head,
+    baseSha: detail().baseSha,
+    commitSha: head,
+  };
+  expect(await client.command(command)).toMatchObject({
+    ok: true,
+    result: { kind: "pull_request_commit", diff: { patch: { headSha: head } } },
+  });
+  expect(
+    await client.command({ ...command, commitSha: nextHead }),
+  ).toMatchObject({ ok: false });
+  expect(
+    await client.command({
+      kind: "fetch_pull_request_file",
+      repoId: h.repo.id,
+      number: 1,
+      headSha: head,
+      baseSha: detail().baseSha,
+      commitSha: null,
+      path: "foreign",
+      ignoreWhitespace: false,
+    }),
+  ).toMatchObject({ ok: false });
+  h.github.setPullRequest(detail(1, { baseSha: nextHead }));
+  expect(
+    await client.command({
+      ...command,
+      kind: "fetch_pull_request_file",
+      commitSha: null,
+      path: file.path,
+      ignoreWhitespace: false,
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: { message: "PR head or base changed; refresh the diff" },
+  });
+  h.github.setPullRequest(detail(1, { headSha: nextHead }));
+  expect(await client.command(command)).toMatchObject({ ok: false });
+});
+
+test("explicit issue links publish in both directions, relink, and survive restart without PR subscriptions", async () => {
+  let h = await setup();
+  const first = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "First link",
+    description: "",
+  }).task;
+  const second = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Second link",
+    description: "",
+  }).task;
+  const client = await connect(h, [
+    { kind: "views", views: ["all"], repoIds: null },
+  ]);
+  const link = (taskKey: string) =>
+    client.command({
+      kind: "link_pull_request",
+      repoId: h.repo.id,
+      number: 1,
+      taskKey,
+    });
+  expect(await link(first.id)).toMatchObject({ ok: true });
+  expect(await link(first.id)).toMatchObject({ ok: true });
+  expect(
+    client.state?.collections.inbox.get(first.id)?.linkedPrNumbers,
+  ).toEqual([1]);
+  expect(await link(second.id)).toMatchObject({ ok: true });
+  expect(
+    client.state?.collections.inbox.get(first.id)?.linkedPrNumbers,
+  ).toEqual([]);
+  expect(
+    client.state?.collections.inbox.get(second.id)?.linkedPrNumbers,
+  ).toEqual([1]);
+  expect(h.store.loadTaskState(second.id).task).toMatchObject({
+    branch: null,
+    prNumber: null,
+    stage: "backlog",
+  });
+  h = await h.restart();
+  harnesses[harnesses.length - 1] = h;
+  const reopened = await connect(h, [
+    { kind: "views", views: ["all"], repoIds: null },
+  ]);
+  expect(
+    reopened.state?.collections.inbox.get(second.id)?.linkedPrNumbers,
+  ).toEqual([1]);
+  h.github.setPullRequest(detail());
+  const prClient = await connect(h, [detailScope(h)]);
+  await vi.waitFor(() =>
+    expect(
+      prClient.state?.collections.pull_request_detail.get(
+        pullRequestKey(h.repo.id, 1),
+      )?.taskId,
+    ).toBe(second.id),
+  );
+});
+
+test.each(["list", "detail"] as const)(
+  "a newly observed merged PR in %s immediately queues its branch task, independent of a manual link",
+  async (surface) => {
+    const h = await setup();
+    const task = h.coordinator.createTask({
+      repoId: h.repo.id,
+      title: "Branch task",
+      description: "",
+    }).task;
+    h.coordinator.submitHuman(task.id, { type: "move", to: "todo" });
+    await h.coordinator.settle();
+    const branch = h.store.loadTaskState(task.id).task.branch;
+    if (!branch) throw new Error("Missing branch");
+    const other = h.coordinator.createTask({
+      repoId: h.repo.id,
+      title: "Manual reference",
+      description: "",
+    }).task;
+    h.store.setPullRequestPreferences(h.repo.id, 1, { taskId: other.id });
+    h.github.setPullRequest(
+      detail(1, {
+        head: branch,
+        state: "merged",
+        mergedAt: at,
+        mergeCommitSha: head,
+      }),
+    );
+    const clockBefore = h.clock.now();
+    await connect(h, [
+      surface === "detail"
+        ? detailScope(h)
+        : { kind: "pull_requests", repoId: h.repo.id, state: "merged" },
+    ]);
+    const find = vi.spyOn(h.adapters.github, "findPullRequest");
+    await vi.waitFor(() =>
+      expect(
+        h.logs.some((log) =>
+          log.includes(surface === "detail" ? "detail/checks" : "list"),
+        ),
+      ).toBe(true),
+    );
+    await h.coordinator.settle();
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({ branch, etag: null }),
+    );
+    expect(h.store.loadTaskState(task.id).task.stage).toBe("done");
+    expect(h.store.loadTaskState(other.id).task.stage).toBe("backlog");
+    expect(h.clock.now()).toBe(clockBefore);
+  },
+);

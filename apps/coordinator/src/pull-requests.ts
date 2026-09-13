@@ -11,12 +11,17 @@ import {
   type PullRequestCommand,
   type PullRequestDetailRow,
   type PullRequestRow,
+  pullRequestCommitDiff,
   pullRequestDetailRow,
+  type pullRequestDiffRead,
+  pullRequestFileContents,
   pullRequestKey,
   pullRequestListKey,
+  type pullRequestReviewChange,
   pullRequestRow,
   type Subscription,
 } from "@loom/protocol";
+import type { z } from "zod";
 import type { Row } from "./views.js";
 
 type ListScope = Extract<Subscription, { kind: "pull_requests" }>;
@@ -33,10 +38,22 @@ export interface PullRequestViewsDeps {
   github: GitHubAdapter;
   repo(id: RepoId): Repo;
   tasks(): Task[];
+  preferences?(
+    repo: RepoId,
+    number: number,
+  ): { pinned: boolean; taskId: Task["id"] | null };
+  viewedFiles?(
+    repo: RepoId,
+    number: number,
+    headSha: string,
+  ): PullRequestDetailRow["viewedFiles"];
+  saveReviewState?(command: z.output<typeof pullRequestReviewChange>): void;
   replace(owner: string, rows: Row[]): void;
   after(ms: number, callback: () => void): () => void;
   action(command: PullRequestCommand): Promise<void>;
   changed(repo: Repo): void;
+  linksChanged?(repo: Repo): Promise<void>;
+  merged?(repo: Repo, head: string): void;
   onError(error: unknown): void;
   log?(message: string): void;
 }
@@ -144,6 +161,16 @@ export class PullRequestViews {
         } catch (error) {
           actionError = error;
         }
+        if (
+          command.kind === "pin_pull_request" ||
+          command.kind === "link_pull_request"
+        ) {
+          this.relink();
+          if (command.kind === "link_pull_request")
+            await this.deps.linksChanged?.(repo);
+          if (actionError) throw actionError;
+          return;
+        }
         // Also refresh refusals and uncertain writes. Never automatically replay a command.
         this.deps.changed(repo);
         const scopes = new Map<string, PrScope>();
@@ -187,7 +214,81 @@ export class PullRequestViews {
     return result;
   }
 
-  private taskId(repoId: RepoId, head: string) {
+  async saveReview(
+    command: z.output<typeof pullRequestReviewChange>,
+  ): Promise<void> {
+    const repo = this.deps.repo(command.repoId);
+    const pr = await this.deps.github.readPullRequest(
+      repo.github,
+      command.number,
+    );
+    if (pr.headSha !== command.change.headSha)
+      throw new Error("PR head changed; refresh before marking Reviewed");
+    for (const file of command.change.viewed ?? []) {
+      if (
+        file.headSha !== pr.headSha ||
+        file.fileId !== file.path ||
+        !pr.files.some((f) => f.path === file.path)
+      )
+        throw new Error("Viewed file must belong to this PR head");
+    }
+    if (!this.deps.saveReviewState)
+      throw new Error("Review state is unavailable");
+    this.deps.saveReviewState(command);
+    this.relink();
+  }
+
+  async readDiff(command: z.output<typeof pullRequestDiffRead>) {
+    const repo = this.deps.repo(command.repoId);
+    const pr = await this.deps.github.readPullRequest(
+      repo.github,
+      command.number,
+      { cached: true },
+    );
+    if (pr.headSha !== command.headSha || pr.baseSha !== command.baseSha)
+      throw new Error("PR head or base changed; refresh the diff");
+    if (
+      command.commitSha &&
+      !pr.commits.some((c) => c.sha === command.commitSha)
+    )
+      throw new Error("Commit is not in this pull request");
+    const commit = command.commitSha
+      ? pullRequestCommitDiff.parse(
+          await this.deps.github.readPullRequestCommit(
+            repo.github,
+            command.number,
+            command.commitSha,
+          ),
+        )
+      : null;
+    if (commit && commit.patch.headSha !== command.commitSha)
+      throw new Error("Commit diff SHA mismatch");
+    if (command.kind === "fetch_pull_request_commit") {
+      if (!commit) throw new Error("Commit diff SHA mismatch");
+      return { kind: "pull_request_commit" as const, diff: commit };
+    }
+    if (!(commit?.files ?? pr.files).some((f) => f.path === command.path))
+      throw new Error("File is not in this diff");
+    const contents = pullRequestFileContents.parse(
+      await this.deps.github.readPullRequestFile(
+        repo.github,
+        commit?.patch ?? pr,
+        command.path,
+        command.ignoreWhitespace,
+      ),
+    );
+    return { kind: "pull_request_file" as const, contents };
+  }
+
+  private taskId(repoId: RepoId, head: string, number: number) {
+    const linked = this.deps.preferences?.(repoId, number)?.taskId;
+    if (
+      linked &&
+      this.deps
+        .tasks()
+        .some((task) => task.repoId === repoId && task.id === linked)
+    )
+      return linked;
     const matches = this.deps
       .tasks()
       .filter((task) => task.repoId === repoId && task.branch === head);
@@ -197,10 +298,30 @@ export class PullRequestViews {
   /** Task creation/branch changes update links without manufacturing a GitHub observation. */
   relink(): void {
     for (const [key, previous] of this.details) {
-      const taskId = this.taskId(previous.repoId, previous.detail.head);
-      if (taskId === previous.taskId) continue;
+      const taskId = this.taskId(
+        previous.repoId,
+        previous.detail.head,
+        previous.number,
+      );
+      const pinned =
+        this.deps.preferences?.(previous.repoId, previous.number)?.pinned ??
+        false;
+      const viewedFiles =
+        this.deps.viewedFiles?.(
+          previous.repoId,
+          previous.number,
+          previous.detail.headSha,
+        ) ?? [];
+      if (
+        taskId === previous.taskId &&
+        pinned === previous.pinned &&
+        JSON.stringify(viewedFiles) === JSON.stringify(previous.viewedFiles)
+      )
+        continue;
       const value = {
         ...previous,
+        viewedFiles,
+        pinned,
         taskId,
       };
       this.details.set(key, value);
@@ -211,7 +332,7 @@ export class PullRequestViews {
     for (const [repoId, rows] of this.lists) {
       let changed = false;
       for (const [number, row] of rows) {
-        const taskId = this.taskId(repoId, row.head);
+        const taskId = this.taskId(repoId, row.head, row.number);
         if (taskId === row.taskId) continue;
         rows.set(number, { ...row, taskId });
         changed = true;
@@ -245,7 +366,7 @@ export class PullRequestViews {
         pullRequestRow.parse({
           ...pr,
           repoId: repo.id,
-          taskId: this.taskId(repo.id, pr.head),
+          taskId: this.taskId(repo.id, pr.head, pr.number),
         }),
       );
       const rows = this.lists.get(repo.id) ?? new Map<number, PullRequestRow>();
@@ -254,6 +375,8 @@ export class PullRequestViews {
         const row = parsed[i];
         if (!row) continue;
         const previous = rows.get(row.number);
+        if (row.state === "merged" && previous?.state !== "merged")
+          this.deps.merged?.(repo, row.head);
         if (
           previous &&
           JSON.stringify(previous) ===
@@ -314,21 +437,40 @@ export class PullRequestViews {
       const value = pullRequestDetailRow.parse({
         repoId: repo.id,
         number: scope.number,
-        taskId: this.taskId(repo.id, after.head),
+        taskId: this.taskId(repo.id, after.head, after.number),
         detail: after,
         patch: matches(previous?.patch) ? previous?.patch : null,
         patchLoading: !matches(previous?.patch),
         patchError: null,
+        behindBy:
+          previous?.detail.headSha === after.headSha &&
+          previous.detail.baseSha === after.baseSha
+            ? previous.behindBy
+            : null,
       });
+      if (after.state === "merged" && previous?.detail.state !== "merged")
+        this.deps.merged?.(repo, after.head);
       const publish = () => {
-        value.taskId = this.taskId(repo.id, after.head);
+        value.viewedFiles =
+          this.deps.viewedFiles?.(repo.id, after.number, after.headSha) ?? [];
+        value.pinned =
+          this.deps.preferences?.(repo.id, after.number)?.pinned ?? false;
+        value.taskId = this.taskId(repo.id, after.head, after.number);
         this.details.set(key, { ...value });
         this.deps.replace(`pull_request:${key}`, [
           { collection: "pull_request_detail", key, value: { ...value } },
         ]);
       };
       publish();
+      const branchRead = this.deps.github
+        .readPullRequestBehind(repo.github, after)
+        .then((behindBy) => {
+          value.behindBy = behindBy;
+          publish();
+        })
+        .catch(this.deps.onError);
       const {
+        requestedReviewers: _requestedReviewers,
         files: _fileDetails,
         reviews: _reviews,
         comments: _comments,
@@ -377,6 +519,8 @@ export class PullRequestViews {
         value.patchError = "Could not load the diff. Refresh to retry.";
         publish();
         throw error;
+      } finally {
+        await branchRead;
       }
     }
     this.publishList(repo.id);

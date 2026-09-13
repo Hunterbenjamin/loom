@@ -15,6 +15,7 @@ import type {
   TaskState,
   Transition,
 } from "@loom/core";
+import { pullRequestReviewChange, viewedFile } from "@loom/protocol";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { actionSchema } from "./action-schemas.js";
@@ -57,6 +58,7 @@ import {
   positive,
   text,
 } from "./schema-helpers.js";
+import { SettingsStore } from "./settings.js";
 
 export type Conflict = {
   ok: false;
@@ -77,20 +79,33 @@ class CommitConflict extends Error {
   }
 }
 export class Store {
+  private roleProfilesForTask?: (task: Task) => ReconcileConfig["roleProfiles"];
   readonly operator: OperatorStore;
   readonly hooks: SqliteHookLog;
   readonly outbox: Outbox;
+  readonly settings: SettingsStore;
   constructor(
     private readonly db: Database.Database,
     readonly dataDirectory: string,
-    private readonly config: ReconcileConfig,
+    private config: ReconcileConfig,
   ) {
     this.operator = new OperatorStore(db);
     this.hooks = new SqliteHookLog(db);
     this.outbox = new Outbox(db);
+    this.settings = new SettingsStore(db);
+  }
+  /** Replace live reconcile inputs after an immediate settings update. */
+  setReconcileConfig(config: ReconcileConfig): void {
+    this.config = config;
   }
   close(): void {
     this.db.close();
+  }
+  /** Coordinator injection for next-run defaults; captured task/run fields still win in core. */
+  setRoleProfilesResolver(
+    resolver: (task: Task) => ReconcileConfig["roleProfiles"],
+  ): void {
+    this.roleProfilesForTask = resolver;
   }
   /** Coordinator-owned per-instance project selection, persisted in the existing metadata table. */
   selectedRepo(): Repo["id"] | null {
@@ -109,6 +124,105 @@ export class Store {
         "INSERT INTO meta(key, value) VALUES ('last_opened_repo', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       )
       .run(id);
+  }
+  /** PR preferences are Loom facts; GitHub content remains a disposable projection. */
+  pullRequestPreferences(
+    repoId: string,
+    number: number,
+  ): { pinned: boolean; taskId: TaskId | null } {
+    const raw = this.db
+      .prepare("SELECT value FROM meta WHERE key = ?")
+      .pluck()
+      .get(`pr:${JSON.stringify([repoId, number])}`);
+    return raw === undefined
+      ? { pinned: false, taskId: null }
+      : z
+          .object({
+            pinned: z.boolean(),
+            taskId: z
+              .string()
+              .min(1)
+              .transform((value) => value as TaskId)
+              .nullable(),
+          })
+          .parse(JSON.parse(z.string().parse(raw)));
+  }
+  setPullRequestPreferences(
+    repoId: string,
+    number: number,
+    update: { pinned?: boolean; taskId?: TaskId },
+  ): void {
+    if (!this.repos().some((repo) => repo.id === repoId))
+      throw new Error("Unknown registered repository");
+    if (!Number.isSafeInteger(number) || number < 1)
+      throw new Error("Invalid pull request number");
+    if (
+      update.taskId &&
+      !this.tasks().some(
+        (task) => task.id === update.taskId && task.repoId === repoId,
+      )
+    )
+      throw new Error("Issue must belong to the pull request repository");
+    const value = { ...this.pullRequestPreferences(repoId, number), ...update };
+    this.db
+      .prepare(
+        "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run(`pr:${JSON.stringify([repoId, number])}`, JSON.stringify(value));
+  }
+  /** Reverse projection of the same durable links, independent of GitHub cache/subscriptions. */
+  linkedPullRequests(repoId: string, taskId: TaskId): number[] {
+    const keys = this.db
+      .prepare(
+        "SELECT key FROM meta WHERE key LIKE 'pr:%' AND json_extract(value, '$.taskId') = ?",
+      )
+      .pluck()
+      .all(taskId);
+    return keys
+      .flatMap((key) => {
+        const [repo, number] = z
+          .tuple([z.string(), z.number().int().positive()])
+          .parse(JSON.parse(z.string().parse(key).slice(3)));
+        return repo === repoId ? [number] : [];
+      })
+      .sort((a, b) => a - b);
+  }
+  pullRequestViewedFiles(repoId: string, number: number, headSha: string) {
+    const raw = this.db
+      .prepare("SELECT value FROM meta WHERE key = ?")
+      .pluck()
+      .get(`pr-viewed:${JSON.stringify([repoId, number])}`);
+    if (raw === undefined) return [];
+    const saved = z
+      .object({ headSha: z.string(), files: z.array(viewedFile) })
+      .parse(JSON.parse(z.string().parse(raw)));
+    return saved.headSha === headSha ? saved.files : [];
+  }
+  savePullRequestReviewState(
+    command: z.output<typeof pullRequestReviewChange>,
+  ): void {
+    const { repoId, number, change } = pullRequestReviewChange.parse(command);
+    if (!this.repos().some((repo) => repo.id === repoId))
+      throw new Error("Unknown registered repository");
+    const files = new Map(
+      this.pullRequestViewedFiles(repoId, number, change.headSha).map(
+        (file) => [file.fileId, file],
+      ),
+    );
+    for (const file of change.viewed ?? []) {
+      if (file.headSha !== change.headSha)
+        throw new Error("Viewed file head must match review head");
+      files.set(file.fileId, file);
+    }
+    for (const id of change.unviewed ?? []) files.delete(id);
+    this.db
+      .prepare(
+        "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run(
+        `pr-viewed:${JSON.stringify([repoId, number])}`,
+        JSON.stringify({ headSha: change.headSha, files: [...files.values()] }),
+      );
   }
   putRepo(repo: Repo): void {
     const value = repoSchema.parse(repo);
@@ -289,7 +403,9 @@ export class Store {
         artifactContents,
         consumedInputIds,
         outbox: this.outbox.list(taskId),
-        config: this.config,
+        config: this.roleProfilesForTask
+          ? { ...this.config, roleProfiles: this.roleProfilesForTask(task) }
+          : this.config,
         ...context,
       };
     })();

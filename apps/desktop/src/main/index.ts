@@ -23,6 +23,7 @@ import {
 import { usesWorkbenchKey } from "../shared/keybindings.js";
 import { resolveAttach } from "./attach.js";
 import { watchKeybindings } from "./keybindings.js";
+import { readNativeSettings, writeNativeSettings } from "./native-settings.js";
 import { OwnedResources } from "./ownership.js";
 import { repositoryFolder } from "./repository.js";
 
@@ -83,6 +84,7 @@ const sessions = new OwnedResources<Session>((session) => {
   session.proc.kill("SIGHUP");
 });
 const windows = new Map<number, { window: BrowserWindow; mode: WindowMode }>();
+const startupSettings = readNativeSettings(process.env);
 const keybindings = watchKeybindings(process.env, (state) => {
   for (const { window } of windows.values()) {
     if (!window.isDestroyed() && !window.webContents.isDestroyed())
@@ -159,6 +161,11 @@ function wire(): void {
   ipcMain.handle("app:keybindings", (event) => {
     owned(event.sender);
     return keybindings.get();
+  });
+  ipcMain.handle("app:apply-native-settings", (event, raw: unknown) => {
+    owned(event.sender);
+    const settings = writeNativeSettings(process.env, raw);
+    keybindings.set(settings.keybindings);
   });
   ipcMain.handle("app:connection", (event) => {
     owned(event.sender);
@@ -395,7 +402,9 @@ app.whenReady().then(async () => {
   );
   wire();
   await createWindow(
-    process.env.LOOM_WINDOW_MODE === "workbench" ? "workbench" : "tracker",
+    process.env.LOOM_WINDOW_MODE === "workbench"
+      ? "workbench"
+      : (startupSettings?.windowMode ?? "tracker"),
   );
 });
 

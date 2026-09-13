@@ -119,7 +119,10 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   and zoom. Layout is a disposable projection of tmux metadata; no layout is stored in the UI.
 - **Panel types in this slice:** native terminal panes, including agents and issue scratch shells.
   Plan, diff, activity and code panels are deferred; Tracker retains its existing review surface.
-- **Bindings:** Main reads and watches `<LOOM_DATA_ROOT>/<instance>/keybindings.json`.
+- **Bindings:** coordinator Settings owns the full binding map, prefix and timeout. On upgrade the
+  renderer imports `<LOOM_DATA_ROOT>/<instance>/keybindings.json` once only when no stored binding
+  fields exist. Main receives validated updates over IPC for native shortcut suppression and keeps
+  a private derived startup cache; editing the legacy file after import has no effect.
   First launch writes the complete defaults. Zod validates the whole file; invalid JSON,
   unknown/missing actions, invalid chords, duplicate bindings or an invalid timeout activate
   defaults and show an error in the Workbench bottom bar. Saving a valid file updates every
@@ -330,22 +333,41 @@ This slice adds no sidebar, list/detail components, confirmations, shortcuts or 
 The existing desktop fixture merely supplies empty collections for the extended protocol.
 
 
-## Pull request list (slice 3)
+## Reviews list (Reviews slice 2)
 
-Tracker's Pull requests sidebar entry shows the cached open count for the selected repository.
-The selected repository's open list stays subscribed for the bottom-bar count (slice 5); choosing
-Merged or Closed additionally subscribes to that state. Switching repository, leaving the view or
-hiding Tracker releases the unused detail and non-open list scopes.
-The existing coordinator polling and read ownership are unchanged.
+Tracker's **Reviews** entry replaces Pull requests. Its count includes open PRs ready to merge,
+review requested of the GitHub viewer, and the viewer's PRs with failing checks, conflicts or
+changes requested. This count is independent of the selected tab, collapsed sections and search.
+GitHub supplies viewer authorship and review-request facts in both list and detail reads.
 
-The virtualized list orders PRs by creation time, newest first. Rows show number, title, head →
-base, author, age, checks, review and mergeability; no checks and unknown facts remain explicit.
-State defaults to Open, and the text filter matches number, title, branches, author and linked task key.
-Filters and cursor live only in the window and survive view/mode switches. J/K moves the cursor,
-/ focuses the filter, and Escape clears it. Rows are focusable and Enter/Space selects them;
-the task-key button opens the existing task detail and supports native keyboard activation.
-Rows open PR detail on click or Enter/Space; palette additions and action shortcuts are described in slice 5.
-Fixture mode includes linked and off-pipeline PRs in every state and badge condition.
+**For you** groups relevant PRs in this order: Ready to merge (non-draft, mergeable, passing or
+no checks, no required or outstanding viewer review and no requested changes); Needs attention
+(the viewer's or review-requested PRs with failures, conflicts or changes requested); Waiting
+(the viewer's or review-requested PRs with pending checks or review); Created by you (remaining
+open PRs authored by the viewer); Completed (merged and closed). **Created** shows only the
+viewer's authored PRs under Created by you and Completed. Unrelated failing or pending PRs
+are not silently treated as requests for this human. Empty open sections are omitted.
+
+Section bars are collapsible buttons with counts. Completed starts collapsed and sorts by
+GitHub completion time, newest first, revealing 20 rows and then Load N more. Open sections
+sort by creation time, newest first. Tabs, filter, collapse settings, page size and cursor are
+per-window presentation state, retained across view/mode switches. J/K skips collapsed and
+unloaded rows; Enter opens the PR. Native buttons also support Enter/Space. / focuses the
+compact search control; Escape clears it. Search matches title, number, branches, author and
+linked issue key.
+
+Rows follow the Linear reference: green open, purple merged or red closed PR glyph, title,
+one trailing status glyph (green check, red cross, amber pending dot, or lightning while a
+linked issue has a provider-confirmed working run), and age. No checks leaves the status slot
+empty. The linked issue key appears on hover or keyboard focus and opens the issue separately.
+No native terminal output or process state determines whether an agent is working.
+
+The selected repository's open scope remains subscribed in both modes for the bottom bar.
+Reviews additionally subscribes to merged and closed while visible, using existing shared
+60-second polls and cached projections. Switching repository/view or hiding Tracker releases
+unused history/detail scopes. Completed pagination limits rendered rows; the existing GitHub
+adapter retains its bounded cursor pagination. No durable renderer state or detail-page redesign
+is introduced by this slice.
 
 
 ## Pull request detail and actions (slice 4)
@@ -414,3 +436,79 @@ Opening an uncached PR shows detail first and then requests that range. Head/bas
 caches are disposable and shared across windows; unchanged polls only fetch live metadata/checks.
 Content edits, head/base changes and explicit refresh invalidate content. Targets on this repo:
 overview under two seconds, diff under four. Later Reviews slices own the layout redesign.
+
+## Reviews Overview (reviews slice 3)
+
+The PR detail frame now follows `linear-reviews-2.png`: one breadcrumb row (issue key or
+No issue, title, additions/deletions, pinned star, overflow actions, GitHub chip, fullscreen),
+then Overview / Diff and a primary Squash & merge split button. Its menu defaults branch
+deletion to on; the existing exact-head confirmation and merge guards remain in force.
+Open branch agent navigates to the linked issue's existing interactive agent terminal; it is
+disabled when no agent exists. Fullscreen expands the detail within the current window.
+
+Overview has a wide reading column with title, author/base/head, Markdown description,
+chronological GitHub activity and a PR comment composer. The right rail contains Status,
+Resolves, Reviewers, expandable Checks, Branch and changed files, in that order. Files are
+grouped into Implementation and Tests (`*.test.*` or a test/tests/__tests__ directory), with
+counts at both levels. Selecting a file opens Diff and scrolls the existing Pierre viewer to
+it, including when its patch arrives later. This slice retains the existing read-only Diff
+viewer and list; it does not add the later Reviewed cards, inbox grouping or polish shortcuts.
+
+Pin and Link issue commands store coordinator-owned preferences keyed by repository and PR
+number. Linking accepts an exact issue key (case insensitive) in the same repository, and the
+manual link takes precedence over branch matching in PR projections. It does not rewrite task
+branches or stage state; the issue-side PR display enhancement remains reviews slice 5. Both
+preferences survive restart and are re-read before publishing. There is no local optimistic pin
+or merge state. Comment drafts are transient form input; posting goes through the executor and
+GitHub adapter, with a per-submission identifier that makes retrying an uncertain submission
+idempotent. Only acknowledged posts clear the draft; owner refresh supplies Activity.
+
+Requested reviewers are read from GitHub alongside reviews. Adding reviewers stays disabled.
+Branch divergence uses an immutable base/head comparison, cached by both SHAs, and publishes
+independently after Overview; an unavailable comparison never claims Up to date. Conflicts
+come from GitHub mergeability. Every GitHub write retains the existing refresh path.
+
+## Reviews Diff (reviews slice 4)
+
+Diff replaces the old Files sidebar with the reference's Files N / Commits N toolbar and
+virtualized Pierre file cards. Files follow the Overview rail's Implementation, then Tests order.
+Each header shows name, directory, additions/deletions, Reviewed, and a copy-path/GitHub menu.
+Unified is the default; settings offer split and Hide whitespace changes. Syntax colors, line
+numbers and expandable unchanged-line separators use Pierre and the existing bounded worker pool.
+Full contents load on demand through the coordinator; whitespace patches are computed in the
+GitHub adapter, outside the renderer. Unavailable, binary, oversized and incomplete patches are
+explicit, never a clean review. File contents are capped at 2 MiB per side and patch reads at 8 MiB.
+
+Reviewed marks use `save_review_state` with repository/PR identity and the viewed-file contract.
+SQLite owns them at the PR head SHA; updates publish to every subscribed window, survive closing
+and reopening, and a different head shows no marks. An acknowledgement alone never checks a box.
+Marking Reviewed collapses that card; clearing it expands the card. Commits lists message, author
+and age; selecting a commit fetches its first-parent diff. Reviewed is disabled for a commit-only
+view because it cannot certify the complete PR. Files returns to the whole PR. `j`/`k` selects the
+next/previous file, `v` toggles Reviewed, and `[`/`]` jumps between the selected file's hunks.
+Typing, dialogs, the palette and modified key chords keep their existing bindings.
+
+## Reviews polish (reviews slice 5)
+
+Command+Enter opens the same exact-head Squash & merge confirmation anywhere on the PR page,
+including the Overview comment/link inputs and Diff. It never submits a comment or bypasses
+confirmation. Existing merge guards, pending submissions and head/base invalidation still apply.
+Dialogs, the palette, terminals, composition and repeated or additional modified chords retain
+control of their input. The existing single-key and palette actions remain available.
+
+Link issue publishes both directions from the coordinator's one saved PR-to-issue relation.
+Issue detail shows these PR buttons alongside its observed branch PR, without duplicates;
+multiple explicit references are retained. The reverse links travel in task inbox metadata,
+so opening an issue after restart requires no Reviews list subscription or GitHub read. Relinking
+removes the old issue's reference and updates the new one. It does not rewrite the issue's branch,
+workflow PR identity, stage or approval.
+
+A newly observed merged PR in either a list or detail triggers an immediate fresh observation
+of matching task branches in that repository. Normal reconciliation then derives Done from GitHub;
+a manual reference to a different issue does not complete that issue. In-flight observations from
+before the hint cannot refill the invalidated PR cache. This also covers merges made on GitHub
+and uncertain app merge responses; neither a command acknowledgement nor a renderer patch sets Done.
+
+Fixture Reviews cover all five list sections, both tabs, more than one page of completed PRs,
+linked/working and unlinked branches, checks/reviews/comments/merge activity, branch divergence,
+Implementation and Tests file groups, and pinned/Reviewed examples. Fixture actions remain read-only.

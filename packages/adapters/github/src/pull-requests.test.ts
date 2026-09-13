@@ -127,6 +127,10 @@ describe("repository pull request reads", () => {
       const values = await fake.adapter.listPullRequests("vuejs/core", state);
       expect(values).toEqual([
         {
+          viewerDidAuthor: false,
+          viewerReviewRequested: false,
+          reviewRequired: false,
+          completedAt: null,
           number: detail.number,
           title: detail.title,
           author: "contributor",
@@ -663,3 +667,121 @@ it.each([false, true])(
     expect(calls).toBe(2);
   },
 );
+
+it("posts comments through stdin and recovers lost responses without duplicates", async () => {
+  const fake = fixture();
+  const endpoint = `${root}/issues/${detail.number}/comments?per_page=100`;
+  fake.set(endpoint, []);
+  const id = "b5e9155b-4c50-49b7-876b-c6cf884cc789";
+  const text = "Review `code`\n\n$(literal) **markdown**";
+  let writes = 0;
+  fake.mutate(async (args, input) => {
+    writes++;
+    expect(args).toEqual([
+      "pr",
+      "comment",
+      String(detail.number),
+      "--repo",
+      "github.com/vuejs/core",
+      "--body-file",
+      "-",
+    ]);
+    expect(input).toBe(`${text}\n\n<!-- loom-comment:${id} -->`);
+    fake.set(endpoint, [{ body: input }]);
+    return { stdout: "", stderr: "connection lost", exitCode: 1 };
+  });
+  await fake.adapter.commentPullRequest("vuejs/core", detail.number, text, id);
+  await fake.adapter.commentPullRequest("vuejs/core", detail.number, text, id);
+  expect(writes).toBe(1);
+});
+
+it("caches branch divergence by both immutable SHAs and validates counts", async () => {
+  const fake = fixture();
+  const endpoint = `${root}/compare/${range.baseSha}...${range.headSha}?per_page=1`;
+  fake.set(endpoint, { behind_by: 3 });
+  expect(await fake.adapter.readPullRequestBehind("vuejs/core", range)).toBe(3);
+  expect(await fake.adapter.readPullRequestBehind("vuejs/core", range)).toBe(3);
+  expect(fake.run).toHaveBeenCalledOnce();
+  const changed = { ...range, baseSha: s.sha.parse("f".repeat(40)) };
+  fake.set(
+    `${root}/compare/${changed.baseSha}...${changed.headSha}?per_page=1`,
+    { behind_by: -1 },
+  );
+  await expect(
+    fake.adapter.readPullRequestBehind("vuejs/core", changed),
+  ).rejects.toThrow();
+});
+
+it("reads and paginates requested reviewers without dropping team requests", async () => {
+  const fake = fixture();
+  let calls = 0;
+  const adapter = createGitHubAdapter({
+    excludedAuthors: [],
+    run: async (args, input) => {
+      const native = JSON.parse(response(await fake.run(args, input)).body);
+      calls++;
+      const pull = native.data.repository.pullRequest;
+      if (calls === 1)
+        pull.reviewRequests = {
+          nodes: [{ requestedReviewer: { login: "reviewer" } }],
+          pageInfo: { hasNextPage: true, endCursor: "reviewers-next" },
+        };
+      else {
+        expect(JSON.parse(input ?? "{}").variables.cursor).toBe(
+          "reviewers-next",
+        );
+        pull.reviewRequests = {
+          nodes: [
+            { requestedReviewer: { name: "Platform team" } },
+            { requestedReviewer: null },
+          ],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        };
+      }
+      return ok(http(native));
+    },
+  });
+  expect(
+    (await adapter.readPullRequest("vuejs/core", detail.number))
+      .requestedReviewers,
+  ).toEqual(["reviewer", "Platform team"]);
+  expect(calls).toBe(2);
+});
+
+it("maps viewer review facts and completion time without guessing from author or branch", async () => {
+  const fake = setup();
+  fake.set(
+    "graphql:OPEN:",
+    graphqlPage([
+      {
+        ...graphqlNode,
+        viewerDidAuthor: true,
+        viewerLatestReviewRequest: { id: "request-1" },
+        reviewDecision: "REVIEW_REQUIRED",
+        closedAt: null,
+      },
+    ]),
+  );
+  const [row] = await fake.adapter.listPullRequests("vuejs/core", "open");
+  expect(row).toMatchObject({
+    viewerDidAuthor: true,
+    viewerReviewRequested: true,
+    reviewRequired: true,
+    completedAt: null,
+  });
+  fake.set(
+    "graphql:CLOSED:",
+    graphqlPage([{ ...graphqlNode, closedAt: "2026-09-12T00:00:00Z" }]),
+  );
+  expect(
+    (await fake.adapter.listPullRequests("vuejs/core", "closed"))[0]
+      ?.completedAt,
+  ).toBe("2026-09-12T00:00:00Z");
+  fake.set(
+    "graphql:OPEN:",
+    graphqlPage([{ ...graphqlNode, viewerDidAuthor: "true" }]),
+  );
+  await expect(
+    fake.adapter.listPullRequests("vuejs/core", "open"),
+  ).rejects.toThrow();
+});

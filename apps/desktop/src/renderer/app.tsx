@@ -13,6 +13,7 @@ import { LeadBar } from "./ui/lead.js";
 import { ListView } from "./ui/list.js";
 import { Palette, StagePicker } from "./ui/palette.js";
 import { PullRequestsView } from "./ui/pull-requests.js";
+import { SettingsView } from "./ui/settings.js";
 import { OpenRepository, Sidebar } from "./ui/sidebar.js";
 
 const PullRequestDetail = lazy(() =>
@@ -31,6 +32,24 @@ export function App() {
 
   const repo = useStore((s) => s.ui.repo);
   const theme = useStore((s) => s.ui.theme);
+  const appearance = useStore(
+    (s) =>
+      (
+        s.settings.find((item) => item.id === `repo:${s.ui.repo}`) ??
+        s.settings.find((item) => item.id === "global")
+      )?.effective.appearance,
+  );
+  useEffect(() => {
+    if (!appearance) return;
+    const configured =
+      appearance.theme === "system"
+        ? window.matchMedia?.("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark"
+        : appearance.theme;
+    store.setTheme(configured);
+    store.setChimeMuted(!appearance.chime);
+  }, [appearance, store]);
   const waiting = useStore(
     (s) =>
       s.live &&
@@ -45,11 +64,13 @@ export function App() {
   const query = useStore((s) => s.ui.query);
   const toast = useStore((s) => s.ui.toast);
   const count = useStore((s) =>
-    s.ui.view === "pull-requests"
-      ? selectedPullRequests(s).length
-      : s.ui.view === "needs-you"
-        ? inboxRows(s).length
-        : selectedRows(s).length,
+    s.ui.view === "settings"
+      ? s.settings.length
+      : s.ui.view === "pull-requests"
+        ? selectedPullRequests(s).length
+        : s.ui.view === "needs-you"
+          ? inboxRows(s).length
+          : selectedRows(s).length,
   );
   const needsYou = useStore(attentionCount);
   useEffect(() => {
@@ -92,13 +113,18 @@ export function App() {
       <div className="main">
         <header className="topbar">
           <h1>
-            {view === "pull-requests"
-              ? "Pull requests"
-              : VIEWS.find((item) => item.id === view)?.label}
+            {view === "settings"
+              ? "Settings"
+              : view === "pull-requests"
+                ? "Reviews"
+                : VIEWS.find((item) => item.id === view)?.label}
           </h1>
-          <span className="faint nums">{count}</span>
+          {view === "pull-requests" ? null : (
+            <span className="faint nums">{count}</span>
+          )}
           <span className="spacer" />
-          {view === "pull-requests" ? null : searching ? (
+          {view === "pull-requests" ||
+          view === "settings" ? null : searching ? (
             <input
               ref={search}
               className="search"
@@ -114,7 +140,7 @@ export function App() {
               Search <kbd>/</kbd>
             </button>
           )}
-          {view !== "pull-requests" && (
+          {view !== "pull-requests" && view !== "settings" && (
             <div className="segmented">
               <button
                 type="button"
@@ -143,7 +169,9 @@ export function App() {
             flexDirection: "column",
           }}
         >
-          {waiting ? (
+          {view === "settings" ? (
+            <SettingsView />
+          ) : waiting ? (
             <div className="pad faint">Waiting for the coordinator…</div>
           ) : !repo ? (
             <OpenRepository />

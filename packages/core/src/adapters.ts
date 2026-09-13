@@ -108,6 +108,10 @@ export interface GitAdapter {
 export type PullRequestState = "open" | "closed" | "merged";
 
 export interface PullRequestSummary {
+  viewerDidAuthor: boolean;
+  viewerReviewRequested: boolean;
+  reviewRequired: boolean;
+  completedAt: IsoTime | null;
   number: number;
   title: string;
   author: string | null;
@@ -127,6 +131,7 @@ export interface PullRequestSummary {
 }
 
 export interface PullRequestDetail extends PullRequestSummary {
+  requestedReviewers?: string[];
   files: {
     path: string;
     additions: number;
@@ -191,6 +196,33 @@ export interface PullRequestPatch {
 }
 
 export interface GitHubAdapter {
+  /** Update observation filtering without rebuilding the adapter or losing its caches. */
+  setExcludedAuthors?(authors: readonly string[]): void;
+  readPullRequestCommit(
+    repo: string,
+    number: number,
+    commitSha: Sha,
+  ): Promise<{
+    patch: PullRequestPatch;
+    files: PullRequestDetail["files"];
+  }>;
+  readPullRequestFile(
+    repo: string,
+    range: { baseSha: Sha; headSha: Sha },
+    path: string,
+    ignoreWhitespace: boolean,
+  ): Promise<{ old: string; new: string; patch: string }>;
+
+  readPullRequestBehind(
+    repo: string,
+    range: { baseSha: Sha; headSha: Sha },
+  ): Promise<number>;
+  commentPullRequest(
+    repo: string,
+    number: number,
+    body: string,
+    requestId: string,
+  ): Promise<void>;
   /** All pages, newest first. Closed excludes merged. Reads use disposable native ETags. */
   listPullRequests(
     repo: string,
@@ -356,6 +388,7 @@ export interface CodexAdapter {
     sandbox: "read-only" | "workspace-write" | "danger-full-access";
     developerInstructions: string;
     config: Record<string, unknown>;
+    approvalPolicy?: "never" | "on-request";
   }): Promise<{ threadId: ProviderSessionId; generation: number }>;
   startTurn(req: {
     threadId: ProviderSessionId;
@@ -439,6 +472,7 @@ export interface ClaudeAdapter {
     settingsPath: string;
     /** Planners and reviewers must not inherit implementer edit/bypass permissions. */
     readOnly: boolean;
+    approvalGated?: boolean;
   }): string[];
   /** Agent SDK. Loom chooses the session ID. */
   startHeadless(req: {

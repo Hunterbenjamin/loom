@@ -689,3 +689,71 @@ it("persists inline-review publication and fixing/escalation evidence across res
   expect(restored.findings).toEqual(expect.arrayContaining(state.findings));
   expect(restored.findings).toHaveLength(state.findings.length);
 });
+
+it("PR pins and explicit issue links survive reopening without changing the task", async () => {
+  const store = await seeded();
+  const before = store.loadTaskState(taskId);
+  store.setPullRequestPreferences(repo.id, 42, { pinned: true });
+  store.setPullRequestPreferences(repo.id, 42, { taskId });
+  store.setPullRequestPreferences(repo.id, 42, { taskId });
+  store.close();
+  const reopened = await open();
+  expect(reopened.pullRequestPreferences(repo.id, 42)).toEqual({
+    pinned: true,
+    taskId,
+  });
+  expect(reopened.loadTaskState(taskId)).toEqual(before);
+  expect(reopened.linkedPullRequests(repo.id, taskId)).toEqual([42]);
+  expect(reopened.linkedPullRequests("another-repo", taskId)).toEqual([]);
+  expect(reopened.pullRequestPreferences(repo.id, 43)).toEqual({
+    pinned: false,
+    taskId: null,
+  });
+  expect(() =>
+    reopened.setPullRequestPreferences(repo.id, 42, {
+      taskId: "missing" as TaskId,
+    }),
+  ).toThrow("repository");
+  reopened.setPullRequestPreferences(repo.id, 42, { pinned: false });
+  expect(reopened.pullRequestPreferences(repo.id, 42)).toEqual({
+    pinned: false,
+    taskId,
+  });
+});
+
+it("PR viewed files survive store reopen, merge per file, and reset for another head", async () => {
+  const store = await seeded();
+  const { pullRequestReviewChange } = await import("@loom/protocol");
+  const headSha = "a".repeat(40);
+  const save = (path: string) =>
+    pullRequestReviewChange.parse({
+      kind: "save_review_state",
+      repoId: repo.id,
+      number: 42,
+      change: { headSha, viewed: [{ fileId: path, path, headSha, at: now }] },
+    });
+  store.savePullRequestReviewState(save("one.ts"));
+  store.savePullRequestReviewState(save("two.ts"));
+  store.savePullRequestReviewState(save("one.ts"));
+  expect(
+    store.pullRequestViewedFiles(repo.id, 42, headSha).map((f) => f.path),
+  ).toEqual(["one.ts", "two.ts"]);
+  store.close();
+  const reopened = await open();
+  expect(reopened.pullRequestViewedFiles(repo.id, 42, headSha)).toHaveLength(2);
+  expect(reopened.pullRequestViewedFiles(repo.id, 43, headSha)).toEqual([]);
+  expect(reopened.pullRequestViewedFiles(repo.id, 42, "b".repeat(40))).toEqual(
+    [],
+  );
+  reopened.savePullRequestReviewState(
+    pullRequestReviewChange.parse({
+      kind: "save_review_state",
+      repoId: repo.id,
+      number: 42,
+      change: { headSha, unviewed: ["one.ts"] },
+    }),
+  );
+  expect(
+    reopened.pullRequestViewedFiles(repo.id, 42, headSha).map((f) => f.path),
+  ).toEqual(["two.ts"]);
+});

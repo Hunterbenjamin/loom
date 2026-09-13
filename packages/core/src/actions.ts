@@ -62,6 +62,7 @@ export type Action = ActionBase &
         worktreePath: WorktreePath;
         model: string;
         reasoningEffort?: string;
+        access?: import("./settings.js").AccessPreset;
         /** Which launch of the run this is; part of the action key. */
         attempt: number;
         /** The run's current session epoch; the Claude session ID derives from it. */

@@ -9,6 +9,7 @@ import { Store } from "./store.js";
 export { SqliteHookLog } from "./hooks.js";
 export * from "./operator.js";
 export type { ClaimedAction, RunningAction } from "./outbox.js";
+export * from "./settings.js";
 export type { CommitOutcome, Conflict } from "./store.js";
 export { Store } from "./store.js";
 export interface StoreOptions {

@@ -86,11 +86,42 @@ export class Executor {
   async pullRequest(command: PullRequestCommand): Promise<void> {
     const repo = this.deps.repoById(command.repoId);
     if (command.kind === "refresh_pull_requests") return;
+    if (command.kind === "pin_pull_request") {
+      this.deps.store.setPullRequestPreferences(repo.id, command.number, {
+        pinned: command.pinned,
+      });
+      return;
+    }
+    if (command.kind === "link_pull_request") {
+      const task = this.deps.store
+        .tasks()
+        .find(
+          (task) =>
+            task.repoId === repo.id &&
+            task.id.toLowerCase() === command.taskKey.toLowerCase(),
+        );
+      if (!task)
+        throw new PreconditionFailed(
+          "No issue with that key in this repository",
+        );
+      this.deps.store.setPullRequestPreferences(repo.id, command.number, {
+        taskId: task.id,
+      });
+      return;
+    }
     const github = this.deps.adapters.github;
     const pr = pullRequestDetail.parse(
       await github.readPullRequest(repo.github, command.number),
     );
     switch (command.kind) {
+      case "comment_pull_request":
+        await github.commentPullRequest(
+          repo.github,
+          command.number,
+          command.body,
+          command.requestId,
+        );
+        return;
       case "merge_pull_request":
         if (pr.headSha !== command.matchHeadSha)
           throw new PreconditionFailed(
