@@ -66,6 +66,7 @@ export function assemblePanes(
       windowLayout: p.windowLayout,
       title: p.title ?? null,
       command: p.command,
+      agent: p.agent ?? null,
       startCwd: p.startCwd,
       dead: p.dead,
       exitStatus: p.exitCode,

@@ -74,7 +74,7 @@ export function paneIndicator(pane: PaneView, run?: Run): Indicator {
 export const paneName = (pane: PaneView) =>
   pane.role
     ? [pane.role, pane.provider].filter(Boolean).join(" · ")
-    : pane.command || "Unknown process";
+    : (pane.agent ?? pane.command ?? "Unknown process");
 export const spaceKey = (pane: PaneView) =>
   JSON.stringify([pane.hostGeneration, pane.sessionId ?? pane.sessionName]);
 export const tabKey = (pane: PaneView) =>

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { WorktreePath } from "@loom/core";
 import { describe, expect, it, test } from "vitest";
+import { detectAgent, parseProcesses } from "./agents.js";
 import { baseEnv, withUtf8Locale } from "./cli.js";
 import { CONFIG_LINES, configFile, hookCommand } from "./config.js";
 import { classifyLine } from "./monitor.js";
@@ -74,6 +75,7 @@ describe("pane rows", () => {
       cwd: null,
       startCwd: "/real/path",
       pid: 42460,
+      agent: null,
       command: "",
       dead: true,
       exitCode: 7,
@@ -200,4 +202,30 @@ test("native window index and layout survive the validated observation boundary"
   ).toMatchObject({ windowIndex: 3, windowLayout: fields[16] });
   fields[15] = "invalid";
   expect(parsePanes(fields.join("\u001f"))).toEqual([]);
+});
+
+describe("agent detection", () => {
+  const table = parseProcesses(
+    [
+      "  100     1 -zsh",
+      "  200   100 node /Users/me/.nvm/versions/node/v23/bin/codex",
+      "  201   200 /Users/me/.nvm/.../codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
+      "  202   201 node ./mcp/server.mjs",
+      "  300     1 claude --settings /tmp/x/settings.json --session-id abc",
+      "  301   300 caffeinate -i -t 300",
+      "  400     1 -zsh",
+      "  401   400 node /Users/me/project/scripts/build.mjs",
+      "garbage line",
+    ].join("\n"),
+  );
+  it("finds codex started from the pane's shell, through the npm shim", () => {
+    expect(detectAgent(100, table)).toBe("codex");
+  });
+  it("finds claude when it is the pane's own process", () => {
+    expect(detectAgent(300, table)).toBe("claude");
+  });
+  it("ignores other node programs and unknown pids", () => {
+    expect(detectAgent(400, table)).toBeNull();
+    expect(detectAgent(999, table)).toBeNull();
+  });
 });

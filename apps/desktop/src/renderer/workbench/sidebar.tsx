@@ -142,7 +142,10 @@ export function Sidebar({
     space.tabs.flatMap((tab) =>
       tab.panes
         // A dead agent pane is on its way out (the host reaps it); never list it as a greyed row.
-        .filter(({ pane }) => (pane.provider || pane.runId) && !pane.dead)
+        .filter(
+          ({ pane }) =>
+            (pane.provider || pane.runId || pane.agent) && !pane.dead,
+        )
         .map((row) => ({ ...row, space, tab })),
     ),
   );
@@ -426,7 +429,7 @@ export function Sidebar({
                       <strong>{space.label}</strong>
                       <span className="wb-agent-tab"> · {tab.name}</span>
                     </span>
-                    <small>{pane.provider ?? "—"}</small>
+                    <small>{pane.provider ?? pane.agent ?? "—"}</small>
                   </span>
                 </button>
               ))}
