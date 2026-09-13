@@ -339,6 +339,7 @@ export function Workbench() {
   }, []);
   const [pendingTab, setPendingTab] = useState<{
     key: string;
+    space?: boolean;
     split?: { tabId: string; panelId: string; direction: "right" | "below" };
   } | null>(null);
   const focus = useCallback((id: string) => {
@@ -356,6 +357,8 @@ export function Workbench() {
     );
   }, []);
   const newTab = () => setPendingTab({ key: crypto.randomUUID() });
+  const newSpace = () =>
+    setPendingTab({ key: crypto.randomUUID(), space: true });
   const createTab = async (name: string) => {
     if (!pendingTab) return;
     const split = pendingTab.split;
@@ -366,6 +369,24 @@ export function Workbench() {
       : panes.find(
           (p) => spaceKey(p) === openSpace && !p.dead && !p.unavailable,
         );
+    if (pendingTab.space) {
+      const result = await store.command({
+        kind: "open_workbench_terminal",
+        key: pendingTab.key,
+        label: "shell",
+        workspace: name,
+      });
+      if (!result.ok) throw new Error(result.error.message);
+      const outcome = result.result;
+      const created =
+        outcome.kind === "scratch_created"
+          ? store.getState().panes.find((p) => sameTerminal(p, outcome.pane))
+          : undefined;
+      if (!created) throw new Error("Space creation was not confirmed");
+      openGroup([created], created.sessionName);
+      setPendingTab(null);
+      return;
+    }
     if (openSpace && !target) throw new Error("Selected space is unavailable");
     const result = await store.command({
       kind: "open_workbench_terminal",
@@ -632,6 +653,7 @@ export function Workbench() {
       return;
     }
     if (action === "new") return newTab();
+    if (action === "new-space") return newSpace();
     if (action === "jump") {
       setSidebarCollapsed(false);
       requestAnimationFrame(() =>
@@ -742,7 +764,8 @@ export function Workbench() {
       <div className="wb-titlebar" aria-hidden="true" />
       {pendingTab && (
         <NewTerminalDialog
-          initialName={`Terminal ${tabs.length + 1}`}
+          kind={pendingTab.space ? "space" : "terminal"}
+          initialName={pendingTab.space ? "" : `Terminal ${tabs.length + 1}`}
           create={createTab}
           cancel={() => setPendingTab(null)}
         />
@@ -763,6 +786,7 @@ export function Workbench() {
           hasPanels={hasPanels}
           copyAttach={copyAttach}
           newTerminal={() => newTab()}
+          newSpace={newSpace}
           openPinned={openPinned}
         />
         <main className="wb-main">

@@ -161,10 +161,10 @@ export class PaneInventory {
         // The host's hint after the kill triggers the scan that drops the row; each pane is
         // asked once, so a host that keeps reporting it never causes a kill loop.
         for (const row of this.rows) {
+          // A dead pane of a run that has ended has nothing left to observe either.
           if (
             !row.dead ||
-            row.runId ||
-            row.taskId ||
+            (row.runId && row.status !== "ended") ||
             row.unavailable ||
             row.sessionName.startsWith("loom-lead") ||
             ["loom-main", "loom-operator"].includes(row.sessionName) ||

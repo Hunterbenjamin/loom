@@ -191,7 +191,7 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
   }
 });
 
-test("grouping changes agent order without hiding dead agents or altering the tree", async () => {
+test("grouping changes agent order, keeps dead agents out of the list, and leaves the tree alone", async () => {
   const store = createStore(undefined, true, "test");
   const agents = [
     {
@@ -252,13 +252,11 @@ test("grouping changes agent order without hiding dead agents or altering the tr
     const rows = () => [
       ...element.querySelectorAll<HTMLButtonElement>(".wb-agent-list button"),
     ];
+    // The dead pane is being reaped by the host: it is not an agent row at all.
     expect(
       rows().map((row) => row.querySelector(".wb-status")?.textContent),
-    ).toEqual(["○", "●", expect.stringMatching(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/)]);
-    const dead = rows()[1];
-    expect(dead?.disabled).toBe(true);
-    expect(dead?.classList.contains("dead")).toBe(true);
-    await act(async () => dead?.click());
+    ).toEqual(["○", expect.stringMatching(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/)]);
+    expect(element.querySelector(".wb-agent-list .dead")).toBeNull();
     expect(choose).not.toHaveBeenCalled();
     const treeBefore = [
       ...element.querySelectorAll(".wb-space .wb-tree-name"),
@@ -274,7 +272,7 @@ test("grouping changes agent order without hiding dead agents or altering the tr
       rows().map((row) =>
         row.querySelector(".wb-status")?.getAttribute("aria-label"),
       ),
-    ).toEqual(["Working", "Ended", "Idle"]);
+    ).toEqual(["Working", "Idle"]);
     expect(
       [...element.querySelectorAll(".wb-space .wb-tree-name")].map(
         (row) => row.textContent,

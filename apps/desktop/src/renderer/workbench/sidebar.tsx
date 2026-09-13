@@ -44,6 +44,7 @@ export function Sidebar({
   hidePanels,
   hasPanels,
   copyAttach,
+  newSpace,
   selected,
   selectedSpace,
   selectedTab,
@@ -65,6 +66,7 @@ export function Sidebar({
   hasPanels: (panes: PaneView[]) => boolean;
   copyAttach: (pane: PaneView) => void;
   newTerminal: () => void;
+  newSpace?: () => void;
   openPinned: (target: "main" | "operator") => void;
 }) {
   const store = useStoreApi();
@@ -129,7 +131,8 @@ export function Sidebar({
   const agents = tree.flatMap((space) =>
     space.tabs.flatMap((tab) =>
       tab.panes
-        .filter(({ pane }) => pane.provider || pane.runId)
+        // A dead agent pane is on its way out (the host reaps it); never list it as a greyed row.
+        .filter(({ pane }) => (pane.provider || pane.runId) && !pane.dead)
         .map((row) => ({ ...row, space, tab })),
     ),
   );
@@ -319,8 +322,8 @@ export function Sidebar({
             <footer className="wb-spaces-footer">
               <button
                 type="button"
-                aria-label="New terminal"
-                onClick={newTerminal}
+                aria-label="New space"
+                onClick={newSpace ?? newTerminal}
               >
                 new
               </button>
