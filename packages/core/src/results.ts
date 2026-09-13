@@ -144,9 +144,12 @@ export function actionResult(
     case "send_message": {
       if (action.kind !== "send_message") break;
       const message = c.state.messages.find((m) => m.id === action.messageId);
-      if (message && message.status !== "delivered") {
+      const run = c.state.runs.find((r) => r.id === action.runId);
+      if (message && run && !run.endedAt && message.status !== "delivered") {
         message.status = "sent";
-        message.sentAt = c.now;
+        message.transportAttempt = result.output.transportAttempt;
+        message.sentAt =
+          result.output.transportAttempt?.completedAt ?? input.receivedAt;
         message.transportRef = result.output.transportRef;
       }
       break;

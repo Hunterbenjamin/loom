@@ -66,9 +66,23 @@ export function delivery(c: Context): void {
   for (const message of c.state.messages) {
     const run = c.state.runs.find((r) => r.id === message.runId);
     if (!run || run.origin === "external" || run.endedAt) continue;
+    const attempt = message.transportAttempt;
+    if (
+      (message.status === "pending" || message.status === "sent") &&
+      attempt &&
+      (attempt.sessionId !== run.sessionId ||
+        attempt.sessionEpoch !== run.sessionEpoch ||
+        attempt.runAttempt !== run.attempts)
+    ) {
+      // A resumed/replaced run must neither confirm nor replay the previous run's send.
+      message.status = "failed";
+      message.deliveryAttention = false;
+      continue;
+    }
     const observation = c.observations.runs.find((o) => o.runId === run.id);
     const provider = read(observation?.provider);
     if (provider && message.status === "sent" && message.sentAt) {
+      const receiptSince = attempt?.startedAt ?? message.sentAt;
       const identityMatches =
         provider.provider === run.provider &&
         (provider.provider === "codex"
@@ -77,7 +91,7 @@ export function delivery(c: Context): void {
       if (
         identityMatches &&
         observation &&
-        observation.provider.at >= message.sentAt
+        observation.provider.at >= receiptSince
       ) {
         if (provider.provider === "codex") {
           const turn = provider.turns.find(
@@ -104,7 +118,8 @@ export function delivery(c: Context): void {
           const receipt = provider.hooks.promptSubmits.find(
             (p) =>
               p.textHash === message.textHash &&
-              p.at >= (message.sentAt ?? c.now),
+              p.at >= receiptSince &&
+              p.at <= observation.provider.at,
           );
           if (receipt)
             message.delivered = {

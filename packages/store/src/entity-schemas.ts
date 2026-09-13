@@ -36,6 +36,7 @@ import {
   stage,
   text,
   time,
+  transportAttempt,
 } from "./schema-helpers.js";
 
 export const repoSchema = contract<Repo>()(
@@ -231,6 +232,7 @@ export const messageSchema = contract<Message>()(
     attempts: count,
     transportRef: text.nullable(),
     sentAt: time.nullable(),
+    transportAttempt: transportAttempt.optional(),
     delivered: z
       .union([
         z.object({
