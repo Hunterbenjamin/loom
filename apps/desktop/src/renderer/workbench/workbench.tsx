@@ -318,15 +318,13 @@ export function Workbench() {
   const initialized = useRef(false);
   const hiddenPanes = useRef(new Set<string>());
   const pinnedRequest = useRef(0);
+  const mainSelected = useRef(false);
+  const openPinnedRef = useRef<(system: "main" | "operator") => void>(() => {});
   const [mainTarget, setMainTarget] = useState<{
     repo: string;
     sessionId: string;
     pane: PaneIdentity;
   } | null>(null);
-  useEffect(() => {
-    pinnedRequest.current += 1;
-    setMainTarget((target) => (target?.repo === repo ? target : null));
-  }, [repo]);
   const [openSpace, setOpenSpace] = useState<string | null>(null);
   const [active, setActive] = useState(tabs[0]?.id ?? "");
   const [focused, setFocused] = useState(tabs[0]?.panels[0]?.id ?? "");
@@ -480,6 +478,12 @@ export function Workbench() {
       })
       .catch((error) => setError(String(error)));
   };
+  openPinnedRef.current = openPinned;
+  useEffect(() => {
+    pinnedRequest.current += 1;
+    setMainTarget((target) => (target?.repo === repo ? target : null));
+    if (mainSelected.current) openPinnedRef.current("main");
+  }, [repo]);
   const openGroup = (rows: PaneView[], _name: string) => {
     if (store.getState().panesUnavailable || !rows[0]) return;
     hiddenPanes.current.clear();
@@ -740,6 +744,11 @@ export function Workbench() {
   const selectedPanel = tabs
     .find((tab) => tab.id === active)
     ?.panels.find((panel) => panel.id === focused);
+  mainSelected.current = !!(
+    selectedPanel?.target &&
+    mainTarget &&
+    sameTerminal(selectedPanel.target, mainTarget.pane)
+  );
   return (
     <div className="workbench">
       <div className="wb-titlebar" aria-hidden="true" />

@@ -687,14 +687,26 @@ test("pinned Main resolves its repository target and ignores legacy-name decoys"
       ),
     ).toHaveLength(1);
     await act(async () => h.store.setRepo(h.repos[1]?.id ?? ""));
-    await act(async () => main()?.click());
+    await vi.waitFor(() =>
+      expect(
+        h.element
+          .querySelector("[data-attached-pane]")
+          ?.getAttribute("data-attached-pane"),
+      ).toBe("%78"),
+    );
     expect(
       h.element
         .querySelector("[data-attached-pane]")
         ?.getAttribute("data-attached-pane"),
     ).toBe("%78");
     await act(async () => h.store.setRepo(h.repos[0]?.id ?? ""));
-    await act(async () => main()?.click());
+    await vi.waitFor(() =>
+      expect(
+        h.element
+          .querySelector("[data-attached-pane]")
+          ?.getAttribute("data-attached-pane"),
+      ).toBe("%77"),
+    );
     expect(
       h.element
         .querySelector("[data-attached-pane]")
