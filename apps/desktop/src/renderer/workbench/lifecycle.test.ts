@@ -45,6 +45,7 @@ vi.mock("../ui/terminal.js", async () => {
 async function harness(
   initial: PaneView[] = [pane],
   leadInventoryAfterAck = false,
+  repoSelected = true,
 ) {
   const store = createStore(undefined, true, "test");
   const fixture = snapshot();
@@ -61,7 +62,7 @@ async function harness(
       stateFromSnapshot(protocolMeta, {
         ...emptySnapshotBody(),
         repos,
-        projects: [{ id: "project", repoId: selectedRepo }],
+        projects: repoSelected ? [{ id: "project", repoId: selectedRepo }] : [],
         panes: [...native.values()],
       }),
     );
@@ -702,6 +703,106 @@ test("pinned Main resolves its repository target and ignores legacy-name decoys"
         candidate.sessionName.startsWith("loom-lead-"),
       ),
     ).toHaveLength(2);
+  } finally {
+    await h.close();
+  }
+});
+
+test("Ctrl+1 opens Main when there are no agents", async () => {
+  const h = await harness();
+  try {
+    await act(async () =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "1",
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(
+        h.element
+          .querySelector("[data-attached-pane]")
+          ?.getAttribute("data-attached-pane"),
+      ).toBe("%77"),
+    );
+  } finally {
+    await h.close();
+  }
+});
+
+test("numbered agent shortcuts reserve Ctrl+1 for Main and shift agents down", async () => {
+  const agents = [
+    {
+      ...pane,
+      id: JSON.stringify([pane.hostGeneration, "%10"]),
+      paneId: "%10",
+      sessionName: "agent-a",
+      sessionId: "$10",
+      windowId: "@10",
+      provider: "codex",
+    },
+    {
+      ...pane,
+      id: JSON.stringify([pane.hostGeneration, "%11"]),
+      paneId: "%11",
+      sessionName: "agent-b",
+      sessionId: "$11",
+      windowId: "@11",
+      provider: "claude",
+    },
+  ];
+  const h = await harness(agents);
+  const pressAgent = async (number: string) =>
+    act(async () =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: number,
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+  const attachedPane = () =>
+    h.element
+      .querySelector("[data-attached-pane]")
+      ?.getAttribute("data-attached-pane");
+  try {
+    await pressAgent("1");
+    await vi.waitFor(() => expect(attachedPane()).toBe("%77"));
+    expect(h.send).toHaveBeenLastCalledWith({
+      kind: "open_lead_session",
+      repoId: snapshot().repos[0]?.id,
+    });
+
+    await pressAgent("2");
+    expect(attachedPane()).toBe("%10");
+    await pressAgent("3");
+    expect(attachedPane()).toBe("%11");
+    await pressAgent("4");
+    expect(attachedPane()).toBe("%11");
+  } finally {
+    await h.close();
+  }
+});
+
+test("Ctrl+1 does nothing when no repository is selected", async () => {
+  const h = await harness([], false, false);
+  try {
+    await act(async () =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "1",
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(h.send).not.toHaveBeenCalled();
   } finally {
     await h.close();
   }
