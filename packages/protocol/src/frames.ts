@@ -33,8 +33,8 @@ import { subscription } from "./subscriptions.js";
 
 export const PROTOCOL_VERSION = 2;
 
-/** 8 MiB. A patch never approaches it; `fetch_diff` is the only frame that can grow. */
-export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
+/** Room for an 8 MiB PR patch even with JSON escaping, plus its detail metadata. */
+export const MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
 /** Close codes in the private range. The `error` frame carries the reason in words. */
 export const CLOSE = {
