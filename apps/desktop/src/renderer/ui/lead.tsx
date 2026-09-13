@@ -1,4 +1,11 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { inboxRows } from "../store/inbox.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { useWindowMode } from "../window-mode.js";
@@ -11,7 +18,13 @@ const Terminal = lazy(() =>
 );
 
 /** Window-local panel state: a toggle/resize never updates the task store or its list. */
-export function LeadBar({ onAttention }: { onAttention?: () => void } = {}) {
+export function LeadBar({
+  onAttention,
+  keybindingStatus,
+}: {
+  onAttention?: () => void;
+  keybindingStatus?: ReactNode;
+} = {}) {
   const mode = useWindowMode();
   const store = useStoreApi();
   const connection = useStore((s) => s.connection);
@@ -136,6 +149,7 @@ export function LeadBar({ onAttention }: { onAttention?: () => void } = {}) {
         </section>
       ) : null}
       <footer className="bottom-bar">
+        {keybindingStatus}
         <span className="connection-state">
           <span
             className={

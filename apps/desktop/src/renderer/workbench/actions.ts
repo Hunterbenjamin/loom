@@ -1,57 +1,74 @@
-export const actions = [
-  { id: "split-right", key: "|", label: "Split right" },
-  { id: "split-down", key: "-", label: "Split down" },
-  { id: "left", key: "h", label: "Focus left" },
-  { id: "down", key: "j", label: "Focus down" },
-  { id: "up", key: "k", label: "Focus up" },
-  { id: "right", key: "l", label: "Focus right" },
-  { id: "new", key: "c", label: "New tab" },
-  { id: "next", key: "n", label: "Next tab" },
-  { id: "previous", key: "p", label: "Previous tab" },
-  { id: "close", key: "x", label: "Close panel" },
-  { id: "zoom", key: "z", label: "Zoom panel" },
-  { id: "jump", key: "g", label: "Find agent" },
-  { id: "help", key: "?", label: "Shortcut map" },
-] as const;
-export type Action = (typeof actions)[number]["id"];
-/** Ctrl+A Ctrl+A sends a literal prefix. Unknown commands cancel and pass through normally. */
-export function prefixKeys(
+import {
+  type Action,
+  actions,
+  bindingChord,
+  isPrefixBinding,
+  type KeybindingsConfig,
+  type KeyStroke,
+  matchesChord,
+} from "../../shared/keybindings.js";
+
+export { type Action, actions } from "../../shared/keybindings.js";
+
+type KeyEvent = KeyStroke & {
+  type: string;
+  repeat?: boolean;
+  isComposing?: boolean;
+};
+/** One matcher per Workbench window; modifier presses must not cancel sequences. */
+export function bindingMatcher(
+  config: KeybindingsConfig,
   dispatch: (action: Action) => void,
-  literal: () => void,
+  armed: (value: boolean) => void,
   now = Date.now,
 ) {
   let until = 0;
-  return (
-    event: Pick<
-      KeyboardEvent,
-      "key" | "ctrlKey" | "metaKey" | "altKey" | "type"
-    >,
-  ): boolean => {
-    if (event.type !== "keydown") return false;
-    const prefix =
-      event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey &&
-      event.key.toLowerCase() === "a";
-    if (until && now() <= until) {
-      until = 0;
-      if (prefix) {
-        literal();
-        return true;
-      }
-      if (event.key === "Escape") return true;
-      const action = actions.find((a) => a.key === event.key);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = undefined;
+    if (until) armed(false);
+    until = 0;
+  };
+  const handle = (event: KeyEvent): boolean => {
+    if (event.type !== "keydown" || event.isComposing) return false;
+    if (["Control", "Shift", "Alt", "Meta", "AltGraph"].includes(event.key))
+      return false;
+    if (until && now() >= until) cancel();
+    // Holding the prefix must not send a literal or consume the following action.
+    if (event.repeat) return !!until || usesDirect(event);
+    if (until) {
+      cancel();
+      if (matchesChord("Escape", event)) return true;
+      const action = find(event, true);
       if (action) {
         dispatch(action.id);
         return true;
       }
-      return false;
     }
-    until = 0;
-    if (prefix) {
-      until = now() + 1500;
+    const action = find(event, false);
+    if (action) {
+      dispatch(action.id);
+      return true;
+    }
+    if (config.prefix && matchesChord(config.prefix, event)) {
+      until = now() + config.prefixTimeoutMs;
+      armed(true);
+      timer = setTimeout(cancel, config.prefixTimeoutMs);
       return true;
     }
     return false;
   };
+  const find = (event: KeyStroke, sequence: boolean) =>
+    actions.find((a) =>
+      config.bindings[a.id].some(
+        (b) =>
+          isPrefixBinding(b) === sequence &&
+          matchesChord(bindingChord(b), event),
+      ),
+    );
+  const usesDirect = (event: KeyStroke) =>
+    !!find(event, false) ||
+    !!(config.prefix && matchesChord(config.prefix, event));
+  return { handle, cancel };
 }

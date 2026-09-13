@@ -16,10 +16,15 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  defaultKeybindingsState,
+  formatBindings,
+  type KeybindingsState,
+} from "../../shared/keybindings.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { LeadBar } from "../ui/lead.js";
 import { TerminalSession } from "../ui/terminal.js";
-import { type Action, actions, prefixKeys } from "./actions.js";
+import { type Action, actions, bindingMatcher } from "./actions.js";
 import {
   attentionPanes,
   sameTerminal,
@@ -302,6 +307,34 @@ export function Workbench() {
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [error, setError] = useState("");
+  const [bindings, setBindings] = useState<KeybindingsState>(
+    defaultKeybindingsState,
+  );
+  const [prefixArmed, setPrefixArmed] = useState(false);
+  useEffect(() => {
+    let disposed = false;
+    let pushed = false;
+    const unsubscribe = window.loomHost.onKeybindingsChanged((state) => {
+      pushed = true;
+      if (!disposed) setBindings(state);
+    });
+    void window.loomHost
+      .keybindings()
+      .then((state) => {
+        if (!disposed && !pushed) setBindings(state);
+      })
+      .catch(() => {
+        if (!disposed && !pushed)
+          setBindings({
+            ...defaultKeybindingsState,
+            error: "Cannot load keybindings; using defaults",
+          });
+      });
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, []);
   const [pendingTab, setPendingTab] = useState<{
     taskId?: TaskId;
     split?: { tabId: string; panelId: string; direction: "right" | "below" };
@@ -520,6 +553,18 @@ export function Workbench() {
   const dispatch = (action: Action) => {
     const tab = tabs.find((t) => t.id === active);
     const grid = grids.current.get(active);
+    if (action === "commands") {
+      setPalette((v) => !v);
+      return;
+    }
+    if (action === "literal") {
+      (
+        window.loom.terms?.[focused] as
+          | { input(data: string, user?: boolean): void }
+          | undefined
+      )?.input("\x01", true);
+      return;
+    }
     if (action === "new") return newTab();
     if (action === "jump") {
       document.getElementById("agent-filter")?.focus();
@@ -589,31 +634,29 @@ export function Workbench() {
   const latest = useRef({ dispatch, focused });
   latest.current = { dispatch, focused };
   useEffect(() => {
-    const prefix = prefixKeys(
-      (a) => latest.current.dispatch(a),
-      () =>
-        (
-          window.loom.terms?.[latest.current.focused] as
-            | { input(data: string, user?: boolean): void }
-            | undefined
-        )?.input("\x01", true),
+    const matcher = bindingMatcher(
+      bindings.config,
+      (action) => latest.current.dispatch(action),
+      setPrefixArmed,
     );
     const key = (e: KeyboardEvent) => {
-      if (document.querySelector("dialog[open]")) return;
-      if (e.metaKey && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        e.stopPropagation();
-        setPalette((v) => !v);
+      if (document.querySelector('dialog[open], [aria-modal="true"]')) {
+        matcher.cancel();
         return;
       }
-      if (prefix(e)) {
+      if (matcher.handle(e)) {
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
       }
     };
     window.addEventListener("keydown", key, true);
-    return () => window.removeEventListener("keydown", key, true);
-  }, []);
+    window.addEventListener("blur", matcher.cancel);
+    return () => {
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("blur", matcher.cancel);
+      matcher.cancel();
+    };
+  }, [bindings.config]);
   const scratch = async () => {
     const target = tabs
       .find((t) => t.id === active)
@@ -700,6 +743,25 @@ export function Workbench() {
         </main>
       </div>
       <LeadBar
+        keybindingStatus={
+          <>
+            {prefixArmed && (
+              <span className="wb-keybinding-status" role="status">
+                {bindings.config.prefix} armed · waiting for key (
+                {bindings.config.prefixTimeoutMs / 1000}s)
+              </span>
+            )}
+            {bindings.error && (
+              <span
+                className="wb-keybinding-status"
+                role="alert"
+                title={`${bindings.error}${bindings.path ? ` · ${bindings.path}` : ""}`}
+              >
+                {bindings.error}
+              </span>
+            )}
+          </>
+        }
         onAttention={() => {
           setFilter("");
           const first = attentionPanes(store.getState().panes)[0];
@@ -731,7 +793,7 @@ export function Workbench() {
                       dispatch(a.id);
                     }}
                   >
-                    {a.label} <kbd>Ctrl+A {a.key}</kbd>
+                    {a.label} <kbd>{formatBindings(bindings.config, a.id)}</kbd>
                   </Command.Item>
                 ))}
                 <Command.Item
@@ -766,12 +828,18 @@ export function Workbench() {
             <h2>Workbench shortcuts</h2>
             {actions.map((a) => (
               <p key={a.id}>
-                <kbd>Ctrl+A {a.key}</kbd> {a.label}
+                <kbd>{formatBindings(bindings.config, a.id)}</kbd> {a.label}
               </p>
             ))}
             <p>
-              Prefix expires after 1.5 seconds. Escape cancels. Ctrl+A Ctrl+A
-              sends literal Ctrl+A.
+              Prefix expires after {bindings.config.prefixTimeoutMs / 1000}{" "}
+              seconds. Escape cancels. Modifier keys preserve the prefix;
+              unknown suffixes pass through.
+            </p>
+            <p>
+              {bindings.path
+                ? `Edit ${bindings.path}; changes reload automatically.`
+                : "Using default keybindings."}
             </p>
             <button type="button" onClick={() => setHelp(false)}>
               Close
