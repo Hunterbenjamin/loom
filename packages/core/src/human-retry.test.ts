@@ -174,3 +174,27 @@ test("failed retirement can itself be retried without discarding the fresh-sessi
     ),
   ).toMatchObject({ sessionEpoch: 1, attempt: 2 });
 });
+
+test("a Main message pinned to an earlier run attempt cannot reach its replacement", () => {
+  const f = fixture("in_progress");
+  const run = f.state.runs.find((r) => r.role === "implementer") as Run;
+  f.observations.inputs = [
+    command({
+      type: "send_message",
+      runId: run.id,
+      text: "Stale Main note",
+      expectedRun: {
+        sessionEpoch: run.sessionEpoch,
+        attempts: run.attempts - 1,
+      },
+    }),
+  ];
+  const result = fixed(f.state, f.observations);
+  expect(result.inputs[0]).toMatchObject({
+    accepted: false,
+    error: { code: "guard_failed" },
+  });
+  expect(result.next.messages.some((m) => m.text === "Stale Main note")).toBe(
+    false,
+  );
+});

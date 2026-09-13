@@ -173,7 +173,11 @@ Startup recovers every per-repository recipe and idempotently migrates the legac
 to the first registered repository, keeping its session ID and token. Operator remains instance-wide.
 This conversation-only policy is separate from issue planners' and reviewers' edit restrictions,
 so those issue roles retain the tools needed to inspect the repository and run tests.
-The human-command tools enqueue the same guarded inputs as the CLI; they do not
+Main may also send short questions or heads-ups through `message_agent`, fire-and-forget. Every
+message is recorded, task-run delivery uses the core send gate and native receipt path, and
+Operator messages/replies reuse its durable events and notes. Repository-scoped unread replies
+appear in Main's introduction and panel summaries; Main never waits for an answer or assigns work
+through messages. The human-command tools enqueue the same guarded inputs as the CLI; they do not
 change stage ownership. Issue-run tools and Main tools reject each other's identities. See
 [Main](design/ui.md#main) for its lifecycle, recovery and bottom-bar UI.
 

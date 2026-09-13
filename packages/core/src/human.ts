@@ -227,6 +227,19 @@ export function human(
         (r) => r.id === cmd.runId && r.origin === "loom" && !r.endedAt,
       );
       if (!run) return guard("Choose a live Loom run");
+      if (
+        cmd.expectedRun &&
+        (run.sessionEpoch !== cmd.expectedRun.sessionEpoch ||
+          run.attempts !== cmd.expectedRun.attempts)
+      )
+        return guard("The target run attempt has changed");
+      if (
+        cmd.expectedRun &&
+        state.questions.some(
+          (q) => q.runId === run.id && q.blocking && !q.answeredAt,
+        )
+      )
+        return guard("The target run is waiting on a question");
       c.message(run, "human", sequence, cmd.text);
       return null;
     }

@@ -2,7 +2,10 @@ import { z } from "zod";
 export const taskNote = z.strictObject({
   id: z.string(),
   taskId: z.string().nullable(),
-  author: z.enum(["operator", "lead", "human"]),
+  repoId: z.string().optional(),
+  addressedTo: z.literal("main").optional(),
+  readAt: z.string().datetime().optional(),
+  author: z.enum(["operator", "main", "lead", "human"]),
   at: z.string().datetime(),
   eventId: z.string(),
   row: z.string(),
