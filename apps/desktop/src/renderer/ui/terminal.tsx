@@ -256,13 +256,40 @@ export const TerminalSession = memo(function TerminalSession({
     } catch {
       // Software rendering still works; only throughput suffers.
     }
+    // The size this client reports to the pane host. With the host's `window-size latest`, the
+    // most recently sized client decides the native window size, so a cropped view reports the
+    // cell grid its panel could hold rather than the pane's current native size: a session that
+    // started headless at 80x24 then grows to the panel instead of being magnified to fill it.
+    let wanted = { cols: terminal.cols, rows: terminal.rows };
+    let spawned = false;
+    let sentCols = 0;
+    let sentRows = 0;
+    const sendSize = () => {
+      const { cols, rows } = wanted;
+      if (!spawned || (cols === sentCols && rows === sentRows)) return;
+      sentCols = cols;
+      sentRows = rows;
+      window.loomTerminal.resize(id, cols, rows);
+    };
     const fitView = () => {
       const crop = viewportRef.current;
       const container = clip.current;
       if (crop && container) {
         terminal.resize(crop.columns, crop.rows);
         const screen = element.querySelector<HTMLElement>(".xterm-screen");
-        if (!screen?.clientWidth || !screen.clientHeight) return;
+        if (!screen?.clientWidth || !screen.clientHeight) {
+          // No cell metrics yet (first paint, hidden view): report the native grid as is.
+          wanted = { cols: terminal.cols, rows: terminal.rows };
+          sendSize();
+          return;
+        }
+        const cellWidth = screen.clientWidth / terminal.cols;
+        const cellHeight = screen.clientHeight / terminal.rows;
+        wanted = {
+          cols: Math.max(2, Math.floor(container.clientWidth / cellWidth)),
+          rows: Math.max(1, Math.floor(container.clientHeight / cellHeight)),
+        };
+        sendSize();
         const placement = terminalCrop(
           crop,
           screen.clientWidth,
@@ -283,6 +310,8 @@ export const TerminalSession = memo(function TerminalSession({
           transform: "",
         });
         fit.fit();
+        wanted = { cols: terminal.cols, rows: terminal.rows };
+        sendSize();
       }
     };
     fitViewport.current = fitView;
@@ -310,17 +339,11 @@ export const TerminalSession = memo(function TerminalSession({
     });
 
     terminal.onData((data) => window.loomTerminal.write(id, data));
-    let spawned = false;
-    let sentCols = terminal.cols;
-    let sentRows = terminal.rows;
-    const syncSize = () => {
-      const { cols, rows } = terminal;
-      if (!spawned || (cols === sentCols && rows === sentRows)) return;
-      sentCols = cols;
-      sentRows = rows;
-      window.loomTerminal.resize(id, cols, rows);
-    };
-    terminal.onResize(syncSize);
+    terminal.onResize(() => {
+      if (viewportRef.current) return; // a cropped view's size is decided by its panel above
+      wanted = { cols: terminal.cols, rows: terminal.rows };
+      sendSize();
+    });
     window.loomTerminal.onData(id, (data) => terminal.write(data));
     window.loomTerminal.onExit(id, ({ exitCode }) => {
       // Exit 1 from an attach means "already attached" or "taken over"; both are states the
@@ -336,8 +359,8 @@ export const TerminalSession = memo(function TerminalSession({
     void window.loomTerminal
       .spawn({
         id,
-        cols: terminal.cols,
-        rows: terminal.rows,
+        cols: wanted.cols,
+        rows: wanted.rows,
         label: settings.current.label,
         pane,
         shellKey,
@@ -353,7 +376,7 @@ export const TerminalSession = memo(function TerminalSession({
         }
         spawned = true;
         // A layout resize can land while the spawn request is in flight.
-        syncSize();
+        sendSize();
         setCommand(result.command);
         setStatus(`pid ${result.pid}`);
         terminal.focus();
