@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { attentionCount, inboxRows } from "./store/inbox.js";
+import { selectedPullRequests } from "./store/pull-requests.js";
 import { useStore, useStoreApi } from "./store/react.js";
 import { selectedRows } from "./store/selectors.js";
 import { VIEWS } from "./store/store.js";
@@ -11,11 +12,16 @@ import { useShortcuts } from "./ui/keys.js";
 import { LeadBar } from "./ui/lead.js";
 import { ListView } from "./ui/list.js";
 import { Palette, StagePicker } from "./ui/palette.js";
+import { PullRequestsView } from "./ui/pull-requests.js";
 import { Sidebar } from "./ui/sidebar.js";
 
 export function App() {
   const store = useStoreApi();
   useShortcuts(store);
+  useEffect(() => {
+    store.setTrackerVisible(true);
+    return () => store.setTrackerVisible(false);
+  }, [store]);
 
   const theme = useStore((s) => s.ui.theme);
   const waiting = useStore(
@@ -28,7 +34,11 @@ export function App() {
   const query = useStore((s) => s.ui.query);
   const toast = useStore((s) => s.ui.toast);
   const count = useStore((s) =>
-    s.ui.view === "needs-you" ? inboxRows(s).length : selectedRows(s).length,
+    s.ui.view === "pull-requests"
+      ? selectedPullRequests(s).length
+      : s.ui.view === "needs-you"
+        ? inboxRows(s).length
+        : selectedRows(s).length,
   );
   const needsYou = useStore(attentionCount);
   useEffect(() => {
@@ -67,10 +77,14 @@ export function App() {
       <Sidebar />
       <div className="main">
         <header className="topbar">
-          <h1>{VIEWS.find((item) => item.id === view)?.label}</h1>
+          <h1>
+            {view === "pull-requests"
+              ? "Pull requests"
+              : VIEWS.find((item) => item.id === view)?.label}
+          </h1>
           <span className="faint nums">{count}</span>
           <span className="spacer" />
-          {searching ? (
+          {view === "pull-requests" ? null : searching ? (
             <input
               ref={search}
               className="search"
@@ -86,22 +100,24 @@ export function App() {
               Search <kbd>/</kbd>
             </button>
           )}
-          <div className="segmented">
-            <button
-              type="button"
-              aria-pressed={pane === "list"}
-              onClick={() => store.setPane("list")}
-            >
-              List
-            </button>
-            <button
-              type="button"
-              aria-pressed={pane === "board"}
-              onClick={() => store.setPane("board")}
-            >
-              Board
-            </button>
-          </div>
+          {view !== "pull-requests" && (
+            <div className="segmented">
+              <button
+                type="button"
+                aria-pressed={pane === "list"}
+                onClick={() => store.setPane("list")}
+              >
+                List
+              </button>
+              <button
+                type="button"
+                aria-pressed={pane === "board"}
+                onClick={() => store.setPane("board")}
+              >
+                Board
+              </button>
+            </div>
+          )}
         </header>
 
         <div
@@ -115,6 +131,8 @@ export function App() {
         >
           {waiting ? (
             <div className="pad faint">Waiting for the coordinator…</div>
+          ) : view === "pull-requests" ? (
+            <PullRequestsView />
           ) : view === "needs-you" ? (
             <InboxView />
           ) : pane === "list" ? (

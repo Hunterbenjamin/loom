@@ -17,6 +17,7 @@ const Workbench = lazy(() =>
 );
 
 import { emptySnapshot } from "./live/snapshot.js";
+import { pullRequestSubscriptions } from "./store/pull-requests.js";
 import { StoreProvider } from "./store/react.js";
 import { createStore } from "./store/store.js";
 import { WindowModeContext } from "./window-mode.js";
@@ -47,6 +48,7 @@ if (config.mode === "live") {
     client.setDetail([
       { kind: "panes" },
       { kind: "agents" },
+      ...pullRequestSubscriptions(store.getState()),
       ...(openTask ? [{ kind: "task" as const, taskId: openTask }] : []),
       ...(openRun ? [{ kind: "run" as const, runId: openRun }] : []),
     ]);

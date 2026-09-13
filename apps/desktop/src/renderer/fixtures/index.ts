@@ -24,6 +24,7 @@ import type {
   Transition,
   Worktree,
 } from "@loom/core";
+import type { PullRequestRow } from "@loom/protocol";
 import {
   approvalId,
   blobOid,
@@ -43,6 +44,7 @@ import {
   worktreePath,
 } from "./ids.js";
 import { buildPatch, type PatchFixture } from "./patch.js";
+import { buildPullRequests } from "./pull-requests.js";
 import { between, pick, rng } from "./rng.js";
 
 /** A human comment thread on a finding. `@loom/core` has no reply type; see the PR notes. */
@@ -58,6 +60,7 @@ export interface Snapshot {
   now: IsoTime;
   repos: Repo[];
   tasks: Task[];
+  pullRequests: PullRequestRow[];
   worktrees: Worktree[];
   runs: Run[];
   questions: Question[];
@@ -855,6 +858,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
 
   return {
     now: NOW,
+    pullRequests: buildPullRequests(repos, tasks),
     repos,
     tasks,
     worktrees,

@@ -20,6 +20,7 @@ import type {
   PaneIdentity,
   PaneView,
   PatchFrame,
+  PullRequestRow,
   RunTarget,
   TaskInbox,
 } from "@loom/protocol";
@@ -32,6 +33,7 @@ import {
 } from "../fixtures/index.js";
 import { projectSnapshot } from "../live/snapshot.js";
 import { createPaneTransitionDetector } from "./pane-transitions.js";
+import { selectedPullRequests } from "./pull-requests.js";
 import { cursorRows } from "./selectors.js";
 
 export type ViewId =
@@ -39,7 +41,8 @@ export type ViewId =
   | "needs-you"
   | "in-progress"
   | "awaiting-approval"
-  | "done";
+  | "done"
+  | "pull-requests";
 export type Pane = "list" | "board";
 export type TabId = "activity" | "plan" | "agents" | "terminal" | "review";
 export type SortKey =
@@ -60,6 +63,10 @@ export type ListSections = Partial<
 export interface UiState {
   /** Presentation only; owned by this window and never persisted. */
   listSections: ListSections;
+  trackerVisible: boolean;
+  prState: PullRequestRow["state"];
+  prQuery: string;
+  prCursor: number;
   view: ViewId;
   pane: Pane;
   /** Repo filter; `all` means every repo. */
@@ -123,6 +130,8 @@ const IN_PROGRESS: Stage[] = [
 
 export function matchesView(task: Task, view: ViewId): boolean {
   switch (view) {
+    case "pull-requests":
+      return false;
     case "all":
       return true;
     case "needs-you":
@@ -140,6 +149,10 @@ export function matchesView(task: Task, view: ViewId): boolean {
 
 const initialUi: UiState = {
   listSections: {},
+  trackerVisible: false,
+  prState: "open",
+  prQuery: "",
+  prCursor: 0,
   view: "all",
   pane: "list",
   repo: "all",
@@ -307,6 +320,7 @@ export function createStore(
       emit();
     },
     applyProtocol(client: ClientState, patch?: PatchFrame) {
+      const selectedPr = selectedPullRequests(state)[state.ui.prCursor];
       const selectedTask =
         state.ui.view === "needs-you"
           ? undefined
@@ -360,6 +374,23 @@ export function createStore(
             ? [...client.collections.run_target.values()]
             : state.runTargets,
       };
+      if (selectedPr) {
+        const rows = selectedPullRequests(state);
+        const index = rows.findIndex(
+          (pr) =>
+            pr.repoId === selectedPr.repoId && pr.number === selectedPr.number,
+        );
+        state = {
+          ...state,
+          ui: {
+            ...state.ui,
+            prCursor:
+              index >= 0
+                ? index
+                : Math.max(0, Math.min(state.ui.prCursor, rows.length - 1)),
+          },
+        };
+      }
       // Preserve the selected issue when a stage patch changes its sorted position.
       if (selectedTask) {
         const stageChanged =
@@ -410,6 +441,18 @@ export function createStore(
       return () => listeners.delete(listener);
     },
 
+    setTrackerVisible(trackerVisible: boolean) {
+      setUi({ trackerVisible });
+    },
+    setPrState(prState: PullRequestRow["state"]) {
+      setUi({ prState, prCursor: 0 });
+    },
+    setPrQuery(prQuery: string) {
+      setUi({ prQuery, prCursor: 0 });
+    },
+    setPrCursor(prCursor: number) {
+      setUi({ prCursor });
+    },
     setView(view: ViewId) {
       setUi({ view, cursor: 0, openTask: null });
     },
@@ -440,7 +483,7 @@ export function createStore(
       });
     },
     setRepo(repo: string) {
-      setUi({ repo, cursor: 0 });
+      setUi({ repo, cursor: 0, prCursor: 0, openTask: null });
     },
     setSort(sort: SortKey) {
       setUi(

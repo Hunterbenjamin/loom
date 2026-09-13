@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { inboxRows, reasonTab } from "../store/inbox.js";
+import { selectedPullRequests } from "../store/pull-requests.js";
 import { cursorRows } from "../store/selectors.js";
 import type { Store } from "../store/store.js";
 
@@ -55,6 +56,30 @@ export function useShortcuts(store: Store): void {
           return;
         }
         return;
+      }
+
+      if (ui.view === "pull-requests" && !ui.openTask) {
+        const rows = selectedPullRequests(store.getState());
+        if (event.key === "j" || event.key === "k") {
+          event.preventDefault();
+          store.setPrCursor(
+            Math.max(
+              0,
+              Math.min(
+                rows.length - 1,
+                ui.prCursor + (event.key === "j" ? 1 : -1),
+              ),
+            ),
+          );
+          return;
+        }
+        if (event.key === "/") {
+          event.preventDefault();
+          document.querySelector<HTMLInputElement>("[data-pr-search]")?.focus();
+          return;
+        }
+        // PR detail and task stage actions are outside the list slice.
+        if (event.key === "Enter" || event.key === "e") return;
       }
 
       const inbox =
