@@ -200,6 +200,18 @@ export function observeRuns(c: Context): void {
 }
 
 function launch(c: Context, run: Run, resume: boolean): void {
+  // Legacy ended runs can still carry attempted messages. Retire those before reusing
+  // the run ID, while preserving unsent follow-ups queued for this new launch.
+  if (run.endedAt)
+    for (const message of c.state.messages)
+      if (
+        message.runId === run.id &&
+        (message.status === "sent" ||
+          (message.status === "pending" && message.attempts > 0))
+      ) {
+        message.status = "failed";
+        message.deliveryAttention = false;
+      }
   const observation = c.observations.runs.find((o) => o.runId === run.id);
   // `resumable: false` only ever comes from a direct owner read (§5.2), so it rotates the session
   // even when the transcript read itself failed: a Codex thread without a rollout can't be read.

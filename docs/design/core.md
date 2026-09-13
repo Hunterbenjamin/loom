@@ -160,7 +160,9 @@ Append-only; one row per committed stage change or flag change.
 Delivery metadata follows the original `Message` fields. Core writes it and the store must retain it:
 `via` identifies the transport path (absent before send), `expectedTurnId` identifies a steered turn,
 `baselineTurnId` identifies the last observed turn before sending (absent/null means none), and
-`deliveryAttention` defaults to false. These fields are never reconstructed from a terminal.
+`deliveryAttention` defaults to false. `transportAttempt` records executor start/completion times
+and session/run identity (§5.5), and is absent on legacy records. These fields are never
+reconstructed from a terminal.
 
 `CiCheck.id` is required: the GitHub adapter supplies the stringified stable check-run ID. Core uses
 it as the CI finding's external identity; name/head fallbacks are no longer permitted. The ID remains
@@ -586,9 +588,16 @@ fails and the human is notified).
 The timeout resend keeps the message ID but uses `send_message:<id>#2`, since the first action key
 already succeeded. Transport failures separately use bounded action retries with suffixed keys.
 Persist `via`, expected/baseline turn IDs and delivery attention; confirmation must match the session
-and cannot use a receipt older than the send. Serialize outstanding messages per run until native
+and cannot use a receipt older than the transport attempt's start. The executor persists
+`transportAttempt` (start/completion times, session ID/epoch and run attempt) in the action result
+and message; `sentAt` is its completion time, never the later reconciliation time. A matching hook
+may precede transport completion or result consumption. Legacy messages without attempt metadata
+retain their `sentAt` lower bound; legacy results use their persisted receipt time. Serialize
+outstanding messages per run until native
 delivery is known. Ending a run retires its undelivered messages, so stale prompts cannot block a
-resumed attempt. For ambiguous timeout delivery, notify and set existing `provider_input` attention.
+resumed attempt. Historical messages on ended runs do not contribute delivery attention, and
+attempt metadata prevents an old session or run attempt's send from being confirmed or replayed
+into its replacement. For ambiguous timeout delivery, notify and set existing `provider_input` attention.
 Native executor idempotence checks remain necessary: core never infers delivery from transport success.
 
 ## 6. Adapter interfaces

@@ -9,6 +9,7 @@ import type {
   Provider,
   Role,
   RunMode,
+  TransportAttempt,
 } from "./entities.js";
 import type {
   ActionKey,
@@ -176,7 +177,11 @@ export interface ActionOutputs {
     pane: PaneRef | null;
   };
   /** Transport acceptance only. Delivery is confirmed later, by observation. */
-  send_message: { transportRef: string | null };
+  send_message: {
+    transportRef: string | null;
+    /** Optional only for action results persisted by older coordinators. */
+    transportAttempt?: TransportAttempt;
+  };
   /** The interrupt was sent. The run's status confirms it later. */
   interrupt_run: Empty;
   /** The pane prompt answer was sent. */

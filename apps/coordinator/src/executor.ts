@@ -10,10 +10,12 @@ import { observeRun } from "./observe.js";
 import type {
   Action,
   ActionError,
+  ActionOutputs,
   ActionResult,
   ArtifactKind,
   Finding,
   InputId,
+  IsoTime,
   Repo,
   RepoId,
   Sha,
@@ -400,7 +402,7 @@ export class Executor {
   private async send(
     action: Extract<Action, { kind: "send_message" }>,
     state: TaskState,
-  ): Promise<{ transportRef: string | null }> {
+  ): Promise<ActionOutputs["send_message"]> {
     const { adapters } = this.deps;
     const run = this.run(state, action.runId);
     const decision = await checkSendGate(
@@ -413,45 +415,59 @@ export class Executor {
       throw new PreconditionFailed(`Refusing to send: ${decision.reason}`);
     const sessionId = run.sessionId;
     if (!sessionId) throw new PreconditionFailed("The run has no session");
-    switch (action.via) {
-      case "codex_turn_start": {
-        const codex = await adapters.codex(action.taskId);
-        return {
-          transportRef: (
-            await codex.startTurn({
-              threadId: sessionId,
-              text: action.text,
-              model: run.model,
-              ...(run.reasoningEffort ? { effort: run.reasoningEffort } : {}),
-            })
-          ).turnId,
-        };
+    const startedAt = this.deps.now() as IsoTime;
+    const transport = async (): Promise<{ transportRef: string | null }> => {
+      switch (action.via) {
+        case "codex_turn_start": {
+          const codex = await adapters.codex(action.taskId);
+          return {
+            transportRef: (
+              await codex.startTurn({
+                threadId: sessionId,
+                text: action.text,
+                model: run.model,
+                ...(run.reasoningEffort ? { effort: run.reasoningEffort } : {}),
+              })
+            ).turnId,
+          };
+        }
+        case "codex_turn_steer": {
+          const codex = await adapters.codex(action.taskId);
+          if (!action.expectedTurnId)
+            throw new PreconditionFailed("A steer needs an expected turn");
+          return {
+            transportRef: (
+              await codex.steerTurn({
+                threadId: sessionId,
+                expectedTurnId: action.expectedTurnId,
+                text: action.text,
+              })
+            ).turnId,
+          };
+        }
+        case "claude_sdk":
+          await adapters.claude.sendHeadless({ sessionId, text: action.text });
+          return { transportRef: null };
+        case "pane_paste": {
+          if (!run.pane)
+            throw new PreconditionFailed("The run has no pane to write into");
+          // The host refuses a leading `/` or `!` itself; core never generates one either.
+          await adapters.paneHost.pasteText(run.pane, action.text);
+          return { transportRef: null };
+        }
       }
-      case "codex_turn_steer": {
-        const codex = await adapters.codex(action.taskId);
-        if (!action.expectedTurnId)
-          throw new PreconditionFailed("A steer needs an expected turn");
-        return {
-          transportRef: (
-            await codex.steerTurn({
-              threadId: sessionId,
-              expectedTurnId: action.expectedTurnId,
-              text: action.text,
-            })
-          ).turnId,
-        };
-      }
-      case "claude_sdk":
-        await adapters.claude.sendHeadless({ sessionId, text: action.text });
-        return { transportRef: null };
-      case "pane_paste": {
-        if (!run.pane)
-          throw new PreconditionFailed("The run has no pane to write into");
-        // The host refuses a leading `/` or `!` itself; core never generates one either.
-        await adapters.paneHost.pasteText(run.pane, action.text);
-        return { transportRef: null };
-      }
-    }
+    };
+    const output = await transport();
+    return {
+      ...output,
+      transportAttempt: {
+        startedAt,
+        completedAt: this.deps.now() as IsoTime,
+        sessionId,
+        sessionEpoch: run.sessionEpoch,
+        runAttempt: run.attempts,
+      },
+    };
   }
 
   private async interrupt(
