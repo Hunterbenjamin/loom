@@ -11,7 +11,7 @@ import type {
   Sha,
   TaskId,
 } from "@loom/core";
-import type { Command, Subscription } from "@loom/protocol";
+import { type Command, runId, type Subscription } from "@loom/protocol";
 import { openReadOnlyStore, openStore } from "@loom/store";
 import { LoomClient } from "./client.js";
 import {
@@ -40,6 +40,7 @@ const USAGE = `loom — Loom's coordinator and its client
   loom task request-changes <task> <title> <body>
   loom task answer <task> <questionId> <answer>
   loom task answer-request <task> <runId> <requestId> accept|decline|cancel
+  loom task restart <task> <runId>     fresh session using current agent settings
   loom task retry <task>
   loom task cancel <task> <reason>
   loom task timings <task>               show per-stage durations from transitions
@@ -512,6 +513,14 @@ export async function main(argv: string[]): Promise<void> {
       } finally {
         client.close();
       }
+    }
+    case "restart": {
+      const id = values[1];
+      if (!id) throw new Error("loom task restart <task> <runId>");
+      return humanCommand(config, taskId, {
+        type: "restart_run",
+        runId: runId.parse(id),
+      });
     }
     case "retry":
       return humanCommand(config, taskId, { type: "retry" });

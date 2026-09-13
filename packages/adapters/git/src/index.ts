@@ -86,6 +86,9 @@ export function createGitAdapter(
     async realpath(path) {
       return pathSchema.parse(await realpath(pathSchema.parse(path)));
     },
+    async currentBranch(path) {
+      return branchAt(await rootPath(path));
+    },
     async readWorktree(path, baseBranch, reachableCandidates = []) {
       pathSchema.parse(path);
       refName.parse(baseBranch);

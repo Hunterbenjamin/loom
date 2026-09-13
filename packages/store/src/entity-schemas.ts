@@ -454,7 +454,20 @@ export const contextSchema = contract<TaskContext>()(
       })
       .nullable(),
     desiredRun: z
-      .object({ role, round: count, resume: z.boolean() })
+      .object({
+        role,
+        round: count,
+        resume: z.boolean(),
+        replacement: z
+          .object({
+            runId: id,
+            previousRunId: id,
+            provider,
+            model: text,
+            reasoningEffort: text.optional(),
+          })
+          .optional(),
+      })
       .nullable(),
     activeElapsedMs: z.number().nonnegative(),
     budgetObservedAt: time,

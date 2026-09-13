@@ -288,6 +288,7 @@ export type HumanCommand =
     }
   | { type: "send_message"; runId: RunId; text: string }
   | { type: "retry" }
+  | { type: "restart_run"; runId: RunId }
   | { type: "grant_review_round" }
   | { type: "waive_finding"; findingId: FindingId; note: string }
   | { type: "cancel"; reason: string }

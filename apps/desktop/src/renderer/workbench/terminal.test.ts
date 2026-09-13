@@ -2,8 +2,9 @@
 import { act, createElement, Fragment } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
+import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
-import { TerminalSession } from "../ui/terminal.js";
+import { TerminalSession, TerminalTab } from "../ui/terminal.js";
 
 const created = vi.hoisted(() => vi.fn());
 vi.mock("@xterm/xterm", () => ({
@@ -43,7 +44,69 @@ const target = {
   windowId: "@1",
   paneId: "%1",
 };
+test("task detail automatically resolves its own terminal, displays the actual branch and ignores old run selection", async () => {
+  const store = createStore(undefined, true, "test");
+  const task = store.getState().snapshot.tasks[0];
+  if (!task) throw new Error("Missing task fixture");
+  store.setRun("unrelated-run" as never);
+  const send = vi.fn(async () => ({
+    ok: true as const,
+    result: {
+      kind: "task_terminal" as const,
+      taskId: task.id,
+      target,
+      source: "project" as const,
+      branch: "feat/keep-current",
+    },
+  }));
+  store.setSender(send);
+  const spawn = vi.fn(async () => ({ pid: 1, command: "attach" }));
+  window.loomTerminal = {
+    spawn,
+    kill: vi.fn(async () => true),
+    write: vi.fn(),
+    resize: vi.fn(),
+    onData: vi.fn(),
+    onExit: vi.fn(),
+    off: vi.fn(),
+  };
+  window.loom = { store, ready: true, diffPaintedAt: null, term: null };
+  const element = document.createElement("div");
+  document.body.append(element);
+  const root = createRoot(element);
+  const render = (title = task.title) =>
+    root.render(
+      createElement(StoreProvider, {
+        store,
+        // biome-ignore lint/correctness/noChildrenProp: Provider requires typed children.
+        children: createElement(TerminalTab, {
+          task: { ...task, title },
+          theme: "dark",
+        }),
+      }),
+    );
+  try {
+    await act(async () => render());
+    expect(element.querySelector("select")).toBeNull();
+    expect(send).toHaveBeenCalledExactlyOnceWith({
+      kind: "open_task_terminal",
+      taskId: task.id,
+    });
+    expect(spawn).toHaveBeenCalledWith(
+      expect.objectContaining({ pane: target, runId: null }),
+    );
+    expect(element.textContent).toContain("Project root · feat/keep-current");
+    await act(async () => render("Updated title"));
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
+  } finally {
+    await act(async () => root.unmount());
+    element.remove();
+  }
+});
+
 test("two panel clients are independent; label/theme updates and parent paints preserve xterms; late spawn detaches", async () => {
+  created.mockClear();
   const pending: (() => void)[] = [];
   const spawn = vi.fn(
     () =>

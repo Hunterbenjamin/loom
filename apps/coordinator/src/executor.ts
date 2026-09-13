@@ -1,3 +1,4 @@
+import { isStaleEntry } from "@loom/adapter-claude";
 import { observeRun } from "./observe.js";
 // The executor (brief §2). It claims outbox rows, rechecks the claim immediately before any side
 // effect, maps every `Action` kind to the adapter that owns it, and records the outcome with
@@ -227,6 +228,68 @@ export class Executor {
       }
       case "stop_run": {
         const run = this.run(state, action.runId);
+        if (action.terminate) {
+          if (run.origin !== "loom" || run.endReason !== "superseded")
+            throw new Fatal(
+              "Only a superseded Loom run can be retired for replacement",
+            );
+          if (run.sessionId && run.provider === "codex") {
+            const codex = await adapters.codex(action.taskId);
+            const sessionId = run.sessionId;
+            const read = async () => {
+              try {
+                return await codex.readThread(sessionId);
+              } catch (error) {
+                if ((await codex.checkResumable(sessionId)) === false)
+                  return null;
+                throw error;
+              }
+            };
+            let observation = await read();
+            const turn = observation?.turns.at(-1);
+            if (turn?.status === "inProgress") {
+              await codex.interruptTurn({
+                threadId: run.sessionId,
+                turnId: turn.id,
+              });
+              observation = await read();
+            }
+            if (
+              observation?.status === "active" ||
+              observation?.turns.at(-1)?.status === "inProgress"
+            )
+              throw new Error(
+                "Waiting for the previous Codex turn to stop before replacement",
+              );
+            if (observation) await codex.unsubscribe(run.sessionId);
+          } else if (run.sessionId && run.mode === "headless") {
+            await adapters.claude.closeHeadless(run.sessionId);
+            const entry = (await adapters.claude.listSessions()).find(
+              (s) => s.sessionId === run.sessionId,
+            );
+            if (entry && !isStaleEntry(entry))
+              throw new Error(
+                "Waiting for the previous Claude process to exit before replacement",
+              );
+          }
+          if (run.pane) await adapters.paneHost.closePane(run.pane);
+          else if (
+            run.sessionId &&
+            run.provider === "claude" &&
+            run.mode === "interactive"
+          ) {
+            const observed = await observeRun(adapters, this.deps.now(), run);
+            if (
+              !observed.provider.ok ||
+              (observed.provider.value?.provider === "claude" &&
+                observed.provider.value.agentsEntry)
+            )
+              throw new Error(
+                "Cannot retire a live Claude session without its recorded pane",
+              );
+          }
+          return {};
+        }
         if (!run.sessionId) return {};
         if (run.provider === "codex")
           await (await adapters.codex(action.taskId)).unsubscribe(

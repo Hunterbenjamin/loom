@@ -168,7 +168,7 @@ part of the CI snapshot captured in a merge approval.
 ### IDs
 
 Reconcile is pure, so it can't draw random IDs. IDs it creates are derived from stable keys: run IDs
-from `(task, role, round)`, Claude session IDs as UUIDv5 of `<runId>#<sessionEpoch>`, message IDs from
+from `(task, role, round)` (explicit replacements append `/restart/<inputId>`), Claude session IDs as UUIDv5 of `<runId>#<sessionEpoch>`, message IDs from
 `(run, purpose, sequence)`, action keys from the intent (§5.5). IDs that arrive with an input (finding
 IDs, question IDs) are assigned by the I/O layer when the input is persisted.
 
@@ -284,6 +284,13 @@ gets `retryAt` and a `schedule` action, and relaunches as `attempts + 1` against
 (§1 "Run"): `start_run` with `resume: true` while the provider still has the session, otherwise
 `sessionEpoch + 1` and a fresh one. Retries within `retry.maxAttempts` (3) set no flag; exhausting them
 sets `failed: retries_exhausted`.
+
+**Explicit replacement.** Human `restart_run {runId}` applies only to the current planning,
+implementation, or review run. It preserves stage, worktree, artifacts and review round, captures
+current provider/model/reasoning in `desiredRun.replacement`, and supersedes the old run. Retirement
+must succeed before launching the fresh run/session. The replacement ID is stable for the input
+receipt; stale run IDs are rejected. Normal retry and later fix rounds select the latest run for
+that role/round, preserving its captured settings. Provider transcripts stay with their old sessions.
 
 **An interactive run is never relaunched automatically.** From outside, a human closing the pane and a
 crash look identical: the `claude agents` entry disappears with no SessionEnd (spike 02). Reopening a
@@ -407,7 +414,7 @@ persists/reloads each returned value. `config` is supplied separately by the coo
 | `consumedInputIds` | `InputId[]`, initially `[]` | Store supplies consumed inbox receipt IDs, including rejected inputs. Replay protection must survive restart; only archive when those IDs can no longer be replayed. |
 | `plan` | `(Plan & {version, accepted}) \| null`, initially null | Store supplies latest submitted plan content and its acceptance state; accepted plans survive parking. It must agree with plan artifact version/content. |
 | `review` | `{headSha, lastReviewedHead, previousBlocking, verdictIds} \| null`, initially null | Store supplies current round context. `lastReviewedHead: null` means no completed review; `previousBlocking: null` means no prior completed round. `verdictIds: []` means no findings require verdicts. |
-| `desiredRun` | `{role, round, resume} \| null`, initially null | Store supplies a deferred launch/resume intent. Null means none is pending; it is not inferred from the board stage. |
+| `desiredRun` | `{role, round, resume, replacement?} \| null`, initially null | Store supplies a deferred launch/resume intent. An explicit replacement captures `{runId, previousRunId, provider, model, reasoningEffort?}` before retiring the previous agent. Null means none is pending; it is not inferred from the board stage. |
 | `activeElapsedMs` | `number`, initially 0 | Store supplies accumulated active-stage budget time in milliseconds. |
 | `budgetObservedAt` | `IsoTime`, initially `task.createdAt` | Store supplies the last accounting time, used with this pass's `observations.now`; never reset on reload. |
 | `progress` | `{runId, summary, stepIndex, at} \| null`, initially null | Store supplies latest accepted progress report; `stepIndex: null` means not tied to a plan step. |
@@ -478,7 +485,7 @@ asked for it.
 | `send_message` | by provider and mode | `{transportRef}` → message `sent`. `delivered` comes only from observation (§5.5). |
 | `interrupt_run` | by provider and mode | — (the run's status confirms it) |
 | `answer_provider_request` | Codex `answerRequest` (current generation only) | — (`serverRequest/resolved` and a new snapshot confirm it) |
-| `stop_run` | Codex `unsubscribe`; SDK close | — |
+| `stop_run` | Codex `unsubscribe`; SDK close | Optional `terminate: true` retires a superseded Loom run before replacement: interrupt and confirm inactive Codex, close headless Claude, and close its recorded pane. Failure blocks replacement launch. |
 | `push_branch` | git | `{remoteHeadSha}` |
 | `open_pr` | GitHub | `{number}` → `task.prNumber` |
 | `merge_pr` | GitHub | `merged` or `auto_merge_enabled`. Neither moves the task; #20 waits for the merge to be observed. |

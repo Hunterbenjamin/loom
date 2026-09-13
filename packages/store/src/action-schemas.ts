@@ -52,7 +52,7 @@ const fields = {
     decision: z.enum(["accept", "decline", "cancel"]),
     answers: z.record(text, z.array(text)).nullable(),
   },
-  stop_run: { runId: id },
+  stop_run: { runId: id, terminate: z.boolean().optional() },
   push_branch: { worktreePath: text, branch: text, expectedHeadSha: sha },
   open_pr: {
     rescueHeadSha: sha.optional(),

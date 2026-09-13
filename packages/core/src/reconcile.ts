@@ -105,7 +105,18 @@ export interface TaskState {
     verdictIds: Finding["id"][];
   } | null;
   /** Store: null when no launch/resume intent is waiting. */
-  desiredRun: { role: Role; round: number; resume: boolean } | null;
+  desiredRun: {
+    role: Role;
+    round: number;
+    resume: boolean;
+    replacement?: {
+      runId: RunId;
+      previousRunId: RunId;
+      provider: Provider;
+      model: string;
+      reasoningEffort?: string;
+    };
+  } | null;
   /** Store: accumulated active-stage milliseconds; initialize to 0. */
   activeElapsedMs: number;
   /** Store: last budget accounting time; initialize to task.createdAt. */

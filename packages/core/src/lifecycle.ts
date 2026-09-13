@@ -242,6 +242,7 @@ function launch(c: Context, run: Run, resume: boolean): void {
         `You are Loom's ${run.role} for task ${c.task.id}: ${c.task.title}.`,
         "Call the Loom MCP tool `get_task_context` first; it is the only source that stays current.",
         COMPLETION[run.role],
+        "Inspect the existing worktree changes, plan, findings and handoff before continuing. Preserve existing work; this may be a fresh session replacing an earlier agent.",
         "Loom moves the task between stages; you never do. Don't merge and don't push to the base branch.",
         `Current git observation: ${JSON.stringify(c.git ?? null)}`,
         `Plan: ${JSON.stringify(c.state.plan ?? null)}`,
@@ -295,12 +296,40 @@ export function startDesired(c: Context): void {
         label: c.task.title,
       });
     c.files();
-    let run = c.state.runs.find(
-      (r) => r.id === runId(c.task.id, desired.role, desired.round),
-    );
+    const replacement = desired.replacement;
+    if (replacement) {
+      // Retirement must finish before a fresh agent can touch the same worktree, even
+      // when capacity or a coordinator restart separates the two reconciliations.
+      let stop = c.state.outbox.find(
+        (row) =>
+          row.action?.kind === "stop_run" &&
+          row.action.terminate &&
+          row.action.runId === replacement.previousRunId,
+      );
+      while (stop?.retriedBy)
+        stop = c.state.outbox.find((row) => row.key === stop?.retriedBy);
+      if (stop?.status !== "succeeded") return;
+      if (
+        !c.git?.exists ||
+        c.git.path !== c.state.worktree.path ||
+        c.git.branch !== c.task.branch
+      )
+        return;
+    }
+    let run = replacement
+      ? c.state.runs.find((r) => r.id === replacement.runId)
+      : c.state.runs
+          .filter(
+            (r) =>
+              r.origin === "loom" &&
+              r.role === desired.role &&
+              r.round === desired.round,
+          )
+          .at(-1);
     const providerOverride = c.state.config.providerOverrides?.[desired.role];
     if (
       !run &&
+      !replacement &&
       providerOverride &&
       c.task.providers[desired.role] !== providerOverride
     ) {
@@ -315,8 +344,14 @@ export function startDesired(c: Context): void {
       c.state.desiredRun = null;
     } else if (c.capacity(desired.role)) {
       if (!run) {
-        const id = runId(c.task.id, desired.role, desired.round),
-          provider = c.task.providers[desired.role];
+        const id =
+            replacement?.runId ?? runId(c.task.id, desired.role, desired.round),
+          provider = replacement?.provider ?? c.task.providers[desired.role];
+        const reasoningEffort = replacement
+          ? replacement.reasoningEffort
+          : provider === "codex"
+            ? c.state.config.codexReasoningEffort
+            : undefined;
         run = {
           id,
           taskId: c.task.id,
@@ -327,10 +362,8 @@ export function startDesired(c: Context): void {
           worktreePath: c.state.worktree.path as WorktreePath,
           round: desired.round,
           attempts: 1,
-          model: c.state.config.models[provider],
-          ...(provider === "codex" && c.state.config.codexReasoningEffort
-            ? { reasoningEffort: c.state.config.codexReasoningEffort }
-            : {}),
+          model: replacement?.model ?? c.state.config.models[provider],
+          ...(reasoningEffort ? { reasoningEffort } : {}),
           sessionId:
             provider === "claude"
               ? c.state.config.deriveClaudeSessionId(id, 0)

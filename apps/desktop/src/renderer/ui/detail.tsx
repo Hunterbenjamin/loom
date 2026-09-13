@@ -1,5 +1,5 @@
-import type { Task } from "@loom/core";
-import { lazy, Suspense } from "react";
+import type { Run, Task } from "@loom/core";
+import { lazy, Suspense, useState } from "react";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { taskFindings, taskRuns } from "../store/selectors.js";
 import type { TabId } from "../store/store.js";
@@ -302,9 +302,21 @@ function Agents({ task }: { task: Task }) {
               round {run.round} · attempt {run.attempts}
             </span>
           </div>
+          {run.origin === "loom" &&
+          run.endReason !== "superseded" &&
+          runs.filter((r) => r.origin === "loom" && r.role === run.role).at(-1)
+            ?.id === run.id &&
+          ((task.stage === "planning" && run.role === "planner") ||
+            (task.stage === "in_progress" && run.role === "implementer") ||
+            (task.stage === "in_review" && run.role === "reviewer")) ? (
+            <RestartRun task={task} run={run} />
+          ) : null}
           <dl className="kv" style={{ marginTop: 6 }}>
             <dt>Model</dt>
-            <dd className="mono">{run.model}</dd>
+            <dd className="mono">
+              {run.model}
+              {run.reasoningEffort ? ` · ${run.reasoningEffort} reasoning` : ""}
+            </dd>
             <dt>Session ID</dt>
             <dd className="mono">{run.sessionId ?? "not recorded"}</dd>
             <dt>Session epoch</dt>
@@ -398,6 +410,48 @@ function LiveReview({ task }: { task: Task }) {
       ) : (
         <div className="faint">No findings in the current snapshot.</div>
       )}
+    </div>
+  );
+}
+
+function RestartRun({ task, run }: { task: Task; run: Run }) {
+  const store = useStoreApi();
+  const connected = useStore((s) => s.live && s.connection === "connected");
+  const [pending, setPending] = useState(false);
+  const [outcome, setOutcome] = useState("");
+  const restart = async () => {
+    if (pending) return;
+    setPending(true);
+    try {
+      const result = await store.command({
+        kind: "human",
+        taskId: task.id,
+        command: { type: "restart_run", runId: run.id },
+      });
+      setOutcome(
+        result.ok
+          ? "Restart queued. The replacement appears here after the previous agent stops."
+          : `${result.error.code}: ${result.error.message}`,
+      );
+    } catch (error) {
+      setOutcome(error instanceof Error ? error.message : "Restart failed");
+    } finally {
+      setPending(false);
+    }
+  };
+  return (
+    <div className="panel">
+      <button
+        type="button"
+        disabled={!connected || pending}
+        onClick={() => void restart()}
+      >
+        Restart with current agent settings
+      </button>
+      <div className="faint">
+        Starts a fresh session. Keeps this task’s worktree, plan and findings.
+      </div>
+      {outcome ? <div role="status">{outcome}</div> : null}
     </div>
   );
 }

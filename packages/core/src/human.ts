@@ -1,5 +1,6 @@
 import type { Context } from "./context.js";
 import { openBlocking, read } from "./helpers.js";
+import type { RunId } from "./ids.js";
 import type { McpError } from "./mcp.js";
 import type { HumanCommand } from "./observations.js";
 import { finishWaivers, reviewBlocked } from "./stages.js";
@@ -275,6 +276,81 @@ export function human(
       );
       return null;
     }
+    case "restart_run": {
+      const role =
+        task.stage === "planning"
+          ? "planner"
+          : task.stage === "in_progress"
+            ? "implementer"
+            : task.stage === "in_review"
+              ? "reviewer"
+              : null;
+      if (!role) return wrong();
+      const run = c.current(role);
+      if (
+        !run ||
+        run.id !== cmd.runId ||
+        run.endReason === "superseded" ||
+        state.desiredRun?.replacement
+      )
+        return guard("The selected run is no longer current; refresh the task");
+      if (
+        !state.worktree ||
+        !c.git?.exists ||
+        c.git.path !== state.worktree.path ||
+        c.git.branch !== task.branch
+      )
+        return guard("Read the recorded worktree and branch before restarting");
+      if (state.runs.some((r) => r.id !== run.id && !r.endedAt))
+        return guard("Another run is still active in this worktree");
+      if (
+        state.outbox.some(
+          (row) =>
+            row.status === "running" &&
+            row.action &&
+            "runId" in row.action &&
+            row.action.runId === run.id,
+        )
+      )
+        return guard(
+          "An agent action is still in flight; retry restart after it finishes",
+        );
+      if (
+        state.outbox.some(
+          (row) =>
+            row.status === "failed" &&
+            !row.retriedBy &&
+            row.action &&
+            !("runId" in row.action),
+        )
+      )
+        return guard(
+          "Resolve the failed task action before replacing its agent",
+        );
+      const provider =
+        state.config.providerOverrides?.[role] ?? task.providers[role];
+      c.end(run, "superseded", false, true);
+      c.change("Human restarted the run with current agent settings", () => {
+        task.failed = null;
+        task.providers[role] = provider;
+      });
+      if (task.blocked?.reason === "provider_cooling_down") c.block(null);
+      state.desiredRun = {
+        role,
+        round: run.round,
+        resume: false,
+        replacement: {
+          runId: `${task.id}/${role}/${run.round}/restart/${sequence}` as RunId,
+          previousRunId: run.id,
+          provider,
+          model: state.config.models[provider],
+          ...(provider === "codex" && state.config.codexReasoningEffort
+            ? { reasoningEffort: state.config.codexReasoningEffort }
+            : {}),
+        },
+      };
+      return null;
+    }
     case "retry": {
       if (
         task.stage === "done" ||
@@ -286,6 +362,7 @@ export function human(
       const run = state.runs.find(
         (r) =>
           r.origin === "loom" &&
+          r.endReason !== "superseded" &&
           (failedId
             ? r.id === failedId
             : r.endReason === "vanished" || r.status === "failed"),
