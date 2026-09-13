@@ -115,9 +115,9 @@ Every findings mutation updates its artifact projection. Object key order alone 
 | `externalId` | R GitHub | Comment ID or check-run ID; dedupes imports. |
 | `createdByRunId` | A | |
 | `severity` | A | `blocker`, `major`, `minor`, `nit`. Chosen by the agent or human. |
-| `blocking` | A | Decided by code at creation: `blocker`/`major` block; §2 notes the GitHub rule. |
+| `blocking` | A | Decided by code: reviewer reports block only with `escalate`; `fixed` never blocks. Human/system severity and the GitHub rule in §2 are unchanged. |
 | `title`, `body` | A | |
-| `status`, `reopenCount` | A | `open`, `addressed`, `disputed`, `resolved`, `waived`. |
+| `status`, `reopenCount` | A | `open`, `addressed`, `disputed`, `resolved`, `fixed`, `escalate`, `waived`. |
 | `anchor` | A | Immutable, from spike 04: base/head SHA, old/new path, old/new blob OID, side, line range, optional columns, selected text and its hash, context-before/after hashes, normalization. Null for task-level findings. |
 | `location` | A | Current mapping: `{headSha, path, blobOid, side, startLine, endLine, status, version, mappedAt}`; status is `exact`, `moved`, `ambiguous` or `outdated`. |
 | `resolution` | A | `{by, note, commitSha, at}`. |
@@ -193,7 +193,7 @@ retry/timing thresholds. `githubPollMs` is the coordinator's polling policy; cor
 | `planning` | planner (interactive, in a pane) | |
 | `plan_approval` | nobody | Only when `requirePlanApproval`. |
 | `in_progress` | implementer (interactive, in a pane) | |
-| `in_review` | reviewer (interactive, in a pane, editing disabled) | The implementer's session stays alive for fix rounds. |
+| `in_review` | reviewer (interactive by default, with worktree write/commit access) | The implementer's session stays alive for fix rounds. |
 | `awaiting_approval` | nobody | Human reviews the diff. |
 | `merging` | nobody | Merge requested; waiting to see it on GitHub. |
 | `done`, `canceled` | nobody | Terminal (`canceled` can be reopened). |
@@ -220,11 +220,11 @@ a committed launch/session result and an authoritative usable reading before the
 | 7 | plan_approval | in_progress | H `approve_plan(v)` | `v` is the latest plan version; capacity CAS | Insert plan Approval; `write_task_files`; start implementer |
 | 8 | plan_approval | planning | H `reject_plan(feedback)` | — | Resume the planner's session; `send_message` feedback |
 | 9 | in_progress | in_review | M `submit_for_review` | `headSha` = worktree HEAD; tree clean; ahead of base | `reviewRound += 1`; store handoff; `push_branch(headSha)`; start reviewer for the round |
-| 10 | in_review | awaiting_approval | M `submit_review` | `reviewedSha` = round head = PR head; a verdict for every `addressed`/`disputed` finding; after applying it, 0 open blocking; PR positively `mergeable`; CI for that head not failing | Store findings and verdicts; `stop_run` reviewer; `open_pr` (if none); `notify` attention |
-| 11 | in_review | in_progress | M `submit_review` | Same SHA and verdict guards; open blocking > 0; `reviewRound < reviewRoundCap`; converging | Store findings; `stop_run` reviewer; `send_message` fix round to the implementer (resume it if it ended) |
-| 12 | in_review | in_review, flag | M `submit_review` | Open blocking > 0 and `reviewRound ≥ cap` → `blocked: review_round_cap`. A finding reopened, or open blocking ≥ last round's → `blocked: review_not_converging` | Store findings; `stop_run` reviewer; `notify` attention |
+| 10 | in_review | awaiting_approval | M `submit_review`, then R publication | Clean task-branch HEAD is round head or descendant; complete `reviewerCommits`; fixing commits verified; verdicts for addressed/disputed and open blocking findings; 0 open blocking; published PR head = reviewed head, positively `mergeable`, CI for that head not failing | Store submission, findings and verdicts; end reviewer; `push_branch(reviewedSha)` before `open_pr` (if none); wait in_review for publication; `notify` attention |
+| 11 | in_review | in_progress | M `submit_review` | Same clean HEAD, ancestry, commit-list and verdict guards; explicit `escalate` with reason and open blocking > 0; `reviewRound < reviewRoundCap`; converging | Store findings and escalation reasons; end reviewer; `send_message` fix round to the implementer (resume it if it ended) |
+| 12 | in_review | in_review, flag | M `submit_review` | Escalated open blocking > 0 and `reviewRound ≥ cap` → `blocked: review_round_cap`. A finding re-escalated, or escalated open blocking ≥ last round's → `blocked: review_not_converging` | Store findings; `stop_run` reviewer; `notify` attention |
 | 13 | in_review (blocked by #12) | in_progress | H `grant_review_round` | — | For `review_round_cap`, `reviewRoundCap += 1`; clear flag; `send_message` fix round to the implementer (resuming its run if it ended) |
-| 14 | in_review (blocked by #12) | awaiting_approval | H `waive_finding` × n | 0 open blocking afterwards | Clear flag; `notify` |
+| 14 | in_review (blocked by #12) | awaiting_approval | H `waive_finding` × n | 0 open blocking afterwards; reviewed head publication as #10 | Clear flag; publish reviewed head before approval; `notify` |
 | 15 | awaiting_approval | merging | H `approve(headSha)` | `headSha` = PR head = last reviewed head; 0 open blocking; CI for that head `success`, `pending` or `none`; PR positively `mergeable` | Insert merge Approval (head, findings snapshot, CI); `merge_pr(matchHeadSha, auto = CI pending)` |
 | 16 | awaiting_approval, merging | in_review | R new commit: PR head ≠ last reviewed head | — | Void approval (`new_commit`); `disable_auto_merge` if enabled; `map_findings` to the new head; `reviewRound += 1`; start reviewer |
 | 17 | awaiting_approval, merging | in_progress | R CI `failure` on the head | — | One blocking `ci` finding per failed check (deduped by check-run ID); void approval (`ci_failed`); `disable_auto_merge` if enabled; `send_message` fix round to the implementer (resuming its run if it ended) |
@@ -250,6 +250,27 @@ Notes on the rules:
   The prior completed round's blocking count is used for convergence. The MCP boundary verifies blob
   existence and line bounds before constructing drafts; core verifies each anchor's head, path, side,
   range and blob identity against the submission.
+- **Inline review contract.** `review.headSha` stays immutable. Git's optional `reviewCommits`
+  observation is `{baseSha, headSha, commits[]}` for the requested round base and exact HEAD, or
+  null if the base is not an ancestor. Missing evidence refuses a descendant submission. The list
+  includes every reachable commit in the range, including merged side history, oldest first in
+  topological order. The authenticated reviewer explicitly attributes this exact list to its run.
+  No terminal parsing or Git author/email inference is used.
+- **Finding dispositions.** New reviewer findings may have status `open` (also the default,
+  non-blocking regardless of severity), `fixed` (requires `commitSha` in `reviewerCommits`) or
+  `escalate` (requires nonblank `reason`). Verdicts add `fixed` and `escalate` to `resolved` and
+  `reopened`; a reopened report alone is non-blocking. Every existing open blocker also needs a
+  verdict. Fixed findings retain `resolution: {by: reviewer, note, commitSha, at}`; escalations store
+  their reason in `resolution.note`. Implementers may resolve `escalate` through the existing
+  addressed/disputed path. Explicit re-escalation keeps the nonconvergence guard.
+- **Publication and persistence.** The versioned handoff's optional `reviewerSubmission` is
+  `{runId, round, input: SubmitReviewInput}`. `review.reviewerCommits` and
+  `review.publicationPending` are additive persisted fields. Older stored inputs default a missing
+  reviewer commit list to empty; fresh MCP calls must supply it. Convergence (including waivers)
+  emits an idempotent push for the reviewed SHA, then opens a missing PR with a push dependency.
+  A submission may return `next: in_review` while the coordinator waits for fresh matching PR/CI
+  evidence; the reviewer has completed its work and must not submit again. An existing matching
+  published PR can advance immediately. The implementer's transition 9 push stays unchanged.
 - **Clean tree.** The git adapter excludes ignored files, including `.task/` and ignored build output,
   and supplies all offending paths in `dirtyPaths` for actionable `guard_failed` details.
 
@@ -528,7 +549,7 @@ answer failures use `retry.maxAttempts` (3 by default); the final failed attempt
 
 | | Codex headless | Codex interactive | Claude headless | Claude interactive |
 |---|---|---|---|---|
-| start | `thread/start` (read-only sandbox for planners/reviewers) | `thread/start` with the role sandbox, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>`; planners/reviewers disallow Edit, Write and NotebookEdit and omit implementer bypass permissions |
+| start | `thread/start` (read-only sandbox for planners; reviewers use implementer write access) | `thread/start` with the role sandbox, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>`; planners disallow Edit, Write and NotebookEdit; reviewers use the same permissions as implementers |
 | send | `turn/start`, or `turn/steer` with `expectedTurnId` | the same, through the app-server, not the pane | SDK | `pasteText`, gated on provider status |
 | interrupt | `turn/interrupt` | `turn/interrupt` | SDK interrupt | `sendKey Escape` |
 | resume | `thread/resume` | `thread/resume`, then reattach the pane | SDK resume | A pane: `claude --resume <id> --settings <per-run> --mcp-config <per-run>` |
@@ -675,8 +696,8 @@ read-only and never becomes an input.
 | `report_progress` | any current run | `{summary, stepIndex, decisions[], testResults[]}` | `{recorded}` | `stepIndex` null or within the plan; nonempty test results need a fresh git HEAD |
 | `ask_human` | any current run | `{question, options[], blocking}` | `{questionId, delivery: "message"}` | — |
 | `submit_for_review` | implementer / `in_progress` | `{headSha, summary, testResults[], handoff}` | `{round}` | `headSha` = HEAD; clean tree; ahead of base; every finding `addressed` in this round names a commit |
-| `submit_review` | reviewer / `in_review` | `{reviewedSha, summary, findings[], verdicts[], testResults[]}` | `{round, openBlocking, next}` | `reviewedSha` = round head; locations exist in that commit; a verdict for every `addressed`/`disputed` finding |
-| `resolve_finding` | implementer / `in_progress` | `{findingId, resolution: fixed \| disputed, note, commitSha}` | `{status}` | Finding is `open` and belongs to the task; `fixed` needs a commit reachable from HEAD |
+| `submit_review` | reviewer / `in_review` | `{reviewedSha, reviewerCommits[], summary, findings[], verdicts[], testResults[]}` | `{round, openBlocking, next}` | `reviewedSha` = clean task-branch HEAD, round head or descendant; exact complete reviewer commit list; locations exist in that commit; verdicts for addressed/disputed and open blocking findings; fixed commits and escalation reasons required |
+| `resolve_finding` | implementer / `in_progress` | `{findingId, resolution: fixed \| disputed, note, commitSha}` | `{status}` | Finding is `open` or `escalate` and belongs to the task; `fixed` needs a commit reachable from HEAD |
 
 Errors: `invalid_input`, `unknown_run`, `stale_run` (the run was superseded or ended), `wrong_stage`,
 `guard_failed`. Each has `details`: one line per failed check, written for the agent to act on.

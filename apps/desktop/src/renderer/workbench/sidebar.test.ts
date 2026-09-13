@@ -13,13 +13,14 @@ import { Sidebar } from "./sidebar.js";
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-test("renders linked and unlinked spaces, independent collapses, filtering and pinned controls", async () => {
+test("renders spaces and agents, independent collapses, filtering and pinned controls", async () => {
   const store = createStore(undefined, true, "test");
   const linked = {
     ...pane,
     id: JSON.stringify([pane.hostGeneration, "%3"]),
     paneId: "%3",
     sessionName: "loom-t-1",
+    sessionId: "$2",
     windowName: "implementer",
     taskLabel: "t-1 · Fix delivery race",
     branch: "fix/delivery-race",
@@ -50,6 +51,7 @@ test("renders linked and unlinked spaces, independent collapses, filtering and p
         // biome-ignore lint/correctness/noChildrenProp: Provider requires typed children.
         children: createElement(Sidebar, {
           filter,
+          selected: linked,
           setFilter: vi.fn(),
           choose,
           openGroup: vi.fn(),
@@ -81,8 +83,48 @@ test("renders linked and unlinked spaces, independent collapses, filtering and p
     expect(
       element.querySelector('[aria-label="research"]')?.textContent,
     ).toContain("sh");
-    expect(element.querySelector(".wb-pinned")).toBe(
-      element.querySelector("aside")?.lastElementChild,
+    expect(
+      [...element.querySelectorAll(".wb-section-heading h2")].map(
+        (el) => el.textContent,
+      ),
+    ).toEqual(["spaces", "agents"]);
+    expect(
+      element.querySelector(".wb-agents .wb-pinned")?.nextElementSibling
+        ?.className,
+    ).toBe("wb-agent-list");
+    const agent = element.querySelector<HTMLButtonElement>(
+      ".wb-agent-list button",
+    );
+    expect(agent?.textContent).toContain(
+      "t-1 · Fix delivery race · implementer",
+    );
+    expect(agent?.querySelector("small")?.textContent).toBe("codex");
+    expect(agent?.getAttribute("aria-current")).toBe("true");
+    expect(
+      space?.querySelector(".wb-space")?.getAttribute("aria-current"),
+    ).toBe("true");
+    await act(async () => agent?.click());
+    expect(choose).toHaveBeenLastCalledWith(linked);
+    await act(async () =>
+      agent?.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(choose).toHaveBeenLastCalledWith(linked, true);
+    const grouped = element.querySelector<HTMLButtonElement>(
+      '[aria-label="Group agents by space"]',
+    );
+    await act(async () => grouped?.click());
+    expect(grouped?.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      element.querySelector(".wb-sidebar-footer button")?.textContent,
+    ).toBe("«");
+    expect(element.querySelector(".wb-spaces-footer")?.textContent).toBe(
+      "newmenu",
     );
     const paneButton = () =>
       element.querySelector<HTMLButtonElement>(
@@ -106,7 +148,7 @@ test("renders linked and unlinked spaces, independent collapses, filtering and p
     expect(paneButton()).toBeNull();
     await act(async () => publish(true));
     expect(tabButton?.getAttribute("aria-expanded")).toBe("false");
-    expect(space?.querySelector(".wb-status")?.textContent).toBe("◐");
+    expect(space?.querySelector(".wb-status")?.textContent).toBe("●");
     await act(async () => render("cdx"));
     expect(paneButton()).not.toBeNull();
     expect(element.querySelector('[aria-label="research"]')).toBeNull();
@@ -154,5 +196,104 @@ test("renders linked and unlinked spaces, independent collapses, filtering and p
   } finally {
     await act(async () => root.unmount());
     element.remove();
+  }
+});
+
+test("grouping changes agent order without hiding dead agents or altering the tree", async () => {
+  const store = createStore(undefined, true, "test");
+  const agents = [
+    {
+      ...pane,
+      id: "a",
+      paneId: "%3",
+      sessionName: "Alpha",
+      provider: "codex",
+      status: "idle",
+    },
+    {
+      ...pane,
+      id: "b",
+      paneId: "%4",
+      sessionName: "Alpha",
+      provider: "claude",
+      status: "ended",
+      dead: true,
+    },
+    {
+      ...pane,
+      id: "c",
+      paneId: "%5",
+      sessionName: "Zebra",
+      provider: "codex",
+      status: "working",
+    },
+  ];
+  store.applyProtocol(
+    stateFromSnapshot(meta, { ...emptySnapshotBody(), panes: agents }),
+  );
+  window.loomHost = {
+    interactive: vi.fn(),
+  } as unknown as typeof window.loomHost;
+  const element = document.createElement("div");
+  const root = createRoot(element);
+  const choose = vi.fn();
+  try {
+    await act(async () =>
+      root.render(
+        createElement(StoreProvider, {
+          store,
+          // biome-ignore lint/correctness/noChildrenProp: Provider requires typed children.
+          children: createElement(Sidebar, {
+            filter: "",
+            setFilter: vi.fn(),
+            choose,
+            openGroup: vi.fn(),
+            hidePanels: vi.fn(),
+            hasPanels: () => false,
+            copyAttach: vi.fn(),
+            newTerminal: vi.fn(),
+            openPinned: vi.fn(),
+          }),
+        }),
+      ),
+    );
+    const rows = () => [
+      ...element.querySelectorAll<HTMLButtonElement>(".wb-agent-list button"),
+    ];
+    expect(
+      rows().map((row) => row.querySelector(".wb-status")?.textContent),
+    ).toEqual(["○", "✓", expect.stringMatching(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/)]);
+    const dead = rows()[1];
+    expect(dead?.disabled).toBe(true);
+    expect(dead?.classList.contains("dead")).toBe(true);
+    await act(async () => dead?.click());
+    expect(choose).not.toHaveBeenCalled();
+    const treeBefore = [...element.querySelectorAll(".wb-space strong")].map(
+      (row) => row.textContent,
+    );
+    await act(async () =>
+      element
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Group agents by space"]',
+        )
+        ?.click(),
+    );
+    expect(
+      rows().map((row) =>
+        row.querySelector(".wb-status")?.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Working", "Ended", "Idle"]);
+    expect(
+      [...element.querySelectorAll(".wb-space strong")].map(
+        (row) => row.textContent,
+      ),
+    ).toEqual(treeBefore);
+    expect(
+      [...element.querySelectorAll(".wb-pinned strong")].map(
+        (row) => row.textContent,
+      ),
+    ).toEqual(["Main", "Operator"]);
+  } finally {
+    await act(async () => root.unmount());
   }
 });

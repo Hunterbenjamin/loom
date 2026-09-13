@@ -376,6 +376,8 @@ export const findingStatus = z.enum([
   "addressed",
   "disputed",
   "resolved",
+  "fixed",
+  "escalate",
   "waived",
 ]);
 export const mappingStatus = z.enum([

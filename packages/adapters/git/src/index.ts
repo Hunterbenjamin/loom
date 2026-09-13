@@ -45,6 +45,10 @@ const observation = z.object({
   remoteHeadSha: sha.nullable(),
   dirtyPaths: z.array(z.string().min(1)),
   reachableCommits: z.array(sha),
+  reviewCommits: z
+    .object({ baseSha: sha, headSha: sha, commits: z.array(sha) })
+    .nullable()
+    .optional(),
 });
 function missing(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === "ENOENT";
@@ -98,7 +102,12 @@ export function createGitAdapter(
       );
       return branch === "HEAD" ? null : branch;
     },
-    async readWorktree(path, baseBranch, reachableCandidates = []) {
+    async readWorktree(
+      path,
+      baseBranch,
+      reachableCandidates = [],
+      reviewBaseSha,
+    ) {
       pathSchema.parse(path);
       refName.parse(baseBranch);
       const candidates = [...new Set(z.array(sha).parse(reachableCandidates))];
@@ -155,6 +164,36 @@ export function createGitAdapter(
         reachableCommits: [],
       };
       if (headSha !== null) {
+        if (reviewBaseSha !== undefined) {
+          const reviewBase = await commit(canonical, sha.parse(reviewBaseSha));
+          const ancestor = await git(
+            canonical,
+            ["merge-base", "--is-ancestor", reviewBase, headSha],
+            [0, 1],
+          );
+          result.reviewCommits =
+            ancestor.code === 0
+              ? {
+                  baseSha: reviewBase,
+                  headSha,
+                  commits: z
+                    .array(sha)
+                    .parse(
+                      (
+                        await textGit(canonical, [
+                          "rev-list",
+                          "--reverse",
+                          "--topo-order",
+                          `${reviewBase}..${headSha}`,
+                        ])
+                      )
+                        .trim()
+                        .split(/\s+/)
+                        .filter(Boolean),
+                    ),
+                }
+              : null;
+        }
         const baseSha = await commit(canonical, baseBranch);
         const counts = z
           .tuple([count, count])

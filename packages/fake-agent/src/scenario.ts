@@ -30,7 +30,11 @@ export const stepSchema = z.union([
     input: z.unknown().refine((v) => v !== undefined, "Input is required"),
     expectError: errorSchema.shape.code.optional(),
   }),
-  z.strictObject({ git: z.literal("commit"), files, message: z.string() }),
+  z.strictObject({
+    git: z.enum(["commit", "write"]),
+    files,
+    message: z.string(),
+  }),
   z.strictObject({
     turn: z.enum(["completed", "interrupted", "failed"]),
     error: z

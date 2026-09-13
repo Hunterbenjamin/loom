@@ -563,14 +563,19 @@ describe("transition guards fail independently", () => {
 });
 
 describe("review and merge precedence", () => {
-  it("reopened findings escalate below cap", () => {
+  it("explicitly re-escalated findings stop a nonconverging review below cap", () => {
     const f = fixture("in_review");
     f.state.findings = [finding("f1", { status: "addressed" })];
     if (f.state.review) f.state.review.verdictIds = [finding().id];
     const call = reviewCall();
     if (call.tool === "submit_review")
       call.input.verdicts = [
-        { findingId: finding().id, status: "reopened", note: "Still broken" },
+        {
+          findingId: finding().id,
+          status: "escalate",
+          note: "Still broken",
+          reason: "Requires redesign",
+        },
       ];
     f.observations.inputs = [mcp(call, "reviewer")];
     expect(fixed(f.state, f.observations).next.task.blocked?.reason).toBe(

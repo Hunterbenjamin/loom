@@ -30,7 +30,7 @@ test("groups by generation, session and window identity with deterministic nativ
     attention: true,
   };
   const two = { ...three, paneId: "%2", id: "two", taskLabel: null };
-  const other = { ...pane, sessionName: "aaa", id: "other" };
+  const other = { ...pane, sessionName: "aaa", sessionId: "$99", id: "other" };
   const generation = {
     ...pane,
     hostGeneration: "loom-test#2",

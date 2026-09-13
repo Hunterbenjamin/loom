@@ -93,11 +93,14 @@
               "severity": "major",
               "title": "Fix bug",
               "body": "Wrong value",
-              "location": null
+              "location": null,
+              "status": "escalate",
+              "reason": "The fix requires a design change beyond safe inline review."
             }
           ],
           "verdicts": [],
-          "testResults": []
+          "testResults": [],
+          "reviewerCommits": []
         }
       }
     ]
@@ -126,7 +129,8 @@
               "note": "Verified"
             }
           ],
-          "testResults": []
+          "testResults": [],
+          "reviewerCommits": []
         }
       }
     ]

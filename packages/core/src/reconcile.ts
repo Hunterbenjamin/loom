@@ -106,6 +106,9 @@ export interface TaskState {
     lastReviewedHead: Sha | null;
     previousBlocking: number | null;
     verdictIds: Finding["id"][];
+    /** Accepted review waiting for its push and fresh PR head/CI observation. */
+    publicationPending?: boolean;
+    reviewerCommits?: Sha[];
   } | null;
   /** Store: null when no launch/resume intent is waiting. */
   desiredRun: {

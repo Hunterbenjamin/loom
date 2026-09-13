@@ -1,0 +1,87 @@
+[
+  {
+    "name": "implementation before inline review",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "headless"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "status": "working"
+      },
+      {
+        "git": "commit",
+        "files": {
+          "example.txt": "first implementation"
+        },
+        "message": "first implementation"
+      },
+      {
+        "tool": "submit_for_review",
+        "input": {
+          "headSha": "$HEAD",
+          "summary": "Ready",
+          "testResults": [],
+          "handoff": {
+            "summary": "Ready",
+            "nextSteps": []
+          }
+        }
+      },
+      {
+        "status": "idle"
+      }
+    ]
+  },
+  {
+    "name": "reviewer refuses unrelated history",
+    "agent": {
+      "provider": "claude",
+      "role": "reviewer",
+      "mode": "headless"
+    },
+    "steps": [
+      {
+        "expect": "message"
+      },
+      {
+        "git": "commit",
+        "files": {
+          "example.txt": "correct value\n"
+        },
+        "message": "Unrelated history"
+      },
+      {
+        "tool": "submit_review",
+        "input": {
+          "reviewedSha": "$HEAD",
+          "reviewerCommits": ["$HEAD"],
+          "summary": "Fixed wrong value and tested",
+          "findings": [
+            {
+              "severity": "major",
+              "title": "Wrong value",
+              "body": "Corrected wrong value",
+              "status": "fixed",
+              "commitSha": "$HEAD",
+              "location": null
+            }
+          ],
+          "verdicts": [],
+          "testResults": [
+            {
+              "command": "fixture assertion",
+              "outcome": "passed",
+              "summary": "Correct value"
+            }
+          ]
+        },
+        "expectError": "guard_failed"
+      }
+    ]
+  }
+]

@@ -82,7 +82,7 @@ describe("pane rows", () => {
   });
 
   it("asks tmux for exactly the fields it parses", () => {
-    expect(PANE_FORMAT.split("")).toHaveLength(14);
+    expect(PANE_FORMAT.split("")).toHaveLength(15);
     expect(PANE_FORMAT).toContain("#{pane_start_path}");
     expect(PANE_FORMAT).toContain("#{pane_dead_status}");
   });
