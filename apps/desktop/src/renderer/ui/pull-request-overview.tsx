@@ -4,6 +4,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useStore, useStoreApi } from "../store/react.js";
 import { since } from "./format.js";
+import { PullRequestGlyph as PrGlyph } from "./pull-request-glyph.js";
 
 type Detail = PullRequestDetailRow["detail"];
 export function PrMarkdown({ body }: { body: string }) {
@@ -23,29 +24,6 @@ export function PrMarkdown({ body }: { body: string }) {
         {body}
       </Markdown>
     </div>
-  );
-}
-export function PrGlyph({ state }: { state: Detail["state"] }) {
-  return (
-    <svg
-      className={`pr-glyph pr-${state}`}
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden="true"
-    >
-      <circle cx="4" cy="3" r="2" />
-      <circle cx="12" cy="13" r="2" />
-      <path d="M4 5v9M10 3h1a1 1 0 0 1 1 1v7" />
-      {state === "merged" ? (
-        <path d="m8 2 3 3-3 3M4 6l6 5" />
-      ) : state === "closed" ? (
-        <path d="m9 2 5 5m0-5-5 5" />
-      ) : null}
-    </svg>
   );
 }
 export function ChangeCounts({

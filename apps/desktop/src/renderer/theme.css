@@ -1242,6 +1242,23 @@ ul.plain {
   min-height: 0;
 }
 
+.pr-glyph {
+  flex: 0 0 16px;
+  vertical-align: middle;
+}
+.pr-open {
+  color: var(--good);
+}
+.pr-merged {
+  color: var(--violet);
+}
+.pr-closed {
+  color: var(--danger);
+}
+.reviews-nav-label .pr-glyph {
+  color: inherit;
+}
+
 /* Reviews Overview: compact navigation, generous reading column, quiet property rail. */
 .main:has(.pr-detail) > .topbar {
   display: none;
@@ -1295,19 +1312,6 @@ ul.plain {
   white-space: nowrap;
   flex-shrink: 0;
   font-size: 12px;
-}
-.pr-glyph {
-  flex-shrink: 0;
-  vertical-align: middle;
-}
-.pr-open {
-  color: var(--good);
-}
-.pr-merged {
-  color: var(--violet);
-}
-.pr-closed {
-  color: var(--danger);
 }
 .pr-github-chip {
   display: flex;
@@ -1641,21 +1645,6 @@ ul.plain {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.pr-glyph {
-  flex: 0 0 16px;
-}
-.pr-open {
-  color: var(--good);
-}
-.pr-merged {
-  color: var(--violet);
-}
-.pr-closed {
-  color: var(--danger);
-}
-.reviews-nav-label .pr-glyph {
-  color: inherit;
 }
 .reviews-toolbar {
   display: flex;

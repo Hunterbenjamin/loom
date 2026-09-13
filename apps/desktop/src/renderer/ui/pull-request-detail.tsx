@@ -10,11 +10,8 @@ import {
   PULL_REQUEST_ACTION_EVENT,
   type PullRequestActionRequest,
 } from "./pull-request-commands.js";
-import {
-  ChangeCounts,
-  PrGlyph,
-  PullRequestOverview,
-} from "./pull-request-overview.js";
+import { PullRequestGlyph as PrGlyph } from "./pull-request-glyph.js";
+import { ChangeCounts, PullRequestOverview } from "./pull-request-overview.js";
 
 const Files = lazy(() =>
   import("./diff.js").then((m) => ({ default: m.PullRequestFiles })),
