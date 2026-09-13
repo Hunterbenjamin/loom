@@ -109,7 +109,11 @@ export class LoomClient {
     return outcome;
   }
 
-  async subscribe(add: Subscription[], wantSnapshot = true): Promise<void> {
+  async subscribe(
+    add: Subscription[],
+    wantSnapshot = true,
+    remove: Subscription[] = [],
+  ): Promise<void> {
     const requestId = `r${++this.sequence}`;
     const done = this.await(
       (frame) => frame.type === "ack" && frame.requestId === requestId,
@@ -117,7 +121,7 @@ export class LoomClient {
     const snapshot = wantSnapshot
       ? this.await((frame) => frame.type === "snapshot")
       : Promise.resolve();
-    this.send({ type: "subscribe", requestId, add, remove: [], wantSnapshot });
+    this.send({ type: "subscribe", requestId, add, remove, wantSnapshot });
     await done;
     await snapshot;
   }

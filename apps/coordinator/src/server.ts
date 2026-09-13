@@ -57,6 +57,7 @@ export interface ProtocolServerDeps {
   command(value: unknown): Promise<ServerCommandResult | ServerCommandError>;
   /** Asked when a client subscribes to something the coordinator has not published yet. */
   ensure(subscriptions: readonly Subscription[]): Promise<void>;
+  scopesChanged?(subscriptions: readonly Subscription[]): void;
   onError(error: Error): void;
 }
 
@@ -93,6 +94,12 @@ export class ProtocolServer {
     return this.address
       ? `ws://${this.address.host}:${this.address.port}`
       : null;
+  }
+
+  private scopesChanged(): void {
+    this.deps.scopesChanged?.(
+      [...this.connections].flatMap((c) => [...c.scope]),
+    );
   }
 
   get clients(): number {
@@ -133,6 +140,7 @@ export class ProtocolServer {
     for (const connection of this.connections)
       connection.socket.close(CLOSE.goingAway, "shutting down");
     this.connections.clear();
+    this.scopesChanged();
     await new Promise<void>((resolve) =>
       this.wss ? this.wss.close(() => resolve()) : resolve(),
     );
@@ -218,6 +226,7 @@ export class ProtocolServer {
     socket.on("close", () => {
       clearTimeout(timer);
       if (connection) this.connections.delete(connection);
+      this.scopesChanged();
     });
     socket.on("error", () => socket.close());
   }
@@ -266,6 +275,7 @@ export class ProtocolServer {
         missedPongs: 0,
       };
       this.connections.add(value);
+      this.scopesChanged();
       established(value);
       this.send(value, {
         type: "welcome",
@@ -308,6 +318,7 @@ export class ProtocolServer {
           ...kept,
           ...frame.add.filter((s) => !known.has(JSON.stringify(s))),
         ];
+        this.scopesChanged();
         await this.deps.ensure(connection.scope);
         this.send(connection, {
           type: "ack",
@@ -389,6 +400,7 @@ export class ProtocolServer {
       if (connection.missedPongs >= 3) {
         connection.socket.close(CLOSE.heartbeatTimeout, "missed heartbeats");
         this.connections.delete(connection);
+        this.scopesChanged();
         continue;
       }
       connection.missedPongs += 1;

@@ -1,3 +1,8 @@
+import {
+  pullRequestKey,
+  pullRequestNumber,
+  pullRequestState,
+} from "./pull-requests.js";
 // What a client is showing, so the coordinator sends it only that. Task-list-level changes reach
 // every client; the expensive collections (runs, findings, transitions, diffs) follow a
 // subscription. Both sides use the functions here, so a window and the coordinator can't disagree
@@ -20,6 +25,16 @@ export const viewName = z.enum([
 export type ViewName = z.output<typeof viewName>;
 
 export const subscription = z.union([
+  z.strictObject({
+    kind: z.literal("pull_requests"),
+    repoId,
+    state: pullRequestState.default("open"),
+  }),
+  z.strictObject({
+    kind: z.literal("pull_request"),
+    repoId,
+    number: pullRequestNumber,
+  }),
   z.strictObject({ kind: z.literal("panes") }),
   /** Workbench status list, including agents without terminal panes. */
   z.strictObject({ kind: z.literal("agents") }),
@@ -72,6 +87,8 @@ export function taskInView(task: Task, view: ViewName): boolean {
 const ALWAYS: CollectionName[] = ["repo", "inbox", "lead", "operator"];
 
 export interface Scope {
+  pullRequestRepos: Set<string>;
+  pullRequestDetails: Set<string>;
   panes: boolean;
   agents: boolean;
   views: { views: ViewName[]; repoIds: Set<string> | null }[];
@@ -82,6 +99,8 @@ export interface Scope {
 
 export function scopeOf(subscriptions: readonly Subscription[]): Scope {
   const scope: Scope = {
+    pullRequestRepos: new Set(),
+    pullRequestDetails: new Set(),
     panes: false,
     agents: false,
     views: [],
@@ -90,7 +109,10 @@ export function scopeOf(subscriptions: readonly Subscription[]): Scope {
     runs: new Set(),
   };
   for (const s of subscriptions) {
-    if (s.kind === "views")
+    if (s.kind === "pull_requests") scope.pullRequestRepos.add(s.repoId);
+    else if (s.kind === "pull_request")
+      scope.pullRequestDetails.add(pullRequestKey(s.repoId, s.number));
+    else if (s.kind === "views")
       scope.views.push({
         views: s.views,
         repoIds: s.repoIds ? new Set<string>(s.repoIds) : null,
@@ -121,6 +143,8 @@ export function taskInScope(scope: Scope, task: Task): boolean {
 export function ownerTask(change: Change): string | null {
   if (change.op === "delete") return change.taskId;
   if (
+    change.collection === "pull_request" ||
+    change.collection === "pull_request_detail" ||
     change.collection === "repo" ||
     change.collection === "lead" ||
     change.collection === "operator" ||
@@ -133,6 +157,22 @@ export function ownerTask(change: Change): string | null {
 
 /** Does this change belong on this client's stream? */
 export function inScope(scope: Scope, change: Change): boolean {
+  if (
+    change.collection === "pull_request" ||
+    change.collection === "pull_request_detail"
+  ) {
+    const key =
+      change.op === "delete"
+        ? change.key
+        : pullRequestKey(change.value.repoId, change.value.number);
+    if (change.collection === "pull_request_detail")
+      return scope.pullRequestDetails.has(key);
+    // State is a polling filter. Subscribers receive all cached states for their repo,
+    // including state changes that remove a row from the visible filter.
+    return [...scope.pullRequestRepos].some((repo) =>
+      key.startsWith(`${JSON.stringify([repo]).slice(0, -1)},`),
+    );
+  }
   if (change.collection === "pane" || change.collection === "pane_inventory")
     return scope.panes;
   if (ALWAYS.includes(change.collection)) return true;

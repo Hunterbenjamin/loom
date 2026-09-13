@@ -4,6 +4,7 @@ import { useStore, useStoreApi } from "./store/react.js";
 import { selectedRows } from "./store/selectors.js";
 import { VIEWS } from "./store/store.js";
 import { BoardView } from "./ui/board.js";
+import { CreateIssue } from "./ui/create-issue.js";
 import { Detail } from "./ui/detail.js";
 import { InboxView } from "./ui/inbox.js";
 import { useShortcuts } from "./ui/keys.js";
@@ -128,6 +129,7 @@ export function App() {
       <LeadBar />
       <Palette />
       <StagePicker />
+      <CreateIssue />
       {toast ? <div className="toast">{toast}</div> : null}
     </div>
   );

@@ -24,6 +24,20 @@ round trip. Inactive mode effects are suspended: terminal viewers detach while h
 again when shown, without stopping their native panes or agents. No hidden spare window is created.
 Closing a window closes only its viewers; the coordinator owns durable task state.
 
+## Tracker
+
+Create issue opens from `C`, the command palette, or **+** beside the repository picker. A native
+modal keeps keyboard focus inside it and autofocuses the required title. The Markdown description
+grows with its content; Command+Enter submits. Repository defaults to the sidebar selection, or
+the first repository for All. Status offers Backlog and Todo (starts the workflow); size offers
+Normal and Small (skips planning, for one-file fixes), alongside Require plan approval.
+
+The live window sends `create_task` and waits for its assigned key. Todo then sends a separate
+human move; its acknowledgement means queued. Errors remain inline with the draft; a failed move
+can be retried without recreating the issue. Success closes the modal, reveals and selects the new
+issue in the list, and toasts its key. Escape and Cancel confirm before discarding edited drafts.
+Only fixture mode edits the local snapshot.
+
 ## Tracker list
 
 Stage headers are buttons: click or press Enter/Space to collapse or expand them. Each header
@@ -44,8 +58,15 @@ unloaded rows. Task summaries, model labels and progress indicators remain visib
   panes remain dimmed and disabled. Run linkage is only by a unique recorded generation + pane ID,
   never cwd, title, command or native run tags. Clicking a pane replaces the focused viewer; Enter
   opens an independent Workbench tab. Pinned agent tabs retain their identity, so selecting another
-  pane from one opens a regular tab. Space and tab rows toggle expansion in this slice; tab-row
-  split opening and context menus are deferred to Workbench v2 slice 5.
+  pane from one opens a regular tab. Space rows toggle expansion; tab disclosure arrows independently toggle their pane lists.
+  Clicking a tab row opens all its live, available panes as side-by-side splits in a new Workbench
+  tab, including siblings hidden by filtering. No native panes are created.
+  Right-click or Shift+F10 on a native space, tab or pane row opens its menu: Open follows the
+  row's click behavior; Open in new tab opens its live panes as independent viewers; Copy attach
+  command copies the coordinator's shell-quoted attach argv and environment for the first live
+  pane in native order. Close panel hides matching viewers in the current Workbench tab only,
+  leaving other tabs and all native processes running. It remains available while the host is
+  unavailable. Rename is visibly unavailable until slice 3 supplies native rename support.
 - **Branch:** space rows show the coordinator's `panes.branch`: the linked task's branch, or Git's
   `rev-parse --abbrev-ref HEAD` at the first native pane's start cwd for an unlinked space.
   Reads are cached per cwd within each serialized inventory refresh, including failures, and
@@ -233,3 +254,34 @@ a reusable human shell in the task's worktree. With no surviving worktree, it op
 project root and shows that checkout's actual branch without changing it. Historical run selection
 cannot override this task-scoped resolution. Run identity changes re-resolve the target; routine
 activity updates do not remount the terminal. Missing host observations surface a retryable error.
+
+## Pull request protocol (slice 2)
+
+The coordinator now exposes `pullRequests` in snapshots and `pull_request` collection patches.
+Rows contain GitHub's list fields and read time, the registered `repoId`, and a nullable `taskId`
+when exactly one task in that repository has the head branch. Off-pipeline PRs need no task.
+Keys are `JSON.stringify([repoId, number])`.
+
+A window subscribes to `{kind: "pull_requests", repoId, state}` to load and poll a repository
+list; `state` defaults to `open` and also accepts `merged` or `closed`. Subscribers receive all
+cached states for their repository, including a row that just left their selected state; the
+window applies its own state and text filters. `{kind: "pull_request", repoId, number}` adds
+`pullRequestDetails` / `pull_request_detail`, containing detail and the capped unified patch with
+its truncation flag. Detail and patches only reach windows with that exact subscription.
+Closing or changing a view removes its subscription. The last window leaving cancels its poll;
+reopening refreshes the owner. Lists poll every 60 seconds and detail every 30 seconds, shared
+across windows with the same scope. These projections are disposable; reconnects rebuild them
+from GitHub and task links from the coordinator store.
+
+Commands name a registered `repoId`: `merge_pull_request` also carries `number`, `matchHeadSha`
+and `deleteBranch`; `close_pull_request` and `delete_branch` carry `number`; and
+`refresh_pull_requests` carries `state` (default `open`). Standalone deletion resolves the branch
+from the PR and refuses an open PR or base branch. Each command returns one ack, with refreshed
+projections on success and a typed error on refusal. The executor checks the fresh head, open and
+non-draft state, mergeability and CI before a squash merge, without auto-merge or an override.
+No checks is allowed; pending or failed checks are refused. Already merged and already absent
+branches are idempotent. Actions and failures both trigger owner refreshes; uncertain writes
+are never replayed automatically. Linked tasks only change stage through normal reconciliation.
+
+This slice adds no sidebar, list/detail components, confirmations, shortcuts or notifications.
+The existing desktop fixture merely supplies empty collections for the extended protocol.

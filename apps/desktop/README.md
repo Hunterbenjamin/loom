@@ -64,6 +64,16 @@ are not attachable terminals; the existing isolated terminal harness covers PTY 
 | `LOOM_WIDTH`, `LOOM_HEIGHT` | Window size at launch. |
 | `LOOM_ATTACH_PANE`, `LOOM_TMUX_BIN` | Fixture-only terminal target and executable. |
 
+Tracker creates issues with `C`, the palette's **Create issue** command, or **+** beside the
+repository picker. The dialog defaults to the selected repository (the first for All), Backlog,
+Normal size and plan approval required. Description accepts Markdown and grows as you type;
+Command+Enter submits. Todo is labelled as starting the workflow; Small skips planning for
+one-file fixes. Escape or Cancel asks before discarding an edited draft.
+
+Live creation waits for `task_created`, then queues the human move for Todo. Rejections appear
+inline; if creation succeeded, retry sends only the move. Success selects the issue in All tasks
+and shows its key. Fixture mode uses the same form with the existing local creation path.
+
 ## Keyboard
 
 Every action is reachable from the keyboard.
@@ -76,7 +86,7 @@ Every action is reachable from the keyboard.
 | `j` / `k` | Move the cursor |
 | `enter` | Open the task under the cursor |
 | `esc` | Close the palette, the search field, then the issue |
-| `c` | Create a task |
+| `c` | Open Create issue |
 | `/` | Search |
 | `e` | Change stage |
 | `cmd+k`, then "Review changes and findings" | Open Review for the current task |
@@ -131,9 +141,19 @@ window mode independently of live/fixture connection settings. Layouts are memor
 The sidebar groups native spaces → tabs → panes, including dimmed dead panes and unlinked spaces.
 Task spaces show their task key/title; every row rolls up provider status and coordinator attention.
 Main and Operator stay pinned at the bottom. Expansion and fuzzy filtering live in window memory.
-A pane click replaces the focused viewer; Enter opens a new tab. Space and tab rows toggle expansion.
-Branches, rename, sound/flash and opening a tab row as splits belong to later Workbench v2 slices.
+A pane click replaces the focused viewer; Enter opens a new tab. Space rows toggle expansion;
+tab disclosure arrows toggle their pane lists. Clicking a tab name opens all its live, available
+panes as side-by-side splits in a new Workbench tab, even when filtering hides siblings.
+Right-click or Shift+F10 opens a native row's menu. Open follows the row's click behavior; Open in
+new tab opens its live panes in independent viewers. Copy attach command copies the coordinator's
+shell-quoted argv and environment for the first live pane in native order. Close panel hides the
+row's viewers in the current Workbench tab only and never stops their processes. Rename is disabled
+until Workbench v2 slice 3 supplies native rename support. Menu navigation supports arrows,
+Home/End and Escape; clicking outside dismisses it.
 Drag panel headers to panel edges to rearrange splits.
+
+After the desktop build, `pnpm exec tsx apps/desktop/scripts/workbench-menu-smoke.ts` verifies tab-row
+split geometry, viewer-only menu closure and keyboard menu access in an isolated fixture window.
 
 ### Workbench keybindings
 
