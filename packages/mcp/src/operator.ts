@@ -5,7 +5,10 @@ const event = z.strictObject({ eventId: z.string().min(1) });
 export const operatorInputSchemas: Record<string, z.ZodObject> = {
   ...Object.fromEntries(
     Object.keys(leadInputSchemas)
-      .filter((name) => name !== "set_note")
+      .filter(
+        (name) =>
+          !["set_note", "message_agent", "read_agent_replies"].includes(name),
+      )
       .map((name) => [
         name,
         ["list_tasks", "list_repos", "inspect_task"].includes(name)
@@ -14,7 +17,10 @@ export const operatorInputSchemas: Record<string, z.ZodObject> = {
       ]),
   ),
   operator_events: z.strictObject({}),
-  append_note: event,
+  append_note: event.extend({
+    text: z.string().min(1).max(4000).optional(),
+    taskId: z.string().min(1).optional(),
+  }),
   file_task: z.strictObject({
     eventId: z.string().min(1),
     title: z.string().min(1).max(200),

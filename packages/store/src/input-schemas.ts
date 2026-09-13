@@ -148,7 +148,17 @@ const commandSchema = z.discriminatedUnion("type", [
     ]),
     text: text.optional(),
   }),
-  z.object({ type: z.literal("send_message"), runId: id, text }),
+  z.object({
+    type: z.literal("send_message"),
+    runId: id,
+    text,
+    expectedRun: z
+      .object({
+        sessionEpoch: z.number().int().nonnegative(),
+        attempts: z.number().int().nonnegative(),
+      })
+      .optional(),
+  }),
   z.object({ type: z.literal("retry") }),
   z.object({ type: z.literal("restart_run"), runId: id }),
   z.object({ type: z.literal("grant_review_round") }),
