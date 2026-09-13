@@ -76,7 +76,7 @@ export async function runTargetRow(
     if (observation)
       pane = {
         hostGeneration: run.pane.hostGeneration,
-        sessionName: run.pane.sessionName,
+        sessionName: observation.ref.sessionName,
         windowId: run.pane.windowId,
         paneId: run.pane.paneId,
         dead: observation.dead,
@@ -90,7 +90,7 @@ export async function runTargetRow(
     try {
       attach = {
         kind: "pane_host",
-        argv: deps.adapters.paneHost.attachArgs(run.pane),
+        argv: deps.adapters.paneHost.attachArgs(observation?.ref ?? run.pane),
         cwd: run.worktreePath,
         env: {},
       };

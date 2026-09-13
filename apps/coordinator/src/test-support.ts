@@ -81,6 +81,7 @@ export interface Harness {
     worktree: string,
     files: Record<string, string>,
     message: string,
+    writeOnly?: boolean,
   ): Promise<Sha>;
   logs: string[];
   close(): Promise<void>;
@@ -278,7 +279,7 @@ async function open(
     repoRoot,
     git,
     logs,
-    async commitIn(worktree, files, message) {
+    async commitIn(worktree, files, message, writeOnly = false) {
       for (const [path, content] of Object.entries(files)) {
         const target = resolve(worktree, path);
         if (!target.startsWith(`${worktree}/`) || target.includes("/.git/"))
@@ -293,8 +294,10 @@ async function open(
             env: { ...process.env, ...GIT_ENVIRONMENT },
           })
         ).stdout.trim();
-      await run("add", "-A");
-      await run("commit", "-m", message);
+      if (!writeOnly) {
+        await run("add", "-A");
+        await run("commit", "-m", message);
+      }
       return (await run("rev-parse", "HEAD")) as Sha;
     },
     async close() {
@@ -562,6 +565,7 @@ export class ScenarioDriver {
         worktree.path,
         step.files,
         "message" in step ? step.message : "Human push",
+        "git" in step && step.git === "write",
       );
       if ("github" in step) github.setHead(sha);
     } else if ("github" in step) {

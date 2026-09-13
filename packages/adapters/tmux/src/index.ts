@@ -55,8 +55,29 @@ const name = z
   .string()
   .min(1)
   .max(64)
-  // tmux session and window names may not contain `.` or `:`; keep them boring.
+  // Keep generated socket and workspace keys simple; display names have their own schemas.
   .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/);
+
+const windowName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .regex(/^[^\p{Cc}]+$/u, "Names cannot contain control characters");
+const sessionName = windowName.regex(
+  /^[^.:]+$/,
+  "Space names cannot contain . or :",
+);
+const renameSessionRequest = z.object({
+  hostGeneration: z.string().min(1),
+  sessionId: z.string().regex(/^\$\d+$/),
+  name: sessionName,
+});
+const renameWindowRequest = z.object({
+  hostGeneration: z.string().min(1),
+  windowId: z.string().regex(/^@\d+$/),
+  name: windowName,
+});
 
 const optionsSchema = z.object({
   instance: name,
@@ -289,12 +310,19 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
     if (!(await current(ref))) return null;
     return (
       (await rows()).find(
-        (row) =>
-          row.paneId === ref.paneId &&
-          row.sessionName === ref.sessionName &&
-          row.windowId === ref.windowId,
+        (row) => row.paneId === ref.paneId && row.windowId === ref.windowId,
       ) ?? null
     );
+  }
+
+  // Keep stored workspace keys usable after a rename and coordinator restart. This is
+  // reference metadata on the native session, not a second owner of its display name.
+  async function workspaceSession(workspaceId: string): Promise<string> {
+    const key = sessionName.parse(workspaceId);
+    const matches = (await rows()).filter((row) => row.workspaceId === key);
+    const sessions = new Set(matches.map((row) => row.sessionName));
+    if (sessions.size > 1) throw new TmuxError("ambiguous_workspace", key);
+    return matches[0]?.sessionName ?? key;
   }
 
   /** Resolves a ref to a live pane Loom owns, or throws. Mutations never guess. */
@@ -307,6 +335,65 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
   }
 
   return {
+    renameSession(req) {
+      return exclusive(async () => {
+        const parsed = renameSessionRequest.parse(req);
+        if ((await ensureServer()) !== parsed.hostGeneration)
+          throw new TmuxError("stale_generation");
+        const row = (await rows()).find(
+          (row) => row.sessionId === parsed.sessionId,
+        );
+        if (!row) throw new TmuxError("session_not_found", parsed.sessionId);
+        if (
+          [MONITOR_SESSION, "loom-lead", "loom-main", "loom-operator"].includes(
+            parsed.name,
+          ) ||
+          ["loom-lead", "loom-main", "loom-operator"].includes(row.sessionName)
+        )
+          throw new TmuxError("reserved_session_name");
+        if (row.sessionName === parsed.name) return;
+        if (await sessionExists(parsed.name))
+          throw new TmuxError("duplicate_session", parsed.name);
+        await tmux([
+          "set-option",
+          "-t",
+          parsed.sessionId,
+          "@loom_workspace_id",
+          row.workspaceId ?? row.sessionName,
+        ]);
+        await tmux([
+          "rename-session",
+          "-t",
+          parsed.sessionId,
+          "--",
+          parsed.name,
+        ]);
+      });
+    },
+
+    renameWindow(req) {
+      return exclusive(async () => {
+        const parsed = renameWindowRequest.parse(req);
+        if ((await ensureServer()) !== parsed.hostGeneration)
+          throw new TmuxError("stale_generation");
+        const row = (await rows()).find(
+          (row) => row.windowId === parsed.windowId,
+        );
+        if (!row) throw new TmuxError("window_not_found", parsed.windowId);
+        if (parsed.name === HOLD_WINDOW)
+          throw new TmuxError("reserved_window_name");
+        await tmux([
+          "set-option",
+          "-w",
+          "-t",
+          parsed.windowId,
+          "automatic-rename",
+          "off",
+        ]);
+        await tmux(["rename-window", "-t", parsed.windowId, "--", parsed.name]);
+      });
+    },
+
     ensureWorkspace(req) {
       return exclusive(async () => {
         await realpath(req.cwd);
@@ -320,7 +407,7 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
       return exclusive(async () => {
         const runId = z.string().min(1).parse(req.runId);
         const cwd = (await realpath(req.cwd)) as WorktreePath;
-        const session = name.parse(req.workspaceId);
+        const session = await workspaceSession(req.workspaceId);
         const existing = await findRunPane(runId);
         if (existing && !existing.dead)
           return {
@@ -382,7 +469,7 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
 
     createScratch(req) {
       return exclusive(async () => {
-        const session = name.parse(req.workspaceId);
+        const session = await workspaceSession(req.workspaceId);
         const key = z.string().uuid().parse(req.key);
         const cwd = (await realpath(req.cwd)) as WorktreePath;
         const windowName =
@@ -583,6 +670,15 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
     async listClients(ref) {
       const row = await rowFor(ref);
       if (!row) return [];
+      const group = (
+        await tmux([
+          "display-message",
+          "-p",
+          "-t",
+          row.sessionId,
+          "#{session_group}",
+        ])
+      ).trim();
       const out = await tmux([
         "list-clients",
         "-F",
@@ -606,10 +702,11 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
         if (!line) continue;
         const parsed = client.safeParse(line.split(SEP));
         if (!parsed.success) continue;
-        const [id, cols, rows_, session, group] = parsed.data;
+        const [id, cols, rows_, session, clientGroup] = parsed.data;
         if (session === MONITOR_SESSION) continue;
         // Count session-group attachments; this does not identify the pane each client focuses.
-        if (session !== row.sessionName && group !== row.sessionName) continue;
+        if (session !== row.sessionName && (!group || clientGroup !== group))
+          continue;
         clients.push({ id, cols, rows: rows_ });
       }
       return clients;
@@ -629,10 +726,10 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
 
     closeTerminal(ref) {
       return exclusive(async () => {
-        // rowFor checks all identity fields and the host generation. rows excludes the
+        // The close path additionally requires the current session name. rows excludes the
         // monitor and viewer sessions. This path is only exposed to explicit human commands.
         const row = await rowFor(ref);
-        if (!row) return;
+        if (!row || row.sessionName !== ref.sessionName) return;
         await tmux(["kill-pane", "-t", row.paneId]).catch((error) => {
           if (!(error instanceof TmuxError) || error.code !== "not_found")
             throw error;

@@ -22,7 +22,7 @@ const TOOLS: Record<Role, string> = {
   implementer:
     "`report_progress` as you go, `resolve_finding` for each finding you address, and `submit_for_review` when the tree is clean and committed.",
   reviewer:
-    "`submit_review` once, with every finding and a verdict for each finding the implementer addressed or disputed.",
+    "`submit_review` once the tree is clean, with reviewedSha equal to HEAD and reviewerCommits listing every commit after the round head (oldest first). Submit inline fixes with status `fixed` and commitSha; mark only unsafe work `escalate` with a reason. Use `open` for non-blocking reports. Include a verdict for each finding the implementer addressed or disputed; verdicts may also be `fixed` or `escalate`.",
 };
 
 const DUTY: Record<Role, string> = {
@@ -31,7 +31,7 @@ const DUTY: Record<Role, string> = {
   implementer:
     "Implement the accepted plan in this worktree, commit your work, and run the repo's tests.",
   reviewer:
-    "Review the branch against the plan and the repo's rules. Run the tests. Report findings with a severity; only `blocker` and `major` block the merge.",
+    "Run the tests and read the diff against the accepted plan and AGENTS.md. Most reviews should find nothing to change. Do not fix things just because you can: never restyle, refactor or expand scope. Fix only actual problems: a bug, a failing or missing test the plan required, or a violation of AGENTS.md. You have write access and may commit on the task branch. Commit each fix separately with a message that names the finding, then rerun the relevant tests. Escalate only what you cannot fix safely: a design change, work the plan did not anticipate, or work across many files. Everything else you either fix or report as non-blocking.",
 };
 
 /** The launch brief for one run. Fill it from the task, never from a transcript. */

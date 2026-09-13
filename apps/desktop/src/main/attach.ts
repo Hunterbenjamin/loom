@@ -67,14 +67,13 @@ export function resolveAttach(
                     target.identity !== "lead" ||
                     target.repoId !== runId.lead
                   : "shellKey" in runId
-                    ? !("identity" in target) ||
-                      target.identity !== "pane" ||
-                      target.target.sessionName !== "loom-workbench"
+                    ? !("identity" in target) || target.identity !== "pane"
                     : !("identity" in target) ||
                       target.identity !== "pane" ||
-                      JSON.stringify(target.target) !== JSON.stringify(runId) ||
+                      target.target.hostGeneration !== runId.hostGeneration ||
+                      target.target.windowId !== runId.windowId ||
+                      target.target.paneId !== runId.paneId ||
                       target.pane.hostGeneration !== runId.hostGeneration ||
-                      target.pane.sessionName !== runId.sessionName ||
                       target.pane.windowId !== runId.windowId ||
                       target.pane.paneId !== runId.paneId
                 : runId === "operator"

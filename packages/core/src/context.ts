@@ -64,7 +64,7 @@ export class Context {
   get git() {
     return read(this.observations.git);
   }
-  emit(key: string, action: ActionData): void {
+  emit(key: string, action: ActionData): ActionKey {
     const baseKey = key;
     let sequence = 1;
     while (
@@ -73,7 +73,8 @@ export class Context {
       )
     )
       key = `${baseKey}#${++sequence}`;
-    if (this.state.outbox.some((row) => row.key === key)) return;
+    const existing = this.state.outbox.find((row) => row.key === key);
+    if (existing) return existing.key;
     const full = {
       ...action,
       key: key as ActionKey,
@@ -109,6 +110,7 @@ export class Context {
       createdAt: this.now,
       finishedAt: null,
     });
+    return full.key;
   }
   audit(
     from: Stage,

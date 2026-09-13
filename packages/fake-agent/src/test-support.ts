@@ -1,7 +1,7 @@
 // Test-only action dispatcher. This deliberately is not exported as a coordinator executor.
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -22,8 +22,10 @@ import {
 } from "./index.js";
 
 const exec = promisify(execFile);
-export async function setup(stage: Stage = "todo") {
-  const root = await mkdtemp(join(tmpdir(), "loom-fake-agent-"));
+export async function setup(stage: Stage = "todo", withPr = true) {
+  const root = await realpath(
+    await mkdtemp(join(tmpdir(), "loom-fake-agent-")),
+  );
   const cwd = root as WorktreePath;
   const git = async (...args: string[]) =>
     (
@@ -80,7 +82,9 @@ export async function setup(stage: Stage = "todo") {
     verdictIds: [],
   };
   const clock = new FakeClock();
-  const initial = observations.github?.ok ? observations.github.value : null;
+  const initial =
+    withPr && observations.github?.ok ? observations.github.value : null;
+  if (!withPr) state.task.prNumber = null;
   if (initial) {
     initial.headSha = remote;
     initial.ci.headSha = remote;
@@ -95,10 +99,12 @@ export async function setup(stage: Stage = "todo") {
       const candidates = runner.state.findings.flatMap((f) =>
         f.resolution?.commitSha ? [f.resolution.commitSha] : [],
       );
-      const observation = await gitAdapter.readWorktree(cwd, "main", [
-        (await git("rev-parse", "HEAD")) as Sha,
-        ...candidates,
-      ]);
+      const observation = await gitAdapter.readWorktree(
+        cwd,
+        "main",
+        [(await git("rev-parse", "HEAD")) as Sha, ...candidates],
+        runner.state.review?.headSha,
+      );
       observation.remoteHeadSha = remote;
       return observeFakes(runner, observation);
     },
@@ -113,6 +119,7 @@ export async function setup(stage: Stage = "todo") {
         await mkdir(dirname(target), { recursive: true });
         await writeFile(target, contents);
       }
+      if (step.writeOnly) return;
       await git("add", ".");
       await git("commit", "-m", step.message);
       if (step.human) {

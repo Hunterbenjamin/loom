@@ -84,6 +84,115 @@ describe.skipIf(!available)("tmux pane host", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it("renames native spaces and tabs without losing processes, references or workspace keys", async () => {
+    const workspace = await host.ensureWorkspace({
+      taskId: "t-rename" as TaskId,
+      cwd,
+      label: "Rename",
+    });
+    const request = {
+      workspaceId: workspace.workspaceId,
+      createWorkspace: true,
+      key: crypto.randomUUID(),
+      cwd,
+      executable: "/bin/sh",
+      args: [],
+      env: paneEnv(),
+    };
+    const first = await host.createScratch(request);
+    const before = await host.getPane(first);
+    const sessionId = before?.sessionId as string;
+    const rename = {
+      hostGeneration: first.hostGeneration,
+      sessionId,
+      name: "Renamed space",
+    };
+    await host.renameSession(rename);
+    await host.renameSession(rename);
+    await host.renameWindow({
+      hostGeneration: first.hostGeneration,
+      windowId: first.windowId as string,
+      name: "Review: v2.0",
+    });
+    const renamed = await host.getPane(first);
+    expect(renamed).toMatchObject({
+      pid: before?.pid,
+      dead: false,
+      sessionId,
+      workspaceId: workspace.workspaceId,
+      windowName: "Review: v2.0",
+      ref: { ...first, sessionName: rename.name },
+    });
+    expect(await host.createScratch(request)).toEqual(renamed?.ref);
+    expect(
+      (
+        await tmux(
+          "show-options",
+          "-w",
+          "-v",
+          "-t",
+          first.windowId as string,
+          "automatic-rename",
+        )
+      ).trim(),
+    ).toBe("off");
+    await host.renameSession({ ...rename, name: "Second name" });
+    const reconnected = createTmuxPaneHost({
+      instance,
+      configPath: join(dir, "tmux.conf"),
+      tmuxExecutable: TMUX,
+    });
+    expect(await reconnected.createScratch(request)).toMatchObject({
+      ...first,
+      sessionName: "Second name",
+    });
+    const next = await reconnected.createScratch({
+      ...request,
+      key: crypto.randomUUID(),
+    });
+    expect(next.sessionName).toBe("Second name");
+    expect(
+      (await host.listPanes()).filter(
+        (pane) => pane.ref.sessionName === workspace.workspaceId,
+      ),
+    ).toHaveLength(0);
+    for (const name of ["bad.name", "bad:name", "", "bad\nname"])
+      await expect(host.renameSession({ ...rename, name })).rejects.toThrow();
+    await expect(
+      host.renameSession({ ...rename, hostGeneration: "loom-other#1" }),
+    ).rejects.toThrow("stale_generation");
+    await expect(
+      host.renameSession({ ...rename, sessionId: "$999999" }),
+    ).rejects.toThrow("session_not_found");
+    await expect(
+      host.renameWindow({
+        hostGeneration: first.hostGeneration,
+        windowId: "@999999",
+        name: "Missing",
+      }),
+    ).rejects.toThrow("window_not_found");
+    await expect(
+      host.renameWindow({
+        hostGeneration: "loom-other#1",
+        windowId: first.windowId as string,
+        name: "Stale",
+      }),
+    ).rejects.toThrow("stale_generation");
+    await expect(
+      host.renameSession({ ...rename, name: "loom-monitor" }),
+    ).rejects.toThrow("reserved_session_name");
+    const other = await host.createScratch({
+      ...request,
+      workspaceId: "rename-neighbour",
+      key: crypto.randomUUID(),
+    });
+    await expect(
+      host.renameSession({ ...rename, name: other.sessionName }),
+    ).rejects.toThrow("duplicate_session");
+    expect((await host.getPane(other))?.ref).toEqual(other);
+    expect((await host.getPane(first))?.windowName).toBe("Review: v2.0");
+  });
+
   it("keeps scratch creation idempotent after a window rename", async () => {
     const workspace = await host.ensureWorkspace({
       taskId: "t-scratch" as TaskId,
@@ -511,6 +620,17 @@ describe.skipIf(!available)("tmux pane host", () => {
         expect(await windowOf(a)).toBe(a.windowId);
         expect(await windowOf(b)).toBe(b.windowId);
         expect(a.windowId).not.toBe(b.windowId);
+        const sessionId = (await host.getPane(a))?.sessionId as string;
+        await host.renameSession({
+          hostGeneration: a.hostGeneration,
+          sessionId,
+          name: "Renamed viewers",
+        });
+        expect((await host.listClients(a)).length).toBeGreaterThanOrEqual(2);
+        expect(await windowOf(a)).toBe(a.windowId);
+        const renamed = (await host.getPane(a))?.ref as PaneRef;
+        clients.push(attach(host.attachArgs(renamed)));
+        await until(async () => (await host.listClients(renamed)).length >= 4);
       } finally {
         for (const client of clients) client.kill("SIGKILL");
         await delay(200);

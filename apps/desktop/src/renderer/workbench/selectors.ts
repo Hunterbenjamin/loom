@@ -3,7 +3,6 @@ import type { PaneIdentity, PaneView } from "@loom/protocol";
 
 export const sameTerminal = (a: PaneIdentity, b: PaneIdentity) =>
   a.hostGeneration === b.hostGeneration &&
-  a.sessionName === b.sessionName &&
   a.windowId === b.windowId &&
   a.paneId === b.paneId;
 
@@ -77,9 +76,13 @@ export const paneName = (pane: PaneView) =>
     ? [pane.role, pane.provider].filter(Boolean).join(" · ")
     : pane.command || "Unknown process";
 export const spaceKey = (pane: PaneView) =>
-  JSON.stringify([pane.hostGeneration, pane.sessionName]);
+  JSON.stringify([pane.hostGeneration, pane.sessionId ?? pane.sessionName]);
 export const tabKey = (pane: PaneView) =>
-  JSON.stringify([pane.hostGeneration, pane.sessionName, pane.windowId]);
+  JSON.stringify([
+    pane.hostGeneration,
+    pane.sessionId ?? pane.sessionName,
+    pane.windowId,
+  ]);
 const pinned = (pane: PaneView) =>
   pane.sessionName.startsWith("loom-lead-") ||
   ["loom-lead", "loom-main", "loom-operator"].includes(pane.sessionName);

@@ -144,7 +144,7 @@ export async function createClaudeAdapter(
       sessionId,
       "--model",
       model,
-      // Main is confined to conversation and file reads. Task planners/reviewers retain
+      // Main is confined to conversation and file reads. Task planners retain
       // their edit restrictions while keeping the tools needed to inspect and test the repo.
       ...(conversationOnly
         ? [

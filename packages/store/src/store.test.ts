@@ -653,3 +653,39 @@ it("remembers one selected repository per instance across reopen and refuses unk
   expect((await open()).selectedRepo()).toBe(second.id);
   expect((await open("other")).selectedRepo()).toBeNull();
 });
+
+it("persists inline-review publication and fixing/escalation evidence across restart", async () => {
+  const store = await seeded();
+  const state = richState();
+  const sha = required(state.review).headSha;
+  required(state.review).publicationPending = true;
+  required(state.review).reviewerCommits = [sha];
+  const fixed = required(state.findings[0]);
+  fixed.status = "fixed";
+  fixed.blocking = false;
+  fixed.resolution = {
+    by: "reviewer",
+    commitSha: sha,
+    note: "Fixed actual bug",
+    at: now,
+  };
+  state.findings.push({
+    ...fixed,
+    id: "escalated" as typeof fixed.id,
+    status: "escalate",
+    blocking: true,
+    resolution: {
+      by: "reviewer",
+      commitSha: null,
+      note: "Requires a design change",
+      at: now,
+    },
+  });
+  artifact(state, "findings", state.findings);
+  expect(store.commit(taskId, result(state), 0).ok).toBe(true);
+  store.close();
+  const restored = (await open()).loadTaskState(taskId);
+  expect(restored.review).toEqual(state.review);
+  expect(restored.findings).toEqual(expect.arrayContaining(state.findings));
+  expect(restored.findings).toHaveLength(state.findings.length);
+});

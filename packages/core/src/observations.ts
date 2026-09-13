@@ -48,6 +48,8 @@ export interface GitWorktreeObservation {
   dirtyPaths: string[];
   /** Git boundary: queried commits proven reachable from this HEAD; [] means none. */
   reachableCommits: Sha[];
+  /** Complete oldest-first range, only when the requested round head is an ancestor of HEAD. */
+  reviewCommits?: { baseSha: Sha; headSha: Sha; commits: Sha[] } | null;
 }
 
 // ---------------------------------------------------------------- GitHub
@@ -194,6 +196,8 @@ export interface ClaudeSessionObservation {
  * and provider identity is never inferred from a pane (spike 06 §4).
  */
 export interface PaneObservation {
+  /** Original workspace key retained by the host when its session is renamed. */
+  workspaceId?: string;
   sessionId?: string | null;
   windowName?: string | null;
   title?: string | null;

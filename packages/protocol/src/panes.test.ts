@@ -78,3 +78,27 @@ test("validates identities, native fields and scratch acknowledgements", () => {
     }).success,
   ).toBe(true);
 });
+
+test("rename commands use native IDs and validate session names at the boundary", () => {
+  const space = {
+    kind: "rename_space",
+    hostGeneration: pane.hostGeneration,
+    sessionId: "$1",
+    name: "My space",
+  };
+  const tab = {
+    kind: "rename_tab",
+    hostGeneration: pane.hostGeneration,
+    windowId: "@1",
+    name: "Tab: v2.0",
+  };
+  expect(command.parse(space)).toEqual(space);
+  expect(command.parse(tab)).toEqual(tab);
+  for (const name of ["bad.name", "bad:name", "", "  ", "bad\nname"])
+    expect(command.safeParse({ ...space, name }).success).toBe(false);
+  for (const name of ["", " ", "bad\nname"])
+    expect(command.safeParse({ ...tab, name }).success).toBe(false);
+  expect(command.safeParse({ ...space, sessionId: "*" }).success).toBe(false);
+  expect(command.safeParse({ ...tab, windowId: "*" }).success).toBe(false);
+  expect(ackResult.parse({ kind: "renamed" })).toEqual({ kind: "renamed" });
+});

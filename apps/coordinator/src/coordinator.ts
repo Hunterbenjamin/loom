@@ -889,6 +889,29 @@ export class Coordinator {
     } & Record<string, unknown>;
     try {
       switch (command.kind) {
+        case "rename_space":
+        case "rename_tab": {
+          if (
+            !String(command.hostGeneration).startsWith(
+              `loom-${this.config.instance}#`,
+            )
+          )
+            throw new Error("Terminal belongs to another instance");
+          if (command.kind === "rename_space")
+            await this.adapters.paneHost.renameSession({
+              hostGeneration: String(command.hostGeneration),
+              sessionId: String(command.sessionId),
+              name: String(command.name),
+            });
+          else
+            await this.adapters.paneHost.renameWindow({
+              hostGeneration: String(command.hostGeneration),
+              windowId: String(command.windowId),
+              name: String(command.name),
+            });
+          await this.inventory.refresh();
+          return { ok: true, result: { kind: "renamed" } };
+        }
         case "claim_notification": {
           const note = this.store.operator.noteById(String(command.noteId));
           const notice = this.store.operator.atomic(() => {
@@ -967,12 +990,7 @@ export class Coordinator {
           if (!ref.hostGeneration.startsWith(`loom-${this.config.instance}#`))
             throw new Error("Pane belongs to another instance");
           const pane = await this.adapters.paneHost.getPane(ref);
-          if (
-            !pane ||
-            pane.dead ||
-            pane.ref.sessionName !== ref.sessionName ||
-            pane.ref.windowId !== ref.windowId
-          )
+          if (!pane || pane.dead || pane.ref.windowId !== ref.windowId)
             throw new Error("Pane is missing, dead or stale");
           return {
             ok: true,
@@ -980,7 +998,7 @@ export class Coordinator {
               kind: "attach_session",
               target: {
                 identity: "pane",
-                target: ref,
+                target: pane.ref,
                 attach: {
                   kind: "pane_host",
                   argv: this.adapters.paneHost.attachArgs(pane.ref),
@@ -988,7 +1006,7 @@ export class Coordinator {
                   env: {},
                 },
                 pane: {
-                  ...ref,
+                  ...pane.ref,
                   dead: false,
                   exitStatus: null,
                   attachedClients: 0,
