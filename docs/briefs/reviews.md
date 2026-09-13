@@ -84,3 +84,13 @@ stays the owner of every fact; Loom stays a fast, honest view of it.
 - Never call GitHub from the renderer.
 - `pnpm test`, `pnpm lint`, `pnpm typecheck` and the desktop build green; update
   `docs/design/ui.md` and `docs/briefs/pull-requests.md` where this supersedes them.
+
+## Later: push instead of poll
+
+Linear's integration is a GitHub App whose webhooks deliver pull request, review and check
+events to Linear's servers within seconds. A coordinator on a laptop cannot receive webhooks, so
+Loom polls conditionally, which is what GitHub Desktop and every other local client do. When the
+coordinator moves to an always-on, reachable host (build plan, Phase 5), add a GitHub App with a
+webhook receiver on the coordinator's bound address: `pull_request`, `pull_request_review`,
+`check_run` and `push` events become hints that trigger the same re-read the poll does today. No
+other code changes; events are hints, never facts.
