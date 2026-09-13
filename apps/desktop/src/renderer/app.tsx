@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { attentionCount, inboxRows } from "./store/inbox.js";
 import { selectedPullRequests } from "./store/pull-requests.js";
 import { useStore, useStoreApi } from "./store/react.js";
@@ -14,6 +14,12 @@ import { ListView } from "./ui/list.js";
 import { Palette, StagePicker } from "./ui/palette.js";
 import { PullRequestsView } from "./ui/pull-requests.js";
 import { OpenRepository, Sidebar } from "./ui/sidebar.js";
+
+const PullRequestDetail = lazy(() =>
+  import("./ui/pull-request-detail.js").then((m) => ({
+    default: m.PullRequestDetail,
+  })),
+);
 
 export function App() {
   const store = useStoreApi();
@@ -56,6 +62,7 @@ export function App() {
         ) ?? null)
       : null,
   );
+  const openPr = useStore((s) => s.ui.openPr);
   const search = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -149,7 +156,18 @@ export function App() {
           ) : (
             <BoardView />
           )}
-          {task ? <Detail task={task} /> : null}
+          {openPr ? (
+            <Suspense
+              fallback={<div className="detail pad">Loading pull request…</div>}
+            >
+              <PullRequestDetail
+                key={`${openPr.repoId}:${openPr.number}`}
+                selection={openPr}
+              />
+            </Suspense>
+          ) : task ? (
+            <Detail task={task} />
+          ) : null}
         </div>
       </div>
 

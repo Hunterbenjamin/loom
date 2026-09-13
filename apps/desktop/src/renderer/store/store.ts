@@ -21,6 +21,7 @@ import type {
   PaneIdentity,
   PaneView,
   PatchFrame,
+  PullRequestDetailRow,
   PullRequestRow,
   RunTarget,
   TaskInbox,
@@ -32,6 +33,7 @@ import {
   type Comment,
   type Snapshot,
 } from "../fixtures/index.js";
+import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
 import { projectSnapshot } from "../live/snapshot.js";
 import { createPaneTransitionDetector } from "./pane-transitions.js";
 import { selectedPullRequests } from "./pull-requests.js";
@@ -68,6 +70,7 @@ export interface UiState {
   prState: PullRequestRow["state"];
   prQuery: string;
   prCursor: number;
+  openPr: { repoId: PullRequestRow["repoId"]; number: number } | null;
   view: ViewId;
   pane: Pane;
   /** Coordinator projection; empty only when no repository is registered. */
@@ -93,6 +96,7 @@ export interface UiState {
 
 export interface State {
   snapshot: Snapshot;
+  pullRequestDetails: PullRequestDetailRow[];
   ui: UiState;
   live: boolean;
   connection: string;
@@ -158,6 +162,7 @@ const initialUi: UiState = {
   prState: "open",
   prQuery: "",
   prCursor: 0,
+  openPr: null,
   view: "all",
   pane: "list",
   repo: "",
@@ -202,6 +207,9 @@ export function createStore(
     | undefined;
   let state: State = {
     snapshot,
+    pullRequestDetails: live
+      ? []
+      : buildPullRequestDetails(snapshot.pullRequests),
     ui: { ...initialUi, repo: live ? "" : (snapshot.repos[0]?.id ?? "") },
     live,
     connection: live ? "connecting" : "fixtures",
@@ -362,6 +370,11 @@ export function createStore(
       state = {
         ...state,
         snapshot: projectSnapshot(state.snapshot, client, patch),
+        pullRequestDetails:
+          !patch ||
+          patch.changes.some((c) => c.collection === "pull_request_detail")
+            ? [...client.collections.pull_request_detail.values()]
+            : state.pullRequestDetails,
         inbox:
           !patch || patch.changes.some((c) => c.collection === "inbox")
             ? [...client.collections.inbox.values()]
@@ -376,6 +389,7 @@ export function createStore(
                 cursor: 0,
                 prCursor: 0,
                 openTask: null,
+                openPr: null,
                 openRun: null,
                 openReason: null,
               };
@@ -460,7 +474,13 @@ export function createStore(
       tab: TabId,
       run: RunId | null,
     ) {
-      setUi({ openTask: task, openReason: reason, openRun: run, tab });
+      setUi({
+        openTask: task,
+        openPr: null,
+        openReason: reason,
+        openRun: run,
+        tab,
+      });
     },
     setRun(openRun: RunId | null) {
       setUi({ openRun });
@@ -479,11 +499,14 @@ export function createStore(
     setPrQuery(prQuery: string) {
       setUi({ prQuery, prCursor: 0 });
     },
+    openPullRequest(openPr: UiState["openPr"]) {
+      setUi({ openPr, openTask: null, openRun: null, openReason: null });
+    },
     setPrCursor(prCursor: number) {
       setUi({ prCursor });
     },
     setView(view: ViewId) {
-      setUi({ view, cursor: 0, openTask: null });
+      setUi({ view, cursor: 0, openTask: null, openPr: null });
     },
     setPane(pane: Pane) {
       setUi({ pane, cursor: 0 });
@@ -527,6 +550,7 @@ export function createStore(
           cursor: 0,
           prCursor: 0,
           openTask: null,
+          openPr: null,
           openRun: null,
           openReason: null,
         });
@@ -556,6 +580,7 @@ export function createStore(
     open(task: TaskId | null) {
       setUi({
         openTask: task,
+        openPr: null,
         openRun: null,
         openReason: null,
         tab: task ? state.ui.tab : "activity",
@@ -586,6 +611,7 @@ export function createStore(
       pendingSelection = id;
       setUi({
         createIssue: false,
+        openPr: null,
         view: "all",
         pane: "list",
         ...(live ? {} : { repo }),

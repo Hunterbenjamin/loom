@@ -22,6 +22,8 @@ export function useShortcuts(store: Store): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const { ui } = store.getState();
+      if (event.defaultPrevented || document.querySelector("dialog[open]"))
+        return;
 
       if (ui.createIssue) {
         pendingG.current = false;
@@ -38,11 +40,12 @@ export function useShortcuts(store: Store): void {
         if (ui.palette) return store.setPalette(false);
         if (ui.stagePicker) return store.setStagePicker(false);
         if (ui.searching) return store.setSearching(false);
+        if (ui.openPr) return store.openPullRequest(null);
         if (ui.openTask) return store.open(null);
         return;
       }
 
-      if (ui.palette || ui.stagePicker) return;
+      if (ui.palette || ui.stagePicker || ui.openPr) return;
       if (typing(event.target)) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
@@ -80,9 +83,9 @@ export function useShortcuts(store: Store): void {
         }
         if (event.key === "Enter") {
           event.preventDefault();
-          document
-            .querySelector<HTMLElement>('[data-pr][data-cursor="true"]')
-            ?.focus();
+          const pr = rows[ui.prCursor];
+          if (pr)
+            store.openPullRequest({ repoId: pr.repoId, number: pr.number });
           return;
         }
         // Task stage actions do not apply to repository PRs.

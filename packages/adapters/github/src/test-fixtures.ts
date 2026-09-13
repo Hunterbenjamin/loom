@@ -65,6 +65,15 @@ export function http(value: unknown, headers: Record<string, string> = {}) {
 
 export function setup(excludedAuthors: string[] = []) {
   const routes = new Map<string, GhResult>([
+    [
+      `${root}/git/ref/heads/${encodeURIComponent(original.head.ref)}`,
+      ok(
+        http({
+          ref: `refs/heads/${original.head.ref}`,
+          object: { sha: original.head.sha },
+        }),
+      ),
+    ],
     [list, ok(fixture("pulls"))],
     [pr, ok(fixture("pull"))],
     [checksPath, ok(fixture("checks"))],
@@ -87,7 +96,9 @@ export function setup(excludedAuthors: string[] = []) {
       (args.includes("--method") && !args.includes("GET"))
     )
       return mutate(args, input);
-    const endpoint = args.find((arg) => arg.startsWith("repos/"));
+    const endpoint = args.find(
+      (arg) => arg.startsWith("repos/") || arg.startsWith("repositories/"),
+    );
     const result = routes.get(endpoint ?? "");
     if (!result) throw new Error(`Missing fixture: ${endpoint}`);
     if (result.exitCode !== 0) return result;

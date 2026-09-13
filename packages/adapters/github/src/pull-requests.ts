@@ -6,6 +6,7 @@ import type {
 } from "@loom/core";
 import { z } from "zod";
 import { Api, type Pages } from "./api.js";
+import { branchExists } from "./branches.js";
 import { readCi } from "./checks.js";
 import { type GhRunner, GitHubError, response, utf8Prefix } from "./gh.js";
 import * as s from "./schemas.js";
@@ -87,6 +88,16 @@ export function pullRequestReads(
     if (detail && commits.length !== final.commits)
       throw new GitHubError("retryable", "GitHub PR commits are incomplete");
     return {
+      branchExists:
+        !detail || final.head.repo === undefined
+          ? null
+          : final.head.repo === null
+            ? false
+            : await branchExists(
+                run,
+                final.head.repo.full_name,
+                final.head.ref,
+              ),
       number: final.number,
       title: final.title,
       author: final.user?.login ?? null,
@@ -140,6 +151,7 @@ export function pullRequestReads(
       const values: PullRequestSummary[] = [];
       for (const pull of pulls) {
         const {
+          branchExists: _branchExists,
           body: _body,
           mergedAt: _at,
           mergeCommitSha: _sha,

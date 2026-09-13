@@ -50,7 +50,19 @@ export function Detail({ task }: { task: Task }) {
         <div className="detail-meta faint">
           <span>{repo?.github}</span>
           {task.branch ? <span className="mono">{task.branch}</span> : null}
-          {task.prNumber ? <span>PR #{task.prNumber}</span> : null}
+          {task.prNumber ? (
+            <button
+              type="button"
+              onClick={() =>
+                store.openPullRequest({
+                  repoId: task.repoId,
+                  number: task.prNumber as number,
+                })
+              }
+            >
+              PR #{task.prNumber}
+            </button>
+          ) : null}
           <span>in this stage {since(now, task.stageEnteredAt)}</span>
           <span>v{task.version}</span>
         </div>

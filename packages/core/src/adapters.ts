@@ -126,6 +126,8 @@ export interface PullRequestSummary {
 }
 
 export interface PullRequestDetail extends PullRequestSummary {
+  /** null means the head repository could not be identified. */
+  branchExists: boolean | null;
   body: string;
   mergedAt: IsoTime | null;
   mergeCommitSha: Sha | null;

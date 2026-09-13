@@ -351,6 +351,7 @@ export class FakeGitHub implements GitHubAdapter {
       deletions: 0,
       changedFiles: 0,
       ...detail,
+      branchExists: this.branches.has(detail?.head ?? this.branch),
       state: pr.state,
       base: pr.baseBranch,
       headSha: pr.headSha,
@@ -379,6 +380,7 @@ export class FakeGitHub implements GitHubAdapter {
     for (const pr of prs) {
       if (pr.state !== state) continue;
       const {
+        branchExists: _branchExists,
         body: _body,
         commits: _commits,
         checkRuns: _runs,

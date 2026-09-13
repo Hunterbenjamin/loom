@@ -44,6 +44,33 @@ function fixture() {
 }
 
 describe("repository pull request reads", () => {
+  it("reads branch existence from the actual head repository and refreshes after deletion", async () => {
+    const fake = fixture();
+    fake.set(pr, {
+      ...detail,
+      head: { ...detail.head, repo: { full_name: "fork/core" } },
+    });
+    const ref = `repos/fork/core/git/ref/heads/${encodeURIComponent(detail.head.ref)}`;
+    fake.set(ref, {
+      ref: `refs/heads/${detail.head.ref}`,
+      object: { sha: detail.head.sha },
+    });
+    expect(
+      (await fake.adapter.readPullRequest("vuejs/core", detail.number))
+        .branchExists,
+    ).toBe(true);
+    fake.routes.set(ref, missing());
+    expect(
+      (await fake.adapter.readPullRequest("vuejs/core", detail.number))
+        .branchExists,
+    ).toBe(false);
+    fake.set(pr, { ...detail, head: { ...detail.head, repo: null } });
+    expect(
+      (await fake.adapter.readPullRequest("vuejs/core", detail.number))
+        .branchExists,
+    ).toBe(false);
+  });
+
   it("reads rich detail, excludes test merge SHA, and exposes native checks and commits", async () => {
     const fake = fixture();
     fake.set(pr, {

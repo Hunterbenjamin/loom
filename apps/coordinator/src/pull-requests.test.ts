@@ -15,6 +15,7 @@ const detail = (
   number = 1,
   overrides: Partial<PullRequestDetail> = {},
 ): PullRequestDetail => ({
+  branchExists: true,
   number,
   title: `PR ${number}`,
   author: "human",
