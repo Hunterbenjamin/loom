@@ -261,6 +261,7 @@ export function fixture(stage: Stage = "in_progress"): {
               },
               hooks: {
                 lastEventAt: null,
+                transcriptPath: null,
                 pendingDialog: null,
                 promptSubmits: [],
                 lastStop: null,

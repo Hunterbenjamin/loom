@@ -30,6 +30,27 @@ export type Reading<T> =
   | { ok: true; value: T; at: IsoTime }
   | { ok: false; reason: string; at: IsoTime };
 
+/** Provider-independent, bounded conversation content. Providers remain the durable owner. */
+export interface ConversationItem {
+  id: string;
+  role: "user" | "assistant" | "system";
+  kind: "text" | "thinking" | "tool" | "notice";
+  text: string;
+  clipped: boolean;
+  tool: {
+    name: string;
+    input: string;
+    status: "running" | "done" | "failed";
+    output: string;
+  } | null;
+  at: IsoTime | null;
+}
+
+export interface ConversationRead {
+  items: ConversationItem[];
+  truncated: boolean;
+}
+
 // ---------------------------------------------------------------- git
 
 export interface GitWorktreeObservation {
@@ -153,6 +174,7 @@ export interface ClaudeAgentsEntry {
 /** Hooks folded to what reconcile needs. Hooks add detail; they never decide status alone. */
 export interface ClaudeHookSummary {
   lastEventAt: IsoTime | null;
+  transcriptPath: string | null;
   /** From the latest PreToolUse/PermissionRequest not yet followed by PostToolUse. */
   pendingDialog: {
     command?: string;

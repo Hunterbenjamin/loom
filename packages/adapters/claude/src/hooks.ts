@@ -131,6 +131,7 @@ export const textHash = (text: string): string =>
 export function foldHookSummary(receipts: HookReceipt[]): ClaudeHookSummary {
   const summary: ClaudeHookSummary = {
     lastEventAt: null,
+    transcriptPath: null,
     pendingDialog: null,
     promptSubmits: [],
     lastStop: null,
@@ -143,6 +144,8 @@ export function foldHookSummary(receipts: HookReceipt[]): ClaudeHookSummary {
     const { payload, receivedAt } = receipt;
     if (isIgnoredSubagentEvent(payload)) continue;
     summary.lastEventAt = receivedAt;
+    if (payload.transcript_path)
+      summary.transcriptPath = payload.transcript_path;
 
     switch (receipt.event) {
       case "UserPromptSubmit":

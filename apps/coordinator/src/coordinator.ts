@@ -5,6 +5,7 @@ import {
   pullRequestDiffRead,
   pullRequestReviewChange,
 } from "@loom/protocol";
+import { ConversationViews } from "./conversations.js";
 import { PaneInventory, paneKey } from "./pane-inventory.js";
 import { PullRequestViews } from "./pull-requests.js";
 import { runEnvironment } from "./recipes.js";
@@ -56,7 +57,7 @@ import {
   epochOf,
   reconcileConfig,
 } from "./config.js";
-import { classify, Executor } from "./executor.js";
+import { classify, Executor, PreconditionFailed } from "./executor.js";
 import { inspectTask } from "./inspect.js";
 import type { LaunchDeps } from "./launch.js";
 import { LeadSession, legacyLeadPort, migrateLead } from "./lead.js";
@@ -199,6 +200,7 @@ export class Coordinator {
     if (!lead) {
       lead = new LeadSession({
         adapters: this.adapters,
+        store: this.store,
         config: this.config,
         dataDirectory: this.store.dataDirectory,
         repo,
@@ -531,6 +533,7 @@ export class Coordinator {
   readonly loop: Loop;
   readonly executor: Executor;
   private readonly prViews: PullRequestViews;
+  private readonly conversationViews: ConversationViews;
   readonly protocol: ProtocolServer;
   readonly startedAt: IsoTime;
   readonly epoch: string;
@@ -651,6 +654,17 @@ export class Coordinator {
           `Could not refresh pull requests: ${error instanceof Error ? error.message : String(error)}`,
         ),
     });
+    this.conversationViews = new ConversationViews({
+      store: this.store,
+      adapters: this.adapters,
+      lead: (repoId) => this.leadFor(repoId),
+      now: () => this.now(),
+      after: this.after,
+      deliveryTimeoutMs: this.config.deliveryTimeoutMs,
+      replace: (owner, rows) =>
+        this.protocol.publish(this.published.replace(owner, null, rows)),
+      log: (message) => this.log(message),
+    });
     this.inventory = new PaneInventory(
       this.adapters.paneHost,
       this.adapters.git,
@@ -702,7 +716,10 @@ export class Coordinator {
       snapshot: () => this.published.rows(),
       command: (value) => this.command(value),
       ensure: (scope) => this.ensure(scope),
-      scopesChanged: (scope) => this.prViews.subscriptions(scope),
+      scopesChanged: (scope) => {
+        this.prViews.subscriptions(scope);
+        this.conversationViews.subscriptions(scope);
+      },
       onError: (error) => this.log(`Protocol error: ${error.message}`),
     });
   }
@@ -786,6 +803,7 @@ export class Coordinator {
 
   async stop(): Promise<void> {
     await this.prViews.stop();
+    await this.conversationViews.stop();
     if (this.panePoll) clearInterval(this.panePoll);
     await this.inventory.stop();
     if (this.leadPoll) clearInterval(this.leadPoll);
@@ -1000,7 +1018,11 @@ export class Coordinator {
   }
 
   private subscribeHints(): void {
-    const onHint = (hint: { worktreePath: string | null }) => {
+    const onHint = (hint: {
+      worktreePath: string | null;
+      sessionId: string | null;
+    }) => {
+      this.conversationViews.hint(hint.sessionId);
       if (hint.worktreePath === this.store.dataDirectory) {
         void this.publishLead();
         return;
@@ -1186,6 +1208,7 @@ export class Coordinator {
 
   private async ensure(scope: readonly Subscription[]): Promise<void> {
     await this.prViews.ensure(scope);
+    this.conversationViews.ensure(scope);
     for (const subscription of scope) {
       if (subscription.kind !== "diff") continue;
       const key = `${subscription.taskId}#${subscription.mode}`;
@@ -1552,6 +1575,24 @@ export class Coordinator {
           await this.publishLead();
           return { ok: true, result: { kind: "lead_stopped" } };
         }
+        case "send_lead_message": {
+          const lead = this.leadFor(command.repoId as string);
+          const result = await lead.sendMessage(
+            command.clientMessageId as string,
+            command.text as string,
+          );
+          this.conversationViews.hint(lead.sessionId);
+          return { ok: true, result: { kind: "lead_message", ...result } };
+        }
+        case "answer_lead_prompt": {
+          const lead = this.leadFor(command.repoId as string);
+          await lead.answerPrompt(
+            command.expectedDialog as { requestId?: string; at: string },
+            command.choice as number | "enter" | "escape",
+          );
+          this.conversationViews.hint(lead.sessionId);
+          return { ok: true, result: { kind: "lead_prompt_answered" } };
+        }
         case "create_task": {
           const state = this.createTask({
             repoId: command.repoId as RepoId,
@@ -1654,7 +1695,9 @@ export class Coordinator {
               ? "conflict"
               : typed.code === "invalid_input"
                 ? "invalid_input"
-                : "internal",
+                : error instanceof PreconditionFailed
+                  ? "guard_failed"
+                  : "internal",
           message: error instanceof Error ? error.message : String(error),
           details: typed.details ?? [],
         },

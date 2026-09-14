@@ -1,0 +1,5 @@
+{"type":"user","uuid":"u1","timestamp":"2026-09-14T01:00:00.000Z","message":{"role":"user","content":"Please inspect the project"}}
+{"type":"assistant","uuid":"a1","timestamp":"2026-09-14T01:00:01.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"I should inspect files."},{"type":"tool_use","id":"tool-1","name":"Read","input":{"file_path":"/example/project/README.md"}},{"type":"text","text":"I found the relevant section."}]}}
+{"type":"user","uuid":"u2","timestamp":"2026-09-14T01:00:02.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-1","content":"Example output","is_error":false}]}}
+{"type":"assistant","uuid":"side","isSidechain":true,"timestamp":"2026-09-14T01:00:03.000Z","message":{"role":"assistant","content":"hidden"}}
+{"type":"summary","summary":"ignored"}

@@ -16,6 +16,9 @@ import type {
   AckOutcome,
   ClientState,
   Command,
+  Conversation,
+  ConversationItem,
+  ConversationTarget,
   Entities,
   LeadState,
   PaneIdentity,
@@ -102,6 +105,8 @@ export interface UiState {
   toast: string | null;
   openRun: RunId | null;
   openReason: AttentionReason | null;
+  chatTarget: ConversationTarget | null;
+  chatView: "open" | "minimized" | "expanded";
 }
 
 export interface State {
@@ -123,6 +128,8 @@ export interface State {
   notes: Entities["note"][];
   instance: string;
   settings: SettingsDocument[];
+  conversations: Conversation[];
+  conversationItems: ConversationItem[];
 }
 
 /** The Tracker's three destinations. Other view ids remain reachable by keyboard and palette. */
@@ -199,6 +206,8 @@ const initialUi: UiState = {
   toast: null,
   openRun: null,
   openReason: null,
+  chatTarget: null,
+  chatView: "minimized",
 };
 
 /** The harness asks for a longer list with `?tasks=500`; the app itself never sets it. */
@@ -237,6 +246,8 @@ export function createStore(
     runTargets: [],
     instance,
     settings: [],
+    conversations: [],
+    conversationItems: [],
     lead: {
       id: parseRepoId.parse("lead"),
       sessionId: null,
@@ -415,6 +426,10 @@ export function createStore(
                 openPr: null,
                 openRun: null,
                 openReason: null,
+                chatTarget:
+                  state.ui.chatTarget?.kind === "lead"
+                    ? { kind: "lead", repoId: parseRepoId.parse(repo) }
+                    : state.ui.chatTarget,
               };
         })(),
         lead: client.collections.lead.get(
@@ -442,6 +457,15 @@ export function createStore(
           !patch || patch.changes.some((c) => c.collection === "run_target")
             ? [...client.collections.run_target.values()]
             : state.runTargets,
+        conversations:
+          !patch || patch.changes.some((c) => c.collection === "conversation")
+            ? [...client.collections.conversation.values()]
+            : state.conversations,
+        conversationItems:
+          !patch ||
+          patch.changes.some((c) => c.collection === "conversation_item")
+            ? [...client.collections.conversation_item.values()]
+            : state.conversationItems,
       };
       if (selectedPr) {
         const rows = selectedPullRequests(state);
@@ -540,6 +564,30 @@ export function createStore(
     setRun(openRun: RunId | null) {
       setUi({ openRun });
     },
+    openChat(chatTarget: ConversationTarget) {
+      setUi({ chatTarget, chatView: "open" });
+    },
+    toggleMainChat() {
+      if (!state.ui.repo) return;
+      const target = {
+        kind: "lead" as const,
+        repoId: parseRepoId.parse(state.ui.repo),
+      };
+      const same =
+        state.ui.chatTarget?.kind === "lead" &&
+        state.ui.chatTarget.repoId === target.repoId;
+      setUi({
+        chatTarget: target,
+        chatView:
+          same && state.ui.chatView !== "minimized" ? "minimized" : "open",
+      });
+    },
+    setChatView(chatView: UiState["chatView"]) {
+      setUi({ chatView });
+    },
+    closeChat() {
+      setUi({ chatTarget: null, chatView: "minimized" });
+    },
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -621,6 +669,10 @@ export function createStore(
           openPr: null,
           openRun: null,
           openReason: null,
+          chatTarget:
+            state.ui.chatTarget?.kind === "lead"
+              ? { kind: "lead", repoId: parseRepoId.parse(repo) }
+              : state.ui.chatTarget,
         });
     },
     async addRepo() {

@@ -65,6 +65,33 @@ function snapshotSql() {
 }
 
 describe("task transactions", () => {
+  it("records Main chat sends idempotently per repository", async () => {
+    const store = await open();
+    const first = {
+      id: "client-1",
+      repoId: "repo-a",
+      text: "hello",
+      textHash: "hash-a",
+      state: "queued" as const,
+      reason: null,
+      createdAt: now,
+      sentAt: null,
+      deliveredAt: null,
+    };
+    expect(store.leadMessages.create(first)).toEqual(first);
+    expect(store.leadMessages.create({ ...first, text: "changed" }).text).toBe(
+      "hello",
+    );
+    store.leadMessages.update("repo-a", "client-1", "sent", null, now);
+    expect(store.leadMessages.list("repo-a")[0]).toMatchObject({
+      state: "sent",
+      sentAt: now,
+    });
+    expect(
+      store.leadMessages.create({ ...first, repoId: "repo-b" }).repoId,
+    ).toBe("repo-b");
+  });
+
   it("round-trips tasks with and without summaries", async () => {
     const store = await open();
     store.putRepo(repo);

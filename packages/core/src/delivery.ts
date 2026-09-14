@@ -80,6 +80,7 @@ function pendingDelivery(c: Context, run: Run, message: Message): void {
   const reason = action
     ? `transport action is ${action.status}; awaiting a successful transport result`
     : (send(c, run, message) ?? "awaiting a successful transport result");
+  message.deliveryReason = reason;
   if (deadline > c.now)
     c.emit(`schedule:${c.task.id}:delivery_timeout:${deadline}`, {
       kind: "schedule",
@@ -165,6 +166,7 @@ export function delivery(c: Context): void {
       if (message.delivered) {
         message.status = "delivered";
         message.deliveryAttention = false;
+        message.deliveryReason = null;
         continue;
       }
     }
@@ -194,6 +196,7 @@ export function delivery(c: Context): void {
           const reason = send(c, run, message);
           if (reason) {
             message.deliveryAttention = true;
+            message.deliveryReason = reason;
             c.notify(
               `Message ${message.id} for run ${run.id} could not be resent: ${reason}`,
               `delivery:${message.id}`,
@@ -201,6 +204,7 @@ export function delivery(c: Context): void {
           } else pendingDelivery(c, run, message);
         } else {
           message.deliveryAttention = true;
+          message.deliveryReason = "not confirmed by the provider";
           c.notify(
             "Message delivery needs inspection",
             `delivery:${message.id}`,

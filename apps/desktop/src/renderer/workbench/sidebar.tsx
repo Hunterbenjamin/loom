@@ -481,6 +481,18 @@ export function Sidebar({
             menuRows[0]?.taskId
               ? [
                   {
+                    label: "Open as chat",
+                    run: () => {
+                      const runId = menuRows[0]?.runId;
+                      if (runId)
+                        window.dispatchEvent(
+                          new CustomEvent("loom:open-chat", {
+                            detail: { kind: "run", runId },
+                          }),
+                        );
+                    },
+                  },
+                  {
                     label: "Restart agent",
                     reason:
                       "Fresh session for this run; the replacement appears once the previous agent stops",

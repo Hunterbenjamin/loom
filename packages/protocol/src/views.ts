@@ -294,6 +294,76 @@ export const leadState = z.strictObject({
 });
 export type LeadState = z.output<typeof leadState>;
 
+// Provider-owned conversations are projected only while a client subscribes. These rows are a
+// disposable cache; the transcript/thread remains the source of truth.
+export const conversationTarget = z.union([
+  z.strictObject({ kind: z.literal("lead"), repoId }),
+  z.strictObject({ kind: z.literal("run"), runId }),
+]);
+export type ConversationTarget = z.output<typeof conversationTarget>;
+export const conversationKey = (target: ConversationTarget): string =>
+  target.kind === "lead" ? `lead:${target.repoId}` : `run:${target.runId}`;
+
+export const conversationPrompt = z.union([
+  z.strictObject({
+    source: z.literal("claude_dialog"),
+    kind: z.enum(["permission", "input"]),
+    tool: z.string(),
+    command: z.string().optional(),
+    requestId: z.string().optional(),
+    at: isoTime,
+    sessionEpoch: count.optional(),
+  }),
+  z.strictObject({
+    source: z.literal("codex_request"),
+    requestId: z.string().min(1),
+    generation: count,
+    kind: z.string().min(1),
+    summary: z.string(),
+  }),
+]);
+
+export const conversationSend = z.strictObject({
+  id: z.string().min(1),
+  text: z.string().max(16384),
+  state: z.enum(["queued", "sent", "delivered", "failed", "refused"]),
+  at: isoTime,
+  reason: z.string().nullable(),
+});
+
+export const conversation = z
+  .strictObject({
+    target: conversationTarget,
+    provider: z.enum(["claude", "codex"]),
+    status: z.enum(["working", "idle", "waiting", "stopped", "unknown"]),
+    pendingPrompt: conversationPrompt.nullable(),
+    sends: z.array(conversationSend).max(20),
+    truncated: z.boolean(),
+    readAt: isoTime,
+    error: z.string().nullable(),
+  })
+  .refine((value) => conversationKey(value.target).length > 0);
+export type Conversation = z.output<typeof conversation>;
+
+export const conversationTool = z.strictObject({
+  name: z.string(),
+  input: z.string().max(2048),
+  status: z.enum(["running", "done", "failed"]),
+  output: z.string().max(2048),
+});
+export const conversationItem = z.strictObject({
+  conversationKey: z.string().min(1),
+  order: z.number().int().nonnegative(),
+  id: z.string().min(1),
+  role: z.enum(["user", "assistant", "system"]),
+  kind: z.enum(["text", "thinking", "tool", "notice"]),
+  text: z.string().max(8192),
+  clipped: z.boolean(),
+  tool: conversationTool.nullable(),
+  at: isoTime.nullable(),
+});
+export type ConversationItem = z.output<typeof conversationItem>;
+
 /** Physical identity is generation + pane ID; names never identify a provider run. */
 export const paneIdentity = z.strictObject({
   hostGeneration: z.string().min(1),

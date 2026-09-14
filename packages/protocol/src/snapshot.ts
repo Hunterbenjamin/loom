@@ -47,6 +47,9 @@ import { taskNote } from "./notes.js";
 import { settingsDocument } from "./settings.js";
 import {
   commentThread,
+  conversation,
+  conversationItem,
+  conversationKey,
   leadState,
   paneInventoryState,
   paneView,
@@ -173,6 +176,17 @@ export const collections = {
     key: z.string().min(1),
     keyOf: (v: z.output<typeof taskChanges>) => v.id,
   },
+  conversation: {
+    value: conversation,
+    key: z.string().min(1),
+    keyOf: (v: z.output<typeof conversation>) => conversationKey(v.target),
+  },
+  conversation_item: {
+    value: conversationItem,
+    key: z.string().min(1),
+    keyOf: (v: z.output<typeof conversationItem>) =>
+      `${v.conversationKey}#${v.id}`,
+  },
 } as const;
 
 export type CollectionName = keyof typeof collections;
@@ -219,6 +233,8 @@ export const snapshotBody = z.strictObject({
   threads: z.array(commentThread),
   reviewStates: z.array(reviewState),
   changes: z.array(taskChanges),
+  conversations: z.array(conversation).default([]),
+  conversationItems: z.array(conversationItem).default([]),
 });
 
 /** Which snapshot collection each patch collection lands in. */
@@ -248,6 +264,8 @@ export const COLLECTION_FIELDS = {
   thread: "threads",
   review_state: "reviewStates",
   changes: "changes",
+  conversation: "conversations",
+  conversation_item: "conversationItems",
 } as const satisfies Record<CollectionName, keyof SnapshotBody>;
 
 export type SnapshotBody = z.output<typeof snapshotBody>;
@@ -278,6 +296,8 @@ export const emptySnapshotBody = (): SnapshotBody => ({
   threads: [],
   reviewStates: [],
   changes: [],
+  conversations: [],
+  conversationItems: [],
 });
 
 export const snapshotMeta = z.strictObject({

@@ -19,6 +19,8 @@ import type {
   Finding,
   InputId,
   IsoTime,
+  PaneHost,
+  PaneRef,
   Repo,
   RepoId,
   Sha,
@@ -44,6 +46,18 @@ import type { WorkflowReader } from "./workflow.js";
 export class PreconditionFailed extends Error {}
 /** Don't retry; the task is flagged failed. */
 export class Fatal extends Error {}
+
+export async function pressPaneChoice(
+  paneHost: PaneHost,
+  pane: PaneRef,
+  choice: number | "enter" | "escape",
+): Promise<void> {
+  if (typeof choice === "number") {
+    await paneHost.pasteText(pane, String(choice));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await paneHost.sendKey(pane, "Enter");
+  } else await paneHost.sendKey(pane, choice === "enter" ? "Enter" : "Escape");
+}
 
 export const classify = (error: unknown): ActionError => {
   if (error instanceof GitHubError)
@@ -676,21 +690,7 @@ export class Executor {
           "Automatic permission occurrence is no longer current",
         );
     }
-    // Handle different choice types
-    if (typeof action.choice === "number") {
-      // Numeric choice: paste digit, wait 300ms, then press Enter
-      const digit = String(action.choice);
-      await adapters.paneHost.pasteText(run.pane, digit);
-      // Wait 300ms before sending Enter
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      await adapters.paneHost.sendKey(run.pane, "Enter");
-    } else if (action.choice === "enter") {
-      // Just press Enter
-      await adapters.paneHost.sendKey(run.pane, "Enter");
-    } else if (action.choice === "escape") {
-      // Press Escape
-      await adapters.paneHost.sendKey(run.pane, "Escape");
-    }
+    await pressPaneChoice(adapters.paneHost, run.pane, action.choice);
 
     return {};
   }

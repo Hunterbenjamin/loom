@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import { textHash } from "@loom/adapter-claude";
 import type {
   McpServerEntry,
   PaneRef,
@@ -27,10 +28,12 @@ import {
   leadState,
   leadTarget,
 } from "@loom/protocol";
+import type { Store } from "@loom/store";
 import { z } from "zod";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
 import { newToken } from "./derive.js";
+import { PreconditionFailed, pressPaneChoice } from "./executor.js";
 import { leadBrief } from "./prompts.js";
 import { runEnvironment } from "./recipes.js";
 
@@ -71,6 +74,7 @@ export class LeadSession {
   constructor(
     private readonly deps: {
       adapters: Adapters;
+      store: Store;
       config: CoordinatorConfig;
       dataDirectory: string;
       repo: Repo;
@@ -127,6 +131,99 @@ export class LeadSession {
   }
   get paneRef() {
     return this.recipe?.pane ?? null;
+  }
+  get cwd(): WorktreePath | null {
+    return (this.recipe?.cwd as WorktreePath | undefined) ?? null;
+  }
+
+  sendMessage(
+    id: string,
+    text: string,
+  ): Promise<{ id: string; state: "sent" | "refused" }> {
+    return this.exclusive(async () => {
+      const existing = this.deps.store.leadMessages.get(this.deps.repo.id, id);
+      if (existing)
+        return {
+          id: existing.id,
+          state: existing.state === "refused" ? "refused" : "sent",
+        };
+      const at = this.deps.now();
+      this.deps.store.leadMessages.create({
+        id,
+        repoId: this.deps.repo.id,
+        text,
+        textHash: textHash(text),
+        state: "queued",
+        reason: null,
+        createdAt: at,
+        sentAt: null,
+        deliveredAt: null,
+      });
+      const refuse = (reason: string) => {
+        this.deps.store.leadMessages.update(
+          this.deps.repo.id,
+          id,
+          "refused",
+          reason,
+          at,
+        );
+        return { id, state: "refused" as const };
+      };
+      if (!this.recipe || this.recipe.stopped || !this.recipe.pane)
+        return refuse("Main is not running");
+      const pane = await this.deps.adapters.paneHost.getPane(this.recipe.pane);
+      if (!pane || pane.dead) return refuse("Main terminal is not live");
+      const session = (await this.deps.adapters.claude.listSessions()).find(
+        (value) =>
+          value.sessionId === this.recipe?.sessionId &&
+          value.cwd === this.recipe.cwd,
+      );
+      if (!session || session.status === "other")
+        return refuse("Main status is unknown");
+      if (session.status === "waiting")
+        return refuse("Main is waiting on a permission; answer it first");
+      const hooks = await this.deps.adapters.claude.hookSummary(
+        this.recipe.sessionId as ProviderSessionId,
+      );
+      if (hooks.pendingDialog)
+        return refuse("Main has a pending prompt; answer it first");
+      await this.deps.adapters.paneHost.pasteText(this.recipe.pane, text);
+      this.deps.store.leadMessages.update(
+        this.deps.repo.id,
+        id,
+        "sent",
+        null,
+        at,
+      );
+      return { id, state: "sent" };
+    });
+  }
+
+  answerPrompt(
+    expected: { requestId?: string; at: string },
+    choice: number | "enter" | "escape",
+  ): Promise<void> {
+    return this.exclusive(async () => {
+      if (!this.recipe?.pane || this.recipe.stopped)
+        throw new PreconditionFailed("Main is not running");
+      const state = await this.state();
+      const hooks = await this.deps.adapters.claude.hookSummary(
+        this.recipe.sessionId as ProviderSessionId,
+      );
+      const dialog = hooks.pendingDialog;
+      if (
+        state.status !== "waiting" ||
+        !dialog ||
+        dialog.at !== expected.at ||
+        dialog.requestId !== expected.requestId
+      )
+        throw new PreconditionFailed("Main prompt is no longer current");
+      await pressPaneChoice(
+        this.deps.adapters.paneHost,
+        this.recipe.pane,
+        choice,
+      );
+    });
   }
 
   async note(): Promise<string> {

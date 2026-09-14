@@ -32,6 +32,26 @@ const item = z.union([
   z.object({ type: z.literal("userMessage"), content: z.array(userContent) }),
   z.object({ type: identifier.refine((type) => type !== "userMessage") }),
 ]);
+export const conversationItem = z.looseObject({
+  id: identifier.optional(),
+  type: identifier,
+  content: z.array(userContent).optional(),
+  text: z.string().optional(),
+  summary: z
+    .array(z.union([z.string(), z.object({ text: z.string() })]))
+    .optional(),
+  command: z.string().optional(),
+  status: z.string().optional(),
+  aggregatedOutput: z.string().optional(),
+  exitCode: z.number().nullable().optional(),
+  changes: z.array(z.unknown()).optional(),
+  server: z.string().optional(),
+  tool: z.string().optional(),
+  arguments: z.unknown().optional(),
+  result: z.unknown().optional(),
+  error: z.unknown().optional(),
+  query: z.string().optional(),
+});
 export const turn = z.object({
   id: identifier,
   status: z.enum(["inProgress", "completed", "interrupted", "failed"]),
@@ -49,6 +69,13 @@ export const threadMetadata = z.object({
 });
 export const threadResult = z.object({
   thread: threadMetadata.extend({ turns: z.array(turn) }),
+});
+export const conversationThreadResult = z.object({
+  thread: threadMetadata.extend({
+    turns: z.array(
+      z.object({ id: identifier, items: z.array(conversationItem) }),
+    ),
+  }),
 });
 export const metadataResult = z.object({ thread: threadMetadata });
 export const turnResult = z.object({
