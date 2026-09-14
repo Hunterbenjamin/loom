@@ -179,7 +179,7 @@ test("scrolling away from the bottom offers an explicit jump", async () => {
   Object.defineProperties(scroller, {
     scrollHeight: { configurable: true, value: 800 },
     clientHeight: { configurable: true, value: 300 },
-    scrollTop: { configurable: true, value: 100 },
+    scrollTop: { configurable: true, writable: true, value: 100 },
   });
   await act(async () => scroller?.dispatchEvent(new Event("scroll")));
   expect(host.querySelector(".chat-jump-latest")?.textContent).toBe(
@@ -189,6 +189,38 @@ test("scrolling away from the bottom offers an explicit jump", async () => {
     host.querySelector<HTMLButtonElement>(".chat-jump-latest")?.click(),
   );
   expect(host.querySelector(".chat-jump-latest")).toBeNull();
+  expect(scroller?.scrollTop).toBe(800);
+});
+
+test("the chat follows output that grows an existing item, and stops following once scrolled away", async () => {
+  const conversation = header();
+  const { host, store } = mount(conversation, [item()]);
+  const scroller = host.querySelector<HTMLDivElement>(".chat-conversation");
+  let scrollHeight = 800;
+  Object.defineProperties(scroller, {
+    scrollHeight: { configurable: true, get: () => scrollHeight },
+    clientHeight: { configurable: true, value: 300 },
+    scrollTop: { configurable: true, writable: true, value: 500 },
+  });
+  const stream = (text: string) =>
+    act(async () =>
+      store.applyProtocol(
+        stateFromSnapshot(meta, {
+          ...snapshot(),
+          conversations: [conversation],
+          conversationItems: [item({ role: "assistant", text })],
+        }),
+      ),
+    );
+  scrollHeight = 1200;
+  await stream("streaming more text");
+  expect(scroller?.scrollTop).toBe(1200);
+
+  if (scroller) scroller.scrollTop = 200;
+  await act(async () => scroller?.dispatchEvent(new Event("scroll")));
+  scrollHeight = 1600;
+  await stream("streaming even more text");
+  expect(scroller?.scrollTop).toBe(200);
 });
 
 test("opening the chat focuses the composer", async () => {

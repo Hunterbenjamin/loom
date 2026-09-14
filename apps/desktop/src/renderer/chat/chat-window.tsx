@@ -109,7 +109,6 @@ export function ChatWindow() {
   const conversation = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  const end = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const key = target ? conversationKey(target) : "";
   const header = state.conversations.find(
@@ -132,21 +131,21 @@ export function ChatWindow() {
         ? `${run.role[0]?.toUpperCase()}${run.role.slice(1)}`
         : "Agent";
   const prefixError = /^[!/]/.test(text.trimStart());
-  const contentVersion = `${items.length}:${header?.sends.length ?? 0}`;
   useLayoutEffect(() => {
     if (composer.current) resizeChatComposer(composer.current);
+    // Pin to the bottom after every render, not only when the item count
+    // changes: the transcript is capped at its last 300 items and streamed
+    // text updates items in place, so the count often stays the same.
+    const element = conversation.current;
+    if (element && following.current) element.scrollTop = element.scrollHeight;
   });
-  useEffect(() => {
-    void contentVersion;
-    if (view !== "minimized" && following.current)
-      end.current?.scrollIntoView({ block: "end" });
-  }, [contentVersion, view]);
   useEffect(() => {
     void key;
     if (view === "minimized") return;
     following.current = true;
     setShowJump(false);
-    end.current?.scrollIntoView({ block: "end" });
+    const element = conversation.current;
+    if (element) element.scrollTop = element.scrollHeight;
     requestAnimationFrame(() => composer.current?.focus());
   }, [key, view]);
   useEffect(() => {
@@ -230,6 +229,8 @@ export function ChatWindow() {
     if (outcome?.ok) {
       setText("");
       setAttachments([]);
+      following.current = true;
+      setShowJump(false);
     }
     setSending(false);
   };
@@ -313,7 +314,8 @@ export function ChatWindow() {
   const jumpToLatest = () => {
     following.current = true;
     setShowJump(false);
-    end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    const element = conversation.current;
+    if (element) element.scrollTop = element.scrollHeight;
   };
   return (
     <section
@@ -522,7 +524,6 @@ export function ChatWindow() {
             )}
           </div>
         )}
-        <div ref={end} />
         {showJump && (
           <button
             type="button"
