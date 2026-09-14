@@ -2,6 +2,7 @@ import type { PaneIdentity, PaneView } from "@loom/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { paneKey } from "../store/pane-transitions.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { devControlActions, useDevControlAvailable } from "./dev-controls.js";
 import { RenameRow } from "./rename-row.js";
 import { RowMenu } from "./row-menu.js";
 import {
@@ -85,6 +86,7 @@ export function Sidebar({
   openPinned: (target: "main") => void;
 }) {
   const store = useStoreApi();
+  const devControlAvailable = useDevControlAvailable();
   const sidebar = useRef<HTMLElement>(null);
   useEffect(() => {
     const animations = new Set<Animation>();
@@ -447,6 +449,10 @@ export function Sidebar({
           {...menu}
           dismiss={dismiss}
           actions={[
+            ...devControlActions(
+              devControlAvailable,
+              menu.kind === "space" ? menuName : undefined,
+            ),
             {
               label: "Open",
               disabled: !liveRows.length,

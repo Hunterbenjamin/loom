@@ -22,6 +22,7 @@ import {
 } from "../shared/ipc.js";
 import { usesWorkbenchKey } from "../shared/keybindings.js";
 import { resolveAttach } from "./attach.js";
+import { devControls } from "./dev-control.js";
 import { watchKeybindings } from "./keybindings.js";
 import { readNativeSettings, writeNativeSettings } from "./native-settings.js";
 import { OwnedResources } from "./ownership.js";
@@ -174,6 +175,15 @@ function flush(window: BrowserWindow, id: string): void {
 }
 
 function wire(): void {
+  const controls = devControls(app.getAppPath(), app.isPackaged, process.env);
+  ipcMain.handle("app:dev-control-available", (event) => {
+    owned(event.sender);
+    return controls.available();
+  });
+  ipcMain.handle("app:dev-control", (event, raw: unknown) => {
+    owned(event.sender);
+    return controls.run(raw);
+  });
   ipcMain.handle("app:keybindings", (event) => {
     owned(event.sender);
     return keybindings.get();

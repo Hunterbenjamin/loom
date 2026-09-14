@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { PtyExit, PtySpawnRequest } from "../shared/ipc.js";
+import type {
+  DevControlCommand,
+  PtyExit,
+  PtySpawnRequest,
+} from "../shared/ipc.js";
 import {
   type KeybindingsState,
   keybindingsState,
@@ -45,6 +49,9 @@ contextBridge.exposeInMainWorld("loomTerminal", {
 });
 
 contextBridge.exposeInMainWorld("loomHost", {
+  devControl: (command: DevControlCommand) =>
+    ipcRenderer.invoke("app:dev-control", command),
+  devControlAvailable: () => ipcRenderer.invoke("app:dev-control-available"),
   chooseRepository: () => ipcRenderer.invoke("app:choose-repository"),
   // IPC callbacks can run under the renderer CSP; validation must not use eval.
   keybindings: async () =>

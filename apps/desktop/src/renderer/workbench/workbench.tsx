@@ -38,6 +38,7 @@ import {
 } from "./selectors.js";
 import "./workbench.css";
 import { ChimeMuteCommand } from "./chime.js";
+import { DevControlCommands } from "./dev-controls.js";
 import { NewTerminalDialog } from "./new-terminal.js";
 import { Sidebar } from "./sidebar.js";
 import { paneViewports, spaceLayout } from "./space-layout.js";
@@ -1034,6 +1035,7 @@ export function Workbench() {
               </button>
               <Command.Input autoFocus placeholder="Type a command…" />
               <Command.List>
+                <DevControlCommands close={() => setPalette(false)} />
                 <ChimeMuteCommand close={() => setPalette(false)} />
                 {actions.map((a) => (
                   <Command.Item

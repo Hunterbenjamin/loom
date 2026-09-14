@@ -91,6 +91,8 @@ for (const live of [false, true])
       off: vi.fn(),
     };
     window.loomHost = {
+      devControl: vi.fn(),
+      devControlAvailable: vi.fn().mockResolvedValue(false),
       chooseRepository: vi.fn(),
       keybindings: vi.fn(),
       onKeybindingsChanged: vi.fn(() => () => {}),
