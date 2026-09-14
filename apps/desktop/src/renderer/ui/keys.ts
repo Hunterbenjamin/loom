@@ -95,14 +95,17 @@ export function useShortcuts(store: Store): void {
         const rows = selectedPullRequests(store.getState());
         if (event.key === "j" || event.key === "k") {
           event.preventDefault();
+          if (rows.length === 0) return;
           store.setPrCursor(
-            Math.max(
-              0,
-              Math.min(
-                rows.length - 1,
-                ui.prCursor + (event.key === "j" ? 1 : -1),
-              ),
-            ),
+            ui.prCursor === null
+              ? 0
+              : Math.max(
+                  0,
+                  Math.min(
+                    rows.length - 1,
+                    ui.prCursor + (event.key === "j" ? 1 : -1),
+                  ),
+                ),
           );
           return;
         }
@@ -113,7 +116,7 @@ export function useShortcuts(store: Store): void {
         }
         if (event.key === "Enter") {
           event.preventDefault();
-          const pr = rows[ui.prCursor];
+          const pr = ui.prCursor === null ? undefined : rows[ui.prCursor];
           if (pr)
             store.openPullRequest({ repoId: pr.repoId, number: pr.number });
           return;
@@ -139,7 +142,7 @@ export function useShortcuts(store: Store): void {
           event.preventDefault();
           return store.moveCursor(-1, rows.length);
         case "Enter": {
-          const attention = inbox?.[ui.cursor];
+          const attention = ui.cursor === null ? undefined : inbox?.[ui.cursor];
           if (attention) {
             const run = attention.runs[0] ?? null;
             store.openAttention(
@@ -150,7 +153,7 @@ export function useShortcuts(store: Store): void {
             );
             return;
           }
-          const row = rows[ui.cursor];
+          const row = ui.cursor === null ? undefined : rows[ui.cursor];
           if (row) store.open(row.task.id);
           return;
         }

@@ -32,7 +32,9 @@ export function Palette() {
     : (openTask ??
       (view === "pull-requests"
         ? null
-        : (visibleRows[cursor]?.task.id ?? null)));
+        : cursor === null
+          ? null
+          : (visibleRows[cursor]?.task.id ?? null)));
   const close = () => store.setPalette(false);
   const run = (action: () => void) => {
     close();
@@ -159,7 +161,8 @@ export function StagePicker() {
   const cursor = useStore((s) => s.ui.cursor);
   const openTask = useStore((s) => s.ui.openTask);
   if (!open) return null;
-  const target = openTask ?? rows[cursor]?.task.id ?? null;
+  const target =
+    openTask ?? (cursor === null ? null : (rows[cursor]?.task.id ?? null));
   const close = () => store.setStagePicker(false);
 
   return (
