@@ -124,7 +124,7 @@ export class ConversationViews {
       })
       .finally(() => {
         this.reads.delete(key);
-        this.loaded.add(key);
+        if (this.active.has(key)) this.loaded.add(key);
         this.deps.log(`Conversation ${key} read in ${Date.now() - started}ms`);
       });
     this.reads.set(key, read);
@@ -311,6 +311,7 @@ export class ConversationViews {
     run?: Run,
   ): void {
     const key = conversationKey(target);
+    if (!this.active.has(key)) return;
     this.latest.set(key, [
       target,
       provider,
