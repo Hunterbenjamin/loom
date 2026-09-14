@@ -129,6 +129,14 @@ export const task = z.strictObject({
   signature: z.string().nullable().optional(),
   id: taskId,
   repoId,
+  number: z.number().int().positive(),
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(32)
+    .regex(/^[^\r\n]*$/, "Name must be one line")
+    .nullable(),
   title: text,
   description: text,
   summary: z

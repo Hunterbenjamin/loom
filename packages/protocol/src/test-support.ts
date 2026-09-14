@@ -91,6 +91,8 @@ export function snapshot(): SnapshotBody {
       {
         id: task,
         repoId: REPO,
+        number: 1,
+        name: "Coordinator UI protocol",
         title: "Write the coordinator to UI protocol",
         description: "Snapshot, patches, subscriptions, commands.",
         summary: "Protocol layer for coordinator to UI communication.",
@@ -128,6 +130,8 @@ export function snapshot(): SnapshotBody {
       {
         id: other,
         repoId: REPO,
+        number: 2,
+        name: null,
         title: "Retire the Herdr adapter",
         description: "",
         summary: null,

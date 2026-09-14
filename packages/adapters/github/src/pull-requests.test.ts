@@ -207,6 +207,19 @@ describe("repository pull request reads", () => {
     },
   );
 
+  it.each(["merged", "closed"] as const)(
+    "reads only the newest page of %s pull requests",
+    async (state) => {
+      const fake = fixture();
+      const key = `graphql:${state.toUpperCase()}:`;
+      fake.set(key, graphqlPage([graphqlNode], true, "next"));
+      fake.set(`${key}next`, graphqlPage([{ ...graphqlNode, number: 1 }]));
+      const rows = await fake.adapter.listPullRequests("vuejs/core", state);
+      expect(rows.map((row) => row.number)).toEqual([detail.number]);
+      expect(fake.run).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("follows cursors newest first and caches unchanged rows without timestamp churn or shared mutations", async () => {
     const fake = fixture();
     const newer = {

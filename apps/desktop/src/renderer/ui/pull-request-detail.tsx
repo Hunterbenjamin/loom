@@ -5,7 +5,7 @@ import {
   mergeDisabledReason,
 } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
-import { terminalsForTask } from "../store/selectors.js";
+import { issueKeyFor, terminalsForTask } from "../store/selectors.js";
 import type { UiState } from "../store/store.js";
 import {
   PULL_REQUEST_ACTION_EVENT,
@@ -24,6 +24,22 @@ type Confirmation =
   | { kind: "merge"; headSha: Detail["headSha"]; base: string }
   | { kind: "close" };
 const TABS = ["Overview", "Diff"] as const;
+
+/** What the human sees while the coordinator carries a command out and confirms it on GitHub. */
+export function busyLabel(kind: PullRequestCommand["kind"]): string {
+  switch (kind) {
+    case "merge_pull_request":
+      return "Merging on GitHub…";
+    case "close_pull_request":
+      return "Closing on GitHub…";
+    case "delete_branch":
+      return "Deleting branch on GitHub…";
+    case "refresh_pull_requests":
+      return "Refreshing from GitHub…";
+    default:
+      return "Working…";
+  }
+}
 
 export function PullRequestDetail({
   selection,
@@ -45,6 +61,7 @@ export function PullRequestDetail({
   const task = useStore((s) =>
     s.snapshot.tasks.find((t) => t.id === (row?.taskId ?? summary?.taskId)),
   );
+  const repos = useStore((s) => s.snapshot.repos);
   const branchTask = useStore((s) => {
     const tasks = s.snapshot.tasks.filter(
       (t) =>
@@ -61,7 +78,7 @@ export function PullRequestDetail({
   const [deleteAfterMerge, setDeleteAfterMerge] = useState(true);
   const [tab, setTab] = useState<(typeof TABS)[number]>("Overview");
   const [confirm, setConfirm] = useState<Confirmation | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const submitting = useRef(false);
   const [outcome, setOutcome] = useState("");
   const pr = row?.detail;
@@ -102,7 +119,7 @@ export function PullRequestDetail({
   async function run(command: PullRequestCommand) {
     if (submitting.current) return false;
     submitting.current = true;
-    setBusy(true);
+    setBusy(busyLabel(command.kind));
     setOutcome("");
     setConfirm(null);
     try {
@@ -130,7 +147,7 @@ export function PullRequestDetail({
       return false;
     } finally {
       submitting.current = false;
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -145,7 +162,7 @@ export function PullRequestDetail({
         <div className="pr-breadcrumb">
           {task ? (
             <button type="button" onClick={() => store.open(task.id)}>
-              {task.id}
+              {issueKeyFor(task, repos)}
             </button>
           ) : (
             <span className="faint">No issue</span>
@@ -162,7 +179,7 @@ export function PullRequestDetail({
           className="pr-icon-button"
           aria-label={row?.pinned ? "Unpin pull request" : "Pin pull request"}
           aria-pressed={row?.pinned ?? false}
-          disabled={busy || connection || !pr}
+          disabled={!!busy || connection || !pr}
           onClick={() =>
             void run({
               kind: "pin_pull_request",
@@ -180,7 +197,7 @@ export function PullRequestDetail({
               type="button"
               data-pr-action="delete"
               aria-keyshortcuts="d"
-              disabled={busy || connection || !!deleteReason}
+              disabled={!!busy || connection || !!deleteReason}
               title={deleteReason ?? undefined}
               onClick={() => void run({ kind: "delete_branch", ...selection })}
             >
@@ -188,7 +205,7 @@ export function PullRequestDetail({
             </button>
             <button
               type="button"
-              disabled={busy || connection || pr?.state !== "open"}
+              disabled={!!busy || connection || pr?.state !== "open"}
               onClick={() => setConfirm({ kind: "close" })}
             >
               Close
@@ -197,7 +214,7 @@ export function PullRequestDetail({
               type="button"
               data-pr-action="refresh"
               aria-keyshortcuts="r"
-              disabled={busy || connection}
+              disabled={!!busy || connection}
               onClick={() =>
                 void run({
                   kind: "refresh_pull_requests",
@@ -264,7 +281,7 @@ export function PullRequestDetail({
               type="button"
               data-pr-action="merge"
               aria-keyshortcuts="m Meta+Enter"
-              disabled={busy || !!reason}
+              disabled={!!busy || !!reason}
               title={reason ?? undefined}
               onClick={() =>
                 pr &&
@@ -322,7 +339,7 @@ export function PullRequestDetail({
           <div className="pr-feedback">
             <span className="faint">{displayedReason}</span>
             <div role="status" className="pr-outcome">
-              {busy ? "Waiting for coordinator…" : outcome}
+              {busy ?? outcome}
             </div>
           </div>
         ) : null}
@@ -333,7 +350,7 @@ export function PullRequestDetail({
           tab === "Overview" ? (
             <PullRequestOverview
               row={row}
-              disabled={busy || connection}
+              disabled={!!busy || connection}
               run={run}
               onFile={(path) => {
                 setFile(path);
@@ -359,7 +376,7 @@ export function PullRequestDetail({
           confirmation={confirm}
           title={header?.title ?? `#${selection.number}`}
           disabled={
-            busy ||
+            !!busy ||
             (confirm.kind === "merge"
               ? !!reason ||
                 confirm.headSha !== pr?.headSha ||

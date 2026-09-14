@@ -8,6 +8,7 @@ import {
   message as messageSchema,
   plan as planSchema,
   run,
+  stage,
   testResult,
 } from "./entities.js";
 import {
@@ -392,7 +393,9 @@ export const paneView = paneIdentity
     unavailable: z.boolean(),
     taskId: taskId.nullable(),
     runId: runId.nullable(),
-    taskLabel: z.string().nullable(),
+    taskName: z.string().nullable(),
+    issueKey: z.string().nullable(),
+    taskStage: stage.nullable(),
     role: z.string().nullable(),
     provider: z.string().nullable(),
     status: z.string().nullable(),

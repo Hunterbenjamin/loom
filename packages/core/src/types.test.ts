@@ -32,6 +32,8 @@ const worktreePath = "/private/var/loom/wt/t1" as WorktreePath;
 const task: Task = {
   id: taskId,
   repoId: "loom" as RepoId,
+  number: 1,
+  name: null,
   title: "Add a thing",
   description: "",
   summary: null,

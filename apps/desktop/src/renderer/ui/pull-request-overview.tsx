@@ -1,8 +1,10 @@
+import { displayName } from "@loom/core";
 import type { PullRequestCommand, PullRequestDetailRow } from "@loom/protocol";
 import { useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useStore, useStoreApi } from "../store/react.js";
+import { issueKeyFor } from "../store/selectors.js";
 import { since } from "./format.js";
 import { PullRequestGlyph as PrGlyph } from "./pull-request-glyph.js";
 
@@ -124,6 +126,7 @@ export function PullRequestOverview({
   const task = useStore((s) =>
     s.snapshot.tasks.find((t) => t.id === row.taskId),
   );
+  const repos = useStore((s) => s.snapshot.repos);
   const [linking, setLinking] = useState(false);
   const [key, setKey] = useState("");
   const [comment, setComment] = useState("");
@@ -256,7 +259,8 @@ export function PullRequestOverview({
               className="pr-property"
               onClick={() => store.open(task.id)}
             >
-              {task.id} <span className="faint">{task.title}</span>
+              {issueKeyFor(task, repos)}{" "}
+              <span className="faint">{displayName(task)}</span>
             </button>
           ) : linking ? (
             <form

@@ -202,4 +202,6 @@ Task-run and stopped Main identities cannot update it. Every Main launch include
 Main task mutations return the same command outcome as the CLI, inside the MCP result's `value`.
 A `human` outcome records an inbox input, not a passed guard; `inspect_task` reads the current
 persisted diagnostics including rejected input receipts. `create_task` accepts the same fields as
-the protocol command (use null for repository defaults and an empty `blockedBy` array).
+the protocol command (use null for repository defaults and an empty `blockedBy` array), including
+an optional one-line `name` of at most 32 characters. Main task references accept `LOOM-12`, `12`,
+or the canonical `t-…` ID and are always resolved within Main's repository.

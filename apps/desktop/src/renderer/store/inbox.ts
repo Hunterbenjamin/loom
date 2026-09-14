@@ -1,4 +1,11 @@
-import type { AttentionReason, IsoTime, Run, Task } from "@loom/core";
+import {
+  type AttentionReason,
+  displayName,
+  type IsoTime,
+  issueKey,
+  type Run,
+  type Task,
+} from "@loom/core";
 import type { TaskInbox } from "@loom/protocol";
 import type { State, TabId } from "./store.js";
 
@@ -63,8 +70,11 @@ export function inboxRows(state: State): InboxRow[] {
   const rows = tasks
     .flatMap((task) => {
       if (task.repoId !== repo) return [];
-      if (needle && !`${task.id} ${task.title}`.toLowerCase().includes(needle))
-        return [];
+      const taskRepo = state.snapshot.repos.find(
+        (item) => item.id === task.repoId,
+      );
+      const search = `${taskRepo ? issueKey(taskRepo, task) : ""} ${task.number} ${displayName(task)} ${task.title} ${task.id}`;
+      if (needle && !search.toLowerCase().includes(needle)) return [];
       const info = metadata.get(task.id);
       return task.attention.reasons.map((reason) => ({
         key: `${task.id}:${reason}`,

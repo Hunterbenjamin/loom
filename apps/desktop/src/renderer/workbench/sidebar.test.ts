@@ -25,7 +25,9 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
     sessionName: "loom-t-1",
     sessionId: "$2",
     windowName: "implementer",
-    taskLabel: "t-1 · Fix delivery race",
+    taskName: "Fix delivery race",
+    issueKey: "LOOM-1",
+    taskStage: "in_progress" as const,
     branch: "fix/delivery-race",
     role: "implementer",
     provider: "codex",
@@ -72,9 +74,9 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
   try {
     await act(async () => render());
     const space = element.querySelector<HTMLElement>(
-      '[aria-label="t-1 · Fix delivery race"]',
+      '[aria-label="Fix delivery race"]',
     );
-    expect(space?.textContent).toContain("implementer");
+    expect(space?.textContent).toContain("Implementer");
     expect(space?.querySelectorAll(".wb-tree-pane")).toHaveLength(0);
     expect(
       [...element.querySelectorAll(".wb-terminal-list .wb-tree-row")].map(
@@ -93,7 +95,7 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
         ?.getAttribute("aria-label"),
     ).toBe("Working");
     expect(space?.querySelector(".wb-space-branch")?.textContent).toBe(
-      "fix/delivery-race",
+      "LOOM-1 · in progress",
     );
     expect(
       element.querySelector('[aria-label="research"] .wb-space-branch')
@@ -118,9 +120,11 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
       ".wb-agent-list button",
     );
     expect(agent?.textContent).toContain(
-      "t-1 · Fix delivery race · implementer",
+      "ImplementerFix delivery race · codex",
     );
-    expect(agent?.querySelector("small")?.textContent).toBe("codex");
+    expect(agent?.querySelector("small")?.textContent).toBe(
+      "Fix delivery race · codex",
+    );
     expect(agent?.getAttribute("aria-current")).toBe("true");
     expect(
       space?.querySelector(".wb-space")?.getAttribute("aria-current"),

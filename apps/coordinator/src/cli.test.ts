@@ -20,8 +20,10 @@ import {
   formatCliError,
   main,
   reportCliError,
+  resolveCliTaskRef,
   taskCreateCommand,
 } from "./cli.js";
+import { configFromEnvironment } from "./config.js";
 
 let root: string;
 let store: Store;
@@ -232,7 +234,17 @@ test("task inspect prints a complete fixture without a coordinator", async () =>
   output = "";
   await main(["issue", "inspect", taskId]);
   expect(output).toBe(legacyOutput);
+  output = "";
+  await main(["issue", "inspect", "1"]);
+  expect(output).toBe(legacyOutput);
   expect(store.loadTaskState(taskId)).toEqual(before);
+});
+
+test("CLI issue references resolve for top-level commands such as attach", () => {
+  const cliConfig = configFromEnvironment();
+  expect(resolveCliTaskRef(cliConfig, "1")).toBe(taskId);
+  expect(resolveCliTaskRef(cliConfig, "FIXTURE-1")).toBe(taskId);
+  expect(resolveCliTaskRef(cliConfig, taskId)).toBe(taskId);
 });
 
 test("task inspect --json includes histories, receipts and pending approvals", async () => {

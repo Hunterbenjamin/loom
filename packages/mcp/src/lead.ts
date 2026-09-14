@@ -5,6 +5,8 @@ import type { Command } from "@loom/protocol";
 import { command, humanCommand, repoId, runId, taskId } from "@loom/protocol";
 import { z } from "zod";
 
+const issueRef = taskId.describe("Issue: LOOM-12, 12, or a t-… internal id");
+
 const humanTypes = {
   push_branch: "push_branch",
   open_pr: "open_pr",
@@ -24,7 +26,9 @@ const humanSchema = (type: string) => {
     (option) => option.shape.type.value === type,
   );
   if (!schema) throw new Error("Unknown human command");
-  return (schema as z.ZodObject).omit({ type: true }).extend({ taskId });
+  return (schema as z.ZodObject)
+    .omit({ type: true })
+    .extend({ taskId: issueRef });
 };
 const create = command.options.find(
   (option) => option.shape.kind.value === "create_task",
@@ -33,10 +37,10 @@ if (!create) throw new Error("Missing create_task command");
 export const mainNoteSchema = z.string().max(2000);
 export const messageAgentSchema = z.strictObject({
   to: z.discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("run"), taskId, runId }),
+    z.strictObject({ kind: z.literal("run"), taskId: issueRef, runId }),
     z.strictObject({
       kind: z.literal("task"),
-      taskId,
+      taskId: issueRef,
       role: z.enum(["planner", "implementer", "reviewer"]),
     }),
   ]),
@@ -51,11 +55,11 @@ export const leadInputSchemas = {
   message_agent: messageAgentSchema,
   set_note: z.strictObject({ note: mainNoteSchema }),
   list_tasks: z.strictObject({}),
-  inspect_task: z.strictObject({ taskId }),
+  inspect_task: z.strictObject({ taskId: issueRef }),
   list_repos: z.strictObject({}),
   create_task: (create as z.ZodObject)
     .omit({ kind: true })
-    .extend({ repoId: repoId.optional() }),
+    .extend({ repoId: repoId.optional(), blockedBy: z.array(issueRef) }),
   ...Object.fromEntries(
     Object.entries(humanTypes).map(([name, type]) => [name, humanSchema(type)]),
   ),

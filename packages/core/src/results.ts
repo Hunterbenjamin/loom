@@ -1,6 +1,7 @@
-import type { Context } from "./context.js";
+import { CLEANUP_KINDS, type Context } from "./context.js";
 import { later } from "./helpers.js";
 import { error } from "./human.js";
+import type { ActionKey } from "./ids.js";
 import type { McpError } from "./mcp.js";
 import type { Input } from "./observations.js";
 
@@ -244,4 +245,48 @@ export function retryActions(c: Context): void {
     }
     row.retryAt = undefined;
   }
+}
+
+/**
+ * The executor runs a row only after every dependency succeeded, so a dependency that never will
+ * (canceled, or failed with nothing left to retry it) must not hold a row back forever. Cleanup
+ * stops waiting: a finished agent's pane closes whether or not the merge queued before it ran
+ * (2026-09-14: four panes of done tasks stayed open behind canceled merges). Other work is
+ * canceled with its dependency; a later pass emits it again under a fresh key if still needed.
+ */
+export function releaseDeadDependencies(c: Context): void {
+  const terminal = c.task.stage === "done" || c.task.stage === "canceled";
+  const byKey = new Map(c.state.outbox.map((row) => [row.key, row]));
+  const canceled = (key: ActionKey) => byKey.get(key)?.status === "canceled";
+  // Retries rewire their dependents; a done or canceled task retries nothing.
+  const dead = (key: ActionKey) => {
+    const row = byKey.get(key);
+    return (
+      !!row &&
+      (row.status === "canceled" ||
+        (row.status === "failed" &&
+          !row.retriedBy &&
+          (!row.retryAt || terminal)))
+    );
+  };
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const row of c.state.outbox) {
+      if (row.status !== "pending" || !row.dependsOn?.length) continue;
+      if (CLEANUP_KINDS.includes(row.kind)) {
+        const live = row.dependsOn.filter((key) => !dead(key));
+        if (live.length !== row.dependsOn.length) row.dependsOn = live;
+      } else if (
+        row.dependsOn.some((key) => canceled(key) || (terminal && dead(key)))
+      ) {
+        row.status = "canceled";
+        row.finishedAt ??= c.now;
+        changed = true;
+      }
+    }
+  }
+  c.result.actions = c.result.actions.filter(
+    (a) => byKey.get(a.key)?.status !== "canceled",
+  );
 }

@@ -92,6 +92,53 @@ describe("task transactions", () => {
     ).toBe("repo-b");
   });
 
+  it("assigns sequential per-repository numbers and persists names across restart", async () => {
+    const store = await open();
+    const otherRepo = {
+      ...repo,
+      id: "other-repo" as typeof repo.id,
+      github: "example/other",
+      root: `${repo.root}-other` as typeof repo.root,
+    };
+    store.putRepo(repo);
+    store.putRepo(otherRepo);
+    const first = store.createTask({
+      ...task("first" as TaskId),
+      name: "First issue",
+    });
+    const other = store.createTask({
+      ...task("other" as TaskId),
+      repoId: otherRepo.id,
+      name: null,
+    });
+    const second = store.createTask({
+      ...task("second" as TaskId),
+      name: null,
+    });
+    expect([first.task.number, other.task.number, second.task.number]).toEqual([
+      1, 1, 2,
+    ]);
+    expect(first.task.name).toBe("First issue");
+    store.close();
+    const restarted = await open();
+    const third = restarted.createTask({
+      ...task("third" as TaskId),
+      name: null,
+    });
+    expect(third.task.number).toBe(3);
+  });
+
+  it("serializes number allocation between two stores on one database", async () => {
+    const first = await open();
+    const second = await open();
+    first.putRepo(repo);
+    const [a, b] = await Promise.all([
+      Promise.resolve().then(() => first.createTask(task("a" as TaskId))),
+      Promise.resolve().then(() => second.createTask(task("b" as TaskId))),
+    ]);
+    expect(new Set([a.task.number, b.task.number])).toEqual(new Set([1, 2]));
+  });
+
   it("round-trips tasks with and without summaries", async () => {
     const store = await open();
     store.putRepo(repo);

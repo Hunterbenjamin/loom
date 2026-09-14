@@ -5,7 +5,15 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
-import type { HumanCommand, RepoId, Sha, TaskId } from "@loom/core";
+import {
+  displayName,
+  type HumanCommand,
+  issueKey,
+  type RepoId,
+  resolveTaskRef,
+  type Sha,
+  type TaskId,
+} from "@loom/core";
 import { type Command, runId, type Subscription } from "@loom/protocol";
 import { openReadOnlyStore, openStore } from "@loom/store";
 import { LoomClient } from "./client.js";
@@ -25,7 +33,7 @@ const USAGE = `loom — Loom's coordinator and its client
   loom serve                            run the coordinator for this instance
   loom status                           what every issue is doing
   loom repo add <root> <owner/name>     register a repository with this instance
-  loom issue create <repo> <title> [description] [--summary <text>] [--small]
+  loom issue create <repo> <title> [description] [--name <text>] [--summary <text>] [--small]
   loom issue list [--view needs_you]
   loom issue show <issue>
   loom issue inspect <issue> [--json]     read persisted diagnostics without a coordinator
@@ -52,6 +60,7 @@ const argumentsOf = (argv: string[]) =>
     allowPositionals: true,
     options: {
       summary: { type: "string" },
+      name: { type: "string" },
       base: { type: "string" },
       view: { type: "string" },
       json: { type: "boolean" },
@@ -61,7 +70,7 @@ const argumentsOf = (argv: string[]) =>
       help: { type: "boolean" },
     },
   });
-const flag = (argv: string[], name: "summary" | "base" | "view") =>
+const flag = (argv: string[], name: "summary" | "name" | "base" | "view") =>
   argumentsOf(argv).values[name] ?? null;
 const has = (
   argv: string[],
@@ -101,6 +110,7 @@ export function taskCreateCommand(
     kind: "create_task",
     repoId: repoId as RepoId,
     title,
+    name: flag(argv, "name"),
     description: description ?? "",
     summary: flag(argv, "summary"),
     providers: null,
@@ -148,6 +158,35 @@ const humanCommand = (
   command: HumanCommand,
 ) => send(config, { kind: "human", taskId, command });
 
+export function resolveCliTaskRef(
+  config: CoordinatorConfig,
+  reference: string,
+): TaskId | null {
+  const store = openReadOnlyStore({
+    dataRoot: config.dataRoot,
+    instance: config.instance,
+    config: reconcileConfig(config),
+  });
+  try {
+    const resolved = resolveTaskRef(reference, {
+      tasks: store.tasks(),
+      repos: store.repos(),
+    });
+    if (!resolved.ok) {
+      process.stderr.write(
+        resolved.code === "unknown"
+          ? `unknown_task: ${reference}\n`
+          : `invalid_input: ${resolved.message}\n`,
+      );
+      process.exitCode = 1;
+      return null;
+    }
+    return resolved.task.id;
+  } finally {
+    store.close();
+  }
+}
+
 async function status(
   config: CoordinatorConfig,
   view: string | null,
@@ -164,12 +203,15 @@ async function status(
       process.stdout.write("No issues.\n");
       return;
     }
-    for (const task of tasks.sort((a, b) => (a.id < b.id ? -1 : 1)))
+    const repos = client.state?.collections.repo;
+    for (const task of tasks.sort((a, b) => (a.id < b.id ? -1 : 1))) {
+      const repo = repos?.get(task.repoId);
       process.stdout.write(
-        `${task.id}  ${task.stage.padEnd(18)} ${
+        `${repo ? issueKey(repo, task) : task.id}  ${task.stage.padEnd(18)} ${
           task.attention.reasons.join(",") || "-"
-        }  ${task.title}\n`,
+        }  ${displayName(task)}\n`,
       );
+    }
   } finally {
     client.close();
   }
@@ -339,14 +381,11 @@ export async function main(argv: string[]): Promise<void> {
   if (group === "serve") return serve(config);
   if (group === "status") return status(config, flag(argv, "view"));
   if (group === "attach") {
-    const [taskId, role] = args;
-    if (!taskId) throw new Error("loom attach needs an issue");
-    return attach(
-      config,
-      taskId as TaskId,
-      role ?? "implementer",
-      has(argv, "exec"),
-    );
+    const [reference, role] = args;
+    if (!reference) throw new Error("loom attach needs an issue");
+    const taskId = resolveCliTaskRef(config, reference);
+    if (!taskId) return;
+    return attach(config, taskId, role ?? "implementer", has(argv, "exec"));
   }
   if (group === "repo") {
     const [action, root, github] = args;
@@ -363,7 +402,12 @@ export async function main(argv: string[]): Promise<void> {
   if (group !== "issue" && group !== "task")
     throw new Error(`Unknown command ${group}\n\n${USAGE}`);
   const [action, ...values] = args;
-  const taskId = values[0] as TaskId;
+  let taskId = values[0] as TaskId;
+  if (taskId && !["create", "list"].includes(action ?? "")) {
+    const resolved = resolveCliTaskRef(config, taskId);
+    if (!resolved) return;
+    taskId = resolved;
+  }
   switch (action) {
     case "create": {
       return send(config, taskCreateCommand(argv));
