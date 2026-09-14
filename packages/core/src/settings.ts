@@ -203,8 +203,9 @@ export const DEFAULT_SETTINGS: SettingsValues = {
     chime: true,
     windowMode: "tracker",
     terminalHistoryLimit: 10_000,
-    keyPrefix: "Ctrl+A",
+    keyPrefix: "Ctrl+Space",
     keyTimeoutMs: 3000,
+    // Mirrors apps/desktop/src/shared/keybindings.ts; a desktop test keeps them equal.
     keybindings: {
       "split-right": ["Cmd+D", "Prefix |"],
       "split-down": ["Cmd+Shift+D", "Prefix -"],
@@ -213,14 +214,23 @@ export const DEFAULT_SETTINGS: SettingsValues = {
       up: ["Cmd+Alt+ArrowUp", "Prefix k"],
       right: ["Cmd+Alt+ArrowRight", "Prefix l"],
       new: ["Cmd+T", "Prefix c"],
+      "new-space": ["Cmd+N", "Prefix Shift+C"],
       next: ["Cmd+Shift+]", "Prefix n"],
       previous: ["Cmd+Shift+[", "Prefix p"],
       close: ["Cmd+W", "Prefix x"],
+      "close-space": ["Cmd+Alt+W", "Prefix Shift+X"],
       zoom: ["Cmd+Shift+Enter", "Prefix z"],
       jump: ["Cmd+P", "Prefix g"],
       help: ["Prefix ?"],
       commands: ["Cmd+K"],
-      literal: ["Prefix Ctrl+A"],
+      literal: ["Prefix Ctrl+Space"],
+      ...Object.fromEntries(
+        Array.from({ length: 9 }, (_, index) => [
+          [`tab-${index + 1}`, [`Cmd+${index + 1}`]],
+          [`agent-${index + 1}`, [`Ctrl+${index + 1}`]],
+          [`space-${index + 1}`, [`Prefix ${index + 1}`]],
+        ]).flat(),
+      ),
     },
   },
 };
@@ -235,14 +245,19 @@ const KEYBINDING_ACTIONS = [
   "up",
   "right",
   "new",
+  "new-space",
   "next",
   "previous",
   "close",
+  "close-space",
   "zoom",
   "jump",
   "help",
   "commands",
   "literal",
+  ...Array.from({ length: 9 }, (_, index) =>
+    ["tab", "agent", "space"].map((kind) => `${kind}-${index + 1}`),
+  ).flat(),
 ] as const;
 const KEY_MODIFIERS = new Set(["Ctrl", "Cmd", "Alt", "Shift"]);
 const NAMED_KEYS = new Set([

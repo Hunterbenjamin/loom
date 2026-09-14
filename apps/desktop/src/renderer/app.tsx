@@ -112,7 +112,7 @@ export function App() {
                 ? "Reviews"
                 : VIEWS.find((item) => item.id === view)?.label}
           </h1>
-          {view === "pull-requests" ? null : (
+          {view === "pull-requests" || view === "settings" ? null : (
             <span className="faint nums">{count}</span>
           )}
           <span className="spacer" />

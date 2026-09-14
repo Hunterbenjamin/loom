@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS } from "@loom/core";
 import { expect, test } from "vitest";
 import {
   actions,
@@ -114,4 +115,17 @@ test("native menu arbitration recognizes every configured chord and preserves un
     expect(usesWorkbenchKey(defaultKeybindings, key(k))).toBe(false);
   expect(matchesChord("Cmd+D", { ...key("d"), ctrlKey: true })).toBe(false);
   expect(matchesChord("Prefix ?", key("?"))).toBe(false);
+});
+
+test("the coordinator's default keybinding settings match the desktop defaults and actions", () => {
+  const { keyPrefix, keyTimeoutMs, keybindings } = DEFAULT_SETTINGS.appearance;
+  expect({
+    version: 1,
+    prefix: keyPrefix,
+    prefixTimeoutMs: keyTimeoutMs,
+    bindings: keybindings,
+  }).toEqual(defaultKeybindings);
+  expect(Object.keys(keybindings).sort()).toEqual(
+    actions.map((action) => action.id).sort(),
+  );
 });

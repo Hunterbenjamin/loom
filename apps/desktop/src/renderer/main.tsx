@@ -26,7 +26,7 @@ import { WindowModeContext } from "./window-mode.js";
 import "./theme.css";
 import { PaneChime } from "./workbench/chime.js";
 
-let importingKeybindings = false;
+let keybindingsImportChecked = false;
 let nativeFingerprint = "";
 async function synchronizeNativeSettings() {
   const document = store
@@ -35,15 +35,17 @@ async function synchronizeNativeSettings() {
   if (!document) return;
   const stored = document.stored.appearance;
   if (
-    !importingKeybindings &&
+    !keybindingsImportChecked &&
     (!stored ||
       stored.keyPrefix === undefined ||
       stored.keyTimeoutMs === undefined ||
       stored.keybindings === undefined)
   ) {
-    importingKeybindings = true;
-    try {
-      const legacy = await window.loomHost.keybindings();
+    // One-time import of a hand-edited keybindings.json into settings. An untouched file
+    // matches the defaults, so there is nothing to import.
+    keybindingsImportChecked = true;
+    const legacy = await window.loomHost.keybindings();
+    if (JSON.stringify(legacy.config) !== JSON.stringify(defaultKeybindings)) {
       await store.command({
         kind: "update_settings",
         scope: { kind: "global" },
@@ -62,10 +64,8 @@ async function synchronizeNativeSettings() {
           },
         },
       });
-    } finally {
-      importingKeybindings = false;
+      return;
     }
-    return;
   }
   const { appearance } = document.effective;
   const native = {
