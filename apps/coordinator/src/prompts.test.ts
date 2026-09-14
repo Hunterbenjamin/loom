@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { leadBrief, mainPanelBrief } from "./prompts.js";
+import { leadBrief, mainPanelBrief, roleBrief } from "./prompts.js";
 
 test("Main introduces itself in two sentences, waits, and has full access", () => {
   const prompt = leadBrief();
@@ -43,4 +43,31 @@ test("Main messages never wait and have no Operator reply plumbing", () => {
   expect(prompt).not.toContain("Operator");
   expect(prompt).not.toContain("read_agent_replies");
   expect(mainPanelBrief()).not.toContain("read_agent_replies");
+});
+
+test("plans are short and record decisions; acceptance criteria are the bar implementers and reviewers hold", () => {
+  const brief = (role: "planner" | "implementer" | "reviewer") =>
+    roleBrief({
+      task: {
+        id: "t-1" as never,
+        title: "Example",
+        description: "",
+        reviewRound: 1,
+        reviewRoundCap: 3,
+      },
+      role,
+      round: 1,
+      branch: "loom/t-1",
+      worktreePath: "/tmp/t-1",
+    });
+  expect(brief("planner")).toContain("about 300 to 600 words");
+  expect(brief("planner")).toContain("no line numbers");
+  expect(brief("planner")).toContain("at most eight acceptance criteria");
+  expect(brief("planner")).toContain("don't add requirements beyond it");
+  expect(brief("implementer")).toContain("acceptance criteria are the bar");
+  expect(brief("reviewer")).toContain("an unmet acceptance criterion");
+  expect(brief("reviewer")).toContain("The rest of the plan is guidance");
+  expect(leadBrief()).toContain(
+    "never add requirements the human did not ask for",
+  );
 });
