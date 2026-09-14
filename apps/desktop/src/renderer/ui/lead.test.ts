@@ -85,6 +85,28 @@ test("Cmd+J opens a floating Main chat without mounting a terminal", async () =>
   ).toBe("false");
 });
 
+test("Open terminal asks the Workbench to select Main", async () => {
+  const { host } = mount();
+  const opened = vi.fn();
+  window.addEventListener("loom:open-chat-terminal", opened, { once: true });
+  await act(async () =>
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "j", metaKey: true }),
+    ),
+  );
+  await act(async () =>
+    [...host.querySelectorAll<HTMLButtonElement>(".chat-menu button")]
+      .find((button) => button.textContent === "Open terminal")
+      ?.click(),
+  );
+  expect(window.loomHost.setMode).toHaveBeenCalledWith("workbench");
+  expect(opened).toHaveBeenCalledWith(
+    expect.objectContaining({
+      detail: expect.objectContaining({ kind: "lead" }),
+    }),
+  );
+});
+
 test("an empty Tracker offers Open repository without opening Main", async () => {
   const store = createStore({ ...buildSnapshot(0), repos: [], tasks: [] });
   const chooseRepository = vi.fn(async () => null);

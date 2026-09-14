@@ -1,5 +1,10 @@
 import type { RepoId } from "@loom/core";
-import type { LeadTarget, PaneIdentity, PaneView } from "@loom/protocol";
+import type {
+  ConversationTarget,
+  LeadTarget,
+  PaneIdentity,
+  PaneView,
+} from "@loom/protocol";
 import { Command } from "cmdk";
 import {
   type GridviewApi,
@@ -604,6 +609,29 @@ export function Workbench() {
   const choose = (pane: PaneView, _inNewTab = false) => {
     if (!pane.dead && !pane.unavailable) openGroup([pane], pane.sessionName);
   };
+  const chooseRef = useRef(choose);
+  chooseRef.current = choose;
+  useEffect(() => {
+    const openChatTerminal = (event: Event) => {
+      const target = (event as CustomEvent<ConversationTarget>).detail;
+      if (target.kind === "lead") {
+        openPinnedRef.current("main");
+        return;
+      }
+      const pane = store
+        .getState()
+        .panes.find(
+          (candidate) =>
+            candidate.runId === target.runId &&
+            !candidate.dead &&
+            !candidate.unavailable,
+        );
+      if (pane) chooseRef.current(pane);
+    };
+    window.addEventListener("loom:open-chat-terminal", openChatTerminal);
+    return () =>
+      window.removeEventListener("loom:open-chat-terminal", openChatTerminal);
+  }, [store]);
   useEffect(() => {
     if (unavailable || connection !== "connected") return;
     if (!initialized.current) {

@@ -45,6 +45,12 @@ export function ChatWindow() {
     return () => window.removeEventListener("loom:open-chat", open);
   }, [store]);
   if (!target || view === "minimized") return null;
+  const openTerminal = () => {
+    void window.loomHost.setMode("workbench");
+    window.dispatchEvent(
+      new CustomEvent("loom:open-chat-terminal", { detail: target }),
+    );
+  };
   const send = async () => {
     const value = text.trim();
     if (!value || prefixError || sending) return;
@@ -107,8 +113,7 @@ export function ChatWindow() {
           runId: run.id,
           choice,
           expectedDialog:
-            prompt.requestId &&
-            prompt.sessionEpoch !== undefined
+            prompt.requestId && prompt.sessionEpoch !== undefined
               ? {
                   requestId: prompt.requestId,
                   at: prompt.at,
@@ -136,17 +141,7 @@ export function ChatWindow() {
             ⋯
           </summary>
           <div>
-            <button
-              type="button"
-              onClick={() =>
-                target.kind === "lead"
-                  ? void window.loomHost.setMode("workbench")
-                  : void store.command({
-                      kind: "open_attach_session",
-                      runId: target.runId,
-                    })
-              }
-            >
+            <button type="button" onClick={openTerminal}>
               Open terminal
             </button>
             {target.kind === "lead" ? (
@@ -266,10 +261,7 @@ export function ChatWindow() {
             </strong>
             {header.pendingPrompt.source === "claude_dialog" &&
             header.pendingPrompt.kind === "input" ? (
-              <button
-                type="button"
-                onClick={() => void window.loomHost.setMode("workbench")}
-              >
+              <button type="button" onClick={openTerminal}>
                 Answer in terminal
               </button>
             ) : (
