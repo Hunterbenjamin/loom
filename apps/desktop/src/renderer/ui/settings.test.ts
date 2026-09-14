@@ -3,7 +3,8 @@ import { DEFAULT_SETTINGS, MODEL_CATALOG, SETTINGS_CATALOG } from "@loom/core";
 import { type AckOutcome, stateFromSnapshot } from "@loom/protocol";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+import { defaultKeybindings } from "../../shared/keybindings.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
 import { StoreProvider } from "../store/react.js";
@@ -14,7 +15,12 @@ import { SettingsView } from "./settings.js";
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-test("settings supports scope-aware editing, save feedback, and redacted audit history", async () => {
+const cleanups: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+});
+
+async function mount() {
   const snapshot = buildSnapshot();
   const repo = snapshot.repos[0];
   if (!repo) throw new Error("Missing repository fixture");
@@ -46,6 +52,7 @@ test("settings supports scope-aware editing, save feedback, and redacted audit h
     {
       ...base,
       id: `repo:${repo.id}`,
+      stored: {},
       scope: { kind: "repository" as const, repoId: repo.id },
       audit: [],
     },
@@ -59,101 +66,161 @@ test("settings supports scope-aware editing, save feedback, and redacted audit h
       result: {
         kind: "settings_updated",
         scope: { kind: "global" },
-        version: 1,
+        version: 2,
       },
     });
   store.setSender(send);
   const host = document.createElement("div");
   const root = createRoot(host);
   document.body.append(host);
-  try {
-    await act(async () =>
-      root.render(
-        createElement(StoreProvider, {
-          store,
-          // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
-          children: createElement(SettingsView),
-        }),
-      ),
-    );
-    const scope = host.querySelector<HTMLSelectElement>(
-      ".settings-intro select",
-    );
-    if (!scope) throw new Error("Missing scope selector");
-    await act(async () => {
-      scope.value = "global";
-      scope.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    expect(host.textContent).toContain("Recent changes");
-    expect(host.textContent).toContain("appearance.theme changed by desktop");
-    const keybindings = host.querySelector<HTMLTextAreaElement>(
-      "#setting-appearance-keybindings",
-    );
-    if (!keybindings) throw new Error("Missing keybindings setting");
-    await act(async () => {
-      keybindings.value = "{";
-      keybindings.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    const terminals = [...host.querySelectorAll("section")].find((section) =>
-      section.textContent?.includes("Terminals & keybindings"),
-    );
-    expect(
-      [...(terminals?.querySelectorAll("button") ?? [])].find(
-        (button) => button.textContent === "Save",
-      )?.disabled,
-    ).toBe(true);
-    const theme = host.querySelector<HTMLSelectElement>(
-      "#setting-appearance-theme",
-    );
-    if (!theme) throw new Error("Missing theme setting");
-    await act(async () => {
-      theme.value = "light";
-      theme.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    const appearance = [...host.querySelectorAll("section")].find((section) =>
-      section.textContent?.includes("Appearance"),
-    );
-    const save = [...(appearance?.querySelectorAll("button") ?? [])].find(
-      (button) => button.textContent === "Save",
-    );
-    await act(async () => save?.click());
-    expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "update_settings",
-        patch: { appearance: { theme: "light" } },
-      }),
-    );
-    expect(host.textContent).toContain("Appearance saved");
-    send.mockResolvedValueOnce({
-      ok: false,
-      error: {
-        code: "conflict",
-        message: "Settings changed in another window",
-        details: [],
-      },
-    });
-    const reset = [...(appearance?.querySelectorAll("button") ?? [])].find(
-      (button) => button.textContent === "Reset defaults",
-    );
-    await act(async () => reset?.click());
-    expect(send).toHaveBeenLastCalledWith({
-      kind: "reset_settings",
-      scope: { kind: "global" },
-      expectedVersion: 1,
-      keys: ["appearance.theme"],
-    });
-    expect(host.textContent).toContain("Settings changed in another window");
-    await act(async () => {
-      scope.value = `repo:${repo.id}`;
-      scope.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    expect(
-      host.querySelector<HTMLInputElement>("#setting-runtime-capTotal")
-        ?.disabled,
-    ).toBe(true);
-    expect(host.textContent).toContain("Instance-wide; edit Global defaults");
-  } finally {
+  cleanups.push(async () => {
     await act(async () => root.unmount());
     host.remove();
-  }
+  });
+  await act(async () =>
+    root.render(
+      createElement(StoreProvider, {
+        store,
+        // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
+        children: createElement(SettingsView),
+      }),
+    ),
+  );
+  const button = (text: string, within: ParentNode = host) => {
+    const found = [...within.querySelectorAll("button")].find(
+      (item) =>
+        item.textContent === text || item.getAttribute("aria-label") === text,
+    );
+    if (!found) throw new Error(`Missing button ${text}`);
+    return found;
+  };
+  const section = async (name: string) =>
+    act(async () => button(name, host.querySelector("nav") ?? host).click());
+  const group = (title: string) => {
+    const found = host.querySelector(`section[aria-label="${title}"]`);
+    if (!found) throw new Error(`Missing group ${title}`);
+    return found;
+  };
+  const settle = () => act(async () => new Promise((r) => setTimeout(r, 0)));
+  return { host, send, repo, button, section, group, settle };
+}
+
+const press = (init: KeyboardEventInit) =>
+  act(async () => {
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, ...init }),
+    );
+  });
+
+test("changes save as soon as they are made, reset per setting, and show errors in place", async () => {
+  const { host, send, button, group, settle } = await mount();
+  await act(async () => button("Light", group("Appearance")).click());
+  await settle();
+  expect(send).toHaveBeenCalledWith({
+    kind: "update_settings",
+    scope: { kind: "global" },
+    expectedVersion: 1,
+    patch: { appearance: { theme: "light" } },
+  });
+
+  send.mockResolvedValueOnce({
+    ok: false,
+    error: {
+      code: "conflict",
+      message: "Settings changed in another window",
+      details: [],
+    },
+  });
+  await act(async () => button("Reset", group("Appearance")).click());
+  await settle();
+  expect(send).toHaveBeenLastCalledWith({
+    kind: "reset_settings",
+    scope: { kind: "global" },
+    // The earlier save acknowledged version 2.
+    expectedVersion: 2,
+    keys: ["appearance.theme"],
+  });
+  expect(host.textContent).toContain("Settings changed in another window");
+});
+
+test("repository scope writes overrides, and global-only settings stay read-only there", async () => {
+  const { host, send, repo, button, section, group, settle } = await mount();
+  await section("Workflow");
+  await act(async () => button(repo.github).click());
+  const approval = host.querySelector<HTMLInputElement>(
+    "#setting-workflow-requirePlanApproval",
+  );
+  if (!approval) throw new Error("Missing plan approval switch");
+  await act(async () => approval.click());
+  await settle();
+  expect(send).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      kind: "update_settings",
+      scope: { kind: "repository", repoId: repo.id },
+      patch: { workflow: { requirePlanApproval: true } },
+    }),
+  );
+  await section("Agents");
+  expect(
+    host.querySelector<HTMLSelectElement>("#setting-main-model")?.disabled,
+  ).toBe(true);
+  expect(group("Main").textContent).toContain("Set for all repositories");
+});
+
+test("a shortcut is recorded from a key press, including prefix sequences, and conflicts are named", async () => {
+  const { host, send, button, section, group, settle } = await mount();
+  await section("Keyboard");
+  const panels = group("Panels");
+
+  await act(async () => button("Add shortcut for Split right", panels).click());
+  expect(host.textContent).toContain("Press keys");
+  await press({ key: "e", code: "KeyE", metaKey: true });
+  await settle();
+  expect(send).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      kind: "update_settings",
+      patch: {
+        appearance: {
+          keybindings: expect.objectContaining({
+            "split-right": ["Cmd+D", "Prefix |", "Cmd+E"],
+          }),
+        },
+      },
+    }),
+  );
+
+  send.mockClear();
+  await act(async () => button("Add shortcut for Split right", panels).click());
+  await press({ key: "t", code: "KeyT", metaKey: true });
+  expect(send).not.toHaveBeenCalled();
+  expect(panels.textContent).toContain("Already used by New tab.");
+
+  await act(async () => button("Add shortcut for Zoom panel", panels).click());
+  await press({ key: " ", code: "Space", ctrlKey: true });
+  expect(host.textContent).toContain("then…");
+  await press({ key: "q", code: "KeyQ" });
+  await settle();
+  expect(send).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      patch: {
+        appearance: {
+          keybindings: expect.objectContaining({
+            zoom: [...defaultKeybindings.bindings.zoom, "Prefix Q"],
+          }),
+        },
+      },
+    }),
+  );
+
+  await act(async () => button("Remove Cmd+W", panels).click());
+  await settle();
+  expect(send).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      patch: {
+        appearance: {
+          keybindings: expect.objectContaining({ close: ["Prefix x"] }),
+        },
+      },
+    }),
+  );
 });
