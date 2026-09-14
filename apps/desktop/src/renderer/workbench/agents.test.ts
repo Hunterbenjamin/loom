@@ -41,6 +41,10 @@ test("only lists running agent terminals and keeps the exact pane as the click t
   const rows = terminalAgents([pane], [agent], []);
   expect(rows).toHaveLength(1);
   expect(rows[0]?.pane).toBe(pane);
+  expect(
+    terminalAgents([{ ...pane, paneTitle: "Friendly agent" }], [agent], [])[0]
+      ?.name,
+  ).toBe("Friendly agent");
   expect(terminalAgents([], [agent], [])).toEqual([]);
   expect(
     terminalAgents([pane], [{ ...agent, pane: null, mode: "headless" }], []),

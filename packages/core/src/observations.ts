@@ -218,13 +218,15 @@ export interface ClaudeSessionObservation {
  * and provider identity is never inferred from a pane (spike 06 §4).
  */
 export interface PaneObservation {
-  /** Original workspace key retained by the host when its session is renamed. */
+  /** Original workspace key retained by sessions renamed before titles existed. */
   workspaceId?: string;
   sessionId?: string | null;
   windowName?: string | null;
   windowIndex?: number;
   windowLayout?: string;
-  title?: string | null;
+  spaceTitle?: string | null;
+  tabTitle?: string | null;
+  paneTitle?: string | null;
   ref: PaneRef;
   /** The pane's current working directory; null once the pane is dead. */
   cwd: WorktreePath | null;

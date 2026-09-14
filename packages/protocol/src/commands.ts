@@ -73,32 +73,33 @@ export const protocolError = z.strictObject({
   details: z.array(z.string()),
 });
 
-export const tabName = z
+export const displayTitle = z
   .string()
   .trim()
-  .min(1, "Enter a name")
   .max(80, "Use at most 80 characters")
-  .regex(/^[^\p{Cc}]+$/u, "Names cannot contain control characters");
-export const spaceName = tabName.regex(
-  /^[^.:]+$/,
-  "Space names cannot contain . or :",
-);
-export const renameSpace = z.strictObject({
-  kind: z.literal("rename_space"),
+  .regex(/^[^\p{Cc}]*$/u, "Titles cannot contain control characters");
+export const setTitle = z.strictObject({
+  kind: z.literal("set_title"),
   hostGeneration: z.string().min(1),
-  sessionId: z.string().regex(/^\$\d+$/),
-  name: spaceName,
-});
-export const renameTab = z.strictObject({
-  kind: z.literal("rename_tab"),
-  hostGeneration: z.string().min(1),
-  windowId: z.string().regex(/^@\d+$/),
-  name: tabName,
+  target: z.discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("space"),
+      sessionId: z.string().regex(/^\$\d+$/),
+    }),
+    z.strictObject({
+      kind: z.literal("tab"),
+      windowId: z.string().regex(/^@\d+$/),
+    }),
+    z.strictObject({
+      kind: z.literal("pane"),
+      paneId: z.string().regex(/^%\d+$/),
+    }),
+  ]),
+  title: displayTitle,
 });
 
 export const command = z.union([
-  renameSpace,
-  renameTab,
+  setTitle,
 
   z.strictObject({
     kind: z.literal("update_settings"),
@@ -261,7 +262,7 @@ export const ackResult = z.union([
     kind: z.literal("pull_request_file"),
     contents: pullRequestFileContents,
   }),
-  z.strictObject({ kind: z.literal("renamed") }),
+  z.strictObject({ kind: z.literal("titled") }),
   z.strictObject({
     kind: z.literal("pull_request_action"),
     command: z.enum([

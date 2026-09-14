@@ -15,7 +15,9 @@ const observation: PaneObservation = {
   },
   sessionId: "$1",
   windowName: "shell",
-  title: "native title",
+  spaceTitle: "space title",
+  tabTitle: "tab title",
+  paneTitle: "pane title",
   cwd: null,
   startCwd: "/tmp" as never,
   pid: 42,
@@ -57,7 +59,13 @@ test("joins only unique recorded generation-aware run references, retaining nati
       paneKey(observation.ref),
       true,
     )[0],
-  ).toMatchObject({ taskId: null, attention: true, title: "native title" });
+  ).toMatchObject({
+    taskId: null,
+    attention: true,
+    spaceTitle: "space title",
+    tabTitle: "tab title",
+    paneTitle: "pane title",
+  });
 });
 test("coalesces scans, counts each session once, emits semantic deltas, retains on failure and disposes pending work", async () => {
   const host = new FakePaneHost();

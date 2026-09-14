@@ -79,26 +79,46 @@ test("validates identities, native fields and scratch acknowledgements", () => {
   ).toBe(true);
 });
 
-test("rename commands use native IDs and validate session names at the boundary", () => {
-  const space = {
-    kind: "rename_space",
+test("set_title uses native IDs and validates display titles at the boundary", () => {
+  const base = {
+    kind: "set_title",
     hostGeneration: pane.hostGeneration,
-    sessionId: "$1",
-    name: "My space",
+    title: "My title",
   };
-  const tab = {
-    kind: "rename_tab",
-    hostGeneration: pane.hostGeneration,
-    windowId: "@1",
-    name: "Tab: v2.0",
-  };
-  expect(command.parse(space)).toEqual(space);
-  expect(command.parse(tab)).toEqual(tab);
-  for (const name of ["bad.name", "bad:name", "", "  ", "bad\nname"])
-    expect(command.safeParse({ ...space, name }).success).toBe(false);
-  for (const name of ["", " ", "bad\nname"])
-    expect(command.safeParse({ ...tab, name }).success).toBe(false);
-  expect(command.safeParse({ ...space, sessionId: "*" }).success).toBe(false);
-  expect(command.safeParse({ ...tab, windowId: "*" }).success).toBe(false);
-  expect(ackResult.parse({ kind: "renamed" })).toEqual({ kind: "renamed" });
+  for (const target of [
+    { kind: "space", sessionId: "$1" },
+    { kind: "tab", windowId: "@1" },
+    { kind: "pane", paneId: "%1" },
+  ])
+    expect(command.safeParse({ ...base, target }).success).toBe(true);
+  expect(
+    command.parse({
+      ...base,
+      target: { kind: "pane", paneId: "%1" },
+      title: "  ",
+    }),
+  ).toMatchObject({ title: "" });
+  for (const title of ["x".repeat(81), "bad\nname"])
+    expect(
+      command.safeParse({
+        ...base,
+        target: { kind: "space", sessionId: "$1" },
+        title,
+      }).success,
+    ).toBe(false);
+  for (const target of [
+    { kind: "space", sessionId: "*" },
+    { kind: "tab", windowId: "*" },
+    { kind: "pane", paneId: "*" },
+    { kind: "pane", paneId: "%1", extra: true },
+  ])
+    expect(command.safeParse({ ...base, target }).success).toBe(false);
+  expect(
+    command.safeParse({
+      ...base,
+      target: { kind: "pane", paneId: "%1" },
+      extra: true,
+    }).success,
+  ).toBe(false);
+  expect(ackResult.parse({ kind: "titled" })).toEqual({ kind: "titled" });
 });

@@ -78,7 +78,7 @@ export function terminalAgents(
         run.pane.paneId !== pane.paneId
       )
         return [];
-      const name = runLabel(run);
+      const name = pane.paneTitle ?? runLabel(run);
       const subtext = `${pane.taskName ?? pane.issueKey ?? "Issue"} · ${run.provider}`;
       if (
         !`${name} ${subtext} ${pane.issueKey ?? ""} ${pane.taskId ?? ""}`

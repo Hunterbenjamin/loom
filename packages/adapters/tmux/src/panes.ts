@@ -3,7 +3,13 @@
 
 import type { PaneObservation, PaneRef, WorktreePath } from "@loom/core";
 import { z } from "zod";
-import { RUN_OPTION, VIEW_OPTION } from "./config.js";
+import {
+  PANE_TITLE_OPTION,
+  RUN_OPTION,
+  SPACE_TITLE_OPTION,
+  TAB_TITLE_OPTION,
+  VIEW_OPTION,
+} from "./config.js";
 
 const SEP = "\u001f";
 
@@ -21,10 +27,12 @@ const FIELDS = [
   `#{${VIEW_OPTION}}`,
   "#{session_id}",
   "#{window_name}",
-  "#{pane_title}",
   "#{@loom_workspace_id}",
   "#{window_index}",
   "#{window_layout}",
+  `#{${SPACE_TITLE_OPTION}}`,
+  `#{${TAB_TITLE_OPTION}}`,
+  `#{${PANE_TITLE_OPTION}}`,
 ] as const;
 
 export const PANE_FORMAT = FIELDS.join(SEP);
@@ -46,10 +54,12 @@ const row = z
     z.string(),
     z.string().regex(/^\$\d+$/),
     z.string(),
-    z.string(),
     z.string().optional(),
     z.coerce.number().int().nonnegative().optional(),
     z.string().max(65536).optional(),
+    z.string().optional(),
+    z.string().optional(),
+    z.string().optional(),
   ])
   .transform(
     ([
@@ -66,10 +76,12 @@ const row = z
       view,
       sessionId,
       windowName,
-      title,
       workspaceId,
       windowIndex,
       windowLayout,
+      spaceTitle,
+      tabTitle,
+      paneTitle,
     ]) => ({
       paneId,
       sessionName,
@@ -79,7 +91,9 @@ const row = z
       dead,
       sessionId,
       windowName,
-      title,
+      spaceTitle: spaceTitle || null,
+      tabTitle: tabTitle || null,
+      paneTitle: paneTitle || null,
       workspaceId: workspaceId || undefined,
       windowIndex,
       windowLayout,
@@ -130,7 +144,9 @@ export function toObservation(
     owner: row.runId ?? null,
     sessionId: row.sessionId,
     windowName: row.windowName,
-    title: row.title,
+    spaceTitle: row.spaceTitle,
+    tabTitle: row.tabTitle,
+    paneTitle: row.paneTitle,
     ...(row.windowIndex !== undefined ? { windowIndex: row.windowIndex } : {}),
     ...(row.windowLayout ? { windowLayout: row.windowLayout } : {}),
     ...(row.workspaceId ? { workspaceId: row.workspaceId } : {}),

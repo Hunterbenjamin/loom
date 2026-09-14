@@ -1388,28 +1388,22 @@ export class Coordinator {
             result: { kind: "settings_updated", scope, version },
           };
         }
-        case "rename_space":
-        case "rename_tab": {
+        case "set_title": {
           if (
             !String(command.hostGeneration).startsWith(
               `loom-${this.config.instance}#`,
             )
           )
             throw new Error("Terminal belongs to another instance");
-          if (command.kind === "rename_space")
-            await this.adapters.paneHost.renameSession({
-              hostGeneration: String(command.hostGeneration),
-              sessionId: String(command.sessionId),
-              name: String(command.name),
-            });
-          else
-            await this.adapters.paneHost.renameWindow({
-              hostGeneration: String(command.hostGeneration),
-              windowId: String(command.windowId),
-              name: String(command.name),
-            });
+          await this.adapters.paneHost.setTitle({
+            hostGeneration: String(command.hostGeneration),
+            target: command.target as Parameters<
+              Adapters["paneHost"]["setTitle"]
+            >[0]["target"],
+            title: String(command.title),
+          });
           await this.inventory.refresh();
-          return { ok: true, result: { kind: "renamed" } };
+          return { ok: true, result: { kind: "titled" } };
         }
         case "open_task_terminal": {
           const taskId = command.taskId as TaskId;
