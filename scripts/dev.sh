@@ -36,6 +36,16 @@ started_dir="$root/$instance/started"
 for dir in "${PNPM_HOME:-$HOME/Library/pnpm}" /opt/homebrew/bin /usr/local/bin; do
   case ":$PATH:" in *":$dir:"*) ;; *) [ -d "$dir" ] && PATH="$dir:$PATH" ;; esac
 done
+# The providers usually come from .zshrc (claude in ~/.local/bin, codex under nvm), which such a
+# launcher never reads, so append whatever the human's own interactive shell adds. The marker keeps
+# anything an rc file prints out of PATH. Without this the coordinator could not start any agent.
+shell_path="$("${SHELL:-/bin/zsh}" -ilc 'printf "\n__loom_path__%s\n" "$PATH"' 2>/dev/null </dev/null |
+  sed -n 's/^__loom_path__//p' | tail -1 || true)"
+IFS=: read -ra shell_dirs <<<"$shell_path"
+# The ${a[@]+...} form keeps bash 3.2 (macOS /bin/bash) from failing on an empty array under set -u.
+for dir in "$HOME/.local/bin" ${shell_dirs[@]+"${shell_dirs[@]}"}; do
+  case ":$PATH:" in *":$dir:"*) ;; *) [ -n "$dir" ] && [ -d "$dir" ] && PATH="$PATH:$dir" ;; esac
+done
 export PATH
 tmux_bin="${LOOM_TMUX_BIN:-$(command -v tmux || true)}"
 
@@ -43,6 +53,10 @@ die() { printf 'dev.sh: %s\n' "$*" >&2; exit 1; }
 [ -x "$tmux_bin" ] || die "tmux is required"
 command -v pnpm >/dev/null || die "pnpm is not on PATH (looked in \$PNPM_HOME, ~/Library/pnpm, /opt/homebrew/bin)"
 [ -f "$env_file" ] || die "no environment file at $env_file (export LOOM_INSTANCE, LOOM_DATA_ROOT, LOOM_TOKEN there)"
+for provider in claude codex; do
+  command -v "$provider" >/dev/null ||
+    printf 'dev.sh: warning: %s is not on PATH; the coordinator cannot start %s runs\n' "$provider" "$provider" >&2
+done
 tm() { "$tmux_bin" -L "$socket" "$@"; }
 
 # What each process is built from. Anything the coordinator or Electron's main process loads;
