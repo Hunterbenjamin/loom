@@ -212,3 +212,18 @@ test("j/k and Enter use only expanded, loaded rows in displayed order", () => {
   key("Enter");
   expect(h.store.getState().ui.openTask).toBeNull();
 });
+
+test("uses shared list primitives and the compact sort control", () => {
+  const h = setup();
+  expect(h.host.querySelector(".list-group")).not.toBeNull();
+  expect(h.host.querySelector(".list-row")).not.toBeNull();
+  const sort = h.host.querySelector<HTMLSelectElement>(
+    '[aria-label="Sort issues"]',
+  );
+  if (!sort) throw new Error("missing sort control");
+  act(() => {
+    sort.value = "title";
+    sort.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(h.store.getState().ui.sort).toBe("title");
+});

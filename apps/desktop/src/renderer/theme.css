@@ -280,6 +280,7 @@ kbd {
 /* Issue rows follow the reviews list: padded, rounded, no hairlines. */
 .issues-list {
   padding: 0 12px 12px;
+  container-type: inline-size;
 }
 
 .row {
@@ -1085,23 +1086,6 @@ ul.plain {
 .inbox-row.selected {
   background: var(--bg-active);
 }
-.inbox-actions {
-  margin: 6px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.inbox-actions textarea {
-  min-height: 55px;
-  max-height: 140px;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--line);
-  font: inherit;
-  width: 100%;
-  resize: vertical;
-}
-
 /* Reserve a layout row in both window modes; only the optional Lead panel overlays content. */
 .bottom-bar {
   position: relative;
@@ -1882,6 +1866,7 @@ ul.plain {
   align-items: center;
   gap: 8px;
 }
+.list-toolbar,
 .reviews-toolbar {
   display: flex;
   align-items: center;
@@ -1889,36 +1874,43 @@ ul.plain {
   padding: 8px 12px;
   gap: 12px;
 }
+.list-segments,
 .reviews-tabs {
   display: flex;
   gap: 6px;
 }
+.list-segments > button,
 .reviews-tabs button {
   border: 1px solid var(--line);
   border-radius: 20px;
   padding: 6px 12px;
   color: var(--text-dim);
 }
+.list-segments > button[aria-pressed="true"],
 .reviews-tabs button[aria-pressed="true"] {
   background: var(--bg-hover);
   color: var(--text);
 }
+.list-search,
 .reviews-search {
   display: flex;
   align-items: center;
 }
+.list-search input,
 .reviews-search input {
   width: 0;
   padding: 0;
   opacity: 0;
   border: 0;
 }
-.reviews-search:focus-within input,
+.list-search:focus-within input,
+.list-search[data-active="true"] input,
 .reviews-search[data-active="true"] input {
   width: 200px;
   padding: 5px 8px;
   opacity: 1;
 }
+.list-search button,
 .reviews-search button {
   display: flex;
   padding: 5px;
@@ -1927,6 +1919,7 @@ ul.plain {
 .reviews-list {
   padding: 0 12px 12px;
 }
+.list-group,
 .reviews-group {
   display: flex;
   align-items: center;
@@ -1940,6 +1933,7 @@ ul.plain {
   color: var(--text-dim);
   text-align: left;
 }
+.list-row,
 .review-row {
   display: flex;
   align-items: center;
@@ -1948,10 +1942,13 @@ ul.plain {
   padding: 0 10px;
   border-radius: 5px;
 }
+.list-row:hover,
+.list-row[data-cursor="true"],
 .review-row:hover,
 .review-row[data-cursor="true"] {
   background: var(--bg-hover);
 }
+.list-row-open,
 .review-row-open {
   display: flex;
   align-items: center;
@@ -1962,10 +1959,13 @@ ul.plain {
   padding: 0;
   text-align: left;
 }
+.list-row .pr-task-link,
 .review-row .pr-task-link {
   opacity: 0;
   pointer-events: none;
 }
+.list-row:hover .pr-task-link,
+.list-row:focus-within .pr-task-link,
 .review-row:hover .pr-task-link,
 .review-row:focus-within .pr-task-link {
   opacity: 1;
@@ -1990,6 +1990,7 @@ ul.plain {
   color: var(--text);
   font-size: 22px;
 }
+.list-row-age,
 .review-age {
   width: 38px;
   text-align: right;
@@ -2187,4 +2188,190 @@ ul.plain {
 .chat-error {
   padding: 0 14px 10px;
   font-size: 12px;
+}
+
+.list-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.list-sort {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.list-sort select {
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 4px 9px;
+}
+.inbox-glyph {
+  width: 16px;
+  text-align: center;
+}
+.inbox-glyph.attention {
+  color: var(--warn);
+}
+.inbox-glyph.danger {
+  color: var(--danger);
+}
+
+@container (max-width: 850px) {
+  .issues-list .list-provider,
+  .issues-list .list-round {
+    display: none;
+  }
+}
+@container (max-width: 620px) {
+  .issues-list .list-stage,
+  .issues-list .task-summary {
+    display: none;
+  }
+}
+
+.detail.pr-detail {
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+}
+.issue-meta-line {
+  display: flex;
+  gap: 12px;
+  padding: 4px 20px 7px;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+  overflow: hidden;
+}
+.issue-decision-panel {
+  display: grid;
+  gap: 8px;
+  padding: 8px 20px;
+  border-block: 1px solid var(--line);
+  background: var(--bg-raised);
+  max-height: 38vh;
+  overflow: auto;
+}
+.issue-decision-panel.compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding-block: 3px;
+}
+.issue-collapse {
+  justify-self: end;
+  color: var(--text-dim);
+}
+.issue-decision {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.4fr);
+  gap: 8px 18px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.issue-decision[data-highlighted="true"] {
+  border-color: var(--accent);
+}
+.issue-decision-copy {
+  display: grid;
+  gap: 3px;
+}
+.issue-decision textarea,
+.issue-decision select {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px 8px;
+}
+.issue-decision-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.issue-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.detail .issue-action-group button {
+  padding: 5px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+}
+.disabled-reason {
+  max-width: 220px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.issue-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.issue-toolbar-action {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.detail .issue-toolbar-action > button {
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: #6264cd;
+  color: white;
+  white-space: nowrap;
+}
+.issue-toolbar-action .pr-outcome {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.issue-overview .task-description {
+  line-height: 1.6;
+}
+
+@media (max-width: 760px) {
+  .issue-decision {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .issue-decision-actions {
+    grid-column: 1;
+  }
+  .pr-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .pr-segments {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .pr-segments button {
+    padding: 4px 9px;
+  }
+  .issue-toolbar-action {
+    width: 100%;
+  }
+  .issue-toolbar-action .disabled-reason {
+    max-width: none;
+  }
+  .pr-breadcrumb .chip,
+  .detail.pr-detail > .pr-page-head > .pr-github-chip {
+    display: none;
+  }
+  .issue-meta-line {
+    white-space: nowrap;
+  }
+  .list-row-meta > span:not(.pr-task-link):nth-last-child(n + 2) {
+    display: none;
+  }
 }

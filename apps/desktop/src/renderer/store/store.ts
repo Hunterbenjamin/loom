@@ -53,7 +53,13 @@ export type ViewId =
   | "pull-requests"
   | "settings";
 export type Pane = "list" | "board";
-export type TabId = "activity" | "plan" | "agents" | "terminal" | "review";
+export type TabId =
+  | "overview"
+  | "activity"
+  | "plan"
+  | "agents"
+  | "terminal"
+  | "review";
 export type SortKey =
   | "stage"
   | "title"
@@ -192,7 +198,7 @@ const initialUi: UiState = {
   repo: "",
   cursor: 0,
   openTask: null,
-  tab: "activity",
+  tab: "overview",
   sort: "stage",
   descending: false,
   query: "",
@@ -703,7 +709,7 @@ export function createStore(
         openPr: null,
         openRun: null,
         openReason: null,
-        tab: task ? state.ui.tab : "activity",
+        tab: "overview",
       });
     },
     setTab(tab: TabId) {

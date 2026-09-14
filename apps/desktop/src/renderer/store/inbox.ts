@@ -31,18 +31,42 @@ export interface InboxRow {
   since: IsoTime | null;
   runs: Run[];
   reviewedHead: TaskInbox["reviewedHead"];
+  planVersion: TaskInbox["planVersion"];
   forHuman: TaskInbox["forHuman"];
+  section: InboxSection;
 }
+export type InboxSection = "for-you" | "decisions" | "questions" | "problems";
+export const INBOX_SECTIONS: { id: InboxSection; label: string }[] = [
+  { id: "for-you", label: "For you" },
+  { id: "decisions", label: "Decisions" },
+  { id: "questions", label: "Questions & prompts" },
+  { id: "problems", label: "Problems" },
+];
+const sectionFor = (
+  reason: AttentionReason,
+  forHuman: TaskInbox["forHuman"],
+): InboxSection =>
+  forHuman
+    ? "for-you"
+    : ["plan_needs_approval", "needs_approval"].includes(reason)
+      ? "decisions"
+      : ["question", "provider_permission", "provider_input"].includes(reason)
+        ? "questions"
+        : "problems";
 export function reasonTab(reason: AttentionReason, run: Run | null): TabId {
-  if (reason === "plan_needs_approval") return "plan";
-  if (reason === "needs_approval") return "review";
+  if (
+    reason === "plan_needs_approval" ||
+    reason === "needs_approval" ||
+    reason === "question"
+  )
+    return "overview";
   if (
     ["provider_permission", "provider_input", "question"].includes(reason) &&
     run?.mode === "interactive"
   )
     return "terminal";
   if (reason === "observability_failure") return "activity";
-  return "activity";
+  return "overview";
 }
 let cache:
   | {
@@ -83,12 +107,15 @@ export function inboxRows(state: State): InboxRow[] {
         since: task.attention.reasonSince[reason] ?? task.attention.since,
         runs: info?.reasonRuns[reason] ?? [],
         reviewedHead: info?.reviewedHead ?? null,
+        planVersion: info?.planVersion ?? null,
         forHuman: info?.forHuman ?? null,
+        section: sectionFor(reason, info?.forHuman ?? null),
       }));
     })
     .sort(
       (a, b) =>
-        Number(!!b.forHuman) - Number(!!a.forHuman) ||
+        INBOX_SECTIONS.findIndex((section) => section.id === a.section) -
+          INBOX_SECTIONS.findIndex((section) => section.id === b.section) ||
         (a.since ?? "9999").localeCompare(b.since ?? "9999") ||
         a.key.localeCompare(b.key),
     );
