@@ -22,7 +22,7 @@ function setup(reason?: AttentionReason) {
 
 describe("issueDecisions", () => {
   test.each([
-    ["plan_needs_approval", ["Approve plan", "Reject plan"]],
+    ["plan_needs_approval", ["Approve plan", "Change plan"]],
     ["needs_approval", ["Approve merge", "Request changes"]],
     ["question", ["Answer question"]],
     ["failed", ["Retry", "Open terminal"]],
@@ -80,7 +80,35 @@ describe("issueDecisions", () => {
     h.store.openAttention(h.task.id, "plan_needs_approval", "plan", null);
     const after = issueDecisions(h.store.getState(), h.task);
     expect(before.decisions[0]?.planVersion).toBe(12);
+    expect(before.decisions[0]?.planGoal).toBe("Goal");
+    expect(before.decisions[0]?.actions[1]?.command?.("Revise it")).toEqual({
+      type: "reject_plan",
+      feedback: "Revise it",
+    });
     expect(after).toBe(before);
+  });
+
+  test("guards plan changes with coordinator and current plan state", () => {
+    const wrongStage = setup("plan_needs_approval");
+    expect(
+      issueDecisions(wrongStage.store.getState(), wrongStage.task).decisions[0]
+        ?.actions[1]?.disabledReason,
+    ).toBe("Plan changes are only available in Plan approval");
+
+    const disconnected = setup("plan_needs_approval");
+    disconnected.task.stage = "plan_approval";
+    disconnected.store.setConnection("disconnected");
+    expect(
+      issueDecisions(disconnected.store.getState(), disconnected.task)
+        .decisions[0]?.actions[1]?.disabledReason,
+    ).toContain("Connect to the coordinator");
+
+    const missingVersion = setup("plan_needs_approval");
+    missingVersion.task.stage = "plan_approval";
+    expect(
+      issueDecisions(missingVersion.store.getState(), missingVersion.task)
+        .decisions[0]?.actions[1]?.disabledReason,
+    ).toBe("The latest plan version is unavailable");
   });
 
   test("derives provider requests and pane prompts from runs with pinned commands", () => {

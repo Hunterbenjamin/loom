@@ -47,30 +47,38 @@ export function useHumanCommand(taskId: TaskId) {
     try {
       const result = await store.command({ kind: "human", taskId, command });
       if (!result.ok) {
-        setOutcome({
+        const next: HumanCommandOutcome = {
           kind: "refused",
           message: [
             `${result.error.code}: ${result.error.message}`,
             ...result.error.details,
           ].join("\n"),
-        });
+        };
+        setOutcome(next);
+        return next;
       } else if (result.result.kind === "human") {
         input.current = result.result.inputId;
-        setOutcome({
+        const next: HumanCommandOutcome = {
           kind: "queued",
           message: "Queued. Waiting for the coordinator to apply it…",
-        });
+        };
+        setOutcome(next);
+        return next;
       } else {
-        setOutcome({
+        const next: HumanCommandOutcome = {
           kind: "applied",
           message: "Coordinator acknowledged the action.",
-        });
+        };
+        setOutcome(next);
+        return next;
       }
     } catch (error) {
-      setOutcome({
+      const next: HumanCommandOutcome = {
         kind: "refused",
         message: error instanceof Error ? error.message : "The action failed",
-      });
+      };
+      setOutcome(next);
+      return next;
     } finally {
       submitting.current = false;
     }

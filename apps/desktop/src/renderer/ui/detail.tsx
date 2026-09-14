@@ -4,6 +4,7 @@ import {
   type Run,
   type Sha,
   type Task,
+  type TaskId,
 } from "@loom/core";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { issueDecisions } from "../store/issue-actions.js";
@@ -58,6 +59,15 @@ export function Detail({ task }: { task: Task }) {
   ];
   const { send, outcome, submitting } = useHumanCommand(task.id);
   const [confirmHead, setConfirmHead] = useState<Sha | null>(null);
+  const [changePlan, setChangePlan] = useState<{ planVersion: number } | null>(
+    null,
+  );
+  const [planDrafts, setPlanDrafts] = useState<Record<TaskId, string>>({});
+  const planDecision = useStore((state) =>
+    issueDecisions(state, task).decisions.find(
+      (decision) => decision.kind === "plan_needs_approval",
+    ),
+  );
   const reviewedHead = useStore(
     (state) =>
       issueDecisions(state, task).decisions.find(
@@ -132,6 +142,10 @@ export function Detail({ task }: { task: Task }) {
         <ToolbarAction
           task={task}
           onCommand={requestCommand}
+          onChangePlan={() => {
+            if (planDecision?.planVersion != null)
+              setChangePlan({ planVersion: planDecision.planVersion });
+          }}
           outcome={outcome}
           submitting={submitting}
         />
@@ -166,6 +180,29 @@ export function Detail({ task }: { task: Task }) {
           }}
         />
       ) : null}
+      {changePlan ? (
+        <ChangePlanDialog
+          task={task}
+          capturedPlanVersion={changePlan.planVersion}
+          currentPlanVersion={planDecision?.planVersion ?? null}
+          planGoal={planDecision?.planGoal ?? null}
+          action={planDecision?.actions.find(
+            (action) => action.id === "change-plan",
+          )}
+          draft={planDrafts[task.id] ?? ""}
+          submitting={submitting}
+          onDraftChange={(draft) =>
+            setPlanDrafts((drafts) => ({ ...drafts, [task.id]: draft }))
+          }
+          onCancel={() => setChangePlan(null)}
+          onSend={async (command) => {
+            setChangePlan(null);
+            const result = await send(command);
+            if (result?.kind === "queued" || result?.kind === "applied")
+              setPlanDrafts((drafts) => ({ ...drafts, [task.id]: "" }));
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -173,44 +210,165 @@ export function Detail({ task }: { task: Task }) {
 function ToolbarAction({
   task,
   onCommand,
+  onChangePlan,
   outcome,
   submitting,
 }: {
   task: Task;
   onCommand: (command: HumanCommand) => void;
+  onChangePlan: () => void;
   outcome: HumanCommandOutcome;
   submitting: boolean;
 }) {
-  const action = useStore(
-    (state) =>
-      issueDecisions(state, task).decisions.find(
-        (decision) => decision.actions.length > 0,
-      )?.actions[0],
-  );
+  const decision = useStore((state) => {
+    const decisions = issueDecisions(state, task).decisions;
+    return (
+      decisions.find((item) => item.kind === "plan_needs_approval") ??
+      decisions.find((item) => item.actions.length > 0)
+    );
+  });
   const store = useStoreApi();
-  if (!action) return null;
+  if (!decision) return null;
+  const actions =
+    decision.kind === "plan_needs_approval"
+      ? decision.actions
+      : decision.actions.slice(0, 1);
+  const disabledReasons = [
+    ...new Set(
+      actions.flatMap((action) =>
+        action.disabledReason ? [action.disabledReason] : [],
+      ),
+    ),
+  ];
   return (
     <div className="issue-toolbar-action">
-      <button
-        type="button"
-        disabled={submitting || !!action.disabledReason}
-        title={action.disabledReason ?? undefined}
-        onClick={() => {
-          if (action.command) onCommand(action.command());
-          else if (action.intent === "terminal") store.setTab("terminal");
-        }}
-      >
-        {action.label}
-      </button>
-      {action.disabledReason ? (
-        <span className="disabled-reason">{action.disabledReason}</span>
-      ) : null}
+      {actions.map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          disabled={submitting || !!action.disabledReason}
+          title={action.disabledReason ?? undefined}
+          onClick={() => {
+            if (action.id === "change-plan") onChangePlan();
+            else if (action.command) onCommand(action.command());
+            else if (action.intent === "terminal") store.setTab("terminal");
+          }}
+        >
+          {action.label}
+        </button>
+      ))}
+      {disabledReasons.map((reason) => (
+        <span className="disabled-reason" key={reason}>
+          {reason}
+        </span>
+      ))}
       {outcome.message ? (
         <span className="pr-outcome" role="status">
           {outcome.message}
         </span>
       ) : null}
     </div>
+  );
+}
+
+function ChangePlanDialog({
+  task,
+  capturedPlanVersion,
+  currentPlanVersion,
+  planGoal,
+  action,
+  draft,
+  submitting,
+  onDraftChange,
+  onCancel,
+  onSend,
+}: {
+  task: Task;
+  capturedPlanVersion: number;
+  currentPlanVersion: number | null;
+  planGoal: string | null;
+  action?: {
+    disabledReason: string | null;
+    command?: (text?: string) => HumanCommand;
+  };
+  draft: string;
+  submitting: boolean;
+  onDraftChange: (draft: string) => void;
+  onCancel: () => void;
+  onSend: (command: HumanCommand) => Promise<void>;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    const element = dialog.current;
+    element?.showModal();
+    return () => {
+      element?.close();
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus();
+    };
+  }, []);
+  const changedReason =
+    currentPlanVersion !== capturedPlanVersion
+      ? currentPlanVersion == null
+        ? "The latest plan version is unavailable. Review it before sending changes."
+        : `The plan changed to version ${currentPlanVersion}. Review it before sending changes.`
+      : null;
+  const disabledReason =
+    changedReason ??
+    action?.disabledReason ??
+    (!draft.trim() ? "Describe the changes you want" : null);
+  const goal = planGoal?.trim() || "Plan goal unavailable";
+  const goalSummary =
+    goal.length > 200 ? `${goal.slice(0, 199).trimEnd()}…` : goal;
+  return (
+    <dialog
+      ref={dialog}
+      className="create-issue-dialog pr-confirm"
+      aria-labelledby="issue-change-plan-title"
+      onKeyDown={(event) => event.stopPropagation()}
+      onCancel={(event) => {
+        event.preventDefault();
+        onCancel();
+      }}
+    >
+      <h2 id="issue-change-plan-title">Change plan</h2>
+      <p>{displayName(task)}</p>
+      <p>Plan version {capturedPlanVersion}</p>
+      <p>{goalSummary}</p>
+      <label>
+        Requested changes
+        <textarea
+          aria-label="Requested changes"
+          required
+          value={draft}
+          onChange={(event) => onDraftChange(event.target.value)}
+        />
+      </label>
+      {disabledReason ? (
+        <p
+          className="disabled-reason"
+          role={changedReason ? "alert" : undefined}
+        >
+          {disabledReason}
+        </p>
+      ) : null}
+      <div className="pr-actions">
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={submitting || !!disabledReason || !action?.command}
+          onClick={() => {
+            const command = action?.command?.(draft.trim());
+            if (command) void onSend(command);
+          }}
+        >
+          Send to planner
+        </button>
+      </div>
+    </dialog>
   );
 }
 
