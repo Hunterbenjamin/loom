@@ -43,8 +43,10 @@ test("design example: one fix round crosses real MCP/core and real Git to awaiti
     result.transitions.filter((t) => t.from !== t.to).map((t) => t.to),
   ).toEqual([
     "in_progress",
+    "ci",
     "in_review",
     "in_progress",
+    "ci",
     "in_review",
     "awaiting_approval",
   ]);

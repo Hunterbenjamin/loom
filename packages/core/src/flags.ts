@@ -17,6 +17,7 @@ export const budgetStage = (stage: string): boolean =>
     "planning",
     "plan_approval",
     "in_progress",
+    "ci",
     "in_review",
     "awaiting_approval",
   ].includes(stage);
@@ -106,8 +107,6 @@ export interface AttentionInput {
   /** The idle window once Loom has sent the run a fix round: it already knows what to do. */
   fixRoundStallAfterMs: number;
   unknownGraceMs: number;
-  /** The implementer submitted and Loom waits on CI: its idle run owes nothing yet. */
-  waitingForCi?: boolean;
 }
 
 /** A reason that will start to hold later: re-derive at `at`. */
@@ -180,7 +179,6 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
           run.role,
           input.blocked !== null,
           input.failed !== null,
-          input.waitingForCi,
         ) &&
         !input.messages.some(
           (m) =>
@@ -261,7 +259,6 @@ export function attention(c: Context): void {
     stallAfterMs: state.config.stallAfterMs,
     fixRoundStallAfterMs: state.config.fixRoundStallAfterMs,
     unknownGraceMs: state.config.unknownGraceMs,
-    waitingForCi: !!state.ciGate,
   });
   for (const { at, why } of schedules)
     c.emit(`schedule:${task.id}:${why}:${at}`, { kind: "schedule", at, why });

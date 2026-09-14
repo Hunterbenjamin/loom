@@ -110,6 +110,16 @@ for (const stage of ["planning", "in_progress", "in_review"] as const)
     });
   });
 
+test("restart_run is refused while CI owns the stage", () => {
+  const f = setup("ci");
+  const result = fixed(f.state, f.observations);
+  expect(result.inputs[0]).toMatchObject({
+    accepted: false,
+    error: { code: "wrong_stage" },
+  });
+  expect(result.next.desiredRun).toBeNull();
+});
+
 test("replacement survives capacity waits with captured settings and is idempotent", () => {
   const f = setup();
   const r = fixed(f.state, f.observations);

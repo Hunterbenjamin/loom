@@ -1,4 +1,5 @@
 import type { Run, Task } from "@loom/core";
+import type { TaskInbox } from "@loom/protocol";
 import { memo } from "react";
 import { agentState } from "../workbench/agents.js";
 import type { Indicator } from "../workbench/selectors.js";
@@ -36,6 +37,71 @@ export const RunDot = memo(function RunDot({ run }: { run: Run | null }) {
     </span>
   );
 });
+
+export function CiDot({ ci }: { ci: TaskInbox["ci"] | null }) {
+  if (!ci || ci.conclusion === null || ci.conclusion === "pending")
+    return (
+      <Status
+        state={
+          {
+            tone: "working",
+            icon: "◌",
+            label: "CI running",
+            priority: 3,
+          } as Indicator
+        }
+      />
+    );
+  if (ci.conclusion === "failure")
+    return (
+      <Status
+        state={
+          {
+            tone: "failed",
+            icon: "!",
+            label: "CI failed",
+            priority: 1,
+          } as Indicator
+        }
+      />
+    );
+  return (
+    <Status
+      state={
+        {
+          tone: "finished",
+          icon: "●",
+          label: "CI passed",
+          priority: 4,
+        } as Indicator
+      }
+    />
+  );
+}
+
+export function CiChip({
+  ci,
+  elapsed,
+}: {
+  ci: TaskInbox["ci"] | null;
+  elapsed: string;
+}) {
+  const check = ci?.checks.find(
+    (item) => item.status !== "completed" || item.conclusion !== "success",
+  );
+  const state = check
+    ? check.status === "in_progress"
+      ? "running"
+      : check.status === "queued"
+        ? "queued"
+        : (check.conclusion ?? "completed")
+    : "waiting for checks";
+  return (
+    <span className="chip" title="CI status">
+      {check ? `${check.name} · ${state}` : state} · {elapsed}
+    </span>
+  );
+}
 
 export const ProviderLabel = memo(function ProviderLabel({
   run,

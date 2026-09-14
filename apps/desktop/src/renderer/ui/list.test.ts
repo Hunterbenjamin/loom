@@ -48,6 +48,18 @@ function setup() {
       stage: "in_progress" as const,
       summary: "Keep this summary",
     },
+    {
+      ...source,
+      id: taskId("ci-active"),
+      stage: "ci" as const,
+      summary: "Checks are running",
+    },
+    {
+      ...source,
+      id: taskId("review-active"),
+      stage: "in_review" as const,
+      summary: "Reviewing",
+    },
     ...(["done", "canceled"] as const).flatMap((stage) =>
       Array.from({ length: 46 }, (_, i) => ({
         ...source,
@@ -71,6 +83,28 @@ function setup() {
       },
     ],
   });
+  store.getState().inbox = [
+    {
+      taskId: taskId("ci-active"),
+      reasonRuns: {},
+      reviewedHead: null,
+      planVersion: 1,
+      ci: {
+        headSha: "a".repeat(40) as never,
+        since: minutesBefore(8),
+        conclusion: "pending",
+        checks: [
+          {
+            name: "lint-typecheck-test",
+            status: "in_progress",
+            conclusion: null,
+            url: "https://example.test/check",
+          },
+        ],
+        observedAt: minutesBefore(1),
+      },
+    },
+  ];
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -146,6 +180,17 @@ test("collapses to the total header, expands again, and retains window-only sett
   expect(h.rows("done")).toHaveLength(10);
 });
 
+test("renders CI between In progress and In review with live check progress", () => {
+  const h = setup();
+  const text = h.host.textContent ?? "";
+  expect(text.indexOf("In progress ·")).toBeLessThan(text.indexOf("CI ·"));
+  expect(text.indexOf("CI ·")).toBeLessThan(text.indexOf("In review ·"));
+  const row = h.host.querySelector('[data-task="ci-active"]');
+  expect(row?.querySelector('[aria-label="CI running"]')).not.toBeNull();
+  expect(row?.textContent).toContain("lint-typecheck-test · running");
+  expect(row?.textContent).toContain("8m");
+});
+
 test.each(["Enter", " "])(
   "header %s activation leaves the native button action available without opening a task",
   (pressed) => {
@@ -212,6 +257,8 @@ test("j/k and Enter use only expanded, loaded rows in displayed order", () => {
   key("Escape");
   act(() => h.button("Canceled · 46").click());
   act(() => h.button("In progress · 1").click());
+  act(() => h.button("CI · 1").click());
+  act(() => h.button("In review · 1").click());
   key("j");
   key("Enter");
   expect(h.store.getState().ui.openTask).toBeNull();

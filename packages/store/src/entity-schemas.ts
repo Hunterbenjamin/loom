@@ -506,7 +506,28 @@ export const contextSchema = contract<TaskContext>()(
         reviewerCommits: z.array(sha).optional(),
       })
       .nullable(),
-    ciGate: z.object({ headSha: sha, since: time }).nullable().optional(),
+    ciGate: z
+      .object({
+        headSha: sha,
+        since: time,
+        ci: z
+          .object({
+            conclusion: z.enum(["success", "pending", "failure", "none"]),
+            checks: z.array(
+              z.object({
+                name: text,
+                status: z.enum(["queued", "in_progress", "completed"]),
+                conclusion: text.nullable(),
+                url: text.nullable(),
+              }),
+            ),
+            observedAt: time,
+          })
+          .nullable()
+          .optional(),
+      })
+      .nullable()
+      .optional(),
     desiredRun: z
       .object({
         role,

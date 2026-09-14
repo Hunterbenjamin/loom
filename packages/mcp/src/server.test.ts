@@ -143,7 +143,7 @@ test("submit_for_review returns the round it opens once CI passes", async () => 
     }),
   ).toEqual({ ok: true, value: { round: 1 } });
   // CI runs on the pushed head before the review round opens.
-  expect(host.state.task.stage).toBe("in_progress");
+  expect(host.state.task.stage).toBe("ci");
   expect(host.state.ciGate?.headSha).toBe(head);
 });
 test("submit_review without findings advances to human approval", async () => {

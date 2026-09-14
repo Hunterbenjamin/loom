@@ -30,13 +30,11 @@ export const roleOwesWork = (
   role: Role,
   blocked: boolean,
   failed: boolean,
-  /** The implementer submitted and Loom waits on CI (ci-gate.ts): it owes nothing yet. */
-  waitingForCi = false,
 ): boolean =>
   !blocked &&
   !failed &&
   ((stage === "planning" && role === "planner") ||
-    (stage === "in_progress" && role === "implementer" && !waitingForCi) ||
+    (stage === "in_progress" && role === "implementer") ||
     (stage === "in_review" && role === "reviewer"));
 export const clone = <T>(value: T): T => {
   if (Array.isArray(value)) return value.map((item) => clone(item)) as T;

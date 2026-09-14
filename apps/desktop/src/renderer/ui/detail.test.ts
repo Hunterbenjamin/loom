@@ -23,7 +23,7 @@ afterEach(() =>
 );
 
 function setup(
-  kind: "plan" | "merge" | "question" | "failed" | "provider" = "plan",
+  kind: "plan" | "merge" | "question" | "failed" | "provider" | "ci" = "plan",
 ) {
   const snapshot = buildSnapshot(8);
   const task = snapshot.tasks[0];
@@ -33,7 +33,9 @@ function setup(
       ? "plan_approval"
       : kind === "merge"
         ? "awaiting_approval"
-        : "in_progress";
+        : kind === "ci"
+          ? "ci"
+          : "in_progress";
   const reason = {
     plan: "plan_needs_approval",
     merge: "needs_approval",
@@ -41,11 +43,14 @@ function setup(
     failed: "failed",
     provider: "provider_permission",
   } as const;
-  task.attention = {
-    reasons: [reason[kind]],
-    reasonSince: { [reason[kind]]: snapshot.now },
-    since: snapshot.now,
-  };
+  task.attention =
+    kind === "ci"
+      ? { reasons: [], reasonSince: {}, since: null }
+      : {
+          reasons: [reason[kind]],
+          reasonSince: { [reason[kind]]: snapshot.now },
+          since: snapshot.now,
+        };
   if (kind === "question") {
     const run = snapshot.runs[0];
     if (!run) throw new Error("missing question run");
@@ -97,6 +102,23 @@ function setup(
       reasonRuns: {},
       reviewedHead: kind === "merge" ? ("b".repeat(40) as never) : null,
       planVersion: kind === "plan" ? 9 : null,
+      ci:
+        kind === "ci"
+          ? {
+              headSha: "a".repeat(40) as never,
+              since: snapshot.now,
+              conclusion: "pending",
+              checks: [
+                {
+                  name: "lint-typecheck-test",
+                  status: "in_progress",
+                  conclusion: null,
+                  url: "https://github.com/example/repo/actions/runs/1",
+                },
+              ],
+              observedAt: snapshot.now,
+            }
+          : null,
     },
   ];
   store.setConnection("connected");
@@ -119,6 +141,17 @@ function setup(
     );
   return { store, task, host, render, snapshot };
 }
+
+test("CI detail shows the submitted head and linked check status", () => {
+  const h = setup("ci");
+  h.render();
+  const ci = h.host.querySelector('[data-testid="ci-status"]');
+  expect(ci?.textContent).toContain("Commit aaaaaaa");
+  expect(ci?.textContent).toContain("lint-typecheck-test");
+  expect(ci?.querySelector("a")?.getAttribute("href")).toBe(
+    "https://github.com/example/repo/actions/runs/1",
+  );
+});
 
 test("plan approval opened from the Issues list shows only the header actions", () => {
   const h = setup("plan");

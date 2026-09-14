@@ -335,6 +335,7 @@ export function issueDecisions(state: State, task: Task): IssueActionState {
                 "planning",
                 "plan_approval",
                 "in_progress",
+                "ci",
                 "in_review",
                 "awaiting_approval",
               ].includes(task.stage)

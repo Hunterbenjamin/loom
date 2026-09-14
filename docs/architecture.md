@@ -19,8 +19,8 @@ shows up in Loom.
 
 ```
 Backlog →(human) Todo →(auto) Planning →[valid plan] (optional plan approval) → In progress
-→[submit_for_review + commits, pushed, CI green on that commit] In review
-                              (CI red: failures go back to the same implementer, still In progress)
+→[submit_for_review + commits, pushed] CI →[green, or no checks after grace] In review
+                                           └→[red or new commits] In progress
 In review →[reviewer escalation, round < 3] In progress (implementer fixes; CI again before the next round)
           →[no blockers, reviewed head published] Awaiting approval
 →[human approves head SHA, CI green] Merging →[PR merged on GitHub] Done
@@ -440,14 +440,17 @@ that crosses providers goes only through artifacts.
 
 ## Review and approval
 
-- **CI gate before review.** `submit_for_review` validates the clean committed head, pushes it and
-  records `ciGate` (the head and when it was submitted); the task stays `in_progress`. Each pass reads
+- **CI gate before review.** `submit_for_review` validates the clean committed head, pushes it,
+  records `ciGate` (the head and when it was submitted), and moves the task to `ci`. Each pass reads
   CI for exactly that commit (`GitHubAdapter.readCommitCi`, check runs and statuses by SHA, so no PR
   is needed; the workflow runs on every branch push). Green starts a review round. Red records one
-  blocking `ci` finding per failed check, with its URL, and sends a fix round to the same implementer
-  session. A repository that reports no check within `CI_START_GRACE_MS` of the push succeeding
-  counts as having no CI. New commits after submitting withdraw the gate. While the gate waits, the
-  idle implementer owes nothing, so it raises no idle-without-submission attention. A later green CI
+  blocking `ci` finding per failed check, with its URL, moves back to `in_progress`, and sends a fix
+  round to the same implementer session. A repository that reports no check within
+  `CI_START_GRACE_MS` of the push succeeding counts as having no CI. New commits after submitting
+  withdraw the gate and move back to `in_progress`. While the task is in `ci`, the idle implementer
+  owes nothing, so it raises no idle-without-submission attention. The gate caches the latest
+  matching CI reading for the published inbox projection (head, start time, conclusion, checks and
+  run URLs); GitHub remains its owner. A later green CI
   resolves earlier CI findings (`resolution.by: "ci"`), so the reviewer owes them no verdict. The
   implementer runs lint, typecheck and changed-package tests before submitting; CI is the full check.
 - **The reviewer is a checker.** It reads the diff against the issue, the accepted plan and

@@ -110,7 +110,7 @@ describe("reconciliation ordering and recovery regressions", () => {
       false,
     );
     expect(submitted.next.outbox.some((a) => a.kind === "open_pr")).toBe(false);
-    expect(submitted.next.task.stage).toBe("in_progress");
+    expect(submitted.next.task.stage).toBe("ci");
     const green = {
       ...f.observations,
       inputs: [],

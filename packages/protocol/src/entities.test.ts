@@ -38,6 +38,7 @@ import {
   question,
   repo,
   run,
+  stage,
   task,
   type testResult,
   transition,
@@ -51,6 +52,7 @@ import {
   reviewRange,
   reviewState,
   runTarget,
+  taskInbox,
 } from "./views.js";
 
 test("every mirror equals the core type it mirrors", () => {
@@ -126,6 +128,32 @@ describe("round trips", () => {
 });
 
 describe("validation at the boundary", () => {
+  it("accepts the CI stage and its inbox projection", () => {
+    expect(stage.parse("ci")).toBe("ci");
+    expect(
+      taskInbox.parse({
+        taskId: "task-1",
+        reasonRuns: {},
+        reviewedHead: null,
+        planVersion: 1,
+        ci: {
+          headSha: "a".repeat(40),
+          since: "2026-09-12T06:00:00.000Z",
+          conclusion: "pending",
+          checks: [
+            {
+              name: "test",
+              status: "in_progress",
+              conclusion: null,
+              url: "https://example.test/run",
+            },
+          ],
+          observedAt: "2026-09-12T06:01:00.000Z",
+        },
+      }).ci?.checks[0]?.name,
+    ).toBe("test");
+  });
+
   it("rejects an attention set whose reasons and reasonSince disagree", () => {
     expect(
       attention.safeParse({

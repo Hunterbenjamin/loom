@@ -49,6 +49,7 @@ export type Stage =
   | "planning"
   | "plan_approval"
   | "in_progress"
+  | "ci"
   | "in_review"
   | "awaiting_approval"
   | "merging"
