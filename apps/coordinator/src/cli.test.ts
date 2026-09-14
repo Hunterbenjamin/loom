@@ -232,6 +232,9 @@ test("task inspect prints a complete fixture without a coordinator", async () =>
   output = "";
   await main(["issue", "inspect", taskId]);
   expect(output).toBe(legacyOutput);
+  output = "";
+  await main(["issue", "inspect", "1"]);
+  expect(output).toBe(legacyOutput);
   expect(store.loadTaskState(taskId)).toEqual(before);
 });
 

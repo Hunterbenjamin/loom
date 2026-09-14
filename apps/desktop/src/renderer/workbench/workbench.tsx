@@ -1,4 +1,5 @@
 import type { RepoId } from "@loom/core";
+import { runLabel } from "@loom/core";
 import type { LeadTarget, PaneIdentity, PaneView } from "@loom/protocol";
 import { Command } from "cmdk";
 import {
@@ -106,11 +107,14 @@ const PanelLabel = ({
         p.paneId === target.paneId,
     ),
   );
+  const run = useStore((s) =>
+    s.snapshot.runs.find((run) => run.id === pane?.runId),
+  );
   return (
     <span>
       {target
         ? pane
-          ? `${pane.role ?? pane.windowName ?? pane.title ?? pane.command} · ${pane.paneId}${pane.dead ? " · exited" : pane.unavailable ? " · unavailable" : ""}`
+          ? `${run ? runLabel(run) : (pane.windowName ?? pane.title ?? pane.command)} · ${pane.paneId}${pane.dead ? " · exited" : pane.unavailable ? " · unavailable" : ""}`
           : "Pane unavailable"
         : (name ?? "Terminal")}
     </span>

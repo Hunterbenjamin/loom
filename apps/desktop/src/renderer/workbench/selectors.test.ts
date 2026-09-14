@@ -29,12 +29,14 @@ test("groups by generation, session and window identity with deterministic nativ
     id: "three",
     windowId: "@2",
     windowName: "same",
-    taskLabel: "t-1 · Build",
+    taskName: "Build",
+    issueKey: "LOOM-1",
+    taskStage: "in_progress" as const,
     role: "implementer",
     provider: "claude",
     attention: true,
   };
-  const two = { ...three, paneId: "%2", id: "two", taskLabel: null };
+  const two = { ...three, paneId: "%2", id: "two", taskName: null };
   const other = { ...pane, sessionName: "aaa", sessionId: "$99", id: "other" };
   const generation = {
     ...pane,
@@ -47,7 +49,8 @@ test("groups by generation, session and window identity with deterministic nativ
     "research",
     "research",
   ]);
-  expect(tree[1]?.label).toBe("t-1 · Build");
+  expect(tree[1]?.label).toBe("Build");
+  expect(tree[1]?.subtext).toBe("LOOM-1 · in progress");
   expect(
     tree[1]?.tabs.map((tab) => tab.panes.map(({ pane }) => pane.paneId)),
   ).toEqual([["%2", "%3"], ["%10"]]);
@@ -109,7 +112,9 @@ test("fuzzy filter retains ancestors, matches task and native names, and keeps f
   const agent = {
     ...pane,
     paneId: "%3",
-    taskLabel: "t-1 · Build",
+    taskName: "Build",
+    issueKey: "LOOM-1",
+    taskStage: "in_progress" as const,
     role: "implementer",
     provider: "claude",
     status: "working",

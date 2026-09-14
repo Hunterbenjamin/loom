@@ -18,7 +18,9 @@ Types: [`entities.ts`](../../packages/core/src/entities.ts), [`ids.ts`](../../pa
 
 | Field | Own | Notes |
 |---|---|---|
-| `id`, `repoId`, `title`, `description` | A | |
+| `id`, `repoId`, `title`, `description` | A | `id` remains the internal join key. |
+| `number` | A | Positive sequence assigned atomically per repository; display only and never reused. |
+| `name` | A | Optional one-line human name, at most 32 characters, set at creation. Displays a truncated title fallback when null. |
 | `stage` | A | §2. Changes only in a reconcile commit. |
 | `stageEnteredAt` | A | |
 | `version` | A | Compare-and-set counter; +1 when the returned owned state changes, once per committed reconcile pass. |

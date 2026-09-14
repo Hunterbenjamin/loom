@@ -2,6 +2,7 @@ import type { PaneObservation } from "@loom/core";
 import { FakePaneHost } from "@loom/fake-agent";
 import { expect, test, vi } from "vitest";
 import { fixture, now, run } from "../../../packages/core/test/fixtures.js";
+import { repo } from "../../../packages/store/test/fixtures.js";
 import { assemblePanes, PaneInventory, paneKey } from "./pane-inventory.js";
 import { PublishedRows } from "./views.js";
 
@@ -245,11 +246,15 @@ test("renamed task spaces retain their task label even when only scratch panes r
     now,
     null,
     false,
+    undefined,
+    [repo],
   );
   expect(rows[0]).toMatchObject({
     sessionName: "Renamed space",
     taskId: state.task.id,
-    taskLabel: `${state.task.id} · ${state.task.title}`,
+    taskName: "Implement core",
+    issueKey: "FIXTURE-1",
+    taskStage: state.task.stage,
     branch: state.task.branch,
     runId: null,
   });

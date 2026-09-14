@@ -165,6 +165,14 @@ export const command = z.union([
     kind: z.literal("create_task"),
     repoId,
     title: z.string().min(1).max(200),
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(32)
+      .regex(/^[^\r\n]*$/, "Name must be one line")
+      .nullable()
+      .default(null),
     description: z.string().max(20000),
     summary: z
       .string()

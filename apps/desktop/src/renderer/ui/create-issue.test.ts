@@ -174,6 +174,20 @@ test("validates a required trimmed title and repository before sending", async (
   expect(h.send).not.toHaveBeenCalled();
 });
 
+test("suggests a short name until the human edits it", () => {
+  const h = setup();
+  h.change(
+    "#issue-title",
+    "Floating chat window for Main and every active implementation run",
+  );
+  expect(h.get<HTMLInputElement>("#issue-name").value).toBe(
+    "Floating chat window for Main…",
+  );
+  h.change("#issue-name", "Chat window");
+  h.change("#issue-title", "A completely different title");
+  expect(h.get<HTMLInputElement>("#issue-name").value).toBe("Chat window");
+});
+
 test("defaults to the sidebar repo and sends the complete backlog payload with markdown intact", async () => {
   const repo = buildSnapshot().repos[1];
   if (!repo) throw new Error("Missing repo");
@@ -193,6 +207,7 @@ test("defaults to the sidebar repo and sends the complete backlog payload with m
     kind: "create_task",
     repoId: repo.id,
     title: "Fix a thing",
+    name: "Fix a thing",
     description: "## Details\n\n- Keep **markdown**\n",
     summary: null,
     providers: null,

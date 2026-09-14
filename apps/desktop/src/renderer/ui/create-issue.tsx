@@ -1,4 +1,4 @@
-import type { TaskId } from "@loom/core";
+import { suggestName, type TaskId } from "@loom/core";
 import type { AckOutcome } from "@loom/protocol";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
@@ -34,6 +34,8 @@ function CreateIssueDialog() {
     settings.find((item) => item.id === "global")?.effective.workflow;
   const initialDefaults = defaultsFor(initialRepo);
   const [title, setTitle] = useState("");
+  const [name, setName] = useState("");
+  const nameEdited = useRef(false);
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"backlog" | "todo">("backlog");
   const [size, setSize] = useState<"normal" | "small">(
@@ -57,6 +59,7 @@ function CreateIssueDialog() {
   const keepEditing = useRef<HTMLButtonElement>(null);
   const dirty =
     title !== "" ||
+    name !== "" ||
     description !== "" ||
     repoId !== initialRepo ||
     status !== "backlog" ||
@@ -126,6 +129,7 @@ function CreateIssueDialog() {
               kind: "create_task",
               repoId: repo.id,
               title: title.trim(),
+              name: name.trim() || null,
               description,
               summary: null,
               providers: null,
@@ -141,6 +145,7 @@ function CreateIssueDialog() {
         } else {
           id =
             store.createTask(title.trim(), repoId, {
+              name: name.trim() || null,
               description,
               size,
               requirePlanApproval,
@@ -212,7 +217,22 @@ function CreateIssueDialog() {
             autoComplete="off"
             placeholder="Issue title"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              if (!nameEdited.current) setName(suggestName(e.target.value));
+            }}
+          />
+          <label htmlFor="issue-name">Name</label>
+          <input
+            id="issue-name"
+            maxLength={32}
+            autoComplete="off"
+            placeholder="Short issue name"
+            value={name}
+            onChange={(e) => {
+              nameEdited.current = true;
+              setName(e.target.value);
+            }}
           />
           <label htmlFor="issue-description">
             Description <span className="faint">· Markdown supported</span>

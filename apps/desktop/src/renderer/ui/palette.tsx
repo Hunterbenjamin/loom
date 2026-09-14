@@ -1,8 +1,9 @@
+import { displayName } from "@loom/core";
 import { Command } from "cmdk";
 import { useEffect, useState } from "react";
 import { STAGES } from "../fixtures/index.js";
 import { useStore, useStoreApi } from "../store/react.js";
-import { cursorRows, selectedRows } from "../store/selectors.js";
+import { cursorRows, issueKeyFor, selectedRows } from "../store/selectors.js";
 import { VIEWS } from "../store/store.js";
 import { ChimeMuteCommand } from "../workbench/chime.js";
 import { stageLabel } from "./format.js";
@@ -18,6 +19,7 @@ export function Palette() {
   const openPr = useStore((s) => s.ui.openPr);
   const view = useStore((s) => s.ui.view);
   const pane = useStore((s) => s.ui.pane);
+  const repos = useStore((s) => s.snapshot.repos);
   const [value, setValue] = useState("");
 
   useEffect(() => {
@@ -134,11 +136,13 @@ export function Palette() {
             {rows.slice(0, 60).map((row) => (
               <Command.Item
                 key={row.task.id}
-                value={`${row.task.id} ${row.task.title}`}
+                value={`${issueKeyFor(row.task, repos)} ${row.task.number} ${row.task.name ?? ""} ${row.task.title}`}
                 onSelect={() => run(() => store.open(row.task.id))}
               >
-                <span className="mono faint">{row.task.id}</span>
-                <span>{row.task.title}</span>
+                <span className="mono faint">
+                  {issueKeyFor(row.task, repos)}
+                </span>
+                <span>{displayName(row.task)}</span>
               </Command.Item>
             ))}
           </Command.Group>

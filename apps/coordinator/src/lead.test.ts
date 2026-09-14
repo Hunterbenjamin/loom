@@ -135,6 +135,7 @@ test("Main tools share the CLI command path and inspection view; core still reje
   const fields = {
     repoId: h.repo.id,
     title: "Delegated work",
+    name: "Delegated work",
     description: "Use a task",
     summary: "Delegate work through a Loom task",
     providers: null,
@@ -150,13 +151,17 @@ test("Main tools share the CLI command path and inspection view; core still reje
   });
   expect(await call("list_tasks", {})).toEqual({
     ok: true,
-    value: h.store.tasks(),
+    value: h.store.tasks().map((task) => ({
+      ...task,
+      issue: "REPO-1",
+      displayName: "Delegated work",
+    })),
   });
   expect(await call("list_repos", {})).toEqual({
     ok: true,
     value: h.store.repos(),
   });
-  expect(await call("inspect_task", { taskId: task.id })).toEqual({
+  expect(await call("inspect_task", { taskId: "repo-1" })).toEqual({
     ok: true,
     value: inspectTask(h.store, task.id, h.adapters),
   });
@@ -203,9 +208,9 @@ test("Main tools share the CLI command path and inspection view; core still reje
     ["cancel_task", { type: "cancel", reason: "Not needed" }],
     ["move_task", { type: "move", to: "todo" }],
   ];
-  for (const [name, command] of commands) {
+  for (const [index, [name, command]] of commands.entries()) {
     const { type: _, ...input } = command;
-    await call(name, { taskId: task.id, ...input });
+    await call(name, { taskId: index % 2 ? "1" : "REPO-1", ...input });
     expect(submit).toHaveBeenLastCalledWith(task.id, command);
     await cli.command({ kind: "human", taskId: task.id, command });
     expect(submit).toHaveBeenLastCalledWith(task.id, command);

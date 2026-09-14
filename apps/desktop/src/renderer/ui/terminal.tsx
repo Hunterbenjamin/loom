@@ -1,7 +1,7 @@
 // xterm.js 6 over node-pty, with the addons and the kitty key shim spike 03 specified.
 // Terminals are for humans: nothing here parses output or decides anything.
 
-import type { RunId, Task } from "@loom/core";
+import { type RunId, runLabel, type Task } from "@loom/core";
 import type { AckResult } from "@loom/protocol";
 import { FitAddon } from "@xterm/addon-fit";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
@@ -17,7 +17,7 @@ import {
   useState,
 } from "react";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
-import { terminalsForTask } from "../store/selectors.js";
+import { issueKeyFor, terminalsForTask } from "../store/selectors.js";
 import { kittyEncode } from "./kitty.js";
 import {
   historyRequest,
@@ -39,6 +39,7 @@ export function TerminalTab({
   theme: "dark" | "light";
 }) {
   const live = useStore((s) => s.live);
+  const repos = useStore((s) => s.snapshot.repos);
   const runs = useStore(
     (s) => terminalsForTask(s.snapshot, task),
     shallowArray,
@@ -67,7 +68,7 @@ export function TerminalTab({
               aria-selected={run.id === selectedRunId}
               onClick={() => setActiveRunId(run.id)}
             >
-              {run.role} · {run.provider}
+              {runLabel(run)} · {run.provider}
             </button>
           ))}
         </div>
@@ -82,7 +83,7 @@ export function TerminalTab({
             hidden={run.id !== selectedRunId}
           >
             <TerminalSession
-              label={`${task.id} · ${run.role}`}
+              label={`${issueKeyFor(task, repos)} · ${runLabel(run)}`}
               runId={run.id}
               theme={theme}
               live={live}
@@ -103,6 +104,7 @@ function TaskShellTerminal({
 }) {
   const store = useStoreApi();
   const live = useStore((s) => s.live);
+  const repos = useStore((s) => s.snapshot.repos);
   const contextKey = useStore((s) =>
     JSON.stringify(
       s.snapshot.runs
@@ -179,7 +181,7 @@ function TaskShellTerminal({
       {(!live || selected) && (
         <TerminalSession
           key={task.id}
-          label={task.id}
+          label={issueKeyFor(task, repos)}
           pane={selected?.target}
           theme={theme}
           live={live}

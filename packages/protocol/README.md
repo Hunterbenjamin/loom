@@ -142,3 +142,9 @@ Run and Main requests retain their existing forms. `create_scratch` accepts `tas
 the coordinator resolves cwd/session and returns `scratch_created` with the published pane. Clients
 must not replay scratch commands on reconnect. A terminal detaches when closed; it does not close its
 underlying pane.
+
+Commands that name an issue through `taskId`, and `create_task.blockedBy`, accept the canonical
+`t-…` ID, a case-insensitive repository key such as `LOOM-12`, or a bare number such as `12`.
+The coordinator resolves these once at the command boundary. Unknown references return
+`unknown_task`; ambiguous or out-of-repository references return `invalid_input` and name the
+candidate issues. Subscription frames continue to use canonical task IDs.

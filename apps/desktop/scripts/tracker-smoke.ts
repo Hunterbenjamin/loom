@@ -32,6 +32,7 @@ try {
   const state = h.coordinator.createTask({
     repoId: h.repo.id,
     title: "Approve the live Tracker smoke plan",
+    name: "Tracker smoke plan",
     description: "Fake-agent smoke check",
     requirePlanApproval: true,
   });

@@ -247,18 +247,27 @@ export class Store {
       .immediate();
   }
   /** Inserts a new initial task. Reconcile commits are the only update path. */
-  createTask(task: Task): TaskState {
-    const parsed = taskSchema.parse(task);
+  createTask(task: Omit<Task, "number">): TaskState {
+    const validated = taskSchema.parse({ ...task, number: 1 });
+    const { number: _ignoredNumber, ...input } = validated;
     if (
-      parsed.version !== 0 ||
-      parsed.stage !== "backlog" ||
-      parsed.worktreePath !== null
+      input.version !== 0 ||
+      input.stage !== "backlog" ||
+      input.worktreePath !== null
     )
       throw new Error(
         "New tasks must be version 0 backlog tasks without a worktree",
       );
+    const taskId = input.id;
     this.db
       .transaction(() => {
+        const number = this.db
+          .prepare(
+            "SELECT COALESCE(MAX(json_extract(data, '$.number')), 0) + 1 FROM tasks WHERE repo_id = ?",
+          )
+          .pluck()
+          .get(input.repoId) as number;
+        const parsed = taskSchema.parse({ ...input, number });
         this.db
           .prepare("INSERT INTO tasks(id, repo_id, data) VALUES (?, ?, ?)")
           .run(parsed.id, parsed.repoId, encode(parsed));
@@ -278,7 +287,7 @@ export class Store {
         this.saveDependencies(parsed);
       })
       .immediate();
-    return this.loadTaskState(parsed.id);
+    return this.loadTaskState(taskId);
   }
   private saveDependencies(task: Task): void {
     this.db

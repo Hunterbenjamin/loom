@@ -465,7 +465,8 @@ are denied. Other MCP servers and terminal attach tools are unavailable to Main.
 sessions keep their launch permissions until the human restarts Main.
 
 Each token scopes all Main tools to its repository. `create_task` may omit `repoId`; explicit foreign
-repositories, task IDs and dependencies are rejected. Switching the desktop picker retargets the
+repositories, issue references and dependencies are rejected. Main accepts a canonical `t-…` ID,
+`LOOM-12`, or bare `12`, resolved against that repository. Switching the desktop picker retargets the
 Main viewer without stopping another project's session.
 
 Startup loads and recovers every per-repository recipe. A legacy `lead/recipe.json` migrates once

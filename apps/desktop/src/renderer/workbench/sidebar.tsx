@@ -276,7 +276,7 @@ export function Sidebar({
                           className="wb-space-branch"
                           title={space.branch ?? "Branch unavailable"}
                         >
-                          {space.branch ?? "—"}
+                          {space.subtext ?? space.branch ?? "—"}
                         </small>
                       </span>
                     </RenameRow>
@@ -300,7 +300,7 @@ export function Sidebar({
                         <RenameRow
                           kind="tab"
                           pane={tab.panes[0]?.pane}
-                          name={tab.name}
+                          name={tab.windowName}
                           ariaLabel={`Open tab ${tab.name}`}
                           disabled={
                             !rowPanes("tab", tab.key).some(
@@ -313,7 +313,9 @@ export function Sidebar({
                           }
                         >
                           <Status state={tab.indicator} />
-                          <span className="wb-tree-name">{tab.name}</span>
+                          <span className="wb-tree-name" title={tab.windowName}>
+                            {tab.name}
+                          </span>
                         </RenameRow>
                       </div>
                     </section>
@@ -377,15 +379,17 @@ export function Sidebar({
                       choose(pane, true);
                     }
                   }}
-                  title={`${space.name} · ${tab.name} · ${pane.paneId}\n${indicator.label}${pane.dead ? "\nExited" : ""}`}
+                  title={`${space.name} · ${tab.windowName} · ${pane.paneId}\n${indicator.label}${pane.dead ? "\nExited" : ""}`}
                 >
                   <Status state={indicator} />
                   <span className="wb-row-copy">
                     <span className="wb-tree-name">
-                      <strong>{space.label}</strong>
-                      <span className="wb-agent-tab"> · {tab.name}</span>
+                      <strong>{tab.name}</strong>
                     </span>
-                    <small>{pane.provider ?? pane.agent ?? "—"}</small>
+                    <small>
+                      {pane.taskName ?? pane.issueKey ?? "Issue"} ·{" "}
+                      {pane.provider ?? pane.agent ?? "—"}
+                    </small>
                   </span>
                 </button>
               ))}

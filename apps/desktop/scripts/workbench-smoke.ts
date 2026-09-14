@@ -87,6 +87,7 @@ try {
   const state = h.coordinator.createTask({
     repoId: h.repo.id,
     title: "Workbench fixture issue",
+    name: "Workbench fixture",
     description: "No real agents",
   });
   await h.coordinator.settle();

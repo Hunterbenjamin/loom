@@ -102,6 +102,8 @@ export function fixture(stage: Stage = "in_progress"): {
     task: {
       id: taskId,
       repoId: "repo" as RepoId,
+      number: 1,
+      name: null,
       title: "Implement core",
       description: "",
       summary: null,

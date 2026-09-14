@@ -171,8 +171,8 @@ test("switching run tabs preserves every terminal client", () => {
 
   const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
   expect(tabs.map((tab) => tab.textContent)).toEqual([
-    "implementer · claude",
-    "implementer · claude",
+    "Implementer · claude",
+    "Implementer · claude",
   ]);
   expect(tabs[0]?.getAttribute("aria-selected")).toBe("true");
   expect(spawn.mock.calls.map((call) => call[0].runId)).toEqual([
