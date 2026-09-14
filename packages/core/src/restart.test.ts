@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { fixture, now } from "../test/fixtures.js";
-import type { Input, InputId, RunObservation } from "./index.js";
+import type {
+  Input,
+  InputId,
+  MessageId,
+  QuestionId,
+  RunObservation,
+} from "./index.js";
 import { reconcile } from "./index.js";
 
 function interrupted(provider: "codex" | "claude" = "codex") {
@@ -105,6 +111,81 @@ describe("restart continuation", () => {
     expect(result.actions).toContainEqual(
       expect.objectContaining({ kind: "send_message", via: "pane_paste" }),
     );
+  });
+
+  it("records a completed Claude prompt without continuing it", () => {
+    const f = interrupted("claude");
+    if (
+      !f.observation.provider.ok ||
+      f.observation.provider.value?.provider !== "claude"
+    )
+      throw new Error("Missing Claude observation");
+    f.observation.provider.value.hooks.lastStop = {
+      promptId: f.turnId,
+      at: now,
+      lastAssistantMessage: null,
+    };
+    const result = reconcile(f.state, f.observations);
+    expect(
+      result.next.runs.find((run) => run.id === f.run.id)?.restartInterruption
+        ?.outcome,
+    ).toBe("completed");
+    expect(result.next.messages).toHaveLength(0);
+  });
+
+  it("waits for queued work and declines after a newer turn starts", () => {
+    const f = interrupted();
+    f.state.messages.push({
+      id: "pending-message" as MessageId,
+      runId: f.run.id,
+      purpose: "human",
+      text: "Already queued",
+      textHash: "queued",
+      status: "pending",
+      attempts: 0,
+      transportRef: null,
+      sentAt: null,
+      delivered: null,
+    });
+    const waiting = reconcile(f.state, f.observations);
+    expect(
+      waiting.next.runs.find((run) => run.id === f.run.id)?.restartInterruption
+        ?.outcome,
+    ).toBeNull();
+    if (
+      !f.observation.provider.ok ||
+      f.observation.provider.value?.provider !== "codex"
+    )
+      throw new Error("Missing Codex observation");
+    const turn = f.observation.provider.value.turns.at(-1);
+    if (!turn) throw new Error("Missing Codex turn");
+    turn.id = "turn-2";
+    expect(
+      reconcile(waiting.next, f.observations).next.runs.find(
+        (run) => run.id === f.run.id,
+      )?.restartInterruption?.outcome,
+    ).toBe("not_needed");
+  });
+
+  it("waits while the run has an unanswered question", () => {
+    const f = interrupted();
+    f.state.questions.push({
+      id: "question-1" as QuestionId,
+      taskId: f.state.task.id,
+      runId: f.run.id,
+      question: "Which option?",
+      options: ["one", "two"],
+      blocking: true,
+      askedAt: now,
+      answer: null,
+      answeredAt: null,
+    });
+    const result = reconcile(f.state, f.observations);
+    expect(
+      result.next.runs.find((run) => run.id === f.run.id)?.restartInterruption
+        ?.outcome,
+    ).toBeNull();
+    expect(result.next.messages).toHaveLength(0);
   });
 
   it("waits on unknown state and declines work owed by another role", () => {
