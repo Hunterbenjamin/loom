@@ -26,7 +26,9 @@ import {
   taskId,
 } from "../test/fixtures.js";
 import { actionKind, actionSchema } from "./action-schemas.js";
+import { contextSchema } from "./entity-schemas.js";
 import { openReadOnlyStore, openStore, type Store } from "./index.js";
+import { stage as stageSchema } from "./schema-helpers.js";
 
 let root: string;
 const stores: Store[] = [];
@@ -64,6 +66,17 @@ function snapshotSql() {
   }
 }
 
+it("parses the CI stage and a legacy gate without a cached reading", () => {
+  expect(stageSchema.parse("ci")).toBe("ci");
+  const f = coreFixture("ci");
+  expect(
+    contextSchema.parse({
+      ...f.state,
+      ciGate: { headSha: "a".repeat(40), since: now },
+    }).ciGate,
+  ).toMatchObject({ headSha: "a".repeat(40) });
+});
+
 describe("task transactions", () => {
   it("records Main chat sends idempotently per repository", async () => {
     const store = await open();
@@ -72,6 +85,7 @@ describe("task transactions", () => {
       repoId: "repo-a",
       text: "hello",
       textHash: "hash-a",
+      when: "now" as const,
       state: "queued" as const,
       reason: null,
       createdAt: now,
@@ -340,6 +354,35 @@ describe("task transactions", () => {
         command: { type: "cancel", reason: "changed" },
       } as typeof first),
     ).toThrow();
+  });
+  it("round-trips run composer delivery and interrupt commands through the inbox", async () => {
+    const store = await seeded();
+    const send = {
+      id: "send-after-turn" as InputId,
+      receivedAt: now,
+      type: "human" as const,
+      command: {
+        type: "send_message" as const,
+        runId: "run-1" as never,
+        text: "Inspect this image",
+        when: "after_turn" as const,
+        attachmentIds: ["/private/tmp/loom/attachments/image.png"],
+        expectedRun: { sessionEpoch: 2, attempts: 3 },
+      },
+    };
+    const interrupt = {
+      id: "interrupt-turn" as InputId,
+      receivedAt: now,
+      type: "human" as const,
+      command: {
+        type: "interrupt_run" as const,
+        runId: "run-1" as never,
+        expectedRun: { sessionEpoch: 2, attempts: 3 },
+      },
+    };
+    expect(store.enqueueInput(taskId, send)).toBe(true);
+    expect(store.enqueueInput(taskId, interrupt)).toBe(true);
+    expect(store.pendingInputs(taskId, 2)).toEqual([send, interrupt]);
   });
   it("rejects unpersisted input dispositions and restores all earlier writes", async () => {
     const store = await seeded(),

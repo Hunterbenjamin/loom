@@ -139,13 +139,19 @@ export class LeadSession {
   sendMessage(
     id: string,
     text: string,
-  ): Promise<{ id: string; state: "sent" | "refused" }> {
+    when: "now" | "after_turn" = "now",
+  ): Promise<{ id: string; state: "queued" | "sent" | "refused" }> {
     return this.exclusive(async () => {
       const existing = this.deps.store.leadMessages.get(this.deps.repo.id, id);
       if (existing)
         return {
           id: existing.id,
-          state: existing.state === "refused" ? "refused" : "sent",
+          state:
+            existing.state === "refused"
+              ? "refused"
+              : existing.state === "queued"
+                ? "queued"
+                : "sent",
         };
       const at = this.deps.now();
       this.deps.store.leadMessages.create({
@@ -153,6 +159,7 @@ export class LeadSession {
         repoId: this.deps.repo.id,
         text,
         textHash: textHash(text),
+        when,
         state: "queued",
         reason: null,
         createdAt: at,
@@ -182,11 +189,8 @@ export class LeadSession {
         return refuse("Main status is unknown");
       if (session.status === "waiting")
         return refuse("Main is waiting on a permission; answer it first");
-      const hooks = await this.deps.adapters.claude.hookSummary(
-        this.recipe.sessionId as ProviderSessionId,
-      );
-      if (hooks.pendingDialog)
-        return refuse("Main has a pending prompt; answer it first");
+      if (when === "after_turn" && session.status === "busy")
+        return { id, state: "queued" as const };
       await this.deps.adapters.paneHost.pasteText(this.recipe.pane, text);
       this.deps.store.leadMessages.update(
         this.deps.repo.id,
@@ -196,6 +200,43 @@ export class LeadSession {
         at,
       );
       return { id, state: "sent" };
+    });
+  }
+
+  flushQueued(): Promise<void> {
+    return this.exclusive(async () => {
+      const message = this.deps.store.leadMessages
+        .list(this.deps.repo.id)
+        .find((value) => value.state === "queued");
+      if (!message || !this.recipe?.pane || this.recipe.stopped) return;
+      const state = await this.state();
+      if (state.status !== "idle") return;
+      const pane = await this.deps.adapters.paneHost.getPane(this.recipe.pane);
+      if (!pane || pane.dead) return;
+      await this.deps.adapters.paneHost.pasteText(
+        this.recipe.pane,
+        message.text,
+      );
+      this.deps.store.leadMessages.update(
+        this.deps.repo.id,
+        message.id,
+        "sent",
+        null,
+        this.deps.now(),
+      );
+    });
+  }
+
+  interrupt(): Promise<void> {
+    return this.exclusive(async () => {
+      if (!this.recipe?.pane || this.recipe.stopped)
+        throw new PreconditionFailed("Main is not running");
+      if ((await this.state()).status !== "working")
+        throw new PreconditionFailed("Main is not working");
+      const pane = await this.deps.adapters.paneHost.getPane(this.recipe.pane);
+      if (!pane || pane.dead)
+        throw new PreconditionFailed("Main terminal is not live");
+      await this.deps.adapters.paneHost.sendKey(this.recipe.pane, "Escape");
     });
   }
 

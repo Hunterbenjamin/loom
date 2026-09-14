@@ -139,6 +139,18 @@ describe("all 23 transition rows", () => {
   row(
     9,
     "in_progress",
+    "ci",
+    ({ state, observations }) => {
+      state.task.reviewRound = 0;
+      state.runs = state.runs.filter((r) => r.role !== "reviewer");
+      state.task.prNumber = null;
+      observations.inputs = [mcp(submit())];
+    },
+    ["push_branch"],
+  );
+  row(
+    9,
+    "ci",
     "in_review",
     ({ state, observations }) => {
       state.task.reviewRound = 0;
@@ -327,6 +339,19 @@ describe("all 23 transition rows", () => {
     [],
   );
 });
+
+for (const [commandInput, expected] of [
+  [{ type: "move", to: "backlog" }, "backlog"],
+  [{ type: "cancel", reason: "Stop" }, "canceled"],
+] as const)
+  it(`a human ${commandInput.type} leaves CI and clears its gate`, () => {
+    const f = fixture("ci");
+    f.state.ciGate = { headSha: head, since: now };
+    f.observations.inputs = [command(commandInput)];
+    const result = fixed(f.state, f.observations);
+    expect(result.next.task.stage).toBe(expected);
+    expect(result.next.ciGate).toBeNull();
+  });
 
 describe("guarded automatic merge policy", () => {
   it("creates a policy-attributed exact-head approval only after every merge guard passes", () => {

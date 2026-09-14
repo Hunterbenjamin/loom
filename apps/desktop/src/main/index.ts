@@ -198,6 +198,11 @@ function wire(): void {
     return connection;
   });
   ipcMain.handle("app:mode", (event) => owned(event.sender).mode);
+  ipcMain.handle("app:start-dictation", (event) => {
+    owned(event.sender);
+    if (process.platform !== "darwin") return;
+    Menu.sendActionToFirstResponder("startDictation:");
+  });
   ipcMain.handle("app:set-mode", (event, raw: unknown) => {
     setWindowMode(owned(event.sender), windowMode.parse(raw));
   });

@@ -465,6 +465,7 @@ test("list clients receive plan version and core-derived inbox metadata without 
     reasonRuns: {},
     reviewedHead: null,
     planVersion: null,
+    ci: null,
   });
   expect(client.state?.collections.run.size).toBe(0);
 });

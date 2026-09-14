@@ -204,7 +204,10 @@ export function submission(
       tests(call.input.testResults);
       // CI before review: push, then wait for CI on exactly this commit (ci-gate.ts).
       state.ciGate = { headSha: call.input.headSha, since: c.now };
-      c.stage("in_progress", "Implementation submitted; waiting for CI");
+      c.stage(
+        "ci",
+        `Submitted; CI running on ${call.input.headSha.slice(0, 7)}`,
+      );
       c.emit(`push_branch:${task.id}:${call.input.headSha}`, {
         kind: "push_branch",
         worktreePath: state.worktree.path,

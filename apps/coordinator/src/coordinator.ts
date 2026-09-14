@@ -5,6 +5,7 @@ import {
   pullRequestDiffRead,
   pullRequestReviewChange,
 } from "@loom/protocol";
+import { Attachments, withAttachedFiles } from "./attachments.js";
 import { ConversationViews } from "./conversations.js";
 import { PaneInventory, paneKey } from "./pane-inventory.js";
 import { PullRequestViews } from "./pull-requests.js";
@@ -196,6 +197,7 @@ export class Coordinator {
   readonly store: Store;
   readonly adapters: Adapters;
   readonly recipes: RecipeStore;
+  private readonly attachments: Attachments;
   private readonly baselineConfig: CoordinatorConfig;
   readonly leads = new Map<string, LeadSession>();
   leadFor(repoId: string): LeadSession {
@@ -582,6 +584,7 @@ export class Coordinator {
     this.startedAt = this.now();
     this.epoch = epochOf(this.startedAt);
     this.recipes = new RecipeStore(this.store.dataDirectory);
+    this.attachments = new Attachments(this.store.dataDirectory);
     this.store.setRoleProfilesResolver(
       (task) => this.effectiveSettings(task.repoId).roles,
     );
@@ -812,6 +815,10 @@ export class Coordinator {
   /** Starts the timers that make this a long-running process, rather than a driven loop. */
   run(): void {
     this.leadPoll = setInterval(() => {
+      for (const lead of this.leads.values())
+        void lead
+          .flushQueued()
+          .then(() => this.conversationViews.hint(lead.sessionId));
       void this.publishLead();
     }, 1500);
     this.leadPoll.unref?.();
@@ -1621,11 +1628,30 @@ export class Coordinator {
           await this.publishLead();
           return { ok: true, result: { kind: "lead_stopped" } };
         }
+        case "interrupt_lead": {
+          await this.leadFor(command.repoId as string).interrupt();
+          return { ok: true, result: { kind: "lead_interrupted" } };
+        }
+        case "stage_attachment": {
+          const attachment = await this.attachments.stage(
+            command.name as string,
+            command.mediaType as string,
+            command.dataBase64 as string,
+          );
+          return {
+            ok: true,
+            result: { kind: "attachment_staged", ...attachment },
+          };
+        }
         case "send_lead_message": {
           const lead = this.leadFor(command.repoId as string);
+          const attachments = await this.attachments.resolve(
+            (command.attachmentIds ?? []) as string[],
+          );
           const result = await lead.sendMessage(
             command.clientMessageId as string,
-            command.text as string,
+            withAttachedFiles(command.text as string, attachments),
+            (command.when ?? "now") as "now" | "after_turn",
           );
           this.conversationViews.hint(lead.sessionId);
           return { ok: true, result: { kind: "lead_message", ...result } };
@@ -1669,7 +1695,35 @@ export class Coordinator {
                 details: [],
               },
             };
-          const inputId = this.submitHuman(command.taskId, command.command);
+          let human = command.command;
+          if (human.type === "send_message" && human.attachmentIds?.length) {
+            const attachments = await this.attachments.resolve(
+              human.attachmentIds,
+            );
+            const runId = human.runId;
+            const run = this.store
+              .runs(command.taskId)
+              .find((value) => value.id === runId);
+            if (!run) throw new PreconditionFailed("Choose a live Loom run");
+            const images = attachments.filter((value) =>
+              value.mediaType.startsWith("image/"),
+            );
+            const paths =
+              run.provider === "codex"
+                ? attachments.filter(
+                    (value) => !value.mediaType.startsWith("image/"),
+                  )
+                : attachments;
+            human = {
+              ...human,
+              text: withAttachedFiles(human.text, paths),
+              attachmentIds:
+                run.provider === "codex"
+                  ? images.map((value) => value.path)
+                  : [],
+            };
+          }
+          const inputId = this.submitHuman(command.taskId, human);
           if (command.command.type === "retry") {
             for (let pass = 0; pass < 50; pass++) {
               await this.loop.pass(command.taskId);

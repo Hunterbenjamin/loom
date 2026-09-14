@@ -161,6 +161,7 @@ export class ConversationViews {
     if (target.kind === "lead") {
       const lead = this.deps.lead(target.repoId);
       const state = await lead.state();
+      await lead.flushQueued?.();
       if (!lead.sessionId || !lead.cwd || state.status === "stopped") {
         this.publish(target, "claude", "stopped", [], false, null, null);
         return;
@@ -185,7 +186,7 @@ export class ConversationViews {
         state.status,
         result.items,
         result.truncated,
-        hooks.pendingDialog
+        state.status === "waiting" && hooks.pendingDialog
           ? { source: "claude_dialog", ...hooks.pendingDialog }
           : null,
         null,
@@ -338,6 +339,7 @@ export class ConversationViews {
             state: m.state,
             at: m.createdAt,
             reason: m.reason,
+            when: m.when,
           }))
         : run
           ? this.deps.store
@@ -357,6 +359,7 @@ export class ConversationViews {
                 reason:
                   m.deliveryReason ??
                   (m.deliveryAttention ? "Delivery needs attention" : null),
+                when: m.when ?? "now",
               }))
           : [];
     this.deps.replace(`conversation:${key}`, [

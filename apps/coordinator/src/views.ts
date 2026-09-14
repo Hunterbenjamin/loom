@@ -130,6 +130,15 @@ export async function taskRows(
       ),
       reviewedHead: state.review?.lastReviewedHead ?? null,
       planVersion: state.plan?.version ?? null,
+      ci: state.ciGate
+        ? {
+            headSha: state.ciGate.headSha,
+            since: state.ciGate.since,
+            conclusion: state.ciGate.ci?.conclusion ?? null,
+            checks: state.ciGate.ci?.checks ?? [],
+            observedAt: state.ciGate.ci?.observedAt ?? null,
+          }
+        : null,
     }),
   ];
   for (const note of notes) rows.push(row("note", note));

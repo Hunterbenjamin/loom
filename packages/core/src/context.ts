@@ -376,6 +376,7 @@ export class Context {
     purpose: MessagePurpose,
     sequence: string | number,
     text: string,
+    options: { when?: "now" | "after_turn"; images?: string[] } = {},
   ): void {
     const id = messageId(run.id, purpose, sequence);
     if (this.state.messages.some((m) => m.id === id)) return;
@@ -389,6 +390,8 @@ export class Context {
       runId: run.id,
       purpose,
       text: safe,
+      when: options.when ?? "now",
+      images: options.images ?? [],
       textHash: this.state.config.sha256(safe),
       status: "pending",
       pendingSince: this.now,

@@ -6,6 +6,7 @@ export const leadMessage = z.strictObject({
   repoId: z.string().min(1),
   text: z.string().max(16384),
   textHash: z.string().min(1),
+  when: z.enum(["now", "after_turn"]).optional(),
   state: z.enum(["queued", "sent", "delivered", "failed", "refused"]),
   reason: z.string().nullable(),
   createdAt: z.string().datetime(),
@@ -17,18 +18,18 @@ export type LeadMessage = z.output<typeof leadMessage>;
 export class LeadMessageStore {
   constructor(private readonly db: Database.Database) {}
   create(value: LeadMessage): LeadMessage {
-    const row = leadMessage.parse(value);
+    const row = leadMessage.parse({ ...value, when: value.when ?? "now" });
     this.db
       .prepare(`INSERT INTO lead_messages
-      (id,repo_id,text,text_hash,state,reason,created_at,sent_at,delivered_at)
-      VALUES (@id,@repoId,@text,@textHash,@state,@reason,@createdAt,@sentAt,@deliveredAt)
+      (id,repo_id,text,text_hash,when_to_send,state,reason,created_at,sent_at,delivered_at)
+      VALUES (@id,@repoId,@text,@textHash,@when,@state,@reason,@createdAt,@sentAt,@deliveredAt)
       ON CONFLICT(repo_id,id) DO NOTHING`)
       .run(row);
     return this.get(row.repoId, row.id) ?? row;
   }
   get(repoId: string, id: string): LeadMessage | null {
     const raw = this.db
-      .prepare(`SELECT id, repo_id repoId, text, text_hash textHash, state,
+      .prepare(`SELECT id, repo_id repoId, text, text_hash textHash, when_to_send "when", state,
       reason, created_at createdAt, sent_at sentAt, delivered_at deliveredAt
       FROM lead_messages WHERE repo_id=? AND id=?`)
       .get(repoId, id);
@@ -40,7 +41,7 @@ export class LeadMessageStore {
       .parse(
         this.db
           .prepare(`SELECT id, repo_id repoId, text,
-      text_hash textHash, state, reason, created_at createdAt, sent_at sentAt,
+      text_hash textHash, when_to_send "when", state, reason, created_at createdAt, sent_at sentAt,
       delivered_at deliveredAt FROM lead_messages WHERE repo_id=?
       ORDER BY created_at DESC LIMIT 20`)
           .all(repoId),

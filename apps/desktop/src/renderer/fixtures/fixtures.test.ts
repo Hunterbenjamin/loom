@@ -10,8 +10,8 @@ describe("the fixture snapshot", () => {
   });
 
   it("has about forty tasks with unique ids", () => {
-    expect(snapshot.tasks).toHaveLength(40);
-    expect(new Set(snapshot.tasks.map((task) => task.id)).size).toBe(40);
+    expect(snapshot.tasks).toHaveLength(42);
+    expect(new Set(snapshot.tasks.map((task) => task.id)).size).toBe(42);
   });
 
   it("is deterministic, so measurements repeat", () => {

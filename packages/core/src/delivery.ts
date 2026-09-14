@@ -17,6 +17,8 @@ function send(c: Context, run: Run, message: Message): string | null {
     run.status === "failed"
   )
     return `the run is ${run.status}`;
+  if (message.when === "after_turn" && run.status === "working")
+    return "waiting for the current turn to finish";
   const earlier = c.state.messages.find(
     (m) =>
       m.runId === run.id &&
@@ -56,6 +58,7 @@ function send(c: Context, run: Run, message: Message): string | null {
     messageId: message.id,
     via: message.via,
     text: message.text,
+    images: message.images ?? [],
     expectedTurnId: message.expectedTurnId,
   });
   if (message.status !== "pending") message.pendingSince = c.now;
@@ -171,6 +174,10 @@ export function delivery(c: Context): void {
       }
     }
     if (message.status === "pending") {
+      if (message.when === "after_turn" && run.status === "working") {
+        message.deliveryReason = "waiting for the current turn to finish";
+        continue;
+      }
       pendingDelivery(c, run, message);
     } else if (message.status === "sent" && message.sentAt) {
       const deadline = later(message.sentAt, c.state.config.deliveryTimeoutMs);

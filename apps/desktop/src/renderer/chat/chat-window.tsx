@@ -27,23 +27,77 @@ export function resizeChatComposer(textarea: HTMLTextAreaElement) {
     contentHeight > CHAT_COMPOSER_MAX_HEIGHT ? "auto" : "hidden";
 }
 
-export function unmatchedSends(
+export type ChatTimelineEntry =
+  | { kind: "item"; item: ConversationItem }
+  | { kind: "send"; send: Conversation["sends"][number] };
+
+export function chatTimeline(
   sends: Conversation["sends"],
   items: ConversationItem[],
-) {
-  const userItems = items.filter(
-    (item) => item.role === "user" && item.kind === "text",
-  );
-  return sends.filter((send) => {
-    if (send.state !== "delivered") return true;
-    const match = userItems.findIndex(
-      (item) => comparableText(item.text) === comparableText(send.text),
+): ChatTimelineEntry[] {
+  const matched = new Map<number, number>();
+  let after = 0;
+  sends.forEach((send, sendIndex) => {
+    const index = items.findIndex(
+      (item, itemIndex) =>
+        itemIndex >= after &&
+        item.role === "user" &&
+        item.kind === "text" &&
+        comparableText(item.text) === comparableText(send.text),
     );
-    if (match < 0) return true;
-    userItems.splice(match, 1);
-    return false;
+    if (index >= 0) {
+      matched.set(sendIndex, index);
+      after = index + 1;
+    }
   });
+  const slots = Array.from(
+    { length: items.length + 1 },
+    () => [] as Conversation["sends"],
+  );
+  const timestamped = items.some((item) => item.at !== null);
+  sends.forEach((send, sendIndex) => {
+    if (
+      matched.has(sendIndex) ||
+      (send.when === "after_turn" && send.state === "queued")
+    )
+      return;
+    let slot = items.length;
+    if (timestamped) {
+      slot = 0;
+      items.forEach((item, itemIndex) => {
+        if (item.at && item.at <= send.at) slot = itemIndex + 1;
+      });
+    } else {
+      const next = [...matched.entries()].find(([index]) => index > sendIndex);
+      if (next) slot = next[1];
+    }
+    slots[slot]?.push(send);
+  });
+  const result: ChatTimelineEntry[] = [];
+  items.forEach((item, index) => {
+    for (const send of slots[index] ?? []) result.push({ kind: "send", send });
+    result.push({ kind: "item", item });
+  });
+  for (const send of slots[items.length] ?? [])
+    result.push({ kind: "send", send });
+  return result;
 }
+
+type ComposerAttachment = {
+  id: string;
+  name: string;
+  mediaType: string;
+  size: number;
+};
+
+const fileBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("Could not read file"));
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? "");
+    reader.readAsDataURL(file);
+  });
 
 export function ChatWindow() {
   const store = useStoreApi();
@@ -53,8 +107,11 @@ export function ChatWindow() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [showJump, setShowJump] = useState(false);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const conversation = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const key = target ? conversationKey(target) : "";
@@ -93,6 +150,7 @@ export function ChatWindow() {
     following.current = true;
     setShowJump(false);
     end.current?.scrollIntoView({ block: "end" });
+    requestAnimationFrame(() => composer.current?.focus());
   }, [key, view]);
   useEffect(() => {
     const open = (event: Event) =>
@@ -107,8 +165,40 @@ export function ChatWindow() {
       new CustomEvent("loom:open-chat-terminal", { detail: target }),
     );
   };
-  const send = async () => {
-    const value = text.trim();
+  const stageFiles = async (files: File[]) => {
+    setAttachmentError(null);
+    try {
+      for (const file of files) {
+        const outcome = await store.command({
+          kind: "stage_attachment",
+          name: file.name,
+          mediaType: file.type || "application/octet-stream",
+          dataBase64: await fileBase64(file),
+        });
+        if (!outcome.ok) throw new Error(outcome.error.message);
+        if (outcome.result.kind !== "attachment_staged")
+          throw new Error("Attachment was not staged");
+        const staged = outcome.result;
+        setAttachments((current) => [
+          ...current,
+          {
+            id: staged.attachmentId,
+            name: staged.name,
+            mediaType: staged.mediaType,
+            size: file.size,
+          },
+        ]);
+      }
+    } catch (error) {
+      setAttachmentError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  };
+  const send = async (when: "now" | "after_turn" = "now") => {
+    const value =
+      text.trim() ||
+      (attachments.length ? "Please review the attached files." : "");
     if (!value || prefixError || sending) return;
     setSending(true);
     const outcome =
@@ -118,6 +208,8 @@ export function ChatWindow() {
             repoId: target.repoId,
             text: value,
             clientMessageId: crypto.randomUUID(),
+            when,
+            attachmentIds: attachments.map((value) => value.id),
           })
         : run && task
           ? await store.command({
@@ -127,6 +219,8 @@ export function ChatWindow() {
                 type: "send_message",
                 runId: run.id,
                 text: value,
+                when,
+                attachmentIds: attachments.map((value) => value.id),
                 expectedRun: {
                   sessionEpoch: run.sessionEpoch,
                   attempts: run.attempts,
@@ -134,8 +228,28 @@ export function ChatWindow() {
               },
             })
           : null;
-    if (outcome?.ok) setText("");
+    if (outcome?.ok) {
+      setText("");
+      setAttachments([]);
+    }
     setSending(false);
+  };
+  const stop = () => {
+    if (target.kind === "lead")
+      void store.command({ kind: "interrupt_lead", repoId: target.repoId });
+    else if (run)
+      void store.command({
+        kind: "human",
+        taskId: run.taskId,
+        command: {
+          type: "interrupt_run",
+          runId: run.id,
+          expectedRun: {
+            sessionEpoch: run.sessionEpoch,
+            attempts: run.attempts,
+          },
+        },
+      });
   };
   const answer = (choice: number | "escape") => {
     const prompt = header?.pendingPrompt;
@@ -182,7 +296,10 @@ export function ChatWindow() {
         },
       });
   };
-  const sends = unmatchedSends(header?.sends ?? [], items);
+  const timeline = chatTimeline(header?.sends ?? [], items);
+  const queued = (header?.sends ?? []).filter(
+    (send) => send.when === "after_turn" && send.state === "queued",
+  );
   const jumpToLatest = () => {
     following.current = true;
     setShowJump(false);
@@ -294,8 +411,23 @@ export function ChatWindow() {
         {!items.length && header?.status !== "stopped" && !header?.error ? (
           <div className="chat-empty">No messages yet.</div>
         ) : null}
-        {items.map((item) =>
-          item.kind === "text" ? (
+        {timeline.map((entry) => {
+          if (entry.kind === "send")
+            return (
+              <div
+                key={`send:${entry.send.id}`}
+                className={`chat-send ${entry.send.state}`}
+                title={entry.send.reason ?? undefined}
+              >
+                {entry.send.text}
+                <small>
+                  {entry.send.state}
+                  {entry.send.reason ? ` · ${entry.send.reason}` : ""}
+                </small>
+              </div>
+            );
+          const item = entry.item;
+          return item.kind === "text" ? (
             <div key={item.id} className={`chat-message ${item.role}`}>
               {item.role === "assistant" ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -321,8 +453,8 @@ export function ChatWindow() {
                 <div>{item.text}</div>
               )}
             </details>
-          ),
-        )}
+          );
+        })}
         {header?.status === "working" && (
           <div className="chat-working">Working…</div>
         )}
@@ -364,19 +496,14 @@ export function ChatWindow() {
             )}
           </div>
         )}
-        {sends.map((send) => (
-          <div
-            key={send.id}
-            className={`chat-send ${send.state}`}
-            title={send.reason ?? undefined}
-          >
-            {send.text}
-            <small>
-              {send.state}
-              {send.reason ? ` · ${send.reason}` : ""}
-            </small>
+        {queued.length ? (
+          <div className="chat-queued">
+            <strong>Queued</strong>
+            {queued.map((send) => (
+              <div key={send.id}>{send.text}</div>
+            ))}
           </div>
-        ))}
+        ) : null}
         <div ref={end} />
         {showJump && (
           <button
@@ -388,9 +515,38 @@ export function ChatWindow() {
           </button>
         )}
       </div>
-      <div className="chat-composer">
-        <div className="chat-future-slot" />
-        {/* Future slash-command picker. */}
+      <fieldset
+        className="chat-composer"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          void stageFiles([...event.dataTransfer.files]);
+        }}
+      >
+        {attachments.length ? (
+          <div className="chat-attachments">
+            {attachments.map((attachment) => (
+              <span key={attachment.id} className="chat-attachment">
+                {attachment.name}{" "}
+                <small>
+                  {Math.max(1, Math.ceil(attachment.size / 1024))} KB
+                </small>
+                <button
+                  type="button"
+                  className="chat-attachment-remove"
+                  aria-label={`Remove ${attachment.name}`}
+                  onClick={() =>
+                    setAttachments((current) =>
+                      current.filter((value) => value.id !== attachment.id),
+                    )
+                  }
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
         <textarea
           ref={composer}
           value={text}
@@ -398,6 +554,12 @@ export function ChatWindow() {
           placeholder={`Message ${title}…`}
           rows={1}
           onChange={(e) => setText(e.target.value)}
+          onPaste={(event) => {
+            const images = [...event.clipboardData.files].filter((file) =>
+              file.type.startsWith("image/"),
+            );
+            if (images.length) void stageFiles(images);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Escape") store.setChatView("minimized");
             else if (
@@ -406,28 +568,98 @@ export function ChatWindow() {
               !e.nativeEvent.isComposing
             ) {
               e.preventDefault();
-              void send();
+              void send(header?.status === "working" ? "after_turn" : "now");
             }
           }}
         />
-        <button
-          type="button"
-          className="chat-send-button"
-          aria-label="Send message"
-          disabled={
-            !text.trim() ||
-            prefixError ||
-            sending ||
-            header?.status === "stopped"
-          }
-          onClick={() => void send()}
-        >
-          ↑
-        </button>
-      </div>
-      {prefixError && (
+        <div className="chat-composer-actions">
+          <div>
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              hidden
+              onChange={(event) => {
+                void stageFiles([...(event.target.files ?? [])]);
+                event.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="chat-icon-button"
+              aria-label="Attach files"
+              onClick={() => picker.current?.click()}
+            >
+              📎
+            </button>
+            {window.loomHost.platform === "darwin" ? (
+              <button
+                type="button"
+                className="chat-icon-button"
+                aria-label="Dictate message"
+                onClick={() => {
+                  composer.current?.focus();
+                  void window.loomHost.startDictation();
+                }}
+              >
+                🎙
+              </button>
+            ) : null}
+          </div>
+          <div className="chat-send-actions">
+            {header?.status === "working" ? (
+              <>
+                <button
+                  type="button"
+                  className="chat-stop-button"
+                  aria-label="Stop turn"
+                  onClick={stop}
+                >
+                  ■
+                </button>
+                {text.trim() || attachments.length ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={prefixError || sending}
+                      onClick={() => void send("now")}
+                    >
+                      Steer
+                    </button>
+                    <button
+                      type="button"
+                      disabled={prefixError || sending}
+                      onClick={() => void send("after_turn")}
+                    >
+                      Send after turn
+                    </button>
+                  </>
+                ) : null}
+              </>
+            ) : (
+              <button
+                type="button"
+                className="chat-send-button"
+                aria-label="Send message"
+                disabled={
+                  (!text.trim() && !attachments.length) ||
+                  prefixError ||
+                  sending ||
+                  header?.status === "stopped"
+                }
+                onClick={() => void send("now")}
+              >
+                ↑
+              </button>
+            )}
+          </div>
+        </div>
+      </fieldset>
+      {(prefixError || attachmentError) && (
         <div className="chat-error">
-          Messages beginning with / or ! are not allowed.
+          {prefixError
+            ? "Messages beginning with / or ! are not allowed."
+            : attachmentError}
         </div>
       )}
     </section>

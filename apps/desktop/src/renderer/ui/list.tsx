@@ -9,8 +9,14 @@ import {
   selectedListItems,
 } from "../store/selectors.js";
 import type { SortKey } from "../store/store.js";
-import { AttentionChips, ProviderLabel, RunDot } from "./bits.js";
-import { age, stageLabel } from "./format.js";
+import {
+  AttentionChips,
+  CiChip,
+  CiDot,
+  ProviderLabel,
+  RunDot,
+} from "./bits.js";
+import { age, since, stageLabel } from "./format.js";
 import { ListGroupHeader, ListRow, LoadMore } from "./list-rows.js";
 
 const HEADINGS: { key: SortKey; label: string }[] = [
@@ -152,6 +158,7 @@ function Row({
   const store = useStoreApi();
   const { task } = item.row;
   const repos = useStore((s) => s.snapshot.repos);
+  const now = useStore((s) => s.snapshot.now);
   return (
     <ListRow
       cursor={index === cursor}
@@ -160,7 +167,13 @@ function Row({
         store.setCursor(index);
         store.open(task.id);
       }}
-      leading={<RunDot run={item.row.run} />}
+      leading={
+        task.stage === "ci" ? (
+          <CiDot ci={item.row.ci} />
+        ) : (
+          <RunDot run={item.row.run} />
+        )
+      }
       title={`${task.title} — ${item.row.summary}`}
       text={
         <span className="issue-line">
@@ -180,6 +193,16 @@ function Row({
           </span>
           <span className="issues-col-attention">
             <AttentionChips task={task} />
+            {task.stage === "ci" ? (
+              <CiChip
+                ci={item.row.ci}
+                elapsed={
+                  item.row.ci
+                    ? since(now, item.row.ci.since)
+                    : age(item.row.stageMinutes)
+                }
+              />
+            ) : null}
             {item.row.openBlocking > 0 ? (
               <span className="chip danger">
                 {item.row.openBlocking} blocking

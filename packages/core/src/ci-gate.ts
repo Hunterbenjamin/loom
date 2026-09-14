@@ -1,5 +1,6 @@
 import type { Context } from "./context.js";
 import type { CiState } from "./entities.js";
+import { structurallyEqual } from "./helpers.js";
 import type { FindingId } from "./ids.js";
 
 /**
@@ -49,16 +50,38 @@ export function reconcileCiGate(c: Context): void {
   const { task, state, git } = c;
   const gate = state.ciGate;
   if (!gate) return;
-  if (task.stage !== "in_progress" || task.blocked || task.failed) {
-    if (task.stage !== "in_progress") state.ciGate = null;
-    return;
-  }
-  // New commits after submitting withdraw it; the implementer submits the new head.
-  if (git?.headSha && git.headSha !== gate.headSha) {
+
+  // Rows submitted before `ci` became a stage migrate on their next pass.
+  if (task.stage === "in_progress")
+    c.stage("ci", `Submitted; CI running on ${gate.headSha.slice(0, 7)}`);
+  if (task.stage !== "ci") {
     state.ciGate = null;
     return;
   }
   const reading = c.observations.ci;
+  if (reading?.ok && reading.value.headSha === gate.headSha) {
+    const cached = {
+      conclusion: reading.value.conclusion,
+      checks: reading.value.checks.map(({ name, status, conclusion, url }) => ({
+        name,
+        status,
+        conclusion,
+        url,
+      })),
+    };
+    const previous = gate.ci
+      ? { conclusion: gate.ci.conclusion, checks: gate.ci.checks }
+      : null;
+    if (!structurallyEqual(previous, cached))
+      gate.ci = { ...cached, observedAt: reading.value.observedAt };
+  }
+  if (task.blocked || task.failed) return;
+  // New commits after submitting withdraw it; the implementer submits the new head.
+  if (git?.headSha && git.headSha !== gate.headSha) {
+    state.ciGate = null;
+    c.stage("in_progress", "New commits on the branch; submission withdrawn");
+    return;
+  }
   if (!reading?.ok || reading.value.headSha !== gate.headSha) return;
   const ci = reading.value;
   if (ci.conclusion === "pending") return;
@@ -76,8 +99,12 @@ export function reconcileCiGate(c: Context): void {
   }
   state.ciGate = null;
   if (ci.conclusion === "failure") {
+    const failed = failedChecks(ci);
     ciFindings(c, ci);
-    c.stage("in_progress", "CI failed on the submitted head");
+    c.stage(
+      "in_progress",
+      `CI failed on ${gate.headSha.slice(0, 7)}: ${failed.map((check) => check.name).join(", ") || "CI"}`,
+    );
     c.fix(`ci-gate:${gate.headSha}`);
     return;
   }
@@ -103,8 +130,8 @@ export function reconcileCiGate(c: Context): void {
   c.stage(
     "in_review",
     ci.conclusion === "none"
-      ? "No CI reported; submitted head goes to review"
-      : "CI passed on the submitted head",
+      ? `No CI reported for ${gate.headSha.slice(0, 7)} within the grace period`
+      : `CI passed on ${gate.headSha.slice(0, 7)}`,
   );
   c.review(gate.headSha);
 }

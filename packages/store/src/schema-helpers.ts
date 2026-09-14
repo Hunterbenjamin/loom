@@ -38,6 +38,7 @@ export const stage = z.enum([
   "planning",
   "plan_approval",
   "in_progress",
+  "ci",
   "in_review",
   "awaiting_approval",
   "merging",

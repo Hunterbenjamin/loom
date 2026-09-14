@@ -39,7 +39,7 @@ const ci = (
   },
 });
 
-/** An implementer submission in progress, before any reviewer exists for the round. */
+/** An implementer submission in CI, before any reviewer exists for the round. */
 function submitted() {
   const f = fixture("in_progress");
   f.state.task.reviewRound = 0;
@@ -53,11 +53,14 @@ function submitted() {
 }
 
 describe("CI gate before review", () => {
-  it("a submission is pushed and waits for CI in progress, with no reviewer and no PR", () => {
+  it("a submission is pushed and moves to CI, with no reviewer and no PR", () => {
     const { result, next } = submitted();
     expect(result.inputs[0]?.accepted).toBe(true);
-    expect(next.task.stage).toBe("in_progress");
+    expect(next.task.stage).toBe("ci");
     expect(next.ciGate).toEqual({ headSha: head, since: now });
+    expect(result.transitions.at(-1)?.reason).toBe(
+      `Submitted; CI running on ${head.slice(0, 7)}`,
+    );
     expect(result.actions.some((a) => a.kind === "push_branch")).toBe(true);
     expect(next.outbox.some((a) => a.kind === "start_run")).toBe(false);
     expect(next.outbox.some((a) => a.kind === "open_pr")).toBe(false);
@@ -67,8 +70,9 @@ describe("CI gate before review", () => {
   it("pending CI keeps waiting", () => {
     const { next, obs } = submitted();
     const r = fixed(next, { ...obs, ci: ci("pending") });
-    expect(r.next.task.stage).toBe("in_progress");
+    expect(r.next.task.stage).toBe("ci");
     expect(r.next.ciGate?.headSha).toBe(head);
+    expect(r.next.ciGate?.ci?.conclusion).toBe("pending");
   });
 
   it("red CI goes straight back to the same implementer with the failing checks, not to review", () => {
@@ -90,6 +94,7 @@ describe("CI gate before review", () => {
       ),
     ).toBe(true);
     expect(r.next.outbox.some((a) => a.kind === "start_run")).toBe(false);
+    expect(r.transitions.at(-1)?.reason).toContain("lint-typecheck-test");
   });
 
   it("green CI settles earlier CI failures and starts a review round that owes them no verdict", () => {
@@ -118,7 +123,7 @@ describe("CI gate before review", () => {
       row.finishedAt = finishedAt;
       return reconcile(next, { ...obs, ci: ci("none") });
     };
-    expect(settle(now).next.task.stage).toBe("in_progress");
+    expect(settle(now).next.task.stage).toBe("ci");
     const early = new Date(
       Date.parse(now) - CI_START_GRACE_MS - 1,
     ).toISOString() as IsoTime;
@@ -137,42 +142,74 @@ describe("CI gate before review", () => {
     const r = fixed(next, { ...obs, git, ci: ci("success") });
     expect(r.next.ciGate).toBeNull();
     expect(r.next.task.stage).toBe("in_progress");
+    expect(r.transitions.at(-1)?.reason).toBe(
+      "New commits on the branch; submission withdrawn",
+    );
   });
 
   it("an idle implementer waiting on CI is not reported as idle without submission", () => {
-    const f = fixture("in_progress");
+    const f = fixture("ci");
     const run = f.state.runs.find((r) => r.role === "implementer");
     if (!run) throw new Error("missing run");
     run.status = "idle";
     run.idleSince = "2026-09-11T00:00:00.000Z" as IsoTime;
-    const reasons = (waitingForCi: boolean) =>
-      deriveAttention({
-        now,
-        previous: f.state.task.attention,
-        stage: "in_progress",
-        blocked: null,
-        failed: null,
-        budgetMinutes: null,
-        activeElapsedMs: 0,
-        runs: [run],
-        questions: [],
-        messages: [],
-        stallAfterMs: f.state.config.stallAfterMs,
-        fixRoundStallAfterMs: f.state.config.fixRoundStallAfterMs,
-        unknownGraceMs: f.state.config.unknownGraceMs,
-        waitingForCi,
-      }).attention.reasons;
-    expect(reasons(false)).toContain("idle_without_submission");
-    expect(reasons(true)).not.toContain("idle_without_submission");
+    const reasons = deriveAttention({
+      now,
+      previous: f.state.task.attention,
+      stage: "ci",
+      blocked: null,
+      failed: null,
+      budgetMinutes: null,
+      activeElapsedMs: 0,
+      runs: [run],
+      questions: [],
+      messages: [],
+      stallAfterMs: f.state.config.stallAfterMs,
+      fixRoundStallAfterMs: f.state.config.fixRoundStallAfterMs,
+      unknownGraceMs: f.state.config.unknownGraceMs,
+    }).attention.reasons;
+    expect(reasons).not.toContain("idle_without_submission");
+  });
+
+  it("migrates a legacy in-progress gate and follows the same green edge", () => {
+    const f = fixture("in_progress");
+    f.state.ciGate = { headSha: head, since: now };
+    const r = fixed(f.state, { ...f.observations, ci: ci("success") });
+    expect(r.next.task.stage).toBe("in_review");
+    expect(r.transitions.map((transition) => transition.to)).toEqual([
+      "ci",
+      "in_review",
+    ]);
+  });
+
+  it("caches changed CI data but an identical poll causes no version bump", () => {
+    const { next, obs } = submitted();
+    const first = fixed(next, { ...obs, ci: ci("pending") });
+    const version = first.next.task.version;
+    const second = reconcile(first.next, { ...obs, ci: ci("pending") });
+    expect(first.next.ciGate?.ci?.checks[0]?.name).toBe("lint-typecheck-test");
+    expect(second.next.task.version).toBe(version);
+    expect(second.transitions).toEqual([]);
+  });
+
+  it("keeps a failed CI task and its gate in place", () => {
+    const { next, obs } = submitted();
+    next.task.failed = {
+      reason: "action_failed",
+      since: now,
+      detail: "Push failed",
+      runId: null,
+    };
+    const r = reconcile(next, { ...obs, ci: ci("failure") });
+    expect(r.next.task.stage).toBe("ci");
+    expect(r.next.ciGate).not.toBeNull();
   });
 });
 
 it("an implementer waiting on CI owes no work, so a restart sends it no continuation", () => {
   expect(roleOwesWork("in_progress", "implementer", false, false)).toBe(true);
-  expect(roleOwesWork("in_progress", "implementer", false, false, true)).toBe(
-    false,
-  );
-  expect(roleOwesWork("in_review", "reviewer", false, false, true)).toBe(true);
+  expect(roleOwesWork("ci", "implementer", false, false)).toBe(false);
+  expect(roleOwesWork("in_review", "reviewer", false, false)).toBe(true);
 });
 
 describe("the reviewer is a checker", () => {
