@@ -25,6 +25,53 @@ function failure(mode: "headless" | "interactive" = "headless") {
   return { ...f, run, observation };
 }
 describe("headless retries and interactive control", () => {
+  it("tracks provider-native in-flight turns and preserves them on unknown reads", () => {
+    const f = fixture("in_progress");
+    const observation = f.observations.runs[1] as RunObservation;
+    if (
+      !observation.provider.ok ||
+      observation.provider.value?.provider !== "codex"
+    )
+      throw new Error("Missing Codex fixture");
+    observation.provider.value.status = "active";
+    observation.provider.value.turns = [
+      {
+        id: "turn-live",
+        status: "inProgress",
+        error: null,
+        userMessageHashes: [],
+      },
+    ];
+    const observed = reconcile(f.state, f.observations).next;
+    expect(observed.runs[1]?.inFlightTurnId).toBe("turn-live");
+    const failed = f.observations.runs[1] as RunObservation;
+    failed.provider = { ok: false, reason: "offline", at: now };
+    expect(
+      reconcile(observed, f.observations).next.runs[1]?.inFlightTurnId,
+    ).toBe("turn-live");
+
+    const claude = fixture("in_review");
+    const claudeObservation = claude.observations.runs[2] as RunObservation;
+    if (
+      !claudeObservation.provider.ok ||
+      claudeObservation.provider.value?.provider !== "claude"
+    )
+      throw new Error("Missing Claude fixture");
+    claudeObservation.provider.value.hooks.promptSubmits = [
+      { promptId: "prompt-live", textHash: "prompt", at: now },
+    ];
+    const claudeObserved = reconcile(claude.state, claude.observations).next;
+    expect(claudeObserved.runs[2]?.inFlightTurnId).toBe("prompt-live");
+    claudeObservation.provider.value.hooks.lastStop = {
+      promptId: "prompt-live",
+      at: now,
+      lastAssistantMessage: null,
+    };
+    expect(
+      reconcile(claudeObserved, claude.observations).next.runs[2]
+        ?.inFlightTurnId,
+    ).toBeNull();
+  });
   it("schedules headless backoff without flagging the task", () => {
     const f = failure();
     const r = fixed(f.state, f.observations);

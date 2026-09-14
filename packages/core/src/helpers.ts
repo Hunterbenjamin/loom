@@ -1,4 +1,4 @@
-import type { Finding, MessagePurpose, Role } from "./entities.js";
+import type { Finding, MessagePurpose, Role, Stage } from "./entities.js";
 import type { IsoTime, MessageId, RunId, TaskId } from "./ids.js";
 import type { Reading } from "./observations.js";
 
@@ -25,6 +25,17 @@ export const openBlocking = (findings: Finding[]): number =>
       f.status !== "waived" &&
       f.status !== "fixed",
   ).length;
+export const roleOwesWork = (
+  stage: Stage,
+  role: Role,
+  blocked: boolean,
+  failed: boolean,
+): boolean =>
+  !blocked &&
+  !failed &&
+  ((stage === "planning" && role === "planner") ||
+    (stage === "in_progress" && role === "implementer") ||
+    (stage === "in_review" && role === "reviewer"));
 export const clone = <T>(value: T): T => {
   if (Array.isArray(value)) return value.map((item) => clone(item)) as T;
   if (value && typeof value === "object")

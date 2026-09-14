@@ -56,6 +56,8 @@ human relaunches an interactive run (§3).
 | `pane` | R pane host | `{hostGeneration, sessionName, windowId, paneId}` for interactive runs. `hostGeneration` scopes the pane ID: tmux restarts them at `%0` after a server death. |
 | `status`, `blockedOn` | D | From provider observations; §4. |
 | `lastTurn` | C provider | `{id, outcome, error}`. Kept apart from `status`. |
+| `inFlightTurnId` | D provider | Native Codex turn ID or Claude prompt ID while a fresh observation proves it is in flight. Unknown reads preserve the last value for restart recovery. |
+| `restartInterruption` | A | `{turnId, recordedAt, outcome, decidedAt}` records whether a restart-interrupted turn was continued, completed meanwhile, or no longer needed. |
 | `pendingRequests` | C provider | Approvals and questions the provider is waiting on. |
 | `lastActivityAt` | A | Latest provider activity evidence from `RunObservation.activityAt` (or Claude hook activity), not the timestamp of a no-change poll. Drives stall detection. |
 | `retryAt` | A | Backoff: `min(10s·2^(n−1), cap)`. |
@@ -155,7 +157,7 @@ Append-only; one row per committed stage change or flag change.
 
 | Entity | Fields | Notes |
 |---|---|---|
-| Message | `id, runId, purpose, text, textHash, status, attempts, transportRef, sentAt, delivered`, plus delivery metadata below | Status `pending → sent → delivered` (or `failed`). §5.5. |
+| Message | `id, runId, purpose, text, textHash, status, attempts, transportRef, sentAt, delivered`, plus delivery metadata below | Status `pending → sent → delivered` (or `failed`). `restart_continuation` uses the normal delivery path. §5.5. |
 | Question | `id, taskId, runId, question, options, blocking, askedAt, answer, answeredAt` | From `ask_human`. |
 | Repo | `id, root, github, baseBranch, defaultProviders, serialTests` | |
 
@@ -864,7 +866,7 @@ Verified in [spike 05](../../spikes/05-restart-matrix/FINDINGS.md) and re-measur
 
 | Fault | What happens | Reconcile |
 |---|---|---|
-| Coordinator restart | Providers and the pane host are untouched. | Load SQLite; run `pending` and `running` outbox rows again; `thread/resume` every live Codex run; poll `claude agents`; reconcile every non-terminal task. |
+| Coordinator restart | Provider processes may be interrupted when their coordinator-owned server or pane exits. Recovery uses the provider-native in-flight turn ID from the last committed pass; shutdown does not risk starting new actions with an extra reconcile. | Before any post-restart observation, enqueue one deterministic `coordinator/restart_interrupted` input for each stored in-flight turn. Resume the same session/thread, then core waits for a fresh provider read and records `continued`, `completed`, or `not_needed`. A needed idle interrupted turn gets exactly one `restart_continuation` through normal message delivery. Then recover outbox actions, poll providers, and reconcile every non-terminal task. |
 | A client detaches | Nothing: same PIDs, same IDs, turns finish. Other clients stay attached. | None. |
 | Pane host stop, crash or kill | Every pane process dies. The host has no restore feature, and needs none. Pane IDs restart at `%0`, so every stored `PaneRef` from the old generation names nothing. | Interactive runs go `unknown`, then are relaunched from stored state: `ensureWorkspace` + `ensurePane` with the full stored command line and environment (Claude `--resume <id> --settings … --model …`; Codex `resume <thread> --remote <sock>`). Claude's in-flight turn is lost: re-send the message. A Codex turn completed meanwhile because its app-server is outside the host: read it with `thread/read`. About 30 s to a fresh reply from both. |
 | Codex app-server restart | Generation + 1; older request IDs are dropped, never answered. The unfinished turn reads `interrupted`. | Runs `unknown` until `thread/resume`; the interrupted turn is a failed attempt and is re-sent. |
@@ -873,6 +875,11 @@ Verified in [spike 05](../../spikes/05-restart-matrix/FINDINGS.md) and re-measur
 Rules that follow: one Codex app-server per task, as a Loom child process outside the pane host; no
 decision is ever derived from a pane; the intended command line and environment of every interactive run
 are Loom state, never inferred from a pane's argv.
+
+The inbox accepts human commands, MCP calls, action results, and coordinator-owned
+`restart_interrupted` inputs. Restart inputs are keyed by run and native turn ID, so duplicate recovery
+and consecutive restarts cannot recreate a delivered continuation. A later interrupted continuation
+turn has a different native ID and can therefore receive its own continuation.
 
 Still placeholders: `unknownGraceMs` 60 s, `deliveryTimeoutMs` 10 s, `stallAfterMs` 15 min, `fixRoundStallAfterMs` 5 min. `claude agents
 --json` took up to about 5 s to list a relaunched session, so the grace period must exceed that. Untested:
