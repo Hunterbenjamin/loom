@@ -333,7 +333,14 @@ export class Executor {
         return {};
       }
       case "stop_run": {
-        const run = this.run(state, action.runId);
+        // Task state holds only each role's latest ended run, so a retire that ran late (behind a
+        // merge, say) can target a run a newer one of its role has replaced. Stop that one too.
+        const run =
+          state.runs.find((r) => r.id === action.runId) ??
+          this.deps.store
+            .runs(action.taskId)
+            .find((r) => r.id === action.runId) ??
+          this.run(state, action.runId);
         if (action.retire) {
           // The run has ended and its role is done: kill the pane, keep the session resumable.
           if (run.pane) await adapters.paneHost.closePane(run.pane);
