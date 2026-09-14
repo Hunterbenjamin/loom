@@ -137,6 +137,51 @@ test("a transcript match replaces its send while an unmatched send stays in plac
   ]);
 });
 
+test("an old send whose transcript copy scrolled out does not steal a later identical message", () => {
+  const send = (
+    id: string,
+    text: string,
+    time: string,
+  ): Conversation["sends"][number] => ({
+    id,
+    text,
+    state: "delivered",
+    at: at(time),
+    reason: null,
+    when: "now",
+  });
+  // The transcript starts at 02:00; the 01:30 "Okay" belongs to history that isn't loaded.
+  const question = item({
+    id: "question",
+    text: "What about the backlog?",
+    at: at("2026-09-14T02:10:00.400Z"),
+    order: 1,
+  });
+  const okay = item({
+    id: "okay",
+    text: "Okay",
+    at: at("2026-09-14T02:20:00.400Z"),
+    order: 2,
+  });
+  const reply = item({
+    id: "reply",
+    role: "assistant",
+    text: "Sure",
+    at: at("2026-09-14T02:00:00.000Z"),
+    order: 0,
+  });
+  const sends = [
+    send("old-okay", "Okay", "2026-09-14T01:30:00.000Z"),
+    send("question", "What about the backlog?", "2026-09-14T02:10:00.000Z"),
+    send("okay", "Okay", "2026-09-14T02:20:00.000Z"),
+  ];
+  expect(chatTimeline(sends, [reply, question, okay])).toEqual([
+    { kind: "item", item: reply },
+    { kind: "item", item: question },
+    { kind: "item", item: okay },
+  ]);
+});
+
 test("untimestamped sends stay before the next matching transcript turn", () => {
   const first = item({ id: "first", at: null, text: "first", order: 0 });
   const second = item({ id: "second", at: null, text: "second", order: 1 });

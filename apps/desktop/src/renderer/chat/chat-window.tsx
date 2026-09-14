@@ -27,6 +27,9 @@ export function resizeChatComposer(textarea: HTMLTextAreaElement) {
     contentHeight > CHAT_COMPOSER_MAX_HEIGHT ? "auto" : "hidden";
 }
 
+// Send times come from the coordinator's clock and transcript times from the provider's.
+const SEND_CLOCK_SKEW_MS = 5_000;
+
 export type ChatTimelineEntry =
   | { kind: "item"; item: ConversationItem }
   | { kind: "send"; send: Conversation["sends"][number] };
@@ -36,28 +39,57 @@ export function chatTimeline(
   items: ConversationItem[],
 ): ChatTimelineEntry[] {
   const matched = new Map<number, number>();
-  let after = 0;
-  sends.forEach((send, sendIndex) => {
-    const index = items.findIndex(
-      (item, itemIndex) =>
-        itemIndex >= after &&
-        item.role === "user" &&
-        item.kind === "text" &&
-        comparableText(item.text) === comparableText(send.text),
-    );
-    if (index >= 0) {
-      matched.set(sendIndex, index);
-      after = index + 1;
+  const timestamped = items.some((item) => item.at !== null);
+  const sameText = (
+    item: ConversationItem,
+    send: Conversation["sends"][number],
+  ) =>
+    item.role === "user" &&
+    item.kind === "text" &&
+    comparableText(item.text) === comparableText(send.text);
+  if (timestamped) {
+    // Each transcript message confirms at most one send, at or after the time it was sent.
+    // Newest sends claim first: the transcript keeps only its latest items, so an old "Yes"
+    // whose own copy scrolled out must not take a recent "Yes" and leave that send unmatched.
+    const claimed = new Set<number>();
+    for (let sendIndex = sends.length - 1; sendIndex >= 0; sendIndex--) {
+      const send = sends[sendIndex];
+      if (!send) continue;
+      const sentAt = Date.parse(send.at) - SEND_CLOCK_SKEW_MS;
+      const index = items.findIndex(
+        (item, itemIndex) =>
+          !claimed.has(itemIndex) &&
+          item.at !== null &&
+          Date.parse(item.at) >= sentAt &&
+          sameText(item, send),
+      );
+      if (index >= 0) {
+        matched.set(sendIndex, index);
+        claimed.add(index);
+      }
     }
-  });
+  } else {
+    let after = 0;
+    sends.forEach((send, sendIndex) => {
+      const index = items.findIndex(
+        (item, itemIndex) => itemIndex >= after && sameText(item, send),
+      );
+      if (index >= 0) {
+        matched.set(sendIndex, index);
+        after = index + 1;
+      }
+    });
+  }
   const slots = Array.from(
     { length: items.length + 1 },
     () => [] as Conversation["sends"],
   );
-  const timestamped = items.some((item) => item.at !== null);
+  const firstAt = items.find((item) => item.at !== null)?.at ?? null;
   sends.forEach((send, sendIndex) => {
     // Queued messages stay in the conversation, in order, where they can be steered.
     if (matched.has(sendIndex)) return;
+    // A finished send older than the loaded transcript belongs to history that isn't shown.
+    if (firstAt && send.at < firstAt && send.state !== "queued") return;
     let slot = items.length;
     if (timestamped) {
       slot = 0;
