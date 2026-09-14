@@ -165,6 +165,10 @@ export function Sidebar({
     y: number;
     trigger: HTMLElement;
   } | null>(null);
+  const [editingRow, setEditingRow] = useState<{
+    kind: "space" | "tab" | "pane";
+    key: string;
+  } | null>(null);
   const dismiss = useCallback(() => setMenu(null), []);
   // Resolve against the full inventory, never the filtered descendants or a stale row object.
   const rowPanes = (kind: "space" | "tab" | "pane" | "main", key: string) =>
@@ -194,6 +198,12 @@ export function Sidebar({
   );
   const menuName =
     menu?.kind === "space" ? menuRows[0]?.sessionName : menuRows[0]?.windowName;
+  const renameAllowed = !(
+    menu?.kind === "space" &&
+    ["loom-coordinator", "loom-desktop"].includes(
+      menuRows[0]?.sessionName ?? "",
+    )
+  );
   const rowMenu = (kind: "space" | "tab" | "pane" | "main", key: string) => ({
     onContextMenu: (event: React.MouseEvent<HTMLElement>) => {
       event.preventDefault();
@@ -256,7 +266,17 @@ export function Sidebar({
                     <RenameRow
                       kind="space"
                       pane={space.tabs[0]?.panes[0]?.pane}
-                      name={space.name}
+                      name={space.label}
+                      title={space.tabs[0]?.panes[0]?.pane.spaceTitle ?? null}
+                      editing={
+                        editingRow?.kind === "space" &&
+                        editingRow.key === space.key
+                      }
+                      onEditingChange={(editing) => {
+                        setEditingRow(
+                          editing ? { kind: "space", key: space.key } : null,
+                        );
+                      }}
                       className="wb-space"
                       current={
                         selectedSpace === space.key ||
@@ -264,7 +284,7 @@ export function Sidebar({
                       }
                       ariaLabel={`Open space ${space.label}`}
                       toggle={() =>
-                        openGroup(rowPanes("space", space.key), space.name)
+                        openGroup(rowPanes("space", space.key), space.label)
                       }
                     >
                       {/* A space is a place, not an agent: its row keeps the plain circle and
@@ -302,7 +322,17 @@ export function Sidebar({
                         <RenameRow
                           kind="tab"
                           pane={tab.panes[0]?.pane}
-                          name={tab.windowName}
+                          name={tab.name}
+                          title={tab.panes[0]?.pane.tabTitle ?? null}
+                          editing={
+                            editingRow?.kind === "tab" &&
+                            editingRow.key === tab.key
+                          }
+                          onEditingChange={(editing) => {
+                            setEditingRow(
+                              editing ? { kind: "tab", key: tab.key } : null,
+                            );
+                          }}
                           ariaLabel={`Open tab ${tab.name}`}
                           disabled={
                             !rowPanes("tab", tab.key).some(
@@ -364,17 +394,29 @@ export function Sidebar({
               </div>
             </section>
             <div className="wb-agent-list">
-              {agents.map(({ pane, indicator, space, tab }) => (
-                <button
-                  type="button"
+              {agents.map(({ pane, name, indicator, space, tab }) => (
+                <RenameRow
                   key={pane.id}
-                  data-pane-key={paneKey(pane)}
-                  className={`wb-tree-row wb-agent-row ${pane.dead ? "dead" : ""}`}
-                  aria-label={`Open agent ${space.label} ${tab.name} ${pane.paneId}`}
-                  aria-current={isSelected(pane) ? "true" : undefined}
+                  kind="pane"
+                  pane={pane}
+                  name={name}
+                  title={pane.paneTitle}
+                  dataPaneKey={paneKey(pane)}
+                  className={`wb-agent-row ${pane.dead ? "dead" : ""}`}
+                  ariaLabel={`Open agent ${space.label} ${tab.name} ${pane.paneId}`}
+                  current={isSelected(pane)}
                   disabled={unavailable || pane.unavailable || pane.dead}
-                  {...rowMenu("pane", paneKey(pane))}
-                  onClick={() => choose(pane)}
+                  editing={
+                    editingRow?.kind === "pane" &&
+                    editingRow.key === paneKey(pane)
+                  }
+                  onEditingChange={(editing) => {
+                    setEditingRow(
+                      editing ? { kind: "pane", key: paneKey(pane) } : null,
+                    );
+                  }}
+                  onContextMenu={rowMenu("pane", paneKey(pane)).onContextMenu}
+                  toggle={() => choose(pane)}
                   onKeyDown={(e) => {
                     rowMenu("pane", paneKey(pane)).onKeyDown(e);
                     if (e.key === "Enter") {
@@ -382,19 +424,18 @@ export function Sidebar({
                       choose(pane, true);
                     }
                   }}
-                  title={`${space.name} · ${tab.windowName} · ${pane.paneId}\n${indicator.label}${pane.dead ? "\nExited" : ""}`}
                 >
                   <Status state={indicator} />
                   <span className="wb-row-copy">
                     <span className="wb-tree-name">
-                      <strong>{tab.name}</strong>
+                      <strong>{name}</strong>
                     </span>
                     <small>
                       {pane.taskName ?? pane.issueKey ?? "Issue"} ·{" "}
                       {pane.provider ?? pane.agent ?? "—"}
                     </small>
                   </span>
-                </button>
+                </RenameRow>
               ))}
               {!agents.length && (
                 <p className="wb-muted">
@@ -501,9 +542,11 @@ export function Sidebar({
                   },
                   {
                     label: "Rename",
-                    disabled: true,
-                    reason: "Native rename is provided by Workbench v2 slice 3",
-                    run: () => {},
+                    disabled: !liveRows.length || !renameAllowed,
+                    run: () => {
+                      if (menu.kind === "main") return;
+                      setEditingRow({ kind: menu.kind, key: menu.key });
+                    },
                   },
                   ...(menu.kind === "pane" &&
                   menuRows[0]?.runId &&

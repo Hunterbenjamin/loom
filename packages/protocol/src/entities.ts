@@ -277,6 +277,16 @@ export const run = z.strictObject({
       error: text.nullable(),
     })
     .nullable(),
+  inFlightTurnId: z.string().min(1).nullable().optional(),
+  restartInterruption: z
+    .strictObject({
+      turnId: z.string().min(1),
+      recordedAt: isoTime,
+      outcome: z.enum(["continued", "completed", "not_needed"]).nullable(),
+      decidedAt: isoTime.nullable(),
+    })
+    .nullable()
+    .optional(),
   pendingRequests: z.array(providerRequest),
   pendingDialog: z
     .object({
@@ -321,7 +331,14 @@ export const sendVia = z.enum([
 export const message = z.strictObject({
   id: messageId,
   runId,
-  purpose: z.enum(["initial", "fix_round", "answer", "plan_feedback", "human"]),
+  purpose: z.enum([
+    "initial",
+    "fix_round",
+    "answer",
+    "plan_feedback",
+    "restart_continuation",
+    "human",
+  ]),
   text,
   textHash: z.string().min(1),
   status: z.enum(["pending", "sent", "delivered", "failed"]),

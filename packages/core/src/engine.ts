@@ -5,8 +5,14 @@ import { delivery } from "./delivery.js";
 import { attention, budget, reconcileFlags } from "./flags.js";
 import { structurallyEqual } from "./helpers.js";
 import { human } from "./human.js";
-import { observeRuns, retireFinishedPanes, startDesired } from "./lifecycle.js";
+import {
+  observeRuns,
+  removeFinishedWorktree,
+  retireFinishedPanes,
+  startDesired,
+} from "./lifecycle.js";
 import type { Reconcile } from "./reconcile.js";
+import { continueInterrupted, restartInterrupted } from "./restart.js";
 import {
   actionResult,
   releaseDeadDependencies,
@@ -36,7 +42,12 @@ export const reconcile: Reconcile = (state, observations) => {
               runId: input.runId,
               inputId: input.id,
             }
-          : { kind: "reconcile", fact: `action_result:${input.key}` };
+          : input.type === "coordinator"
+            ? {
+                kind: "reconcile",
+                fact: `restart_interrupted:${input.event.runId}:${input.event.turnId}`,
+              }
+            : { kind: "reconcile", fact: `action_result:${input.key}` };
     if (input.type === "mcp") {
       const result = submission(c, input);
       c.result.inputs.push(
@@ -45,10 +56,10 @@ export const reconcile: Reconcile = (state, observations) => {
           : { inputId: input.id, accepted: true, reply: result },
       );
     } else {
-      const failure =
-        input.type === "human"
-          ? human(c, input.command, input.id)
-          : actionResult(c, input);
+      let failure: ReturnType<typeof human> = null;
+      if (input.type === "human") failure = human(c, input.command, input.id);
+      else if (input.type === "coordinator") restartInterrupted(c, input);
+      else failure = actionResult(c, input);
       c.result.inputs.push(
         failure
           ? { inputId: input.id, accepted: false, error: failure }
@@ -64,6 +75,7 @@ export const reconcile: Reconcile = (state, observations) => {
   reconcileStages(c);
   reconcileCiGate(c);
   reconcileFlags(c);
+  continueInterrupted(c);
   retryActions(c);
   if (
     (c.state.findings.length || c.state.artifactContents.findings) &&
@@ -74,6 +86,7 @@ export const reconcile: Reconcile = (state, observations) => {
   }
   startDesired(c);
   retireFinishedPanes(c);
+  removeFinishedWorktree(c);
   delivery(c);
   automate(c);
   // Last among emitters: voided approvals and cancellations earlier in the pass count.

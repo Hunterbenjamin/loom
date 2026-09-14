@@ -16,6 +16,19 @@ test("startup recreates a lost workspace once, while lookup errors never authori
     await h.coordinator.settle();
     const run = h.store.loadTaskState(task.task.id).runs[0];
     if (!run?.pane) throw new Error("Missing recorded pane");
+    const stored = h.store.loadTaskState(task.task.id);
+    const storedRun = stored.runs.find((candidate) => candidate.id === run.id);
+    if (!storedRun) throw new Error("Missing stored run");
+    storedRun.inFlightTurnId = "turn-live";
+    const expectedVersion = stored.task.version;
+    stored.task.version++;
+    expect(
+      h.store.commit(
+        task.task.id,
+        { next: stored, actions: [], transitions: [], inputs: [] },
+        expectedVersion,
+      ).ok,
+    ).toBe(true);
     const deps = {
       store: h.store,
       adapters: h.adapters,
@@ -40,11 +53,21 @@ test("startup recreates a lost workspace once, while lookup errors never authori
       .spyOn(h.paneHost, "getPane")
       .mockRejectedValueOnce(new Error("Host unavailable"));
     const before = h.paneHost.launches.length;
-    expect((await recover(deps, [])).relaunched).toEqual([]);
+    const firstRecovery = await recover(deps, []);
+    expect(firstRecovery.interrupted).toEqual([run.id]);
+    expect(firstRecovery.relaunched).toEqual([]);
+    expect(h.store.pendingInputs(task.task.id)).toContainEqual(
+      expect.objectContaining({
+        id: `restart_interrupted:${run.id}:turn-live`,
+        type: "coordinator",
+      }),
+    );
     expect(h.paneHost.launches).toHaveLength(before);
     expect(h.logs.some((line) => line.includes("Host unavailable"))).toBe(true);
     lookup.mockRestore();
-    expect((await recover(deps, [])).relaunched).toEqual([run.id]);
+    const duplicateRecovery = await recover(deps, []);
+    expect(duplicateRecovery.interrupted).toEqual([]);
+    expect(duplicateRecovery.relaunched).toEqual([run.id]);
     const pane = h.store.loadTaskState(task.task.id).runs[0]?.pane;
     expect(pane?.hostGeneration).not.toBe(run.pane.hostGeneration);
     expect(await h.paneHost.getPane(pane as never)).toMatchObject({

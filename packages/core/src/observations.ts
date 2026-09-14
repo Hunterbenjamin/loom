@@ -218,13 +218,15 @@ export interface ClaudeSessionObservation {
  * and provider identity is never inferred from a pane (spike 06 §4).
  */
 export interface PaneObservation {
-  /** Original workspace key retained by the host when its session is renamed. */
+  /** Original workspace key retained by sessions renamed before titles existed. */
   workspaceId?: string;
   sessionId?: string | null;
   windowName?: string | null;
   windowIndex?: number;
   windowLayout?: string;
-  title?: string | null;
+  spaceTitle?: string | null;
+  tabTitle?: string | null;
+  paneTitle?: string | null;
   ref: PaneRef;
   /** The pane's current working directory; null once the pane is dead. */
   cwd: WorktreePath | null;
@@ -276,6 +278,9 @@ export interface DependencyObservation {
   taskId: TaskId;
   stage: Stage;
   merged: boolean;
+  mergeCommitSha: Sha | null;
+  /** Coordinator-only lookup hint; core does not persist dependency branches. */
+  branch: string | null;
 }
 
 // ---------------------------------------------------------------- inputs
@@ -339,6 +344,10 @@ interface InputBase {
 export type Input =
   | (InputBase & { type: "human"; command: HumanCommand })
   | (InputBase & { type: "mcp"; runId: RunId; call: McpCall })
+  | (InputBase & {
+      type: "coordinator";
+      event: { type: "restart_interrupted"; runId: RunId; turnId: string };
+    })
   | (InputBase & {
       type: "action_result";
       key: ActionKey;

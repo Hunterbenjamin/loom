@@ -324,11 +324,12 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
   its window independently. Workbench also uses tmux's `active-pane` client flag and initializes
   client-local selection before targeting sibling panes; the adapter integration test verifies
   input isolation on tmux 3.7c.
-- Session/window names are mutable tmux metadata. Rename targets use a host generation plus
-  native session/window ID; stored pane references continue to resolve by generation, window ID
-  and pane ID. The native session retains its original workspace key in `@loom_workspace_id`, so
-  task linkage and subsequent launches survive a rename and coordinator restart. No name is
-  persisted in the renderer, and inventory patches do not remount terminal viewers.
+- Loom never renames native tmux sessions or windows. Optional display titles live with their
+  native objects as pane-host-owned user options: `@loom_space_title`, `@loom_tab_title`, and
+  `@loom_pane_title`. The distinct option names prevent tmux's pane/window/session inheritance
+  from leaking a parent's title into an untitled child. Inventory and UI identity continue to use
+  host generation and native IDs, while labels render `title ?? default`. The legacy
+  `@loom_workspace_id` option is read only for sessions renamed before titles existed.
 - **The shared pane has one size**, and the latest active client's size wins (`window-size latest`,
   `aggressive-resize on`); a differently sized view is cropped or padded. Give the embedded
   terminal a minimum width (about 100 columns), and resize only when the panel resizes, debounced.
@@ -509,10 +510,10 @@ that crosses providers goes only through artifacts.
 | Failure | Handling |
 |---|---|
 | UI closed or crashed | Nothing happens. On reopen, the UI reconnects and gets a fresh snapshot. |
-| Coordinator restart | 1. Load SQLite.<br>2. Scan worktrees, panes, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events.<br>4. Resume runs that vanished using their stored session ID (N attempts).<br>An agent's MCP token is judged live or stale by the store alone; the launch recipe only maps the token to its run. Nothing the coordinator holds in memory can refuse a run the store says is current. |
+| Coordinator restart | 1. Load SQLite and enqueue one deterministic restart input for each provider-native in-flight turn from the last committed pass.<br>2. Scan worktrees, panes, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events and resume the same stored sessions.<br>4. After a fresh provider read, send one normal-path continuation only if the interrupted turn is idle and that role still owes work; record completed or not-needed outcomes instead.<br>Shutdown does not run a final reconcile that could create actions while adapters are closing. An agent's MCP token is judged live or stale by the store alone; the launch recipe only maps the token to its run. Nothing the coordinator holds in memory can refuse a run the store says is current. |
 | Idle after a fix round | A run that goes idle without submitting after Loom sent it a fix round (findings or a rebase) raises `idle_without_submission` after `fixRoundStallAfterMs` (5 minutes) instead of the full `stallAfterMs`: it already knows what to do. |
 | Pane host stop, crash or kill | Every pane process dies, shells included (spikes 05 and 06). The host has no restore feature and needs none: Loom recreates the server, its sessions and each run's pane from stored state — session or thread ID, cwd, full command line and environment. Pane IDs restart at `%0`, so stale refs name nothing and every ref carries its host generation. Measured at about 30 s to a fresh reply from both providers. A Codex turn in flight completes because its app-server runs outside the pane host; Claude's is lost and re-sent. |
-| Codex app-server restart | Desired thread subscriptions survive the connection generation and are resumed/hydrated before retrying reads. An unavailable owner leaves runs `unknown`; after `unknownGraceMs` they raise `observability_failure`. Interrupted or completed turns without a Loom submission remain live and can raise `idle_without_submission`; they are not inferred ended. |
+| Codex app-server restart | Desired thread subscriptions survive the connection generation and are resumed/hydrated before retrying reads. An unavailable owner leaves runs `unknown`; after `unknownGraceMs` they raise `observability_failure`. A coordinator-recorded interrupted turn gets one continuation if its role still owes work; completed, newer, failed, or no-longer-needed turns do not. Other interruptions remain live and can raise `idle_without_submission`; they are not inferred ended. |
 | Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, flag the issue failed and notify the human (see `docs/design/core.md` §3). |
 | Stall | No events for N minutes → set the attention flag. Don't kill it; the human may be typing. |
 | Rate limits | Codex `account/rateLimits/updated` or Claude StopFailure → the provider is cooling down until its reset. Queue new work, and offer to switch providers only for runs that haven't started. |

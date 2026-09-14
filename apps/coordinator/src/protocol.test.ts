@@ -1,7 +1,7 @@
 // The protocol server (brief §8). A fake client connects, gets a snapshot, sends a command,
 // receives the ack and the resulting patches, and detects a forced sequence gap.
 
-import type { TaskId } from "@loom/core";
+import type { PaneObservation, TaskId } from "@loom/core";
 import { loadScenarios } from "@loom/fake-agent";
 import { PROTOCOL_VERSION } from "@loom/protocol";
 import { afterEach, expect, test, vi } from "vitest";
@@ -715,7 +715,7 @@ test("select_repo and add_repo publish one durable selection to existing and new
   ).toBe(h.repo.id);
 });
 
-test("rename commands map to the pane host and publish authoritative names to every window", async () => {
+test("set_title maps to the pane host and publishes authoritative titles to every window", async () => {
   const h = await served();
   const ref = {
     hostGeneration: `loom-${h.config.instance}#1`,
@@ -723,7 +723,7 @@ test("rename commands map to the pane host and publish authoritative names to ev
     windowId: "@7",
     paneId: "%7",
   };
-  let observation = {
+  let observation: PaneObservation = {
     ref,
     sessionId: "$7",
     windowName: "shell",
@@ -738,68 +738,79 @@ test("rename commands map to the pane host and publish authoritative names to ev
     observation,
   ]);
   vi.spyOn(h.paneHost, "listClients").mockResolvedValue([]);
-  const renameSession = vi
-    .spyOn(h.paneHost, "renameSession")
+  const setTitle = vi
+    .spyOn(h.paneHost, "setTitle")
     .mockImplementation(async (request) => {
       observation = {
         ...observation,
-        ref: { ...observation.ref, sessionName: request.name },
+        spaceTitle:
+          request.target.kind === "space"
+            ? request.title
+            : observation.spaceTitle,
+        tabTitle:
+          request.target.kind === "tab" ? request.title : observation.tabTitle,
+        paneTitle:
+          request.target.kind === "pane"
+            ? request.title
+            : observation.paneTitle,
       };
     });
-  const renameWindow = vi
-    .spyOn(h.paneHost, "renameWindow")
-    .mockImplementation(async (request) => {
-      observation = { ...observation, windowName: request.name };
-    });
-  const client = await connect(h, "rename-first", [{ kind: "panes" }] as never);
-  const other = await connect(h, "rename-second", [{ kind: "panes" }] as never);
+  const client = await connect(h, "title-first", [{ kind: "panes" }] as never);
+  const other = await connect(h, "title-second", [{ kind: "panes" }] as never);
   const space = {
-    kind: "rename_space" as const,
+    kind: "set_title" as const,
     hostGeneration: ref.hostGeneration,
-    sessionId: "$7",
-    name: "New space",
+    target: { kind: "space" as const, sessionId: "$7" },
+    title: "New space",
   };
   expect(await client.command(space)).toMatchObject({
     ok: true,
-    result: { kind: "renamed" },
+    result: { kind: "titled" },
   });
-  expect(renameSession).toHaveBeenCalledExactlyOnceWith({
+  expect(setTitle).toHaveBeenCalledExactlyOnceWith({
     hostGeneration: ref.hostGeneration,
-    sessionId: "$7",
-    name: "New space",
+    target: space.target,
+    title: "New space",
   });
   const tab = {
-    kind: "rename_tab" as const,
+    kind: "set_title" as const,
     hostGeneration: ref.hostGeneration,
-    windowId: ref.windowId,
-    name: "New tab",
+    target: { kind: "tab" as const, windowId: ref.windowId },
+    title: "New tab",
   };
   expect(await client.command(tab)).toMatchObject({ ok: true });
-  expect(renameWindow).toHaveBeenCalledExactlyOnceWith({
+  expect(setTitle).toHaveBeenLastCalledWith({
     hostGeneration: ref.hostGeneration,
-    windowId: ref.windowId,
-    name: "New tab",
+    target: tab.target,
+    title: "New tab",
   });
   await vi.waitFor(() => {
     for (const window of [client, other])
       expect([
         ...(window.state?.collections.pane.values() ?? []),
       ]).toMatchObject([
-        { sessionName: "New space", windowName: "New tab", paneId: ref.paneId },
+        {
+          sessionName: "research",
+          windowName: "shell",
+          spaceTitle: "New space",
+          tabTitle: "New tab",
+          paneTitle: null,
+          paneId: ref.paneId,
+        },
       ]);
   });
-  renameSession.mockRejectedValueOnce(new Error("duplicate session"));
-  expect(await client.command({ ...space, name: "Taken" })).toMatchObject({
+  setTitle.mockRejectedValueOnce(new Error("title failed"));
+  expect(await client.command({ ...space, title: "Failed" })).toMatchObject({
     ok: false,
-    error: { message: "duplicate session" },
+    error: { message: "title failed" },
   });
   expect(
     await client.command({ ...space, hostGeneration: "loom-other#1" }),
   ).toMatchObject({ ok: false });
-  expect(renameSession).toHaveBeenCalledTimes(2);
+  expect(setTitle).toHaveBeenCalledTimes(3);
   expect(
     [...(client.state?.collections.pane.values() ?? [])][0]?.sessionName,
-  ).toBe("New space");
+  ).toBe("research");
 }, 30_000);
 
 test("Workbench creation passes selected space and split identity through scratch and publishes native metadata", async () => {

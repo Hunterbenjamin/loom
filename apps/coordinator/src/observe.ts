@@ -229,7 +229,9 @@ export interface ObserveDeps {
   config: CoordinatorConfig;
   pullRequests: PullRequestCache;
   capacity: CapacityReader;
-  dependencies(): Observations["dependencies"];
+  dependencies():
+    | Observations["dependencies"]
+    | Promise<Observations["dependencies"]>;
   inputs(): Input[];
   coolingDownUntil(): Record<Provider, string | null>;
   /** Session IDs Loom launched, so its own runs are never mistaken for hand-started ones. */
@@ -329,6 +331,27 @@ export async function observe(
     externalResult.readFailed
       ? { ok: false, reason: "External sessions read failed", at: now as never }
       : { ok: true, value: externalResult.sessions, at: now as never };
+  let dependencies = await deps.dependencies();
+  if (
+    repo &&
+    state.task.blockedBy.length > 0 &&
+    (!state.worktree || state.worktree.removedAt !== null)
+  )
+    dependencies = await Promise.all(
+      dependencies.map(async (dependency) => {
+        if (!dependency.merged || !dependency.branch) return dependency;
+        try {
+          const pr = await deps.pullRequests.read(
+            deps.adapters,
+            repo.github,
+            dependency.branch,
+          );
+          return { ...dependency, mergeCommitSha: pr?.mergeCommitSha ?? null };
+        } catch {
+          return { ...dependency, mergeCommitSha: null };
+        }
+      }),
+    );
 
   return {
     now: now as never,
@@ -338,7 +361,7 @@ export async function observe(
     runs,
     externalSessions,
     capacity,
-    dependencies: deps.dependencies(),
+    dependencies,
     inputs,
   };
 }

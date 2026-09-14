@@ -452,7 +452,13 @@ describe("task transactions", () => {
     const store = await seeded();
     store.createTask({ ...task("dependent" as TaskId), blockedBy: [taskId] });
     expect(store.dependencyStages("dependent" as TaskId)).toEqual([
-      { taskId, stage: "backlog", merged: false },
+      {
+        taskId,
+        stage: "backlog",
+        merged: false,
+        mergeCommitSha: null,
+        branch: null,
+      },
     ]);
     const next = richState();
     next.task.stage = "done";
@@ -700,6 +706,7 @@ describe("schema drift detection", () => {
       "map_findings",
       "disable_auto_merge",
       "refresh",
+      "remove_worktree",
       "schedule",
       "notify",
     ].sort();

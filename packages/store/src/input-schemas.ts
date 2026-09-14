@@ -184,6 +184,16 @@ export const inputSchema = contract<Input>()(
     z.object({
       id,
       receivedAt: time,
+      type: z.literal("coordinator"),
+      event: z.object({
+        type: z.literal("restart_interrupted"),
+        runId: id,
+        turnId: id,
+      }),
+    }),
+    z.object({
+      id,
+      receivedAt: time,
       type: z.literal("action_result"),
       key: id,
       result: actionResultSchema,

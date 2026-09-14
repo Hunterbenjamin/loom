@@ -1,12 +1,20 @@
-import { type PaneView, renameSpace, renameTab } from "@loom/protocol";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type PaneView, setTitle } from "@loom/protocol";
+import {
+  type KeyboardEventHandler,
+  type MouseEventHandler,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useStoreApi } from "../store/react.js";
 
-/** The draft is local; only an inventory patch changes the displayed native name. */
+/** The draft is local; only an inventory patch changes the displayed title. */
 export function RenameRow({
   kind,
   pane,
   name,
+  title,
   expanded,
   toggle,
   children,
@@ -14,14 +22,25 @@ export function RenameRow({
   ariaLabel,
   current,
   disabled,
+  editing: controlledEditing,
+  onEditingChange,
+  onContextMenu,
+  onKeyDown,
+  dataPaneKey,
 }: {
-  kind: "space" | "tab";
+  kind: "space" | "tab" | "pane";
   pane: PaneView | undefined;
   name: string;
+  title: string | null;
   expanded?: boolean;
   ariaLabel?: string;
   current?: boolean;
   disabled?: boolean;
+  editing?: boolean;
+  onEditingChange?: (editing: boolean) => void;
+  onContextMenu?: MouseEventHandler<HTMLButtonElement>;
+  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
+  dataPaneKey?: string;
   toggle: () => void;
   children: ReactNode;
   className?: string;
@@ -29,19 +48,28 @@ export function RenameRow({
   const store = useStoreApi();
   const button = useRef<HTMLButtonElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  const [editing, setEditing] = useState(false);
+  const [internalEditing, setInternalEditing] = useState(false);
+  const editing = controlledEditing ?? internalEditing;
+  const setEditing = (value: boolean) => {
+    setInternalEditing(value);
+    onEditingChange?.(value);
+  };
   const [draft, setDraft] = useState(name);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const enabled =
-    !!pane && !pane.unavailable && (kind === "tab" || pane.sessionId !== null);
+    !!pane &&
+    !pane.unavailable &&
+    (kind !== "space" || pane.sessionId !== null);
   useEffect(() => {
     if (editing) {
+      setDraft(name);
+      setError("");
       input.current?.focus();
       input.current?.select();
     }
-  }, [editing]);
+  }, [editing, name]);
   const begin = () => {
     if (!enabled) return;
     setDraft(name);
@@ -60,20 +88,22 @@ export function RenameRow({
           event.preventDefault();
           event.stopPropagation();
           if (pending.current || !pane) return;
-          const parsed =
+          if (title === null && draft.trim() === name.trim()) {
+            finish();
+            return;
+          }
+          const target =
             kind === "space"
-              ? renameSpace.safeParse({
-                  kind: "rename_space",
-                  hostGeneration: pane.hostGeneration,
-                  sessionId: pane.sessionId,
-                  name: draft,
-                })
-              : renameTab.safeParse({
-                  kind: "rename_tab",
-                  hostGeneration: pane.hostGeneration,
-                  windowId: pane.windowId,
-                  name: draft,
-                });
+              ? { kind, sessionId: pane.sessionId }
+              : kind === "tab"
+                ? { kind, windowId: pane.windowId }
+                : { kind, paneId: pane.paneId };
+          const parsed = setTitle.safeParse({
+            kind: "set_title",
+            hostGeneration: pane.hostGeneration,
+            target,
+            title: draft,
+          });
           if (!parsed.success) {
             setError(
               parsed.error.issues.map((issue) => issue.message).join("; "),
@@ -125,7 +155,7 @@ export function RenameRow({
             }
           }}
         />
-        {busy && <small role="status">Renaming…</small>}
+        {busy && <small role="status">Saving…</small>}
         {error && (
           <small id={`rename-error-${pane?.paneId}-${kind}`} role="alert">
             {error}
@@ -142,7 +172,9 @@ export function RenameRow({
       aria-label={ariaLabel}
       aria-current={current ? "true" : undefined}
       disabled={disabled}
+      data-pane-key={dataPaneKey}
       title={name}
+      onContextMenu={onContextMenu}
       onClick={(event) => {
         // The second click starts editing; it must not open a second split group.
         if (event.detail < 2) toggle();
@@ -153,7 +185,9 @@ export function RenameRow({
           event.preventDefault();
           event.stopPropagation();
           begin();
+          return;
         }
+        onKeyDown?.(event);
       }}
     >
       {children}

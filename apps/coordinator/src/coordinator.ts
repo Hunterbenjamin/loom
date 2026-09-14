@@ -782,16 +782,24 @@ export class Coordinator {
       this.store.outbox.runningAtStartup(),
     );
     for (const taskId of report.reconciled) this.loop.enqueue(taskId);
-    // A finished task is not resynced, so give one with intents still queued (a pane retire held
-    // back by a merge that never ran, say) a pass to release or cancel them.
+    // A finished task is not resynced, so backfill cleanup and resume its pending retries.
     for (const task of this.store.tasks())
-      if (
-        TERMINAL.includes(task.stage) &&
-        this.store
-          .loadTaskState(task.id)
-          .outbox.some((row) => row.status === "pending")
-      )
-        this.loop.enqueue(task.id);
+      if (TERMINAL.includes(task.stage)) {
+        const state = this.store.loadTaskState(task.id);
+        const retries = state.outbox.filter(
+          (row) => row.status === "failed" && row.retryAt,
+        );
+        if (
+          (state.worktree && state.worktree.removedAt === null) ||
+          state.outbox.some((row) => row.status === "pending") ||
+          retries.length
+        )
+          this.loop.enqueue(task.id);
+        // A succeeded schedule row cannot restore its in-memory timer after a restart.
+        for (const row of retries)
+          if (row.retryAt && row.retryAt > this.now())
+            this.schedule(task.id, row.retryAt, "retry recovery");
+      }
     await this.refreshAll([]);
     await this.inventory.refresh();
     this.panePoll = setInterval(() => void this.inventory.refresh(), 2000);
@@ -1388,28 +1396,22 @@ export class Coordinator {
             result: { kind: "settings_updated", scope, version },
           };
         }
-        case "rename_space":
-        case "rename_tab": {
+        case "set_title": {
           if (
             !String(command.hostGeneration).startsWith(
               `loom-${this.config.instance}#`,
             )
           )
             throw new Error("Terminal belongs to another instance");
-          if (command.kind === "rename_space")
-            await this.adapters.paneHost.renameSession({
-              hostGeneration: String(command.hostGeneration),
-              sessionId: String(command.sessionId),
-              name: String(command.name),
-            });
-          else
-            await this.adapters.paneHost.renameWindow({
-              hostGeneration: String(command.hostGeneration),
-              windowId: String(command.windowId),
-              name: String(command.name),
-            });
+          await this.adapters.paneHost.setTitle({
+            hostGeneration: String(command.hostGeneration),
+            target: command.target as Parameters<
+              Adapters["paneHost"]["setTitle"]
+            >[0]["target"],
+            title: String(command.title),
+          });
           await this.inventory.refresh();
-          return { ok: true, result: { kind: "renamed" } };
+          return { ok: true, result: { kind: "titled" } };
         }
         case "open_task_terminal": {
           const taskId = command.taskId as TaskId;

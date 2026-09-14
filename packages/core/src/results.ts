@@ -88,15 +88,19 @@ export function actionResult(
   }
   const action = row.action;
   switch (result.kind) {
-    case "create_worktree":
+    case "create_worktree": {
       if (action.kind !== "create_worktree") break;
+      const priorBaseSha =
+        c.state.worktree?.branch === action.branch
+          ? c.state.worktree.baseSha
+          : result.output.baseSha;
       c.state.worktree = {
         path: result.output.path,
         taskId: c.task.id,
         repoId: c.task.repoId,
         branch: action.branch,
         baseBranch: action.baseBranch,
-        baseSha: result.output.baseSha,
+        baseSha: priorBaseSha,
         portSlot: null,
         paneWorkspaceId: null,
         createdAt: c.now,
@@ -110,6 +114,15 @@ export function actionResult(
       };
       c.task.worktreePath = result.output.path;
       c.task.branch = action.branch;
+      break;
+    }
+    case "remove_worktree":
+      if (action.kind !== "remove_worktree") break;
+      if (
+        c.state.worktree?.path === action.worktreePath &&
+        c.state.worktree.branch === action.branch
+      )
+        c.state.worktree.removedAt = c.now;
       break;
     case "open_workspace":
       if (c.state.worktree)
@@ -176,16 +189,17 @@ export function actionResult(
 }
 
 export function retryActions(c: Context): void {
-  if (
-    c.task.blocked ||
-    c.task.failed ||
-    c.task.stage === "done" ||
-    c.task.stage === "canceled"
-  )
-    return;
   for (const row of [...c.state.outbox]) {
     if (!row.retryAt || row.retryAt > c.now || !row.action) continue;
     const action = row.action;
+    if (
+      action.kind !== "remove_worktree" &&
+      (c.task.blocked ||
+        c.task.failed ||
+        c.task.stage === "done" ||
+        c.task.stage === "canceled")
+    )
+      continue;
     // Provider launches use the run's monotonic attempt and session epoch.
     if (action.kind === "start_run") {
       const run = c.state.runs.find((r) => r.id === action.runId && !r.endedAt);
@@ -222,9 +236,17 @@ export function retryActions(c: Context): void {
       attempt - (row.retryBaseAttempt ?? 0) >
       c.state.config.retry.maxAttempts
     ) {
-      c.fail("action_failed", `Action retries exhausted: ${row.key}`);
-      row.retryAt = undefined;
-      continue;
+      if (action.kind !== "remove_worktree") {
+        c.fail("action_failed", `Action retries exhausted: ${row.key}`);
+        row.retryAt = undefined;
+        continue;
+      }
+      c.emit(`notify:${row.key.replace(/#\d+$/, "")}:exhausted`, {
+        kind: "notify",
+        level: "attention",
+        title: "Worktree cleanup needs attention",
+        body: row.error?.message ?? "The worktree could not be removed",
+      });
     }
     const base = row.key.replace(/#\d+$/, "");
     c.emit(`${base}#${attempt}`, action);
@@ -266,7 +288,7 @@ export function releaseDeadDependencies(c: Context): void {
       (row.status === "canceled" ||
         (row.status === "failed" &&
           !row.retriedBy &&
-          (!row.retryAt || terminal)))
+          (!row.retryAt || (terminal && row.kind !== "remove_worktree"))))
     );
   };
   let changed = true;

@@ -72,7 +72,7 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   agent ordering remain available. Main stays pinned above the agents list.
   Agents show space and tab, then provider; recorded run identity owns their status.
   Space disclosure controls collapse its tabs; filtering reveals matches without changing saved
-  expansion. Double-click or F2 renames a space or tab using the native inline editor.
+  expansion. Double-click or F2 edits the display title of a space, tab, or agent inline.
 - **Space view:** the right panel shows exactly one selected space at a time. Its tab bar is that
   space's tmux windows in native window-index order. Clicking a space activates its first tab;
   clicking a tab or agent opens its space with that window active. Each window shows its live
@@ -85,7 +85,7 @@ unloaded rows. Issue summaries, model labels and progress indicators remain visi
   Copy uses the coordinator's quoted attach argv for the first live pane. Closing is killing: the
   close entries send `close_terminal` with the row's scope and the host kills the pane, window or
   session; tab and space closes ask once first. Spaces are never collapsible.
-  Rename is available inline; its menu entry remains unavailable.
+  Rename opens the same inline display-title editor from the row menu.
 - **Branch:** space rows show the coordinator's `panes.branch`: the linked issue's branch, or Git's
   `rev-parse --abbrev-ref HEAD` at the first native pane's start cwd for an unlinked space.
   Reads are cached per cwd within each serialized inventory refresh, including failures, and
@@ -304,18 +304,16 @@ project root and shows that checkout's actual branch without changing it. Histor
 cannot override this issue-scoped resolution. Run identity changes re-resolve the target; routine
 activity updates do not remount the terminal. Missing host observations surface a retryable error.
 
-### Renaming spaces and tabs
+### Display titles
 
-Double-click a space or tab row, or focus it and press F2, to edit its native name inline.
-Enter submits; Escape cancels. Space names cannot contain `.` or `:`; empty names and control
-characters are rejected, with the reason displayed beside the editor. Task spaces show the short
-issue name with `LOOM-12 · stage` beneath it, while the editor and row tooltip expose the native
-session name. Agent rows and tabs use human role labels; raw tmux names remain tooltip metadata.
-The coordinator executes `rename_space` / `rename_tab` against generation-scoped native session
-and window IDs. Labels change only with the next `panes` patch. Tab automatic renaming stays off.
-Native pane identity keeps open viewers mounted across renames; reconnect resolves the current
-name. A tmux session option retains its original workspace key, preserving task links and later
-scratch/run creation across coordinator restarts. Main retains its pinned identity.
+Double-click a space, tab, or agent row, focus it and press F2, or choose Rename from its menu to
+edit an optional display title inline. Enter submits; Escape cancels. Titles are trimmed, limited
+to 80 characters, and reject control characters; an empty title clears it. Every Workbench surface
+renders `title ?? default`: task spaces use the short issue name, scratch spaces use their native
+session name, and agents use their run label. The coordinator executes one `set_title` command
+against a generation-scoped native session, window, or pane ID. Labels change only with the next
+`panes` patch. Native session/window names and IDs never change, so Main pinning, service rows,
+task linkage, close protection, and open terminal viewers remain independent of display text.
 
 ## Pull request protocol (slice 2)
 

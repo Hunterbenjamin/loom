@@ -39,7 +39,6 @@ export class FakePaneHost implements PaneHost {
   private runs = new Map<RunId, PaneRef>();
   private workspaces = new Map<string, WorktreePath>();
   private scratch = new Map<string, PaneRef>();
-  private workspaceNames = new Map<string, string>();
   private generation = 1;
   private nextPane = 0;
   private now = 0;
@@ -60,7 +59,7 @@ export class FakePaneHost implements PaneHost {
     const n = this.nextPane++;
     const ref: PaneRef = {
       hostGeneration: `fake-${this.generation}`,
-      sessionName: this.workspaceNames.get(req.workspaceId) ?? req.workspaceId,
+      sessionName: req.workspaceId,
       windowId: `@${n}`,
       paneId: `%${n}`,
     };
@@ -99,7 +98,7 @@ export class FakePaneHost implements PaneHost {
     const n = this.nextPane++;
     const ref: PaneRef = {
       hostGeneration: `fake-${this.generation}`,
-      sessionName: this.workspaceNames.get(req.workspaceId) ?? req.workspaceId,
+      sessionName: req.workspaceId,
       windowId: `@${n}`,
       paneId: `%${n}`,
     };
@@ -108,7 +107,6 @@ export class FakePaneHost implements PaneHost {
       sessionId: this.sessionId(ref.sessionName, n),
       workspaceId: req.workspaceId,
       windowName: title,
-      title,
       cwd: req.cwd,
       startCwd: req.cwd,
       pid: 90000 + n,
@@ -125,46 +123,32 @@ export class FakePaneHost implements PaneHost {
         ?.sessionId ?? `$${fallback}`
     );
   }
-  renameSession: PaneHost["renameSession"] = async (req) => {
-    if (!req.name.trim() || /[.:\p{Cc}]/u.test(req.name))
-      throw new Error(
-        "Space names cannot contain . or : or control characters",
-      );
+  setTitle: PaneHost["setTitle"] = async (req) => {
+    const title = z
+      .string()
+      .trim()
+      .max(80)
+      .regex(/^[^\p{Cc}]*$/u)
+      .parse(req.title);
     const panes = [...this.panes.values()];
-    const matches = panes.filter(
-      (pane) =>
-        pane.ref.hostGeneration === req.hostGeneration &&
-        pane.sessionId === req.sessionId,
+    const current = panes.filter(
+      (pane) => pane.ref.hostGeneration === req.hostGeneration,
     );
-    if (!matches.length) throw new Error("Session is missing or stale");
-    if (
-      panes.some(
-        (pane) =>
-          pane.ref.sessionName === req.name && pane.sessionId !== req.sessionId,
-      )
-    )
-      throw new Error("Duplicate session name");
-    for (const pane of matches) {
-      pane.workspaceId ??= pane.ref.sessionName;
-      this.workspaceNames.set(pane.workspaceId, req.name);
-      pane.ref.sessionName = req.name;
-    }
-    this.hints.emit({
-      source: "pane_host",
-      sessionId: null,
-      worktreePath: null,
-    });
-  };
-  renameWindow: PaneHost["renameWindow"] = async (req) => {
-    if (!req.name.trim() || /[\p{Cc}]/u.test(req.name))
-      throw new Error("Invalid tab name");
-    const matches = [...this.panes.values()].filter(
-      (pane) =>
-        pane.ref.hostGeneration === req.hostGeneration &&
-        pane.ref.windowId === req.windowId,
+    const matches = current.filter((pane) =>
+      req.target.kind === "space"
+        ? pane.sessionId === req.target.sessionId
+        : req.target.kind === "tab"
+          ? pane.ref.windowId === req.target.windowId
+          : pane.ref.paneId === req.target.paneId,
     );
-    if (!matches.length) throw new Error("Window is missing or stale");
-    for (const pane of matches) pane.windowName = req.name;
+    if (!matches.length) throw new Error("Title target is missing or stale");
+    const field =
+      req.target.kind === "space"
+        ? "spaceTitle"
+        : req.target.kind === "tab"
+          ? "tabTitle"
+          : "paneTitle";
+    for (const pane of matches) pane[field] = title || null;
     this.hints.emit({
       source: "pane_host",
       sessionId: null,
@@ -261,7 +245,6 @@ export class FakePaneHost implements PaneHost {
     this.panes.clear();
     this.runs.clear();
     this.workspaces.clear();
-    this.workspaceNames.clear();
     this.hints.emit({
       source: "pane_host",
       sessionId: null,

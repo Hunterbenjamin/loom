@@ -46,6 +46,13 @@ export type Action = ActionBase &
         path: string;
         branch: string;
         baseBranch: string;
+        requiredCommits?: Sha[];
+      }
+    | {
+        kind: "remove_worktree";
+        repoId: RepoId;
+        worktreePath: WorktreePath;
+        branch: string;
       }
     | {
         kind: "write_task_files";
@@ -175,6 +182,7 @@ type Empty = Record<string, never>;
 /** The success payload of each action kind. */
 export interface ActionOutputs {
   create_worktree: { path: WorktreePath; headSha: Sha; baseSha: Sha };
+  remove_worktree: { removed: boolean };
   write_task_files: Empty;
   /** The pane host's session for the task. Panes are created per run, not up front. */
   open_workspace: { workspaceId: string };

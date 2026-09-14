@@ -148,3 +148,158 @@ test("the recipes a restart reads back can relaunch an interactive run", async (
     second.paneHost.launches.filter((r) => r.runId === before?.runId),
   ).toHaveLength(1);
 }, 30_000);
+
+test("an in-flight Codex turn gets exactly one continuation after restart", async () => {
+  const first = track(await createHarness());
+  const taskId = start(first);
+  const driver = new ScenarioDriver(first, await scenarios("walking-skeleton"));
+  await driver.run({
+    until: () =>
+      first.store
+        .loadTaskState(taskId)
+        .runs.some((run) => run.role === "implementer" && !!run.inFlightTurnId),
+    maxSteps: 300,
+  });
+  const before = first.store
+    .loadTaskState(taskId)
+    .runs.find((run) => run.role === "implementer");
+  if (!before?.sessionId || !before.inFlightTurnId)
+    throw new Error("Missing in-flight implementer");
+
+  const second = track(await first.restart());
+  // A second restart before the recovery input is consumed must keep the same deterministic input.
+  const third = track(await second.restart());
+  // Fake providers are process-local. Recreate the persisted native thread as the replacement
+  // app-server would hydrate it, with the prior turn now marked interrupted.
+  third.providers.create(
+    "codex",
+    before.worktreePath,
+    before.sessionId,
+    before.mode,
+  );
+  third.providers.status(before.sessionId, "working");
+  const native = third.providers.get(before.sessionId);
+  if (native.value.provider !== "codex")
+    throw new Error("Missing Codex thread");
+  const turn = native.value.turns.at(-1);
+  if (!turn) throw new Error("Missing native turn");
+  turn.id = before.inFlightTurnId;
+  third.providers.finish(before.sessionId, "interrupted");
+
+  await third.coordinator.settle();
+  const continuations = third.store
+    .messages(taskId)
+    .filter((message) => message.purpose === "restart_continuation");
+  expect(continuations).toHaveLength(1);
+  expect(
+    third.store.outbox
+      .list(taskId)
+      .filter(
+        (row) =>
+          row.action?.kind === "send_message" &&
+          row.action.messageId === continuations[0]?.id,
+      ),
+  ).toHaveLength(1);
+  expect(
+    third.store.loadTaskState(taskId).runs.find((run) => run.id === before.id),
+  ).toMatchObject({
+    sessionId: before.sessionId,
+    sessionEpoch: before.sessionEpoch,
+    restartInterruption: {
+      turnId: before.inFlightTurnId,
+      outcome: "continued",
+    },
+  });
+
+  const fourth = track(await third.restart());
+  await fourth.coordinator.settle();
+  expect(
+    fourth.store
+      .messages(taskId)
+      .filter((message) => message.purpose === "restart_continuation"),
+  ).toHaveLength(1);
+}, 30_000);
+
+test("a turn completed before restart is not captured for continuation", async () => {
+  const first = track(await createHarness());
+  const taskId = start(first);
+  const driver = new ScenarioDriver(first, await scenarios("walking-skeleton"));
+  await driver.run({
+    until: () =>
+      first.store
+        .loadTaskState(taskId)
+        .runs.some((run) => run.role === "implementer" && !!run.inFlightTurnId),
+    maxSteps: 300,
+  });
+  const run = first.store
+    .loadTaskState(taskId)
+    .runs.find((candidate) => candidate.role === "implementer");
+  if (!run?.sessionId) throw new Error("Missing implementer session");
+  first.providers.finish(run.sessionId, "completed");
+  first.coordinator.loop.enqueue(taskId);
+  await first.coordinator.settle();
+  expect(
+    first.store
+      .loadTaskState(taskId)
+      .runs.find((candidate) => candidate.id === run.id)?.inFlightTurnId,
+  ).toBeNull();
+
+  const second = track(await first.restart());
+  await second.coordinator.settle();
+  expect(
+    second.store
+      .messages(taskId)
+      .filter((message) => message.purpose === "restart_continuation"),
+  ).toHaveLength(0);
+}, 30_000);
+
+test("an interrupted turn is not continued after its stage moves on", async () => {
+  const first = track(await createHarness());
+  const taskId = start(first);
+  const driver = new ScenarioDriver(first, await scenarios("walking-skeleton"));
+  await driver.run({
+    until: () =>
+      first.store
+        .loadTaskState(taskId)
+        .runs.some((run) => run.role === "implementer" && !!run.inFlightTurnId),
+    maxSteps: 300,
+  });
+  const stored = first.store.loadTaskState(taskId);
+  const run = stored.runs.find((candidate) => candidate.role === "implementer");
+  if (!run?.sessionId || !run.inFlightTurnId)
+    throw new Error("Missing in-flight implementer");
+  const expectedVersion = stored.task.version;
+  stored.task.stage = "in_review";
+  stored.task.version++;
+  expect(
+    first.store.commit(
+      taskId,
+      { next: stored, actions: [], transitions: [], inputs: [] },
+      expectedVersion,
+    ).ok,
+  ).toBe(true);
+
+  const second = track(await first.restart());
+  second.providers.create("codex", run.worktreePath, run.sessionId, run.mode);
+  second.providers.status(run.sessionId, "working");
+  const native = second.providers.get(run.sessionId);
+  if (native.value.provider !== "codex")
+    throw new Error("Missing Codex thread");
+  const turn = native.value.turns.at(-1);
+  if (!turn) throw new Error("Missing native turn");
+  turn.id = run.inFlightTurnId;
+  second.providers.finish(run.sessionId, "interrupted");
+  await second.coordinator.settle();
+
+  expect(
+    second.store
+      .messages(taskId)
+      .filter((message) => message.purpose === "restart_continuation"),
+  ).toHaveLength(0);
+  expect(
+    second.store
+      .loadTaskState(taskId)
+      .runs.find((candidate) => candidate.id === run.id)?.restartInterruption
+      ?.outcome,
+  ).toBe("not_needed");
+}, 30_000);

@@ -1,0 +1,6 @@
+%0loom-monitor@042311sleep0/Users/example/Users/example$1agent
+%1loom-t-42@142388zsh0/Users/example/Projects/loom/.worktrees/t-42/Users/example/Projects/loom/.worktrees/t-42$1agent
+%2loom-t-42@242401node0/Users/example/Projects/loom/.worktrees/t-42/Users/example/Projects/loom/.worktrees/t-42run-t-42-implementer-0$1agent
+%3loom-t-42@34246017/Users/example/Projects/loom/.worktrees/t-42run-t-42-reviewer-1$1agent
+%2loom-t-42-v2@242401node0/Users/example/Projects/loom/.worktrees/t-42/Users/example/Projects/loom/.worktrees/t-42run-t-42-implementer-01$1agent
+%3loom-t-42-v2@34246017/Users/example/Projects/loom/.worktrees/t-42run-t-42-reviewer-11$1agent

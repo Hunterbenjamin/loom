@@ -89,8 +89,12 @@ test("rolls up needs-you > failed > unknown > working > done > idle at both leve
   expect(paneIndicator({ ...pane, status: "starting" }).icon).toBe("◌");
   // A native exit, title or command cannot imply a provider completed a turn.
   expect(
-    paneIndicator({ ...pane, dead: true, command: "done", title: "failed" })
-      .icon,
+    paneIndicator({
+      ...pane,
+      dead: true,
+      command: "done",
+      paneTitle: "failed",
+    }).icon,
   ).toBe("○");
 });
 
@@ -156,6 +160,87 @@ test("pinned and workbench sessions are excluded from the space tree", () => {
   ).toEqual([
     { name: "loom-coordinator", label: "Coordinator" },
     { name: "loom-desktop", label: "Desktop" },
+  ]);
+});
+
+test("titles override display defaults without changing grouping or indicators", () => {
+  const linkedRun = {
+    ...buildSnapshot().runs[0],
+    pane,
+    role: "reviewer" as const,
+    round: 2,
+    status: "working" as const,
+  } as Run;
+  const titled = {
+    ...pane,
+    taskName: "Issue default",
+    runId: linkedRun.id,
+    role: linkedRun.role,
+    provider: linkedRun.provider,
+    status: linkedRun.status,
+    spaceTitle: "Space title",
+    tabTitle: "Tab title",
+    paneTitle: "Agent title",
+  };
+  const sibling = {
+    ...titled,
+    id: "sibling",
+    paneId: "%9",
+    runId: null,
+    role: null,
+    provider: null,
+    status: null,
+    paneTitle: null,
+    command: "zsh",
+  };
+  const tree = spaces([titled, sibling], "", [linkedRun]);
+  expect(tree[0]).toMatchObject({
+    name: pane.sessionName,
+    label: "Space title",
+    indicator: { icon: "◌" },
+    tabs: [
+      {
+        name: "Tab title",
+        indicator: { icon: "◌" },
+        panes: [
+          { name: "Agent title", indicator: { icon: "◌" } },
+          { name: "zsh", indicator: { icon: "○" } },
+        ],
+      },
+    ],
+  });
+  const cleared = spaces(
+    [
+      {
+        ...titled,
+        spaceTitle: null,
+        tabTitle: null,
+        paneTitle: null,
+      },
+    ],
+    "",
+    [linkedRun],
+  )[0];
+  expect(cleared?.label).toBe("Issue default");
+  expect(cleared?.tabs[0]?.name).toContain("Reviewer");
+  expect(cleared?.tabs[0]?.panes[0]?.name).toContain("Reviewer");
+});
+
+test("titles do not affect pinned Main or service identity", () => {
+  const main = {
+    ...pane,
+    sessionName: "loom-lead-repo",
+    spaceTitle: "Friendly Main",
+  };
+  const service = {
+    ...pane,
+    sessionName: "loom-coordinator",
+    sessionId: "$8",
+    spaceTitle: "Friendly service",
+  };
+  expect(spaces([main, service])).toEqual([]);
+  expect(workbenchSessions([main, service])).toMatchObject([
+    { name: "loom-coordinator", label: "Coordinator" },
   ]);
 });
 

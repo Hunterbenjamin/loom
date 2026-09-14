@@ -1,5 +1,4 @@
 import type { RepoId } from "@loom/core";
-import { runLabel } from "@loom/core";
 import type {
   ConversationTarget,
   LeadTarget,
@@ -36,6 +35,7 @@ import { LeadBar } from "../ui/lead.js";
 import { TerminalSession } from "../ui/terminal.js";
 import { type Action, actions, bindingMatcher } from "./actions.js";
 import {
+  agentName,
   attentionPanes,
   sameTerminal,
   spaceKey,
@@ -119,7 +119,7 @@ const PanelLabel = ({
     <span>
       {target
         ? pane
-          ? `${run ? runLabel(run) : (pane.windowName ?? pane.title ?? pane.command)} · ${pane.paneId}${pane.dead ? " · exited" : pane.unavailable ? " · unavailable" : ""}`
+          ? `${run ? agentName(pane, run) : (pane.paneTitle ?? pane.tabTitle ?? pane.windowName ?? pane.command)} · ${pane.paneId}${pane.dead ? " · exited" : pane.unavailable ? " · unavailable" : ""}`
           : "Pane unavailable"
         : (name ?? "Terminal")}
     </span>
@@ -1107,16 +1107,16 @@ export function Workbench() {
                         .map((row) => ({ ...row, space, tab })),
                     ),
                   )
-                  .map(({ pane, space, tab }) => (
+                  .map(({ pane, name, space, tab }) => (
                     <Command.Item
                       key={`agent:${pane.id}`}
-                      value={`agent ${space.label} ${tab.name} ${pane.provider ?? pane.agent ?? ""}`}
+                      value={`agent ${space.label} ${tab.name} ${name} ${pane.provider ?? pane.agent ?? ""}`}
                       onSelect={() => {
                         setPalette(false);
                         choose(pane);
                       }}
                     >
-                      Open agent {space.label} · {tab.name}{" "}
+                      Open agent {space.label} · {name}{" "}
                       <kbd>{pane.provider ?? pane.agent ?? ""}</kbd>
                     </Command.Item>
                   ))}

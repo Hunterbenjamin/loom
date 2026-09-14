@@ -305,6 +305,15 @@ export interface Run {
     outcome: TurnOutcome | null;
     error: string | null;
   } | null;
+  /** (derived from fresh provider observations) Native turn currently in flight. */
+  inFlightTurnId?: string | null;
+  /** Coordinator-owned decision about a provider turn interrupted by restart. */
+  restartInterruption?: {
+    turnId: string;
+    recordedAt: IsoTime;
+    outcome: "continued" | "completed" | "not_needed" | null;
+    decidedAt: IsoTime | null;
+  } | null;
   /** (cache: provider) */
   pendingRequests: ProviderRequest[];
   /** Cached native Claude dialog, only while the provider reports waiting. Missing on legacy runs. */
@@ -338,6 +347,7 @@ export type MessagePurpose =
   | "fix_round"
   | "answer"
   | "plan_feedback"
+  | "restart_continuation"
   | "human";
 
 export type MessageStatus =

@@ -9,7 +9,7 @@ import type {
   Run,
   Stage,
 } from "./entities.js";
-import { later, millis, read } from "./helpers.js";
+import { later, millis, read, roleOwesWork } from "./helpers.js";
 import type { IsoTime, RunId } from "./ids.js";
 
 export const budgetStage = (stage: string): boolean =>
@@ -175,13 +175,13 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
       }
       if (
         run.status === "idle" &&
-        !input.blocked &&
-        !input.failed &&
-        ((input.stage === "planning" && run.role === "planner") ||
-          (input.stage === "in_progress" &&
-            run.role === "implementer" &&
-            !input.waitingForCi) ||
-          (input.stage === "in_review" && run.role === "reviewer")) &&
+        roleOwesWork(
+          input.stage,
+          run.role,
+          input.blocked !== null,
+          input.failed !== null,
+          input.waitingForCi,
+        ) &&
         !input.messages.some(
           (m) =>
             m.runId === run.id &&

@@ -16,7 +16,10 @@ import {
   HOLD_WINDOW,
   hookCommand,
   MONITOR_SESSION,
+  PANE_TITLE_OPTION,
   RUN_OPTION,
+  SPACE_TITLE_OPTION,
+  TAB_TITLE_OPTION,
   VIEW_OPTION,
 } from "./config.js";
 import { startMonitor } from "./monitor.js";
@@ -69,15 +72,28 @@ const sessionName = windowName.regex(
   /^[^.:]+$/,
   "Space names cannot contain . or :",
 );
-const renameSessionRequest = z.object({
+const displayTitle = z
+  .string()
+  .trim()
+  .max(80)
+  .regex(/^[^\p{Cc}]*$/u, "Titles cannot contain control characters");
+const setTitleRequest = z.strictObject({
   hostGeneration: z.string().min(1),
-  sessionId: z.string().regex(/^\$\d+$/),
-  name: sessionName,
-});
-const renameWindowRequest = z.object({
-  hostGeneration: z.string().min(1),
-  windowId: z.string().regex(/^@\d+$/),
-  name: windowName,
+  target: z.discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("space"),
+      sessionId: z.string().regex(/^\$\d+$/),
+    }),
+    z.strictObject({
+      kind: z.literal("tab"),
+      windowId: z.string().regex(/^@\d+$/),
+    }),
+    z.strictObject({
+      kind: z.literal("pane"),
+      paneId: z.string().regex(/^%\d+$/),
+    }),
+  ]),
+  title: displayTitle,
 });
 
 const optionsSchema = z.object({
@@ -318,8 +334,7 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
     );
   }
 
-  // Keep stored workspace keys usable after a rename and coordinator restart. This is
-  // reference metadata on the native session, not a second owner of its display name.
+  // Keep stored workspace keys usable for sessions renamed before titles existed.
   async function workspaceSession(workspaceId: string): Promise<string> {
     const key = sessionName.parse(workspaceId);
     const matches = (await rows()).filter((row) => row.workspaceId === key);
@@ -338,60 +353,47 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
   }
 
   return {
-    renameSession(req) {
+    setTitle(req) {
       return exclusive(async () => {
-        const parsed = renameSessionRequest.parse(req);
+        const parsed = setTitleRequest.parse(req);
         if ((await ensureServer()) !== parsed.hostGeneration)
           throw new TmuxError("stale_generation");
-        const row = (await rows()).find(
-          (row) => row.sessionId === parsed.sessionId,
-        );
-        if (!row) throw new TmuxError("session_not_found", parsed.sessionId);
-        if (
-          [MONITOR_SESSION, "loom-lead", "loom-main"].includes(parsed.name) ||
-          ["loom-lead", "loom-main"].includes(row.sessionName)
-        )
-          throw new TmuxError("reserved_session_name");
-        if (row.sessionName === parsed.name) return;
-        if (await sessionExists(parsed.name))
-          throw new TmuxError("duplicate_session", parsed.name);
+        const allRows = await rows();
+        const target = parsed.target;
+        const spec =
+          target.kind === "space"
+            ? {
+                row: allRows.find((row) => row.sessionId === target.sessionId),
+                id: target.sessionId,
+                error: "session_not_found" as const,
+                option: SPACE_TITLE_OPTION,
+                scope: [] as string[],
+              }
+            : target.kind === "tab"
+              ? {
+                  row: allRows.find((row) => row.windowId === target.windowId),
+                  id: target.windowId,
+                  error: "window_not_found" as const,
+                  option: TAB_TITLE_OPTION,
+                  scope: ["-w"],
+                }
+              : {
+                  row: allRows.find((row) => row.paneId === target.paneId),
+                  id: target.paneId,
+                  error: "pane_not_found" as const,
+                  option: PANE_TITLE_OPTION,
+                  scope: ["-p"],
+                };
+        if (!spec.row) throw new TmuxError(spec.error, spec.id);
         await tmux([
           "set-option",
+          ...spec.scope,
+          ...(parsed.title ? [] : ["-u"]),
           "-t",
-          parsed.sessionId,
-          "@loom_workspace_id",
-          row.workspaceId ?? row.sessionName,
+          spec.id,
+          spec.option,
+          ...(parsed.title ? [parsed.title] : []),
         ]);
-        await tmux([
-          "rename-session",
-          "-t",
-          parsed.sessionId,
-          "--",
-          parsed.name,
-        ]);
-      });
-    },
-
-    renameWindow(req) {
-      return exclusive(async () => {
-        const parsed = renameWindowRequest.parse(req);
-        if ((await ensureServer()) !== parsed.hostGeneration)
-          throw new TmuxError("stale_generation");
-        const row = (await rows()).find(
-          (row) => row.windowId === parsed.windowId,
-        );
-        if (!row) throw new TmuxError("window_not_found", parsed.windowId);
-        if (parsed.name === HOLD_WINDOW)
-          throw new TmuxError("reserved_window_name");
-        await tmux([
-          "set-option",
-          "-w",
-          "-t",
-          parsed.windowId,
-          "automatic-rename",
-          "off",
-        ]);
-        await tmux(["rename-window", "-t", parsed.windowId, "--", parsed.name]);
       });
     },
 

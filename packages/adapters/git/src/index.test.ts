@@ -200,12 +200,72 @@ describe("worktree observations", () => {
 });
 
 describe("worktree actions", () => {
+  it("fetches the remote base without moving local main and creates from that SHA", async () => {
+    const remote = join(directory, "remote.git");
+    await command(directory, "init", "--bare", remote);
+    await git("remote", "add", "origin", remote);
+    const local = (await git("rev-parse", "main")) as Sha;
+    await save("remote-only", "new");
+    const advanced = await commitAll("advance remote");
+    await git("push", "origin", "main");
+    await git("reset", "--hard", local);
+
+    const fetched = await adapter.fetchBase({
+      repoRoot: repo,
+      baseBranch: "main",
+    });
+    expect(fetched.baseSha).toBe(advanced);
+    expect(await git("rev-parse", "refs/heads/main")).toBe(local);
+    expect(await git("rev-parse", "refs/remotes/origin/main")).toBe(advanced);
+    const created = await adapter.createWorktree({
+      repoRoot: repo,
+      path: join(directory, "fresh"),
+      branch: "feat/fresh",
+      baseSha: fetched.baseSha,
+    });
+    expect(created.headSha).toBe(advanced);
+  });
+  it("fails fetches instead of falling back to a local base", async () => {
+    await expect(
+      adapter.fetchBase({ repoRoot: repo, baseBranch: "main" }),
+    ).rejects.toThrow(/Git fetch failed/);
+    await expect(
+      adapter.fetchBase({ repoRoot: repo, baseBranch: "--evil" }),
+    ).rejects.toThrow();
+  });
+  it("requires dependency merges to be ancestors of a new branch base", async () => {
+    const ancestor = (await git("rev-parse", "HEAD")) as Sha;
+    await git("checkout", "-b", "dependency");
+    await save("dependency", "merged");
+    const dependency = await commitAll("dependency");
+    await git("checkout", "main");
+    await save("main-only", "base");
+    const baseSha = await commitAll("new base");
+    await adapter.createWorktree({
+      repoRoot: repo,
+      path: join(directory, "ancestor"),
+      branch: "feat/ancestor",
+      baseSha,
+      requiredCommits: [ancestor],
+    });
+    await expect(
+      adapter.createWorktree({
+        repoRoot: repo,
+        path: join(directory, "missing-dependency"),
+        branch: "feat/missing-dependency",
+        baseSha,
+        requiredCommits: [dependency],
+      }),
+    ).rejects.toThrow(
+      `Fetched base ${baseSha} does not contain dependency merge ${dependency} yet`,
+    );
+  });
   it("creates once, adopts the existing branch worktree and preserves its changes", async () => {
     const req = {
       repoRoot: repo,
       path: join(directory, "work tree 雪"),
       branch: "feat/work",
-      baseBranch: "main",
+      baseSha: (await git("rev-parse", "main")) as Sha,
     };
     const first = await adapter.createWorktree(req);
     await writeFile(join(first.path, "untracked"), "preserve");
@@ -228,7 +288,7 @@ describe("worktree actions", () => {
       repoRoot: repo,
       path: join(directory, "existing"),
       branch: "feat/existing",
-      baseBranch: "main",
+      baseSha: (await git("rev-parse", "main")) as Sha,
     });
     expect(created.headSha).toBe(await git("rev-parse", "feat/existing"));
   });
@@ -237,7 +297,7 @@ describe("worktree actions", () => {
       repoRoot: repo,
       path: repo,
       branch: "feat/new",
-      baseBranch: "main",
+      baseSha: (await git("rev-parse", "main")) as Sha,
     };
     await expect(adapter.createWorktree(req)).rejects.toThrow();
     await expect(
@@ -321,7 +381,7 @@ describe("worktree actions", () => {
       repoRoot: repo,
       path: join(directory, "linked"),
       branch: "feat/linked",
-      baseBranch: "main",
+      baseSha: (await git("rev-parse", "main")) as Sha,
     });
     const exclude = join(repo, ".git/info/exclude");
     await writeFile(exclude, "# preserve without newline");
@@ -338,6 +398,67 @@ describe("worktree actions", () => {
       "# preserve without newline\n/.task/\n",
     );
     expect(await command(work.path, "status", "--porcelain")).toBe("");
+  });
+  it("removes only clean registered worktrees inside the allowed root and keeps branches", async () => {
+    const allowedRoot = join(directory, "worktrees");
+    await mkdir(allowedRoot);
+    const branch = "feat/remove";
+    const path = join(allowedRoot, "remove") as WorktreePath;
+    const baseSha = (await git("rev-parse", "HEAD")) as Sha;
+    const work = await adapter.createWorktree({
+      repoRoot: repo,
+      path,
+      branch,
+      baseSha,
+    });
+    await writeFile(join(work.path, "tracked.txt"), "modified\n");
+    await expect(
+      adapter.removeWorktree({ repoRoot: repo, path, branch, allowedRoot }),
+    ).rejects.toThrow("dirty worktree");
+    await command(work.path, "restore", "tracked.txt");
+    await writeFile(join(work.path, "untracked"), "preserve");
+    await expect(
+      adapter.removeWorktree({ repoRoot: repo, path, branch, allowedRoot }),
+    ).rejects.toThrow("dirty worktree");
+    await rm(join(work.path, "untracked"));
+    await adapter.writeTaskFiles(work.path, [
+      { name: "brief.md", content: "ignored cleanup file" },
+    ]);
+    await expect(
+      adapter.removeWorktree({ repoRoot: repo, path, branch, allowedRoot }),
+    ).resolves.toEqual({ removed: true });
+    expect(await git("rev-parse", `refs/heads/${branch}`)).toBe(baseSha);
+    await expect(
+      adapter.removeWorktree({ repoRoot: repo, path, branch, allowedRoot }),
+    ).resolves.toEqual({ removed: false });
+  });
+  it("refuses outside and unregistered directories without touching their files", async () => {
+    const allowedRoot = join(directory, "worktrees");
+    const outside = join(directory, "outside") as WorktreePath;
+    const unregistered = join(allowedRoot, "ordinary") as WorktreePath;
+    await mkdir(allowedRoot);
+    await mkdir(outside);
+    await mkdir(unregistered);
+    await writeFile(join(outside, "keep"), "outside");
+    await writeFile(join(unregistered, "keep"), "ordinary");
+    await expect(
+      adapter.removeWorktree({
+        repoRoot: repo,
+        path: outside,
+        branch: "feat/outside",
+        allowedRoot,
+      }),
+    ).rejects.toThrow("outside");
+    await expect(
+      adapter.removeWorktree({
+        repoRoot: repo,
+        path: unregistered,
+        branch: "feat/ordinary",
+        allowedRoot,
+      }),
+    ).rejects.toThrow("not the registered worktree");
+    expect(await readFile(join(outside, "keep"), "utf8")).toBe("outside");
+    expect(await readFile(join(unregistered, "keep"), "utf8")).toBe("ordinary");
   });
   it("refuses traversal and .task symlinks, replaces file symlinks safely", async () => {
     const target = join(directory, "outside");

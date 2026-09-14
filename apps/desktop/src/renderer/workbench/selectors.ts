@@ -11,8 +11,9 @@ export const terminalName = (pane: PaneView) =>
     ? `${pane.role} ${pane.provider ?? ""}`.trim()
     : pane.windowName?.startsWith("scratch-")
       ? `Terminal ${pane.paneId.slice(1)}`
-      : pane.windowName ||
-        pane.title ||
+      : pane.paneTitle ||
+        pane.tabTitle ||
+        pane.windowName ||
         pane.command ||
         `Terminal ${pane.paneId.slice(1)}`;
 
@@ -75,6 +76,8 @@ export const paneName = (pane: PaneView) =>
   pane.role
     ? [pane.role, pane.provider].filter(Boolean).join(" · ")
     : (pane.agent ?? pane.command ?? "Unknown process");
+export const agentName = (pane: PaneView, run?: Run) =>
+  pane.paneTitle ?? (run ? runLabel(run) : paneName(pane));
 export const spaceKey = (pane: PaneView) =>
   JSON.stringify([pane.hostGeneration, pane.sessionId ?? pane.sessionName]);
 export const tabKey = (pane: PaneView) =>
@@ -165,7 +168,7 @@ export function spaces(
       space = {
         key,
         name: pane.sessionName,
-        label: pane.taskName ?? pane.sessionName,
+        label: pane.spaceTitle ?? pane.taskName ?? pane.sessionName,
         subtext:
           pane.issueKey && pane.taskStage
             ? `${pane.issueKey} · ${pane.taskStage.replaceAll("_", " ")}`
@@ -177,7 +180,8 @@ export function spaces(
       groups.set(key, space);
     }
     if (pane.taskName) {
-      space.label = pane.taskName;
+      if (pane.spaceTitle) space.label = pane.spaceTitle;
+      else if (space.label === space.name) space.label = pane.taskName;
       space.subtext =
         pane.issueKey && pane.taskStage
           ? `${pane.issueKey} · ${pane.taskStage.replaceAll("_", " ")}`
@@ -191,13 +195,14 @@ export function spaces(
       tab = {
         key: windowKey,
         name:
-          (linkedRun
+          pane.tabTitle ??
+          ((linkedRun
             ? runLabel(linkedRun)
             : pane.role
               ? `${pane.role[0]?.toUpperCase()}${pane.role.slice(1)}`
               : pane.windowName) ||
-          pane.windowId ||
-          "Tab",
+            pane.windowId ||
+            "Tab"),
         windowName: pane.windowName || pane.windowId || "Tab",
         panes: [],
         indicator: indicators.idle,
@@ -207,7 +212,7 @@ export function spaces(
     }
     tab.panes.push({
       pane,
-      name: paneName(pane),
+      name: agentName(pane, pane.runId ? byRun.get(pane.runId) : undefined),
       indicator: indicatorFor(pane),
     });
   }
@@ -234,6 +239,9 @@ export function spaces(
                 pane.taskName,
                 pane.issueKey,
                 pane.issueKey?.split("-").at(-1),
+                pane.spaceTitle,
+                pane.tabTitle,
+                pane.paneTitle,
                 pane.paneId,
                 name,
               ].map((value) => String(value ?? "").toLowerCase());

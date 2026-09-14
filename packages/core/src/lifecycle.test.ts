@@ -25,6 +25,53 @@ function failure(mode: "headless" | "interactive" = "headless") {
   return { ...f, run, observation };
 }
 describe("headless retries and interactive control", () => {
+  it("tracks provider-native in-flight turns and preserves them on unknown reads", () => {
+    const f = fixture("in_progress");
+    const observation = f.observations.runs[1] as RunObservation;
+    if (
+      !observation.provider.ok ||
+      observation.provider.value?.provider !== "codex"
+    )
+      throw new Error("Missing Codex fixture");
+    observation.provider.value.status = "active";
+    observation.provider.value.turns = [
+      {
+        id: "turn-live",
+        status: "inProgress",
+        error: null,
+        userMessageHashes: [],
+      },
+    ];
+    const observed = reconcile(f.state, f.observations).next;
+    expect(observed.runs[1]?.inFlightTurnId).toBe("turn-live");
+    const failed = f.observations.runs[1] as RunObservation;
+    failed.provider = { ok: false, reason: "offline", at: now };
+    expect(
+      reconcile(observed, f.observations).next.runs[1]?.inFlightTurnId,
+    ).toBe("turn-live");
+
+    const claude = fixture("in_review");
+    const claudeObservation = claude.observations.runs[2] as RunObservation;
+    if (
+      !claudeObservation.provider.ok ||
+      claudeObservation.provider.value?.provider !== "claude"
+    )
+      throw new Error("Missing Claude fixture");
+    claudeObservation.provider.value.hooks.promptSubmits = [
+      { promptId: "prompt-live", textHash: "prompt", at: now },
+    ];
+    const claudeObserved = reconcile(claude.state, claude.observations).next;
+    expect(claudeObserved.runs[2]?.inFlightTurnId).toBe("prompt-live");
+    claudeObservation.provider.value.hooks.lastStop = {
+      promptId: "prompt-live",
+      at: now,
+      lastAssistantMessage: null,
+    };
+    expect(
+      reconcile(claudeObserved, claude.observations).next.runs[2]
+        ?.inFlightTurnId,
+    ).toBeNull();
+  });
   it("schedules headless backoff without flagging the task", () => {
     const f = failure();
     const r = fixed(f.state, f.observations);
@@ -404,6 +451,101 @@ describe("launch results and persisted outbox", () => {
     const started = fixed(created.next, f.observations);
     expect(started.next.runs[0]?.sessionId).toBe("session1");
     expect(started.actions.some((a) => a.kind === "send_message")).toBe(true);
+  });
+  it("waits for dependency merge SHAs and carries them into worktree creation", () => {
+    const f = fixture("todo");
+    f.state.plan = null;
+    f.state.runs = [];
+    f.state.worktree = null;
+    f.state.task.worktreePath = null;
+    f.state.task.blockedBy = ["dependency" as never];
+    f.observations.dependencies = [
+      {
+        taskId: "dependency" as never,
+        stage: "done",
+        merged: true,
+        mergeCommitSha: null,
+        branch: "feat/dependency",
+      },
+    ];
+    expect(
+      fixed(f.state, f.observations).actions.some(
+        (action) => action.kind === "create_worktree",
+      ),
+    ).toBe(false);
+    const dependency = f.observations.dependencies[0];
+    if (!dependency) throw new Error("Missing dependency");
+    dependency.mergeCommitSha = head;
+    expect(
+      fixed(f.state, f.observations).actions.find(
+        (action) => action.kind === "create_worktree",
+      ),
+    ).toMatchObject({ requiredCommits: [head] });
+  });
+  it("emits terminal worktree cleanup, records removal, and recreates reopened generations", () => {
+    const f = fixture("done");
+    for (const run of f.state.runs) {
+      run.status = "ended";
+      run.endedAt = now;
+      run.endReason = "task_done";
+    }
+    const terminal = reconcile(f.state, f.observations);
+    const remove = terminal.actions.find(
+      (action) => action.kind === "remove_worktree",
+    );
+    if (!remove) throw Error("Missing worktree removal");
+    expect(remove.key).toBe(`remove_worktree:t1:${now}`);
+    f.observations.inputs = [actionInput(remove, { removed: true })];
+    const removed = fixed(terminal.next, f.observations);
+    expect(removed.next.worktree?.removedAt).toBe(now);
+
+    removed.next.task.stage = "todo";
+    removed.next.task.blocked = null;
+    removed.next.task.failed = null;
+    removed.next.plan = null;
+    removed.next.desiredRun = null;
+    f.observations.inputs = [];
+    const reopened = fixed(removed.next, f.observations);
+    expect(
+      reopened.actions.find((action) => action.kind === "create_worktree")?.key,
+    ).toBe(`create_worktree:t1:${now}`);
+  });
+  it("retries removal in terminal stages without failing the task", () => {
+    const f = fixture("done");
+    f.state.config.retry = { ...f.state.config.retry, maxAttempts: 1 };
+    f.state.runs = [];
+    f.observations.runs = [];
+    const terminal = reconcile(f.state, f.observations);
+    const remove = terminal.actions.find(
+      (action) => action.kind === "remove_worktree",
+    );
+    if (!remove) throw Error("Missing worktree removal");
+    f.observations.inputs = [
+      {
+        ...actionInput(remove, {}),
+        result: {
+          kind: "remove_worktree",
+          ok: false,
+          error: { code: "retryable", message: "Worktree dirty" },
+        },
+      } as Input,
+    ];
+    const failed = fixed(terminal.next, f.observations);
+    expect(failed.next.task.failed).toBeNull();
+    f.observations.inputs = [];
+    f.observations.now = "2026-09-12T00:00:10.000Z" as typeof now;
+    const retried = fixed(failed.next, f.observations);
+    expect(
+      retried.actions.find((action) => action.kind === "remove_worktree")?.key,
+    ).toBe(`${remove.key}#2`);
+    expect(
+      retried.actions.find(
+        (action) =>
+          action.kind === "notify" &&
+          action.title === "Worktree cleanup needs attention",
+      ),
+    ).toMatchObject({ body: "Worktree dirty" });
+    expect(retried.next.task.failed).toBeNull();
   });
   it("Claude ID is derived before launch, and starts carry capacity CAS", () => {
     const f = fixture("todo");

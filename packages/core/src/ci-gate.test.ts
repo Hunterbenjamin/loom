@@ -10,6 +10,7 @@ import {
   submit,
 } from "../test/fixtures.js";
 import { CI_START_GRACE_MS } from "./ci-gate.js";
+import { roleOwesWork } from "./helpers.js";
 import type { CiState, IsoTime, Observations, Sha } from "./index.js";
 import { deriveAttention, reconcile } from "./index.js";
 
@@ -164,6 +165,14 @@ describe("CI gate before review", () => {
     expect(reasons(false)).toContain("idle_without_submission");
     expect(reasons(true)).not.toContain("idle_without_submission");
   });
+});
+
+it("an implementer waiting on CI owes no work, so a restart sends it no continuation", () => {
+  expect(roleOwesWork("in_progress", "implementer", false, false)).toBe(true);
+  expect(roleOwesWork("in_progress", "implementer", false, false, true)).toBe(
+    false,
+  );
+  expect(roleOwesWork("in_review", "reviewer", false, false, true)).toBe(true);
 });
 
 describe("the reviewer is a checker", () => {

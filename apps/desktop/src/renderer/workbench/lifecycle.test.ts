@@ -252,6 +252,27 @@ test("Workbench reserves a draggable title area and keeps tab controls interacti
   }
 });
 
+test("panel labels prefer pane titles and fall back to tab titles", async () => {
+  const titled = {
+    ...pane,
+    paneTitle: "Friendly agent",
+    tabTitle: "Friendly tab",
+  };
+  const h = await harness([titled]);
+  const label = () =>
+    h.element.querySelector('[aria-label="Panel controls"]')?.textContent;
+  try {
+    expect(label()).toContain(`Friendly agent · ${pane.paneId}`);
+    await act(async () => {
+      h.native.set(titled.id, { ...titled, paneTitle: null });
+      h.publish();
+    });
+    expect(label()).toContain(`Friendly tab · ${pane.paneId}`);
+  } finally {
+    await h.close();
+  }
+});
+
 test("panel close kills the pane through the coordinator and drops its viewer", async () => {
   const h = await harness();
   try {
