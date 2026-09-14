@@ -3,6 +3,7 @@ import type { GitHubAdapter, PullRequestObservation } from "@loom/core";
 import { z } from "zod";
 import { Api, type Pages } from "./api.js";
 import { branchActions } from "./branches.js";
+import { readCi } from "./checks.js";
 import { diffReads } from "./diff.js";
 import { failure, type GhRunner, GitHubError, runGh } from "./gh.js";
 import { observe } from "./observation.js";
@@ -66,6 +67,14 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
   const comparisons = new Map<string, number>();
   return {
     setExcludedAuthors,
+    async readCommitCi(repo, sha) {
+      return readCi(
+        new Api(run),
+        s.repo.parse(repo),
+        s.sha.parse(sha),
+        s.time.parse((options.now?.() ?? new Date()).toISOString()),
+      );
+    },
     ...diffReads(run, reads.readPullRequestPatch),
     async readPullRequestBehind(repo, range) {
       s.repo.parse(repo);

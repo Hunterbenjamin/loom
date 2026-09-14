@@ -210,6 +210,7 @@ async function open(
       commentPullRequest: github.commentPullRequest,
       readPullRequest: github.readPullRequest,
       readPullRequestPatch: github.readPullRequestPatch,
+      readCommitCi: github.readCommitCi,
       closePullRequest: github.closePullRequest,
       deleteBranch: github.deleteBranch,
       findPullRequest: async (request) =>

@@ -221,8 +221,8 @@ a committed launch/session result and an authoritative usable reading before the
 | 6 | planning | in_progress | M `submit_plan` | Plan passes schema; not `requirePlanApproval`; capacity CAS | Store plan vN; `stop_run` planner; `write_task_files`; start implementer |
 | 7 | plan_approval | in_progress | H `approve_plan(v)` | `v` is the latest plan version; capacity CAS | Insert plan Approval; `write_task_files`; start implementer |
 | 8 | plan_approval | planning | H `reject_plan(feedback)` | — | Resume the planner's session; `send_message` feedback |
-| 9 | in_progress | in_review | M `submit_for_review` | `headSha` = worktree HEAD; tree clean; ahead of base | `reviewRound += 1`; store handoff; `push_branch(headSha)`; start reviewer for the round |
-| 10 | in_review | awaiting_approval | M `submit_review`, then R publication | Clean task-branch HEAD is round head or descendant; complete `reviewerCommits`; fixing commits verified; verdicts for addressed/disputed and open blocking findings; 0 open blocking; published PR head = reviewed head, positively `mergeable`, CI for that head not failing | Store submission, findings and verdicts; end reviewer; `push_branch(reviewedSha)` before `open_pr` (if none); wait in_review for publication; `notify` attention |
+| 9 | in_progress | in_review | M `submit_for_review`, then R CI gate | `headSha` = worktree HEAD; tree clean; ahead of base. The submission records `ciGate` and stays in_progress; the move happens when CI for exactly that commit is green (or no check reported within `CI_START_GRACE_MS` of the push) and the head is unchanged | On submit: store handoff; `push_branch(headSha)`. On green: resolve earlier `ci` findings; `reviewRound += 1`; start reviewer for the round. On red: one blocking `ci` finding per failed check; `send_message` fix round to the implementer (stays in_progress) |
+| 10 | in_review | awaiting_approval | M `submit_review`, then R publication | Clean task-branch HEAD is the round head; no `reviewerCommits` and no `fixed` statuses (the reviewer is a checker); verdicts for addressed/disputed and open blocking findings; 0 open blocking; published PR head = reviewed head, positively `mergeable`, CI for that head not failing | Store submission, findings and verdicts; end reviewer; `push_branch(reviewedSha)` before `open_pr` (if none); wait in_review for publication; `notify` attention |
 | 11 | in_review | in_progress | M `submit_review` | Same clean HEAD, ancestry, commit-list and verdict guards; explicit `escalate` with reason and open blocking > 0; `reviewRound < reviewRoundCap`; converging | Store findings and escalation reasons; end reviewer; `send_message` fix round to the implementer (resume it if it ended) |
 | 12 | in_review | in_review, flag | M `submit_review` | Escalated open blocking > 0 and `reviewRound ≥ cap` → `blocked: review_round_cap`. A finding re-escalated, or escalated open blocking ≥ last round's → `blocked: review_not_converging` | Store findings; `stop_run` reviewer; `notify` attention |
 | 13 | in_review (blocked by #12) | in_progress | H `grant_review_round` | — | For `review_round_cap`, `reviewRoundCap += 1`; clear flag; `send_message` fix round to the implementer (resuming its run if it ended) |
@@ -253,18 +253,17 @@ Notes on the rules:
   The prior completed round's blocking count is used for convergence. The MCP boundary verifies blob
   existence and line bounds before constructing drafts; core verifies each anchor's head, path, side,
   range and blob identity against the submission.
-- **Inline review contract.** `review.headSha` stays immutable. Git's optional `reviewCommits`
+- **Review contract.** `review.headSha` stays immutable, and since reviewers are checkers `submit_review` refuses any reviewed SHA other than it and any reviewer commit; the commit-range evidence below remains for validation and older stored submissions. Git's optional `reviewCommits`
   observation is `{baseSha, headSha, commits[]}` for the requested round base and exact HEAD, or
   null if the base is not an ancestor. Missing evidence refuses a descendant submission. The list
   includes every reachable commit in the range, including merged side history, oldest first in
   topological order. The authenticated reviewer explicitly attributes this exact list to its run.
   No terminal parsing or Git author/email inference is used.
 - **Finding dispositions.** New reviewer findings may have status `open` (also the default,
-  non-blocking regardless of severity), `fixed` (requires `commitSha` in `reviewerCommits`) or
-  `escalate` (requires nonblank `reason`). Verdicts add `fixed` and `escalate` to `resolved` and
-  `reopened`; a reopened report alone is non-blocking. Every existing open blocker also needs a
-  verdict. Fixed findings retain `resolution: {by: reviewer, note, commitSha, at}`; escalations store
-  their reason in `resolution.note`. Implementers may resolve `escalate` through the existing
+  non-blocking regardless of severity) or `escalate` (requires nonblank `reason`). Verdicts are
+  `resolved`, `reopened` or `escalate`; a reopened report alone is non-blocking. `fixed` is refused:
+  reviewers don't commit. Every existing open blocker also needs a verdict. Escalations store their
+  reason in `resolution.note`; CI findings a later green CI settles carry `resolution.by: ci`. Implementers may resolve `escalate` through the existing
   addressed/disputed path. Explicit re-escalation keeps the nonconvergence guard.
 - **Publication and persistence.** The versioned handoff's optional `reviewerSubmission` is
   `{runId, round, input: SubmitReviewInput}`. `review.reviewerCommits` and

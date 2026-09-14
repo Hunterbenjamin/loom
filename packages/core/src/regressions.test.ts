@@ -97,23 +97,41 @@ describe("reconciliation ordering and recovery regressions", () => {
     expect(ready.actions.some((a) => a.kind === "send_message")).toBe(true);
     expect(ready.capacityVersion).toBe(4);
   });
-  it("push precedes reviewer launch via durable dependencies", () => {
+  it("submission pushes, and the reviewer starts only after CI passes on that commit", () => {
     const f = fixture();
     f.state.task.prNumber = null;
     f.state.task.reviewRound = 0;
     f.state.runs = f.state.runs.filter((r) => r.role !== "reviewer");
     if (f.observations.github?.ok) f.observations.github.value = null;
     f.observations.inputs = [mcp(submit())];
-    const r = fixed(f.state, f.observations);
-    const push = r.actions.find((a) => a.kind === "push_branch");
-    const start = r.next.outbox.find((a) => a.kind === "start_run");
-    // After submit_for_review, push_branch is emitted and reviewer is started.
-    // Reviewer start depends on push_branch. PR is not opened yet; it will be opened
-    // after submit_review when no blocking findings exist.
-    expect(push?.key).toBeDefined();
-    expect(start?.dependsOn).toContain(push?.key);
-    const open = r.next.outbox.find((a) => a.kind === "open_pr");
-    expect(open).toBeUndefined(); // PR not opened on submit_for_review
+    const submitted = fixed(f.state, f.observations);
+    expect(submitted.actions.some((a) => a.kind === "push_branch")).toBe(true);
+    expect(submitted.next.outbox.some((a) => a.kind === "start_run")).toBe(
+      false,
+    );
+    expect(submitted.next.outbox.some((a) => a.kind === "open_pr")).toBe(false);
+    expect(submitted.next.task.stage).toBe("in_progress");
+    const green = {
+      ...f.observations,
+      inputs: [],
+      ci: {
+        ok: true as const,
+        at: now,
+        value: {
+          headSha: head,
+          conclusion: "success" as const,
+          checks: [],
+          observedAt: now,
+        },
+      },
+    };
+    const reviewing = fixed(submitted.next, green);
+    expect(reviewing.next.task.stage).toBe("in_review");
+    expect(reviewing.next.outbox.some((a) => a.kind === "start_run")).toBe(
+      true,
+    );
+    // The PR still opens only once review converges.
+    expect(reviewing.next.outbox.some((a) => a.kind === "open_pr")).toBe(false);
   });
   it("later starts remain behind a pending disable-auto-merge action", () => {
     const f = fixture("merging");

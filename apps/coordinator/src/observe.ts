@@ -284,6 +284,14 @@ export async function observe(
           ),
         )
       : null;
+  // The CI gate reads checks for the submitted commit itself: no PR exists before review.
+  const gate = state.ciGate;
+  const ci =
+    repo && gate
+      ? await reading(now, () =>
+          deps.adapters.github.readCommitCi(repo.github, gate.headSha),
+        )
+      : null;
   // Live runs, plus each role's latest run even when it has ended: a human retry relaunches
   // that run, and core rotates its session only on `resumable: false` from a real read. Without
   // the observation every retry of a Codex run whose rollout was gone resumed the dead thread
@@ -326,6 +334,7 @@ export async function observe(
     now: now as never,
     git,
     github,
+    ci,
     runs,
     externalSessions,
     capacity,

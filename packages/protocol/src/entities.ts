@@ -470,7 +470,7 @@ export const finding = z.strictObject({
   location: findingLocation.nullable(),
   resolution: z
     .strictObject({
-      by: z.enum(["implementer", "reviewer", "human"]),
+      by: z.enum(["implementer", "reviewer", "human", "ci"]),
       note: text,
       commitSha: sha.nullable(),
       at: isoTime,

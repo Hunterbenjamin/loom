@@ -1,4 +1,5 @@
 import { automate } from "./automation.js";
+import { reconcileCiGate } from "./ci-gate.js";
 import { Context } from "./context.js";
 import { delivery } from "./delivery.js";
 import { attention, budget, reconcileFlags } from "./flags.js";
@@ -20,6 +21,7 @@ export const reconcile: Reconcile = (state, observations) => {
   observeRuns(c);
   // Observed merge/head/CI changes win over commands submitted against an old snapshot.
   reconcileStages(c);
+  reconcileCiGate(c);
   reconcileFlags(c);
   const consumed = new Set(c.state.consumedInputIds);
   for (const input of observations.inputs) {
@@ -60,6 +62,7 @@ export const reconcile: Reconcile = (state, observations) => {
   // Results can unlock a new session; hydrate it in this pass to reach a fixed point.
   observeRuns(c);
   reconcileStages(c);
+  reconcileCiGate(c);
   reconcileFlags(c);
   retryActions(c);
   if (

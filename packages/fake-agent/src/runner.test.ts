@@ -350,48 +350,30 @@ test("tool error expectations use the real MCP schema and per-run token checks",
 }, 30000);
 
 test.each([true, false])(
-  "reviewer fixes inline and publishes the reviewed head (existing PR: %s)",
+  "a reviewer that commits a fix is refused; the task stays in review with nothing published (existing PR: %s)",
   async (existingPr) => {
     const env = await environment("reviewer-inline", "todo", existingPr);
     const result = await runScenario({
       ...env.options,
       scenarios: env.scenarios,
     });
-    const head = await env.git("rev-parse", "HEAD");
-    expect(result.state.task.stage).toBe("awaiting_approval");
+    expect(result.state.task.stage).toBe("in_review");
     expect(result.state.task.reviewRound).toBe(1);
-    expect(result.state.findings).toMatchObject([
-      {
-        status: "fixed",
-        blocking: false,
-        resolution: { by: "reviewer", commitSha: head },
-      },
-    ]);
-    expect(result.state.review).toMatchObject({
-      lastReviewedHead: head,
-      reviewerCommits: [head],
-      publicationPending: false,
-    });
-    expect(result.state.artifactContents.handoff).toMatchObject({
-      reviewerSubmission: { input: { reviewerCommits: [head] } },
-    });
-    expect(env.adapters.github.snapshot()?.headSha).toBe(head);
-    expect(
-      result.state.messages.filter((m) => m.purpose === "fix_round"),
-    ).toEqual([]);
-    const pushes = result.actions.filter((a) => a.kind === "push_branch");
-    expect(pushes).toHaveLength(2);
-    expect(pushes[1]).toMatchObject({ expectedHeadSha: head });
-    expect(result.dispositions.every((d) => d.accepted)).toBe(true);
-    if (!existingPr) {
-      const open = result.state.outbox.find((r) => r.kind === "open_pr");
-      expect(open?.dependsOn).toContain(pushes[1]?.key);
-      const reviewPush = pushes[1];
-      if (!reviewPush) throw new Error("Missing reviewer push");
-      expect(result.actions.indexOf(reviewPush)).toBeLessThan(
-        result.actions.findIndex((a) => a.kind === "open_pr"),
+    expect(result.state.findings).toEqual([]);
+    expect(result.state.review?.reviewerCommits ?? []).toEqual([]);
+    expect(result.state.review?.publicationPending ?? false).toBe(false);
+    // Only the implementer's submission was pushed, for the CI gate.
+    expect(result.actions.filter((a) => a.kind === "push_branch")).toHaveLength(
+      1,
+    );
+    expect(result.actions.some((a) => a.kind === "open_pr")).toBe(false);
+    const rejected = result.dispositions.filter((d) => !d.accepted);
+    expect(rejected).toMatchObject([{ error: { code: "guard_failed" } }]);
+    const [refusal] = rejected;
+    if (refusal && !refusal.accepted)
+      expect(refusal.error.details.join(" ")).toContain(
+        "Reviewers don't commit",
       );
-    }
   },
   60000,
 );

@@ -587,6 +587,15 @@ export function observeFakes(
     now,
     git: { ok: true, at: now, value: git },
     github: { ok: true, at: now, value: runner.adapters.github.snapshot() },
+    ci: runner.state.ciGate
+      ? {
+          ok: true,
+          at: now,
+          value: runner.adapters.github.commitCiFor(
+            runner.state.ciGate.headSha,
+          ),
+        }
+      : null,
     runs: [],
     inputs: [],
     externalSessions: { ok: true, at: now, value: [] },

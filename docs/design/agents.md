@@ -28,24 +28,28 @@ The fix is a separation the human named: the agent you talk to must never be the
 | **Coordinator** | Code (`apps/coordinator`, `packages/core`) | Stages, launches, review rounds, merges on approval, recovery | Always; it is a process |
 | **Issue agents** | Planner, implementer, reviewer runs (unchanged) | The work of one issue, one role at a time | Yes |
 
-### Reviewers fix actual problems inline
+### Reviewers are checkers
 
-Reviewers have worktree write access, including commits on the task branch, in both launch modes
-and for both providers. Run the tests and read the diff against the accepted plan and AGENTS.md.
-Most reviews should find nothing to change. Do not fix things just because you can; never restyle,
-refactor or expand scope. Fix only an actual bug, a failing or missing test required by the plan,
-or an AGENTS.md violation. Commit each fix separately with a message naming the finding, and rerun
-the relevant tests.
+CI has already passed on the head a reviewer reads: Loom starts a review round only after CI is
+green on the implementer's submitted commit. So reviewers don't run lint, the typecheck or the
+suite; they run a test only to confirm a suspected bug. They never edit or commit, even though their
+worktree allows it: Loom refuses a submission with reviewer commits or `fixed` statuses.
 
-Submit the clean HEAD through `submit_review`, listing every commit after the round head in
-`reviewerCommits`. A fixed finding/verdict uses `status: fixed` and its `commitSha`. Escalate only
-what cannot be fixed safely inline: a design change, unanticipated work, or work across many files.
-Use `status: escalate` and explain why in `reason`. Everything else is fixed or reported as
-non-blocking; severity alone never requests an implementer fix round. Provide verdicts for earlier
-addressed/disputed findings and any remaining open blockers.
+Read the diff against the issue, the accepted plan and AGENTS.md, and judge what machines can't:
+whether the change does what was asked (nothing missing, no scope creep), logic and edge cases,
+fit with Loom's architecture and principles, and whether the tests check the right thing. Most
+reviews should find nothing blocking.
 
-The coordinator validates ancestry and the complete commit list, records the authenticated
-submission, and pushes the reviewed head before opening the PR. Reviewers do not move cards or
+Submit the round head through `submit_review` with an empty `reviewerCommits`. Report a problem that
+must be fixed before merge as `status: escalate` with a `reason`; the implementer fixes it in its own
+session, and CI runs again before the next round. Report everything else as `status: open`, a
+non-blocking note that never costs a round; severity alone never requests a fix round. Provide
+verdicts (`resolved`, `reopened` or `escalate`) for earlier addressed/disputed findings and any
+remaining open blockers. In a later round, review only what changed since
+`worktree.lastReviewedHead` from `get_task_context`, plus the verdicts owed.
+
+The coordinator validates the submission, records it, and pushes the reviewed head before opening
+the PR. Reviewers do not move cards or
 merge. A successful submission may return `next: in_review` while publication is pending; this is
 completed reviewer work, not a request to submit again. Only an explicit escalation invokes the
 implementer's automatic fix-round path; the cap and nonconvergence checks still apply.

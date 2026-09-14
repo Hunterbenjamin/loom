@@ -168,7 +168,7 @@ export const inputSchemas = {
             ctx.addIssue({
               code: "custom",
               path: [group, index, "reason"],
-              message: "Explain why this cannot be fixed safely inline",
+              message: "Explain why this must be fixed before merge",
             });
           if (
             (item.status !== "fixed" && item.commitSha) ||
@@ -209,6 +209,9 @@ export const outputSchemas = {
       baseBranch: text,
       baseSha: shaSchema,
       headSha: shaSchema.nullable(),
+      /** The head this review round reviews, and the one the previous round reviewed. */
+      roundHead: shaSchema.nullable().optional(),
+      lastReviewedHead: shaSchema.nullable().optional(),
     }),
     brief: text,
     plan: storedPlanSchema.extend({ version: line }).nullable(),

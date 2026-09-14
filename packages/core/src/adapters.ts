@@ -204,6 +204,8 @@ export interface PullRequestPatch {
 export interface GitHubAdapter {
   /** Update observation filtering without rebuilding the adapter or losing its caches. */
   setExcludedAuthors?(authors: readonly string[]): void;
+  /** Checks and statuses for one commit, whether or not a PR exists for it. */
+  readCommitCi(repo: string, sha: Sha): Promise<CiState>;
   readPullRequestCommit(
     repo: string,
     number: number,

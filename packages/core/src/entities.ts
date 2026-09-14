@@ -524,7 +524,7 @@ export interface FindingLocation {
 }
 
 export interface FindingResolution {
-  by: "implementer" | "reviewer" | "human";
+  by: "implementer" | "reviewer" | "human" | "ci";
   note: string;
   commitSha: Sha | null;
   at: IsoTime;

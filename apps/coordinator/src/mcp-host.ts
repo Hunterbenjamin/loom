@@ -133,6 +133,8 @@ export function createMcpHost(deps: McpHostDeps): {
           baseBranch: worktree.baseBranch,
           baseSha: worktree.baseSha,
           headSha: git?.headSha ?? null,
+          roundHead: state.review?.headSha ?? null,
+          lastReviewedHead: state.review?.lastReviewedHead ?? null,
         },
         brief:
           typeof state.artifactContents.brief === "string"

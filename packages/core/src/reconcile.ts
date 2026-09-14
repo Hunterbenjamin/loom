@@ -113,6 +113,11 @@ export interface TaskState {
     publicationPending?: boolean;
     reviewerCommits?: Sha[];
   } | null;
+  /**
+   * Store: the implementer's submitted head waiting for CI before review. Review starts only on a
+   * green (or absent) CI for exactly this commit; red sends the failures back to the implementer.
+   */
+  ciGate?: { headSha: Sha; since: IsoTime } | null;
   /** Store: null when no launch/resume intent is waiting. */
   desiredRun: {
     role: Role;

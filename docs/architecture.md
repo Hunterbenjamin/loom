@@ -19,8 +19,10 @@ shows up in Loom.
 
 ```
 Backlog →(human) Todo →(auto) Planning →[valid plan] (optional plan approval) → In progress
-→[submit_for_review + commits] In review →[explicit reviewer escalation, round < 3] In progress
-                                         →[inline fixes committed, no blockers, reviewed head published] Awaiting approval
+→[submit_for_review + commits, pushed, CI green on that commit] In review
+                              (CI red: failures go back to the same implementer, still In progress)
+In review →[reviewer escalation, round < 3] In progress (implementer fixes; CI again before the next round)
+          →[no blockers, reviewed head published] Awaiting approval
 →[human approves head SHA, CI green] Merging →[PR merged on GitHub] Done
 ```
 
@@ -437,26 +439,35 @@ that crosses providers goes only through artifacts.
 
 ## Review and approval
 
-- The reviewer has the same task-worktree write/commit access and launch paths as the implementer
-  in both interactive and headless modes. Only planners retain Codex's read-only sandbox and
-  Claude's disallowed edit tools. Reviewers read the diff against the accepted plan and AGENTS.md
-  beside the implementer's recorded test results; they do not rerun the suite. CI on the pull
-  request is the merge gate, and the implementer already ran the changed packages' tests and the
-  typecheck. A reviewer runs a test only to confirm a suspected bug or after an inline fix.
-  Most reviews should change nothing: no restyling, refactoring or scope expansion.
-  Fix only actual bugs, failing or missing tests required by the plan, or AGENTS.md violations;
-  commit each fix separately with a message naming the finding.
-- `submit_review` accepts the clean task-branch HEAD at the round head or a descendant. Git supplies
-  the complete oldest-first `roundHead..reviewedSha` range; the authenticated reviewer must record
-  exactly that range as `reviewerCommits`. This is attribution to the submitting run, not a claim
-  inferred from Git author names. A `fixed` finding/verdict names a fixing `commitSha` in that range
-  and never counts as open blocking. An `escalate` finding/verdict must carry a reason: a design
-  change, unanticipated work or work across many files that cannot safely be fixed inline. Only
-  explicit escalation sends transition 11 to the implementer; all other reviewer reports are
-  non-blocking. Human request-changes and CI recovery keep their existing paths.
+- **CI gate before review.** `submit_for_review` validates the clean committed head, pushes it and
+  records `ciGate` (the head and when it was submitted); the task stays `in_progress`. Each pass reads
+  CI for exactly that commit (`GitHubAdapter.readCommitCi`, check runs and statuses by SHA, so no PR
+  is needed; the workflow runs on every branch push). Green starts a review round. Red records one
+  blocking `ci` finding per failed check, with its URL, and sends a fix round to the same implementer
+  session. A repository that reports no check within `CI_START_GRACE_MS` of the push succeeding
+  counts as having no CI. New commits after submitting withdraw the gate. While the gate waits, the
+  idle implementer owes nothing, so it raises no idle-without-submission attention. A later green CI
+  resolves earlier CI findings (`resolution.by: "ci"`), so the reviewer owes them no verdict. The
+  implementer runs lint, typecheck and changed-package tests before submitting; CI is the full check.
+- **The reviewer is a checker.** It reads the diff against the issue, the accepted plan and
+  AGENTS.md, and judges what machines can't: whether the change does what was asked, logic and
+  edge cases, fit with the architecture, and whether the tests check the right thing. CI already
+  passed on the head it reads, so it doesn't run lint, typecheck or the suite (a test only to
+  confirm a suspected bug), and it never edits or commits: `submit_review` refuses any reviewer
+  commit (reviewedSha must be the round head, reviewerCommits empty) and any `fixed` finding or
+  verdict. Blocking problems are `escalate` findings with a reason and go to the implementer, who
+  fixes them in its own session; `open` findings are non-blocking notes and never cost a round. In a
+  later round the reviewer reviews only what changed since the previous reviewed head
+  (`get_task_context` gives `worktree.roundHead` and `worktree.lastReviewedHead`). Reviewers keep
+  the same worktree access and launch paths as implementers; planners alone keep Codex's read-only
+  sandbox and Claude's disallowed edit tools.
+- `submit_review` accepts the clean task-branch HEAD at the round head. An `escalate`
+  finding/verdict must carry a reason it must be fixed before merge. Only explicit escalation sends
+  transition 11 to the implementer; all other reviewer reports are non-blocking. Human
+  request-changes and CI recovery after approval keep their existing paths.
 - The coordinator stores the complete review submission in the versioned handoff artifact and
-  its reviewer commit list/pending publication in review state. On convergence it emits
-  `push_branch(reviewedSha)` before `open_pr`, retaining the implementer's submit-for-review push.
+  pending publication in review state. On convergence it emits `push_branch(reviewedSha)` (the same
+  intent the CI gate already completed) before `open_pr`.
   A push sends the immutable expected SHA to the explicit issue-branch ref with force-with-lease
   bound to the remote head from the executor's preceding owner observation; the executor fatally
   refuses the repository base branch.

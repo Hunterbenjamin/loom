@@ -355,6 +355,8 @@ export interface Observations {
   git: Reading<GitWorktreeObservation> | null;
   /** Null: not read (no branch yet). `value: null`: no PR for the branch. */
   github: Reading<PullRequestObservation | null> | null;
+  /** CI for the CI gate's commit, read by SHA so it needs no PR. Absent or null: no gate. */
+  ci?: Reading<CiState> | null;
   /** One per run of this task that hasn't ended. */
   runs: RunObservation[];
   /** External sessions successfully read. On read failure (transient errors), this is marked
