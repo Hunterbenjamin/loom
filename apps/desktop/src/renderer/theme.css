@@ -2578,6 +2578,7 @@ ul.plain {
   text-align: right;
 }
 .settings-input-suffix {
+  min-width: 28px;
   color: var(--text-faint);
   font-size: 12px;
 }
@@ -2592,6 +2593,13 @@ ul.plain {
 .settings-reset {
   color: var(--text-faint);
   font-size: 12px;
+}
+.settings-row-control > .settings-reset {
+  min-width: 76px;
+  text-align: right;
+}
+.settings-reset.placeholder {
+  visibility: hidden;
 }
 .settings-reset:hover {
   color: var(--text);
@@ -2626,25 +2634,6 @@ ul.plain {
 }
 .settings-switch:disabled {
   opacity: 0.5;
-}
-.settings-status-pill {
-  font-size: 12px;
-  color: var(--text-faint);
-}
-.settings-status-pill::before {
-  content: "";
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--text-faint);
-}
-.settings-status-pill.ready {
-  color: var(--text-dim);
-}
-.settings-status-pill.ready::before {
-  background: var(--good);
 }
 .settings-table-wrap {
   overflow-x: auto;

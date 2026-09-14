@@ -23,7 +23,6 @@ const SECTIONS = [
   { id: "agents", label: "Agents", scoped: true },
   { id: "workflow", label: "Workflow", scoped: true },
   { id: "keyboard", label: "Keyboard", scoped: false },
-  { id: "integrations", label: "Integrations", scoped: false },
   { id: "advanced", label: "Advanced", scoped: false },
   { id: "history", label: "History", scoped: false },
 ] as const;
@@ -81,39 +80,52 @@ function General({ context }: { context: FieldContext }) {
   const theme = useField(context, "appearance.theme");
   const chime = useField(context, "appearance.chime");
   const windowMode = useField(context, "appearance.windowMode");
+  const excluded = useField(context, "runtime.excludedAuthors");
   return (
-    <Group title="Appearance">
-      <Row field={theme} label="Theme">
-        <Segmented
-          field={theme}
-          options={[
-            ["dark", "Dark"],
-            ["light", "Light"],
-            ["system", "System"],
-          ]}
-        />
-      </Row>
-      <Row
-        field={chime}
-        label="Completion chime"
-        description="Play a sound when an agent finishes a turn."
-      >
-        <Toggle field={chime} label="Completion chime" />
-      </Row>
-      <Row
-        field={windowMode}
-        label="Open in"
-        description="The window Loom shows when it starts."
-      >
-        <Segmented
+    <>
+      <Group title="Appearance">
+        <Row field={theme} label="Theme">
+          <Segmented
+            field={theme}
+            options={[
+              ["dark", "Dark"],
+              ["light", "Light"],
+              ["system", "System"],
+            ]}
+          />
+        </Row>
+        <Row
+          field={chime}
+          label="Completion chime"
+          description="Play a sound when an agent finishes a turn."
+        >
+          <Toggle field={chime} label="Completion chime" />
+        </Row>
+        <Row
           field={windowMode}
-          options={[
-            ["tracker", "Tracker"],
-            ["workbench", "Workbench"],
-          ]}
-        />
-      </Row>
-    </Group>
+          label="Open in"
+          description="The window Loom shows when it starts."
+        >
+          <Segmented
+            field={windowMode}
+            options={[
+              ["tracker", "Tracker"],
+              ["workbench", "Workbench"],
+            ]}
+          />
+        </Row>
+      </Group>
+      <Group title="GitHub">
+        <Row
+          field={excluded}
+          label="Hide pull requests from"
+          description="GitHub usernames, separated by commas."
+          wide
+        >
+          <TextInput field={excluded} kind="list" placeholder="None" />
+        </Row>
+      </Group>
+    </>
   );
 }
 
@@ -376,45 +388,6 @@ function Workflow({ context }: { context: FieldContext }) {
           description="Serialize test runs across issues."
         >
           <Toggle field={serial} label="Run tests one at a time" />
-        </Row>
-      </Group>
-    </>
-  );
-}
-
-function Integrations({ context }: { context: FieldContext }) {
-  const excluded = useField(context, "runtime.excludedAuthors");
-  const ready = context.global.credentialReadiness;
-  return (
-    <>
-      <Group
-        title="Accounts"
-        description="Loom uses the credentials each tool already has on this machine."
-      >
-        {(
-          [
-            ["codex", "Codex"],
-            ["claude", "Claude"],
-            ["github", "GitHub"],
-          ] as const
-        ).map(([id, label]) => (
-          <Row key={id} label={label}>
-            <span
-              className={`settings-status-pill${ready[id] ? " ready" : ""}`}
-            >
-              {ready[id] ? "Connected" : "Not detected"}
-            </span>
-          </Row>
-        ))}
-      </Group>
-      <Group title="GitHub">
-        <Row
-          field={excluded}
-          label="Hide pull requests from"
-          description="GitHub usernames, separated by commas."
-          wide
-        >
-          <TextInput field={excluded} kind="list" placeholder="None" />
         </Row>
       </Group>
     </>

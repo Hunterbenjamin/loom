@@ -198,10 +198,14 @@ export function Row({
       </div>
       <div className="settings-row-control">
         {children}
-        {field?.canReset ? (
+        {field ? (
+          // Always takes its space, so controls line up whether or not a row can reset.
           <button
             type="button"
-            className="settings-reset"
+            className={`settings-reset${field.canReset ? "" : " placeholder"}`}
+            aria-hidden={!field.canReset}
+            tabIndex={field.canReset ? undefined : -1}
+            disabled={!field.canReset}
             title={
               repository ? "Use the value for all repositories" : "Use default"
             }
@@ -342,7 +346,9 @@ export function TextInput({
           if (event.key === "Escape") setText(saved);
         }}
       />
-      {suffix ? <span className="settings-input-suffix">{suffix}</span> : null}
+      {kind === "number" ? (
+        <span className="settings-input-suffix">{suffix}</span>
+      ) : null}
     </span>
   );
 }
