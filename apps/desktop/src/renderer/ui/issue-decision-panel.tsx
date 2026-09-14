@@ -30,10 +30,15 @@ export function IssueDecisionPanel({
   const [expanded, setExpanded] = useState(!compact);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [questions, setQuestions] = useState<Record<string, string>>({});
+  const decisions = data.decisions.filter(
+    (decision) => decision.kind !== "plan_needs_approval",
+  );
+  const hasPlanDecision = decisions.length !== data.decisions.length;
+  if (hasPlanDecision && decisions.length === 0) return null;
   if (compact && !expanded)
     return (
       <div className="issue-decision-panel compact">
-        <span>{data.decisions[0]?.label ?? data.status.summary}</span>
+        <span>{decisions[0]?.label ?? data.status.summary}</span>
         <button type="button" onClick={() => setExpanded(true)}>
           Show actions
         </button>
@@ -50,8 +55,8 @@ export function IssueDecisionPanel({
           Collapse actions
         </button>
       ) : null}
-      {data.decisions.length ? (
-        data.decisions.map((decision) => {
+      {decisions.length ? (
+        decisions.map((decision) => {
           const highlighted =
             decision.kind === openReason &&
             (!openRun || decision.runs.some((run) => run.id === openRun));
@@ -73,15 +78,6 @@ export function IssueDecisionPanel({
                   now={now}
                   question={selectedQuestion?.question}
                 />
-                {decision.kind === "plan_needs_approval" ? (
-                  <button
-                    type="button"
-                    className="pr-task-link"
-                    onClick={() => store.setTab("plan")}
-                  >
-                    Review plan
-                  </button>
-                ) : null}
               </div>
               {decision.questions && decision.questions.length > 1 ? (
                 <select
@@ -126,7 +122,6 @@ export function IssueDecisionPanel({
               <div className="issue-decision-actions">
                 {decision.actions.map((action) => {
                   const noteAction = [
-                    "reject-plan",
                     "request-changes",
                     "answer-question",
                   ].includes(action.id);
@@ -193,7 +188,6 @@ export function IssueDecisionPanel({
 }
 
 function noteRequiredReason(actionId: string) {
-  if (actionId === "reject-plan") return "Enter feedback to reject the plan";
   if (actionId === "request-changes")
     return "Enter feedback to request changes";
   if (actionId === "answer-question") return "Enter an answer";
@@ -201,11 +195,7 @@ function noteRequiredReason(actionId: string) {
 }
 
 function needsNote(decision: IssueDecision) {
-  return (
-    decision.kind === "plan_needs_approval" ||
-    decision.kind === "needs_approval" ||
-    decision.kind === "question"
-  );
+  return decision.kind === "needs_approval" || decision.kind === "question";
 }
 
 function DecisionEvidence({
@@ -217,8 +207,6 @@ function DecisionEvidence({
   now: IsoTime;
   question?: string;
 }) {
-  if (decision.kind === "plan_needs_approval")
-    return <span>Plan version {decision.planVersion ?? "unavailable"}</span>;
   if (decision.kind === "needs_approval")
     return (
       <span className="mono" title={decision.reviewedHead ?? undefined}>

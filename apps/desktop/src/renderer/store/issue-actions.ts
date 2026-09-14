@@ -25,6 +25,7 @@ export interface IssueDecision {
   since: IsoTime | null;
   runs: Run[];
   planVersion?: number | null;
+  planGoal?: string | null;
   reviewedHead?: string | null;
   questions?: State["snapshot"]["questions"];
   reason?: string | null;
@@ -90,13 +91,15 @@ function reasonActions(
         }),
       },
       {
-        id: "reject-plan",
-        label: "Reject plan",
+        id: "change-plan",
+        label: "Change plan",
         disabledReason: disabled(
           state,
           task.stage !== "plan_approval"
-            ? "Plan rejection is only available in Plan approval"
-            : "Enter feedback to reject the plan",
+            ? "Plan changes are only available in Plan approval"
+            : planVersion == null
+              ? "The latest plan version is unavailable"
+              : null,
         ),
         command: (text = "") => ({ type: "reject_plan", feedback: text }),
       },
@@ -217,6 +220,8 @@ export function issueDecisions(state: State, task: Task): IssueActionState {
   const decisions: IssueDecision[] = task.attention.reasons.map((reason) => {
     const reasonRuns = info?.reasonRuns[reason] ?? allRuns;
     const planVersion = info?.planVersion ?? plans[task.id]?.version ?? null;
+    const planGoal =
+      plans[task.id]?.version === planVersion ? plans[task.id]?.goal : null;
     const reviewedHead = info?.reviewedHead ?? null;
     return {
       key: `reason:${reason}`,
@@ -225,6 +230,7 @@ export function issueDecisions(state: State, task: Task): IssueActionState {
       since: task.attention.reasonSince[reason] ?? task.attention.since,
       runs: reasonRuns,
       planVersion,
+      planGoal,
       reviewedHead,
       questions: reason === "question" ? openQuestions : undefined,
       reason:

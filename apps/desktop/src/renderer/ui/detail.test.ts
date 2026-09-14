@@ -120,31 +120,225 @@ function setup(
   return { store, task, host, render, snapshot };
 }
 
-test("plan approval opened from the Issues list shows the current plan actions", () => {
+test("plan approval opened from the Issues list shows only the header actions", () => {
   const h = setup("plan");
   h.store.open(h.task.id);
   h.render();
-  expect(h.host.textContent).toContain("Plan version 9");
+  expect(h.host.querySelector(".issue-decision-panel")).toBeNull();
   expect(
-    [...h.host.querySelectorAll("button")].map((button) => button.textContent),
-  ).toEqual(expect.arrayContaining(["Approve plan", "Reject plan"]));
-  expect(h.host.textContent).toContain("Enter feedback to reject the plan");
+    [
+      ...h.host.querySelectorAll<HTMLButtonElement>(
+        ".issue-toolbar-action button",
+      ),
+    ].map((button) => `${button.textContent}:${button.disabled}`),
+  ).toEqual(["Approve plan:false", "Change plan:false"]);
 });
 
-test("entering a note does not clear a coordinator availability reason", () => {
+test("Change plan requires feedback and sends the trimmed request", async () => {
+  const h = setup("plan");
+  const sender = vi.fn(async () => ({
+    ok: true as const,
+    result: { kind: "human" as const, inputId: inputId("change-plan") },
+  }));
+  h.store.setSender(sender);
+  h.render();
+  await act(async () =>
+    [...h.host.querySelectorAll("button")]
+      .find((button) => button.textContent === "Change plan")
+      ?.click(),
+  );
+  const dialog = h.host.querySelector<HTMLDialogElement>(".pr-confirm");
+  expect(dialog?.textContent).toContain("Plan version 9");
+  expect(dialog?.textContent).toContain("A clear plan");
+  const sendButton = [
+    ...h.host.querySelectorAll<HTMLButtonElement>("button"),
+  ].find((button) => button.textContent === "Send to planner");
+  expect(sendButton?.disabled).toBe(true);
+  const draft = h.host.querySelector<HTMLTextAreaElement>(
+    '[aria-label="Requested changes"]',
+  );
+  if (!draft) throw new Error("missing requested changes field");
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set?.call(draft, "   ");
+    draft.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(sendButton?.disabled).toBe(true);
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set?.call(draft, "  Clarify the test strategy  ");
+    draft.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(sendButton?.disabled).toBe(false);
+  await act(async () => sendButton?.click());
+  expect(sender).toHaveBeenCalledExactlyOnceWith({
+    kind: "human",
+    taskId: h.task.id,
+    command: {
+      type: "reject_plan",
+      feedback: "Clarify the test strategy",
+    },
+  });
+  expect(
+    h.host.querySelector(".issue-toolbar-action .pr-outcome")?.textContent,
+  ).toContain("Queued");
+});
+
+test("canceling Change plan preserves its draft without sending", async () => {
+  const h = setup("plan");
+  const sender = vi.fn();
+  h.store.setSender(sender);
+  h.render();
+  const open = () =>
+    [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "Change plan",
+    );
+  await act(async () => open()?.click());
+  const draft = h.host.querySelector<HTMLTextAreaElement>(
+    '[aria-label="Requested changes"]',
+  );
+  if (!draft) throw new Error("missing requested changes field");
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set?.call(draft, "Keep this draft");
+    draft.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () =>
+    [...h.host.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "Cancel")
+      ?.click(),
+  );
+  expect(sender).not.toHaveBeenCalled();
+  expect(h.host.querySelector('[aria-label="Requested changes"]')).toBeNull();
+  await act(async () => open()?.click());
+  expect(
+    h.host.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Requested changes"]',
+    )?.value,
+  ).toBe("Keep this draft");
+  act(() => {
+    h.host
+      .querySelector<HTMLDialogElement>(".pr-confirm")
+      ?.dispatchEvent(
+        new Event("cancel", { bubbles: false, cancelable: true }),
+      );
+  });
+  expect(h.host.querySelector('[aria-label="Requested changes"]')).toBeNull();
+  expect(sender).not.toHaveBeenCalled();
+});
+
+test("a refused Change plan request keeps its draft", async () => {
+  const h = setup("plan");
+  h.store.setSender(
+    vi.fn(async () => ({
+      ok: false as const,
+      error: {
+        code: "guard_failed" as const,
+        message: "Plan changed",
+        details: [],
+      },
+    })),
+  );
+  h.render();
+  const open = () =>
+    [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "Change plan",
+    );
+  await act(async () => open()?.click());
+  const draft = h.host.querySelector<HTMLTextAreaElement>(
+    '[aria-label="Requested changes"]',
+  );
+  if (!draft) throw new Error("missing requested changes field");
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set?.call(draft, "Preserve this");
+    draft.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () =>
+    [...h.host.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "Send to planner")
+      ?.click(),
+  );
+  await act(async () => open()?.click());
+  expect(
+    h.host.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Requested changes"]',
+    )?.value,
+  ).toBe("Preserve this");
+});
+
+test("plan actions expose coordinator availability once in the header", () => {
   const h = setup("plan");
   h.store.setConnection("disconnected");
   h.render();
-  const textarea = h.host.querySelector<HTMLTextAreaElement>("textarea");
+  const buttons = [
+    ...h.host.querySelectorAll<HTMLButtonElement>(
+      ".issue-toolbar-action button",
+    ),
+  ];
+  expect(buttons.map((button) => button.disabled)).toEqual([true, true]);
+  expect(h.host.querySelector(".issue-toolbar-action")?.textContent).toContain(
+    "Connect to the coordinator",
+  );
+  expect(
+    h.host.querySelectorAll(".issue-toolbar-action .disabled-reason"),
+  ).toHaveLength(1);
+});
+
+test("Change plan refuses a plan version that changed while the modal was open", async () => {
+  const h = setup("plan");
+  h.render();
+  await act(async () =>
+    [...h.host.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "Change plan")
+      ?.click(),
+  );
+  h.store.getState().inbox = [
+    {
+      taskId: h.task.id,
+      reasonRuns: {},
+      reviewedHead: null,
+      planVersion: 10,
+    },
+  ];
+  await act(async () => {
+    h.store.setConnection("disconnected");
+    h.store.setConnection("connected");
+  });
+  expect(h.host.querySelector('[role="alert"]')?.textContent).toContain(
+    "plan changed to version 10",
+  );
+  expect(
+    [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "Send to planner",
+    )?.disabled,
+  ).toBe(true);
+});
+
+test("entering a note does not clear a coordinator availability reason", () => {
+  const h = setup("merge");
+  h.store.setConnection("disconnected");
+  h.render();
+  const textarea = h.host.querySelector<HTMLTextAreaElement>(
+    '[aria-label="Feedback for the agent"]',
+  );
   if (!textarea) throw new Error("missing feedback field");
   act(() => {
-    textarea.value = "Please revise the plan";
+    textarea.value = "Please revise the implementation";
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  const reject = [...h.host.querySelectorAll("button")].find(
-    (button) => button.textContent === "Reject plan",
+  const requestChanges = [...h.host.querySelectorAll("button")].find(
+    (button) => button.textContent === "Request changes",
   );
-  expect(reject?.disabled).toBe(true);
+  expect(requestChanges?.disabled).toBe(true);
   expect(h.host.textContent).toContain("Connect to the coordinator");
 });
 
@@ -161,13 +355,13 @@ test.each(["plan", "merge", "question", "failed", "provider"] as const)(
     h.render();
     const inbox = [
       ...h.host.querySelectorAll<HTMLButtonElement>(
-        ".issue-decision-actions button",
+        ".issue-decision-actions button, .issue-toolbar-action button",
       ),
     ].map((button) => `${button.textContent}:${button.disabled}`);
     act(() => h.store.open(h.task.id));
     const list = [
       ...h.host.querySelectorAll<HTMLButtonElement>(
-        ".issue-decision-actions button",
+        ".issue-decision-actions button, .issue-toolbar-action button",
       ),
     ].map((button) => `${button.textContent}:${button.disabled}`);
     expect(list).toEqual(inbox);
@@ -180,7 +374,7 @@ test.each(["plan", "merge", "question", "failed", "provider"] as const)(
     });
     const breadcrumb = [
       ...h.host.querySelectorAll<HTMLButtonElement>(
-        ".issue-decision-actions button",
+        ".issue-decision-actions button, .issue-toolbar-action button",
       ),
     ].map((button) => `${button.textContent}:${button.disabled}`);
     expect(breadcrumb).toEqual(inbox);
@@ -330,18 +524,22 @@ test("merge confirmation refuses a reviewed head that changed while open", async
 test("a queued command becomes applied from its matching transition without exposing the input id", async () => {
   const h = setup("plan");
   const queuedId = inputId("hidden-command-id");
-  h.store.setSender(
-    vi.fn(async () => ({
-      ok: true as const,
-      result: { kind: "human" as const, inputId: queuedId },
-    })),
-  );
+  const sender = vi.fn(async () => ({
+    ok: true as const,
+    result: { kind: "human" as const, inputId: queuedId },
+  }));
+  h.store.setSender(sender);
   h.render();
   await act(async () =>
     [...h.host.querySelectorAll("button")]
       .find((button) => button.textContent === "Approve plan")
       ?.click(),
   );
+  expect(sender).toHaveBeenCalledExactlyOnceWith({
+    kind: "human",
+    taskId: h.task.id,
+    command: { type: "approve_plan", planVersion: 9 },
+  });
   expect(h.host.querySelector('[role="status"]')?.textContent).toContain(
     "Queued",
   );
