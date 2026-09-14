@@ -313,7 +313,7 @@ export type HumanCommand =
       expectedDialog?: {
         requestId: string;
         at: IsoTime;
-        command: string;
+        command?: string;
         sessionEpoch: number;
       };
       text?: string;

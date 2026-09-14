@@ -43,4 +43,29 @@ describe("conversation protocol", () => {
       command.safeParse({ ...valid, text: "x".repeat(16385) }).success,
     ).toBe(false);
   });
+  test("keeps stale-dialog guards for Claude permissions without commands", () => {
+    expect(
+      command.parse({
+        kind: "human",
+        taskId: "task-1",
+        command: {
+          type: "answer_pane_prompt",
+          runId: "run-1",
+          choice: 1,
+          expectedDialog: {
+            requestId: "request-1",
+            at: "2026-09-14T01:00:00.000Z",
+            sessionEpoch: 1,
+          },
+        },
+      }),
+    ).toMatchObject({
+      command: {
+        expectedDialog: {
+          requestId: "request-1",
+          sessionEpoch: 1,
+        },
+      },
+    });
+  });
 });

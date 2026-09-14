@@ -108,12 +108,13 @@ export function ChatWindow() {
           choice,
           expectedDialog:
             prompt.requestId &&
-            prompt.command !== undefined &&
             prompt.sessionEpoch !== undefined
               ? {
                   requestId: prompt.requestId,
                   at: prompt.at,
-                  command: prompt.command,
+                  ...(prompt.command === undefined
+                    ? {}
+                    : { command: prompt.command }),
                   sessionEpoch: prompt.sessionEpoch,
                 }
               : undefined,

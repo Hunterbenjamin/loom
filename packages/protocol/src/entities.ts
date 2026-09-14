@@ -608,7 +608,7 @@ export const humanCommand = z.union([
       .object({
         requestId: z.string(),
         at: isoTime,
-        command: z.string(),
+        command: z.string().optional(),
         sessionEpoch: z.number().int().nonnegative(),
       })
       .optional(),
