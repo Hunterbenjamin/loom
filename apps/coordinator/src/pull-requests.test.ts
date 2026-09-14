@@ -189,6 +189,53 @@ test("merge, close, and delete each ack once after owner refresh; already merged
   }
 });
 
+test("a merge acknowledges once its own list and detail confirm it, without waiting for other lists", async () => {
+  const h = await setup();
+  h.github.setPullRequest(detail());
+  const mergedScope: Subscription = {
+    kind: "pull_requests",
+    repoId: h.repo.id,
+    state: "merged",
+  };
+  const list = h.adapters.github.listPullRequests;
+  let held: Promise<void> | null = null;
+  let release = () => {};
+  const spy = vi
+    .spyOn(h.adapters.github, "listPullRequests")
+    .mockImplementation(async (repo, state) => {
+      if (state === "merged" && held) await held;
+      return list(repo, state);
+    });
+  const client = await connect(h, [listScope(h), detailScope(h), mergedScope]);
+  await vi.waitFor(() =>
+    expect(spy).toHaveBeenCalledWith(h.repo.github, "merged"),
+  );
+  spy.mockClear();
+  // From here every merged-list read blocks until the test releases it.
+  held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  expect(
+    await client.command({
+      kind: "merge_pull_request",
+      repoId: h.repo.id,
+      number: 1,
+      matchHeadSha: head,
+      deleteBranch: true,
+    }),
+  ).toMatchObject({ ok: true });
+  expect(
+    client.state?.collections.pull_request_detail.get(
+      pullRequestKey(h.repo.id, 1),
+    )?.detail.state,
+  ).toBe("merged");
+  // The merged list was still asked to refresh; it just did not gate the acknowledgement.
+  await vi.waitFor(() =>
+    expect(spy).toHaveBeenCalledWith(h.repo.github, "merged"),
+  );
+  release();
+});
+
 test("stale SHA, pending/failed checks, unknown mergeability and open branch deletion refuse and refresh", async () => {
   const h = await setup();
   h.github.setPullRequest(detail());
