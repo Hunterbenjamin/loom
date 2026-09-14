@@ -385,12 +385,7 @@ export async function main(argv: string[]): Promise<void> {
     if (!reference) throw new Error("loom attach needs an issue");
     const taskId = resolveCliTaskRef(config, reference);
     if (!taskId) return;
-    return attach(
-      config,
-      taskId,
-      role ?? "implementer",
-      has(argv, "exec"),
-    );
+    return attach(config, taskId, role ?? "implementer", has(argv, "exec"));
   }
   if (group === "repo") {
     const [action, root, github] = args;
