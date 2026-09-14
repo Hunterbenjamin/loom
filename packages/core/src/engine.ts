@@ -6,7 +6,11 @@ import { structurallyEqual } from "./helpers.js";
 import { human } from "./human.js";
 import { observeRuns, retireFinishedPanes, startDesired } from "./lifecycle.js";
 import type { Reconcile } from "./reconcile.js";
-import { actionResult, retryActions } from "./results.js";
+import {
+  actionResult,
+  releaseDeadDependencies,
+  retryActions,
+} from "./results.js";
 import { reconcileStages } from "./stages.js";
 import { submission } from "./submissions.js";
 
@@ -69,6 +73,8 @@ export const reconcile: Reconcile = (state, observations) => {
   retireFinishedPanes(c);
   delivery(c);
   automate(c);
+  // Last among emitters: voided approvals and cancellations earlier in the pass count.
+  releaseDeadDependencies(c);
   attention(c);
   if (!structurallyEqual(c.state, state)) {
     c.task.version = state.task.version + 1;
