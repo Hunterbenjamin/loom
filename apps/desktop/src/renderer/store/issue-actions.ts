@@ -349,7 +349,7 @@ export function issueDecisions(state: State, task: Task): IssueActionState {
               ? "Completed issues cannot be canceled"
               : null,
           ),
-          command: (text = "Canceled by human") => ({
+          command: (text = "") => ({
             type: "cancel",
             reason: text,
           }),

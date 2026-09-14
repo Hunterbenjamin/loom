@@ -194,6 +194,43 @@ test("provider requests expose their primary action in the toolbar", () => {
   ).toBe("Accept");
 });
 
+test("cancel requires a reason before sending it", async () => {
+  const h = setup("failed");
+  const sender = vi.fn(async () => ({
+    ok: true as const,
+    result: { kind: "human" as const, inputId: inputId("cancel-issue") },
+  }));
+  h.store.setSender(sender);
+  h.render();
+  await act(async () =>
+    [...h.host.querySelectorAll("button")]
+      .find((button) => button.textContent === "Cancel issue")
+      ?.click(),
+  );
+  const confirm = [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(
+    (button) => button.textContent === "Confirm cancellation",
+  );
+  expect(confirm?.disabled).toBe(true);
+  const reason = h.host.querySelector<HTMLTextAreaElement>(
+    '[aria-label="Cancellation reason"]',
+  );
+  if (!reason) throw new Error("missing cancellation reason");
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set?.call(reason, "No longer needed");
+    reason.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(confirm?.disabled).toBe(false);
+  await act(async () => confirm?.click());
+  expect(sender).toHaveBeenCalledExactlyOnceWith({
+    kind: "human",
+    taskId: h.task.id,
+    command: { type: "cancel", reason: "No longer needed" },
+  });
+});
+
 test("approve confirms the displayed evidence before sending once and renders a refusal", async () => {
   const h = setup("merge");
   const sender = vi.fn(async () => ({
