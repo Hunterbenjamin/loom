@@ -452,7 +452,9 @@ that crosses providers goes only through artifacts.
   implementer runs lint, typecheck and changed-package tests before submitting; CI is the full check.
 - **The reviewer is a checker.** It reads the diff against the issue, the accepted plan and
   AGENTS.md, and judges what machines can't: whether the change does what was asked, logic and
-  edge cases, fit with the architecture, and whether the tests check the right thing. CI already
+  edge cases, fit with the architecture, and whether the tests check the right thing. It blocks
+  only on a real bug, a principle violation or an unmet acceptance criterion; the rest of the plan
+  is guidance (plans are short, see docs/design/agents.md). CI already
   passed on the head it reads, so it doesn't run lint, typecheck or the suite (a test only to
   confirm a suspected bug), and it never edits or commits: `submit_review` refuses any reviewer
   commit (reviewedSha must be the round head, reviewerCommits empty) and any `fixed` finding or

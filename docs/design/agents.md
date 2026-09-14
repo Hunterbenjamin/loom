@@ -38,7 +38,19 @@ worktree allows it: Loom refuses a submission with reviewer commits or `fixed` s
 Read the diff against the issue, the accepted plan and AGENTS.md, and judge what machines can't:
 whether the change does what was asked (nothing missing, no scope creep), logic and edge cases,
 fit with Loom's architecture and principles, and whether the tests check the right thing. Most
-reviews should find nothing blocking.
+reviews should find nothing blocking. Block only on a real bug, a principle or AGENTS.md violation,
+or an unmet acceptance criterion; the rest of the plan is guidance, and a different reasonable
+approach or a missing optional detail is a non-blocking note.
+
+### Plans are short and record decisions
+
+Decision 2026-09-14, after plans of 1,700–3,600 words: the most detailed plans cost the most review
+rounds, often on requirements nobody asked for, and buried the decisions the human approves. A plan
+is about 300–600 words: goal, non-goals, the design decisions for the human, areas (files or
+modules, no line numbers), at most eight acceptance criteria written as observable behaviour, a
+brief test plan, risks and open questions. The implementer reads the code itself; the acceptance
+criteria are its bar, and it records a better approach as a decision rather than following
+code-level steps. Planners don't add requirements beyond the issue.
 
 Submit the round head through `submit_review` with an empty `reviewerCommits`. Report a problem that
 must be fixed before merge as `status: escalate` with a `reason`; the implementer fixes it in its own
