@@ -232,17 +232,26 @@ test("view changes and mouse movement clear the keyboard cursor", () => {
   expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
 });
 
-test("uses shared list primitives and the compact sort control", () => {
+test("uses shared list primitives with sortable column headings and an inline issue key", () => {
   const h = setup();
   expect(h.host.querySelector(".list-group")).not.toBeNull();
   expect(h.host.querySelector(".list-row")).not.toBeNull();
-  const sort = h.host.querySelector<HTMLSelectElement>(
-    '[aria-label="Sort issues"]',
-  );
-  if (!sort) throw new Error("missing sort control");
-  act(() => {
-    sort.value = "title";
-    sort.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  // No sort dropdown: the column headings name each column and sort by it.
+  expect(h.host.querySelector('[aria-label="Sort issues"]')).toBeNull();
+  const headings = [
+    ...h.host.querySelectorAll<HTMLButtonElement>(".issues-list-head button"),
+  ];
+  expect(
+    headings.map((button) => button.textContent?.replace(/ [↑↓]$/, "")),
+  ).toEqual(["Issue", "Stage", "Attention", "Agent", "Round", "Age"]);
+  act(() => headings[0]?.click());
   expect(h.store.getState().ui.sort).toBe("title");
+  // Each row has one cell per heading after the issue, so values line up under them.
+  const row = h.host.querySelector('[data-task="active"]');
+  for (const column of ["stage", "attention", "provider", "round"])
+    expect(row?.querySelector(`.issues-col-${column}`)).not.toBeNull();
+  // The issue key sits on the same line as the name, before it.
+  const line = row?.querySelector(".issue-line");
+  expect(line?.firstElementChild?.classList.contains("id")).toBe(true);
+  expect(line?.children[1]?.classList.contains("task-copy")).toBe(true);
 });

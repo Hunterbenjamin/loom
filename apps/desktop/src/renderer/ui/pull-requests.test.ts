@@ -255,3 +255,19 @@ test("shows loading from live list state and the empty result", () => {
   act(() => h.store.applyProtocol(stateFromSnapshot(wire.meta, wire.body)));
   expect(h.host.textContent).toContain("No reviews for you.");
 });
+
+test("the Issues count in the sidebar leaves out done and canceled issues", () => {
+  const h = setup();
+  const tasks = h.store
+    .getState()
+    .snapshot.tasks.filter(
+      (task) => task.repoId === h.store.getState().ui.repo,
+    );
+  const open = tasks.filter(
+    (task) => task.stage !== "done" && task.stage !== "canceled",
+  ).length;
+  expect(open).toBeLessThan(tasks.length);
+  expect(h.host.querySelector('[data-view="all"] .count')?.textContent).toBe(
+    String(open),
+  );
+});

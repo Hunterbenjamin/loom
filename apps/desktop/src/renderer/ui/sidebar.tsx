@@ -87,7 +87,10 @@ export function Sidebar() {
                 ? needsYou
                 : item.id === "pull-requests"
                   ? reviewCount
-                  : counts[item.id]}
+                  : item.id === "all"
+                    ? // Issues counts what is still open: done and canceled issues are finished.
+                      counts.all - counts.done
+                    : counts[item.id]}
             </span>
           </button>
         ))}

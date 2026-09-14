@@ -11,12 +11,7 @@ import {
 import type { SortKey } from "../store/store.js";
 import { AttentionChips, ProviderLabel, RunDot } from "./bits.js";
 import { age, stageLabel } from "./format.js";
-import {
-  ListGroupHeader,
-  ListRow,
-  ListToolbar,
-  LoadMore,
-} from "./list-rows.js";
+import { ListGroupHeader, ListRow, LoadMore } from "./list-rows.js";
 
 const HEADINGS: { key: SortKey; label: string }[] = [
   { key: "title", label: "Issue" },
@@ -56,6 +51,8 @@ function ListViewComponent() {
     getScrollElement: () => scroller.current,
     estimateSize: () => 40,
     overscan: 12,
+    // The sticky column headings sit above the rows inside the same scroller.
+    scrollPaddingStart: 28,
   });
 
   // The cursor is an index into `rows`; find where that row landed among the headers.
@@ -76,30 +73,6 @@ function ListViewComponent() {
 
   return (
     <>
-      <ListToolbar>
-        <label className="list-sort">
-          <span className="faint">Sort</span>
-          <select
-            aria-label="Sort issues"
-            value={sort}
-            onChange={(event) => store.setSort(event.target.value as SortKey)}
-          >
-            {HEADINGS.map((heading) => (
-              <option key={heading.key} value={heading.key}>
-                {heading.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          aria-label="Toggle sort direction"
-          title="Toggle sort direction"
-          onClick={() => store.setSort(sort)}
-        >
-          {descending ? "↓" : "↑"}
-        </button>
-      </ListToolbar>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: mouse movement switches navigation modality and clears the keyboard cursor */}
       <div
         className="list issues-list"
@@ -109,6 +82,21 @@ function ListViewComponent() {
           if (cursor !== null) store.setCursor(null);
         }}
       >
+        {/* Column headings name each column and sort by it; rows share the same grid. */}
+        <div className="list-head issues-list-head">
+          {HEADINGS.map((heading) => (
+            <button
+              key={heading.key}
+              type="button"
+              className={`issues-col-${heading.key}`}
+              onClick={() => store.setSort(heading.key)}
+              title={`Sort by ${heading.label.toLowerCase()}`}
+            >
+              {heading.label}
+              {sort === heading.key ? (descending ? " ↓" : " ↑") : ""}
+            </button>
+          ))}
+        </div>
         <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
           {virtual.getVirtualItems().map((item) => {
             const entry = items[item.index] as ListItem;
@@ -175,7 +163,7 @@ function Row({
       leading={<RunDot run={item.row.run} />}
       title={`${task.title} — ${item.row.summary}`}
       text={
-        <>
+        <span className="issue-line">
           <span className="id mono">{issueKeyFor(task, repos)}</span>
           <span className="task-copy">
             {displayName(task)}
@@ -183,25 +171,29 @@ function Row({
               <span className="task-summary"> — {item.row.summary}</span>
             ) : null}
           </span>
-        </>
+        </span>
       }
       meta={
         <>
-          <AttentionChips task={task} />
-          {item.row.openBlocking > 0 ? (
-            <span className="chip danger">
-              {item.row.openBlocking} blocking
-            </span>
-          ) : null}
-          <span className="chip list-stage">{stageLabel(task.stage)}</span>
-          <span className="list-provider">
+          <span className="issues-col-stage list-stage dim">
+            {stageLabel(task.stage)}
+          </span>
+          <span className="issues-col-attention">
+            <AttentionChips task={task} />
+            {item.row.openBlocking > 0 ? (
+              <span className="chip danger">
+                {item.row.openBlocking} blocking
+              </span>
+            ) : null}
+          </span>
+          <span className="issues-col-provider list-provider">
             <ProviderLabel run={item.row.run} runs={item.row.runs} />
           </span>
-          {task.reviewRound > 0 ? (
-            <span className="dim nums list-round">
-              {task.reviewRound}/{task.reviewRoundCap}
-            </span>
-          ) : null}
+          <span className="issues-col-round dim nums list-round">
+            {task.reviewRound > 0
+              ? `${task.reviewRound}/${task.reviewRoundCap}`
+              : "—"}
+          </span>
         </>
       }
       age={age(item.row.ageMinutes)}
