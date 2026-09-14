@@ -29,12 +29,21 @@ describe("Claude transcript conversation", () => {
       "thinking",
       "tool",
       "text",
+      "tool",
     ]);
     expect(first.items[2]?.tool).toMatchObject({
       name: "Read",
       status: "done",
       output: "Example output",
     });
+    expect(first.items[4]?.tool).toMatchObject({
+      name: "Write",
+      status: "failed",
+      output: "Permission denied",
+    });
+    expect(first.items.map((value) => value.text)).not.toEqual(
+      expect.arrayContaining(["hidden", "hidden metadata", "unknown type"]),
+    );
     await appendFile(
       path,
       '{"type":"assistant","uuid":"a2","timestamp":"2026-09-14T01:00:04.000Z","message":{"role":"assistant","content":"Done"}}\n',

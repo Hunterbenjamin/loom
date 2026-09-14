@@ -166,6 +166,31 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
         ?.click(),
     );
     expect(openPinned).toHaveBeenCalledWith("main");
+    const openChat = vi.fn();
+    window.addEventListener("loom:open-chat", openChat, { once: true });
+    const main = element.querySelector<HTMLButtonElement>(
+      '[title="Open Main terminal"]',
+    );
+    await act(async () =>
+      main?.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 10,
+          clientY: 10,
+        }),
+      ),
+    );
+    await act(async () =>
+      [...element.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+        .find((button) => button.textContent === "Open as chat")
+        ?.click(),
+    );
+    expect(openChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: { kind: "lead", repoId: snapshot().repos[0]?.id },
+      }),
+    );
     // A second window shows the same always-expanded tree.
     const second = document.createElement("div");
     const secondRoot = createRoot(second);

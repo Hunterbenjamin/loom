@@ -2070,10 +2070,23 @@ ul.plain {
   background: #ef7b67;
 }
 .chat-conversation {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 18px;
+}
+.chat-jump-latest {
+  position: sticky;
+  bottom: 0;
+  display: block;
+  margin: 8px auto 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-raised, var(--bg));
+  box-shadow: 0 3px 12px rgb(0 0 0 / 20%);
+  font-size: 12px;
 }
 .chat-message {
   margin: 0 0 14px;

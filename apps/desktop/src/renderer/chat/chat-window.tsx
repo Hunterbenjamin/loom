@@ -1,8 +1,34 @@
-import { conversationKey } from "@loom/protocol";
+import {
+  type Conversation,
+  type ConversationItem,
+  conversationKey,
+} from "@loom/protocol";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useStore, useStoreApi } from "../store/react.js";
+
+function comparableText(value: string) {
+  return value.replace(/\r\n/g, "\n").trim();
+}
+
+export function unmatchedSends(
+  sends: Conversation["sends"],
+  items: ConversationItem[],
+) {
+  const userItems = items.filter(
+    (item) => item.role === "user" && item.kind === "text",
+  );
+  return sends.filter((send) => {
+    if (send.state !== "delivered") return true;
+    const match = userItems.findIndex(
+      (item) => comparableText(item.text) === comparableText(send.text),
+    );
+    if (match < 0) return true;
+    userItems.splice(match, 1);
+    return false;
+  });
+}
 
 export function ChatWindow() {
   const store = useStoreApi();
@@ -11,7 +37,10 @@ export function ChatWindow() {
   const state = useStore((s) => s);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [showJump, setShowJump] = useState(false);
+  const conversation = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
   const key = target ? conversationKey(target) : "";
   const header = state.conversations.find(
     (value) => conversationKey(value.target) === key,
@@ -36,8 +65,16 @@ export function ChatWindow() {
   const contentVersion = `${items.length}:${header?.sends.length ?? 0}`;
   useEffect(() => {
     void contentVersion;
-    if (view !== "minimized") end.current?.scrollIntoView({ block: "end" });
+    if (view !== "minimized" && following.current)
+      end.current?.scrollIntoView({ block: "end" });
   }, [contentVersion, view]);
+  useEffect(() => {
+    void key;
+    if (view === "minimized") return;
+    following.current = true;
+    setShowJump(false);
+    end.current?.scrollIntoView({ block: "end" });
+  }, [key, view]);
   useEffect(() => {
     const open = (event: Event) =>
       store.openChat((event as CustomEvent).detail);
@@ -126,6 +163,12 @@ export function ChatWindow() {
         },
       });
   };
+  const sends = unmatchedSends(header?.sends ?? [], items);
+  const jumpToLatest = () => {
+    following.current = true;
+    setShowJump(false);
+    end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  };
   return (
     <section
       className={`chat-window${view === "expanded" ? " expanded" : ""}`}
@@ -192,7 +235,19 @@ export function ChatWindow() {
           ×
         </button>
       </header>
-      <div className="chat-conversation">
+      <div
+        ref={conversation}
+        className="chat-conversation"
+        onScroll={() => {
+          const element = conversation.current;
+          if (!element) return;
+          const atBottom =
+            element.scrollHeight - element.scrollTop - element.clientHeight <=
+            24;
+          following.current = atBottom;
+          setShowJump(!atBottom);
+        }}
+      >
         {header?.truncated && (
           <div className="chat-notice">Earlier messages not shown</div>
         )}
@@ -290,7 +345,7 @@ export function ChatWindow() {
             )}
           </div>
         )}
-        {header?.sends.map((send) => (
+        {sends.map((send) => (
           <div
             key={send.id}
             className={`chat-send ${send.state}`}
@@ -304,6 +359,15 @@ export function ChatWindow() {
           </div>
         ))}
         <div ref={end} />
+        {showJump && (
+          <button
+            type="button"
+            className="chat-jump-latest"
+            onClick={jumpToLatest}
+          >
+            Jump to latest
+          </button>
+        )}
       </div>
       <div className="chat-composer">
         <div className="chat-future-slot" />
