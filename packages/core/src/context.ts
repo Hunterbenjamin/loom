@@ -29,6 +29,16 @@ import type {
 import type { Observations } from "./observations.js";
 import type { ReconcileResult, TaskState } from "./reconcile.js";
 
+/** Cleanup intents: never canceled with the work around them, and never held back by it. */
+export const CLEANUP_KINDS: readonly string[] = [
+  "stop_run",
+  "interrupt_run",
+  "disable_auto_merge",
+  "notify",
+  "refresh",
+  "schedule",
+];
+
 type ActionData = Action extends infer A
   ? A extends Action
     ? Omit<A, "key" | "taskId">
@@ -318,14 +328,7 @@ export class Context {
     for (const row of this.state.outbox)
       if (
         (row.status === "pending" || row.status === "running") &&
-        ![
-          "stop_run",
-          "interrupt_run",
-          "disable_auto_merge",
-          "notify",
-          "refresh",
-          "schedule",
-        ].includes(row.kind)
+        !CLEANUP_KINDS.includes(row.kind)
       )
         row.status = "canceled";
     this.result.actions = this.result.actions.filter(

@@ -9,7 +9,7 @@ import {
   run as makeRun,
   now,
 } from "../test/fixtures.js";
-import type { Input, Run, RunObservation } from "./index.js";
+import type { Input, OutboxEntry, Run, RunObservation } from "./index.js";
 import { reconcile, runId } from "./index.js";
 
 function failure(mode: "headless" | "interactive" = "headless") {
@@ -603,6 +603,108 @@ describe("retiring finished interactive panes", () => {
       retire: true,
     });
     expect(r.next.runs[0]?.status).toBe("ended");
+  });
+  const row = (
+    action: Record<string, unknown> & { kind: string; key: string },
+    status: OutboxEntry["status"],
+    dependsOn: string[] = [],
+  ) =>
+    ({
+      key: action.key,
+      kind: action.kind,
+      status,
+      attempts: status === "pending" ? 0 : 1,
+      createdAt: now,
+      finishedAt: status === "pending" ? null : now,
+      action: { taskId: f0.state.task.id, ...action },
+      dependsOn,
+    }) as OutboxEntry;
+  const f0 = fixture("done");
+  const merge = {
+    key: "merge_pr:approval/1",
+    kind: "merge_pr",
+    repoId: f0.state.task.repoId,
+    prNumber: 1,
+    matchHeadSha: head,
+    auto: false,
+  };
+  it("closes a pane whose retire was queued behind a merge that was canceled", () => {
+    const { f, planner } = ended("done");
+    const key = `stop_run:${planner.id}#${planner.attempts}:retire`;
+    f.state.outbox = [
+      row(merge, "canceled"),
+      row(
+        { key, kind: "stop_run", runId: planner.id, retire: true },
+        "pending",
+        [merge.key],
+      ),
+    ];
+    const r = fixed(f.state, f.observations);
+    expect(r.next.outbox.find((o) => o.key === key)).toMatchObject({
+      status: "pending",
+      dependsOn: [],
+    });
+  });
+  it("releases cleanup from a failed action a finished task will never retry, but not a live retry", () => {
+    const failed = {
+      ...merge,
+      key: "disable_auto_merge:1",
+      kind: "disable_auto_merge",
+    };
+    const stop = {
+      key: "stop_run:x:retire",
+      kind: "stop_run",
+      runId: runId(f0.state.task.id, "reviewer", 1),
+      retire: true,
+    };
+    const done = fixture("done");
+    done.state.outbox = [
+      { ...row(failed, "failed"), retryAt: now },
+      row(stop, "pending", [failed.key]),
+    ];
+    expect(
+      fixed(done.state, done.observations).next.outbox.find(
+        (o) => o.key === stop.key,
+      )?.dependsOn,
+    ).toEqual([]);
+    const live = fixture("in_progress");
+    live.state.outbox = [
+      {
+        ...row(failed, "failed"),
+        retryAt: "2026-09-12T01:00:00.000Z" as typeof now,
+      },
+      row(stop, "pending", [failed.key]),
+    ];
+    expect(
+      reconcile(live.state, live.observations).next.outbox.find(
+        (o) => o.key === stop.key,
+      )?.dependsOn,
+    ).toEqual([failed.key]);
+  });
+  it("cancels work queued behind a canceled action instead of leaving it pending forever", () => {
+    const f = fixture("awaiting_approval");
+    const push = {
+      key: "push_branch:1",
+      kind: "push_branch",
+      worktreePath: f.state.task.worktreePath,
+      branch: "feat/core",
+      expectedHeadSha: head,
+    };
+    const open = {
+      key: "open_pr:1",
+      kind: "open_pr",
+      repoId: f.state.task.repoId,
+      branch: "feat/core",
+      baseBranch: "main",
+      title: "t",
+      body: "b",
+    };
+    f.state.outbox = [row(push, "canceled"), row(open, "pending", [push.key])];
+    const r = reconcile(f.state, f.observations);
+    expect(r.next.outbox.find((o) => o.key === open.key)?.status).toBe(
+      "canceled",
+    );
+    expect(r.actions.some((a) => a.key === open.key)).toBe(false);
   });
   it("keeps the planner's pane while the plan can still be rejected", () => {
     const { f, planner } = ended("plan_approval");
