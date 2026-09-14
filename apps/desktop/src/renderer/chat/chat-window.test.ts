@@ -16,7 +16,13 @@ import {
 } from "../../../../../packages/protocol/src/test-support.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
-import { ChatWindow, unmatchedSends } from "./chat-window.js";
+import {
+  CHAT_COMPOSER_LINE_HEIGHT,
+  CHAT_COMPOSER_MAX_HEIGHT,
+  ChatWindow,
+  resizeChatComposer,
+  unmatchedSends,
+} from "./chat-window.js";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -144,6 +150,41 @@ test("scrolling away from the bottom offers an explicit jump", async () => {
     host.querySelector<HTMLButtonElement>(".chat-jump-latest")?.click(),
   );
   expect(host.querySelector(".chat-jump-latest")).toBeNull();
+});
+
+test("the composer grows, caps at four lines, and shrinks after send", async () => {
+  const { host } = mount(header());
+  const input = host.querySelector<HTMLTextAreaElement>("textarea");
+  if (!input) throw new Error("composer missing");
+  let scrollHeight = 64;
+  Object.defineProperty(input, "scrollHeight", {
+    configurable: true,
+    get: () => scrollHeight,
+  });
+
+  resizeChatComposer(input);
+  expect(input.style.height).toBe("64px");
+  expect(input.style.overflowY).toBe("hidden");
+
+  scrollHeight = CHAT_COMPOSER_MAX_HEIGHT + 40;
+  resizeChatComposer(input);
+  expect(input.style.height).toBe(`${CHAT_COMPOSER_MAX_HEIGHT}px`);
+  expect(input.style.overflowY).toBe("auto");
+  expect(CHAT_COMPOSER_MAX_HEIGHT).toBeGreaterThanOrEqual(
+    CHAT_COMPOSER_LINE_HEIGHT * 4,
+  );
+
+  await act(async () => enter(input, "one\ntwo\nthree\nfour\nfive"));
+  expect(input.style.height).toBe(`${CHAT_COMPOSER_MAX_HEIGHT}px`);
+  scrollHeight = 24;
+  await act(async () =>
+    host
+      .querySelector<HTMLButtonElement>('[aria-label="Send message"]')
+      ?.click(),
+  );
+  expect(input.value).toBe("");
+  expect(input.style.height).toBe("24px");
+  expect(input.style.overflowY).toBe("hidden");
 });
 
 test("lead send, prefix rejection, delivery state and prompt answer are wired", async () => {
