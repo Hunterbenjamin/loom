@@ -2379,3 +2379,16 @@ ul.plain {
     display: none;
   }
 }
+
+.issue-finding.settled {
+  opacity: 0.6;
+}
+/* Rendered Markdown lays out its own blocks; plain-text pre-wrap would print the source newlines. */
+.task-description .pr-markdown,
+.issue-finding .pr-markdown {
+  white-space: normal;
+}
+.issue-finding .pr-markdown > :last-child,
+.issue-overview .task-description .pr-markdown > :last-child {
+  margin-bottom: 0;
+}

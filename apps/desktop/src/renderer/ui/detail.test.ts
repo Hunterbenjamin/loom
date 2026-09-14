@@ -4,6 +4,7 @@ import { stateFromSnapshot } from "@loom/protocol";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
+import { pane } from "../../../../../packages/protocol/src/pane-fixture.js";
 import { inputId, questionId, transitionId } from "../fixtures/ids.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
@@ -362,4 +363,73 @@ test("a queued command becomes applied from its matching transition without expo
     "Plan approval → In progress",
   );
   expect(h.host.textContent).not.toContain(queuedId);
+});
+
+test("tabs are Overview and Plan, with Terminal only while the issue has a live terminal", () => {
+  const h = setup("plan");
+  h.store.open(h.task.id);
+  const tabs = () =>
+    [...h.host.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent);
+  h.render();
+  expect(tabs()).toEqual(["Overview", "Plan"]);
+  // A selected Terminal tab with nothing to show falls back to Overview.
+  act(() => h.store.setTab("terminal"));
+  expect(
+    h.host.querySelector("[data-tab-body]")?.getAttribute("data-tab-body"),
+  ).toBe("overview");
+  h.store.getState().panes = [{ ...pane, taskId: h.task.id }];
+  h.render();
+  expect(tabs()).toEqual(["Overview", "Plan", "Terminal"]);
+  h.store.getState().panes = [{ ...pane, taskId: h.task.id, dead: true }];
+  h.render();
+  expect(tabs()).toEqual(["Overview", "Plan"]);
+});
+
+test("the overview renders the description and findings as Markdown and lists activity with its time", () => {
+  const h = setup("plan");
+  h.task.description = "Fix the **inbox** row.\n\n- first\n- second";
+  h.snapshot.findings.push({
+    id: "finding-md" as never,
+    taskId: h.task.id,
+    round: 1,
+    source: "reviewer",
+    externalId: null,
+    createdByRunId: null,
+    severity: "major",
+    blocking: true,
+    title: "Missing version",
+    body: "Show `planVersion` in the row.",
+    status: "escalate",
+    reopenCount: 0,
+    anchor: null,
+    location: null,
+    resolution: null,
+    createdAt: h.snapshot.now,
+    updatedAt: h.snapshot.now,
+  });
+  const source = h.snapshot.transitions[0];
+  if (!source) throw new Error("missing transition fixture");
+  h.snapshot.transitions.push({
+    ...source,
+    id: transitionId("overview-activity"),
+    taskId: h.task.id,
+    from: "planning",
+    to: "plan_approval",
+    reason: "Planner submitted valid plan",
+  });
+  h.store.open(h.task.id);
+  h.render();
+  const overview = h.host.querySelector(".issue-overview");
+  expect(overview?.querySelector(".task-description strong")?.textContent).toBe(
+    "inbox",
+  );
+  expect(overview?.querySelectorAll(".task-description li")).toHaveLength(2);
+  expect(overview?.textContent).not.toContain("**inbox**");
+  const finding = overview?.querySelector(".issue-finding");
+  expect(finding?.textContent).toContain("Missing version");
+  expect(finding?.querySelector("code")?.textContent).toBe("planVersion");
+  // Each activity row keeps its time column, so its text isn't squeezed into the dot column.
+  expect(overview?.querySelectorAll(".event").length).toBeGreaterThan(0);
+  for (const row of overview?.querySelectorAll(".event") ?? [])
+    expect(row.children).toHaveLength(3);
 });

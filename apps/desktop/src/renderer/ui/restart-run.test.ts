@@ -30,7 +30,7 @@ test("Agents restarts the current run through the validated command without edit
   if (!run) throw new Error("Missing run fixture");
   run.endReason = null;
   const store = createStore(snapshot, true, "dev");
-  store.setTab("agents");
+  store.setTab("overview");
   store.setConnection("connected");
   const send = vi.fn(async () => ({
     ok: false as const,
