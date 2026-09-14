@@ -1018,6 +1018,7 @@ export function Workbench() {
         </main>
       </div>
       <LeadBar
+        surface="workbench"
         keybindingStatus={
           <>
             {prefixArmed && (

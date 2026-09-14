@@ -199,7 +199,7 @@ export function App() {
         </div>
       </div>
 
-      <LeadBar />
+      <LeadBar surface="tracker" />
       <Palette />
       <StagePicker />
       <CreateIssue />

@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, Fragment } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../app.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
+import { WindowModeContext } from "../window-mode.js";
+import { LeadBar } from "./lead.js";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -106,6 +108,42 @@ test("Open terminal asks the Workbench to select Main", async () => {
       detail: expect.objectContaining({ kind: "lead" }),
     }),
   );
+});
+
+test("only the active retained surface handles Cmd+J", async () => {
+  const store = createStore(buildSnapshot(20));
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  cleanups.push(() => {
+    root.unmount();
+    host.remove();
+  });
+  await act(async () =>
+    root.render(
+      createElement(StoreProvider, {
+        store,
+        // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
+        children: createElement(
+          WindowModeContext,
+          { value: "tracker" },
+          createElement(
+            Fragment,
+            null,
+            createElement(LeadBar, { surface: "tracker" }),
+            createElement(LeadBar, { surface: "workbench" }),
+          ),
+        ),
+      }),
+    ),
+  );
+  await act(async () =>
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "j", metaKey: true }),
+    ),
+  );
+  expect(store.getState().ui.chatView).toBe("open");
+  expect(host.querySelectorAll('[aria-label="Main chat"]')).toHaveLength(1);
 });
 
 test("an empty Tracker offers Open repository without opening Main", async () => {

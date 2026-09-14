@@ -11,11 +11,14 @@ import { attentionPanes } from "../workbench/selectors.js";
 export function LeadBar({
   onAttention,
   keybindingStatus,
+  surface,
 }: {
   onAttention?: () => void;
   keybindingStatus?: ReactNode;
-} = {}) {
+  surface: "tracker" | "workbench";
+}) {
   const mode = useWindowMode();
+  const active = mode === surface;
   const store = useStoreApi();
   const toggle = useRef<HTMLButtonElement>(null);
   const mainWasOpen = useRef(false);
@@ -34,30 +37,30 @@ export function LeadBar({
     chatView !== "minimized";
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (event.metaKey && event.key.toLowerCase() === "j") {
+      if (active && event.metaKey && event.key.toLowerCase() === "j") {
         event.preventDefault();
         store.toggleMainChat();
       }
     };
     const show = () =>
-      repo && store.openChat({ kind: "lead", repoId: repo as never });
+      active && repo && store.openChat({ kind: "lead", repoId: repo as never });
     window.addEventListener("loom:open-main", show);
     window.addEventListener("keydown", key);
     return () => {
       window.removeEventListener("loom:open-main", show);
       window.removeEventListener("keydown", key);
     };
-  }, [repo, store]);
+  }, [active, repo, store]);
   useEffect(() => {
-    if (mainOpen && status !== "working") store.markMainRead();
-  }, [mainOpen, status, store]);
+    if (active && mainOpen && status !== "working") store.markMainRead();
+  }, [active, mainOpen, status, store]);
   useEffect(() => {
-    if (mainWasOpen.current && !mainOpen) toggle.current?.focus();
-    mainWasOpen.current = mainOpen;
-  }, [mainOpen]);
+    if (active && mainWasOpen.current && !mainOpen) toggle.current?.focus();
+    mainWasOpen.current = active && mainOpen;
+  }, [active, mainOpen]);
   return (
     <>
-      <ChatWindow />
+      {active ? <ChatWindow /> : null}
       <footer className="bottom-bar">
         {keybindingStatus}
         <span className="connection-state">
@@ -96,7 +99,7 @@ export function LeadBar({
           ref={toggle}
           type="button"
           className="lead-toggle"
-          aria-expanded={mainOpen}
+          aria-expanded={active && mainOpen}
           onClick={() => store.toggleMainChat()}
         >
           <span className={`chat-status ${status}`} /> Main{" "}
