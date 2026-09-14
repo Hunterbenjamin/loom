@@ -158,15 +158,16 @@ test("merge approval sends the full displayed reviewed SHA once and shows reject
   }));
   h.store.setSender(sender);
   h.render(createElement(Detail, { task: h.task, key: "actions" }));
-  expect(
-    h.host.querySelector('[title="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]'),
-  ).not.toBeNull();
   await act(async () => {
     [...h.host.querySelectorAll("button")]
       .find((b) => b.textContent === "Approve merge")
       ?.click();
   });
   expect(sender).not.toHaveBeenCalled();
+  // The confirmation shows the full reviewed SHA it will approve.
+  expect(h.host.querySelector(".pr-confirm")?.textContent).toContain(
+    "a".repeat(40),
+  );
   await act(async () => {
     [...h.host.querySelectorAll("button")]
       .find((b) => b.textContent === "Confirm approval")
@@ -177,9 +178,9 @@ test("merge approval sends the full displayed reviewed SHA once and shows reject
     taskId: h.task.id,
     command: { type: "approve", headSha: "a".repeat(40) },
   });
-  expect(h.host.querySelector('[role="status"]')?.textContent).toContain(
-    "Head changed",
-  );
+  expect(
+    h.host.querySelector('.issue-toolbar-action [role="alert"]')?.textContent,
+  ).toContain("Head changed");
   expect(h.store.getState().snapshot.tasks[0]?.attention.reasons).toContain(
     "needs_approval",
   );

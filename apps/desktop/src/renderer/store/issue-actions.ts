@@ -129,7 +129,7 @@ function reasonActions(
           state,
           !["awaiting_approval", "in_review"].includes(task.stage)
             ? "Changes can only be requested during review"
-            : "Enter feedback to request changes",
+            : null,
         ),
         command: (text = "") => ({
           type: "request_changes",

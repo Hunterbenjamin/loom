@@ -63,17 +63,21 @@ export function Detail({ task }: { task: Task }) {
     null,
   );
   const [planDrafts, setPlanDrafts] = useState<Record<TaskId, string>>({});
+  const [requestChanges, setRequestChanges] = useState<{
+    headSha: string;
+  } | null>(null);
+  const [reviewDrafts, setReviewDrafts] = useState<Record<TaskId, string>>({});
   const planDecision = useStore((state) =>
     issueDecisions(state, task).decisions.find(
       (decision) => decision.kind === "plan_needs_approval",
     ),
   );
-  const reviewedHead = useStore(
-    (state) =>
-      issueDecisions(state, task).decisions.find(
-        (decision) => decision.kind === "needs_approval",
-      )?.reviewedHead,
+  const mergeDecision = useStore((state) =>
+    issueDecisions(state, task).decisions.find(
+      (decision) => decision.kind === "needs_approval",
+    ),
   );
+  const reviewedHead = mergeDecision?.reviewedHead;
   const requestCommand = (command: HumanCommand) => {
     if (command.type === "approve") setConfirmHead(command.headSha);
     else void send(command);
@@ -146,6 +150,9 @@ export function Detail({ task }: { task: Task }) {
             if (planDecision?.planVersion != null)
               setChangePlan({ planVersion: planDecision.planVersion });
           }}
+          onRequestChanges={() => {
+            if (reviewedHead) setRequestChanges({ headSha: reviewedHead });
+          }}
           outcome={outcome}
           submitting={submitting}
           pending={pending}
@@ -181,6 +188,28 @@ export function Detail({ task }: { task: Task }) {
           }}
         />
       ) : null}
+      {requestChanges ? (
+        <RequestChangesDialog
+          task={task}
+          capturedHead={requestChanges.headSha}
+          currentHead={reviewedHead ?? null}
+          action={mergeDecision?.actions.find(
+            (action) => action.id === "request-changes",
+          )}
+          draft={reviewDrafts[task.id] ?? ""}
+          submitting={submitting}
+          onDraftChange={(draft) =>
+            setReviewDrafts((drafts) => ({ ...drafts, [task.id]: draft }))
+          }
+          onCancel={() => setRequestChanges(null)}
+          onSend={async (command) => {
+            setRequestChanges(null);
+            const result = await send(command);
+            if (result?.kind === "queued" || result?.kind === "applied")
+              setReviewDrafts((drafts) => ({ ...drafts, [task.id]: "" }));
+          }}
+        />
+      ) : null}
       {changePlan ? (
         <ChangePlanDialog
           task={task}
@@ -212,6 +241,7 @@ function ToolbarAction({
   task,
   onCommand,
   onChangePlan,
+  onRequestChanges,
   outcome,
   submitting,
   pending,
@@ -219,6 +249,7 @@ function ToolbarAction({
   task: Task;
   onCommand: (command: HumanCommand) => void;
   onChangePlan: () => void;
+  onRequestChanges: () => void;
   outcome: HumanCommandOutcome;
   submitting: boolean;
   /** The command in flight: its button shows progress instead of status text. */
@@ -228,21 +259,29 @@ function ToolbarAction({
     const decisions = issueDecisions(state, task).decisions;
     return (
       decisions.find((item) => item.kind === "plan_needs_approval") ??
+      decisions.find((item) => item.kind === "needs_approval") ??
       decisions.find((item) => item.actions.length > 0)
     );
   });
   const store = useStoreApi();
   if (!decision) return null;
-  // Secondary actions sit left of the primary one, which is always last and rightmost.
+  // Approvals show every action with the primary one last and rightmost; the secondary action
+  // (Change plan, Request changes) opens a dialog for the human's feedback.
+  const primary = new Set(["approve-plan", "approve-merge"]);
+  const secondary = new Set(["change-plan", "request-changes"]);
   const actions =
-    decision.kind === "plan_needs_approval"
+    decision.kind === "plan_needs_approval" ||
+    decision.kind === "needs_approval"
       ? [...decision.actions].sort(
-          (a, b) =>
-            Number(a.id === "approve-plan") - Number(b.id === "approve-plan"),
+          (a, b) => Number(primary.has(a.id)) - Number(primary.has(b.id)),
         )
       : decision.actions.slice(0, 1);
   const commandType = (action: (typeof actions)[number]) =>
-    action.id === "change-plan" ? "reject_plan" : action.command?.("").type;
+    action.id === "change-plan"
+      ? "reject_plan"
+      : action.id === "request-changes"
+        ? "request_changes"
+        : action.command?.("").type;
   const busy = pending !== null;
   const disabledReasons = [
     ...new Set(
@@ -259,12 +298,13 @@ function ToolbarAction({
           <button
             key={action.id}
             type="button"
-            className={action.id === "change-plan" ? "secondary" : undefined}
+            className={secondary.has(action.id) ? "secondary" : undefined}
             disabled={submitting || busy || !!action.disabledReason}
             aria-busy={loading || undefined}
             title={action.disabledReason ?? undefined}
             onClick={() => {
               if (action.id === "change-plan") onChangePlan();
+              else if (action.id === "request-changes") onRequestChanges();
               else if (action.command) onCommand(action.command());
               else if (action.intent === "terminal") store.setTab("terminal");
             }}
@@ -386,6 +426,99 @@ function ChangePlanDialog({
           }}
         >
           Send to planner
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+function RequestChangesDialog({
+  task,
+  capturedHead,
+  currentHead,
+  action,
+  draft,
+  submitting,
+  onDraftChange,
+  onCancel,
+  onSend,
+}: {
+  task: Task;
+  capturedHead: string;
+  currentHead: string | null;
+  action?: {
+    disabledReason: string | null;
+    command?: (text?: string) => HumanCommand;
+  };
+  draft: string;
+  submitting: boolean;
+  onDraftChange: (draft: string) => void;
+  onCancel: () => void;
+  onSend: (command: HumanCommand) => Promise<void>;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    const element = dialog.current;
+    element?.showModal();
+    return () => {
+      element?.close();
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus();
+    };
+  }, []);
+  const changedReason =
+    currentHead !== capturedHead
+      ? "The reviewed head changed. Review it again before requesting changes."
+      : null;
+  const disabledReason =
+    changedReason ??
+    action?.disabledReason ??
+    (!draft.trim() ? "Describe the changes you want" : null);
+  return (
+    <dialog
+      ref={dialog}
+      className="create-issue-dialog pr-confirm"
+      aria-labelledby="issue-request-changes-title"
+      onKeyDown={(event) => event.stopPropagation()}
+      onCancel={(event) => {
+        event.preventDefault();
+        onCancel();
+      }}
+    >
+      <h2 id="issue-request-changes-title">Request changes</h2>
+      <p>{displayName(task)}</p>
+      <p className="mono">Reviewed head {capturedHead.slice(0, 7)}</p>
+      <label>
+        Requested changes
+        <textarea
+          aria-label="Requested changes"
+          required
+          value={draft}
+          onChange={(event) => onDraftChange(event.target.value)}
+        />
+      </label>
+      {disabledReason ? (
+        <p
+          className="disabled-reason"
+          role={changedReason ? "alert" : undefined}
+        >
+          {disabledReason}
+        </p>
+      ) : null}
+      <div className="pr-actions">
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={submitting || !!disabledReason || !action?.command}
+          onClick={() => {
+            const command = action?.command?.(draft.trim());
+            if (command) void onSend(command);
+          }}
+        >
+          Send to implementer
         </button>
       </div>
     </dialog>
