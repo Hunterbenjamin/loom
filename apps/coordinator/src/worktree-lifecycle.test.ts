@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import type { Sha } from "@loom/core";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { createHarness, type Harness } from "./test-support.js";
 
 let h: Harness;
@@ -58,6 +58,73 @@ test("a failed fetch is retried and never creates from local main", async () => 
   h.clock.advance(10_000);
   await h.coordinator.settle();
   expect(h.store.loadTaskState(failed.task.id).worktree).not.toBeNull();
+});
+
+test("a dependent worktree contains its dependency merge commit", async () => {
+  h = await createHarness();
+  const dependency = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Dependency",
+    description: "fixture",
+    size: "small",
+  });
+  const branch = "loom/dependency";
+  const mergeCommit = await h.commitIn(
+    h.repoRoot,
+    { "dependency.txt": "merged\n" },
+    "merge dependency",
+  );
+  await h.git("push", "origin", "main");
+  const dependencyRequest = {
+    repo: h.repo.github,
+    branch,
+    etag: null,
+  };
+  await h.adapters.github.findPullRequest(dependencyRequest);
+  h.github.setHead(mergeCommit);
+  await h.adapters.github.openPullRequest({
+    repo: h.repo.github,
+    branch,
+    baseBranch: "main",
+    title: "Dependency",
+    body: "fixture",
+  });
+  h.github.merge();
+  const mergedDependency =
+    await h.adapters.github.findPullRequest(dependencyRequest);
+  vi.spyOn(h.adapters.github, "findPullRequest").mockImplementation(
+    async (request) =>
+      request.branch === branch
+        ? mergedDependency
+        : { notModified: false, value: null, etag: null },
+  );
+  const dependencyState = h.store.loadTaskState(dependency.task.id);
+  dependencyState.task.stage = "done";
+  dependencyState.task.branch = branch;
+  dependencyState.task.version++;
+  expect(
+    h.store.commit(
+      dependency.task.id,
+      { next: dependencyState, actions: [], inputs: [], transitions: [] },
+      dependency.task.version,
+    ).ok,
+  ).toBe(true);
+
+  const dependent = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Dependent",
+    description: "fixture",
+    size: "small",
+    blockedBy: [dependency.task.id],
+  });
+  h.coordinator.submitHuman(dependent.task.id, { type: "move", to: "todo" });
+  await h.coordinator.settle();
+
+  const state = h.store.loadTaskState(dependent.task.id);
+  expect(state.worktree?.baseSha).toBe(mergeCommit);
+  expect(
+    await h.git("-C", state.worktree?.path ?? "", "rev-parse", "HEAD"),
+  ).toBe(mergeCommit);
 });
 
 test("canceled worktree removal waits for a live task terminal, then keeps the branch", async () => {
