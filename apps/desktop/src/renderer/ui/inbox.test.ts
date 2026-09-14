@@ -10,8 +10,8 @@ import { toSnapshot } from "../fixtures/protocol.js";
 import { REASON_LABELS } from "../store/inbox.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
+import { Detail } from "./detail.js";
 import { InboxView } from "./inbox.js";
-import { IssueDecisionPanel } from "./issue-decision-panel.js";
 import { useShortcuts } from "./keys.js";
 import { ListView } from "./list.js";
 
@@ -156,13 +156,19 @@ test("merge approval sends the full displayed reviewed SHA once and shows reject
     },
   }));
   h.store.setSender(sender);
-  h.render(createElement(IssueDecisionPanel, { task: h.task, key: "actions" }));
+  h.render(createElement(Detail, { task: h.task, key: "actions" }));
   expect(
     h.host.querySelector('[title="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]'),
   ).not.toBeNull();
   await act(async () => {
     [...h.host.querySelectorAll("button")]
       .find((b) => b.textContent === "Approve merge")
+      ?.click();
+  });
+  expect(sender).not.toHaveBeenCalled();
+  await act(async () => {
+    [...h.host.querySelectorAll("button")]
+      .find((b) => b.textContent === "Confirm approval")
       ?.click();
   });
   expect(sender).toHaveBeenCalledExactlyOnceWith({

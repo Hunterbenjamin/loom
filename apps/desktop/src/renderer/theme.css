@@ -2348,10 +2348,25 @@ ul.plain {
     grid-column: 1;
   }
   .pr-toolbar {
-    overflow-x: auto;
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
   .pr-segments {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .pr-segments button {
+    padding: 4px 9px;
+  }
+  .issue-toolbar-action {
+    width: 100%;
+  }
+  .issue-toolbar-action .disabled-reason {
+    max-width: none;
+  }
+  .pr-breadcrumb .chip,
+  .detail.pr-detail > .pr-page-head > .pr-github-chip {
+    display: none;
   }
   .issue-meta-line {
     white-space: nowrap;

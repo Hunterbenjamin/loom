@@ -1,5 +1,11 @@
-import { displayName, type Run, type Task } from "@loom/core";
-import { lazy, Suspense } from "react";
+import {
+  displayName,
+  type HumanCommand,
+  type Run,
+  type Sha,
+  type Task,
+} from "@loom/core";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { issueDecisions } from "../store/issue-actions.js";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, taskFindings, taskRuns } from "../store/selectors.js";
@@ -7,7 +13,10 @@ import type { TabId } from "../store/store.js";
 import { AttentionChips } from "./bits.js";
 import { clock, RUN_STATUS_LABELS, since, stageLabel } from "./format.js";
 import { IssueDecisionPanel } from "./issue-decision-panel.js";
-import { useHumanCommand } from "./use-human-command.js";
+import {
+  type HumanCommandOutcome,
+  useHumanCommand,
+} from "./use-human-command.js";
 
 // Both pull in a large dependency (Pierre, xterm) that the first screen never needs.
 const DiffTab = lazy(() =>
@@ -47,6 +56,18 @@ export function Detail({ task }: { task: Task }) {
   const prNumbers = [
     ...new Set([...(task.prNumber ? [task.prNumber] : []), ...linkedPrNumbers]),
   ];
+  const { send, outcome, submitting } = useHumanCommand(task.id);
+  const [confirmHead, setConfirmHead] = useState<Sha | null>(null);
+  const reviewedHead = useStore(
+    (state) =>
+      issueDecisions(state, task).decisions.find(
+        (decision) => decision.kind === "needs_approval",
+      )?.reviewedHead,
+  );
+  const requestCommand = (command: HumanCommand) => {
+    if (command.type === "approve") setConfirmHead(command.headSha);
+    else void send(command);
+  };
 
   return (
     <div className="detail pr-detail" data-testid="detail" data-task={task.id}>
@@ -106,9 +127,20 @@ export function Detail({ task }: { task: Task }) {
           ))}
         </div>
         <span className="spacer" />
-        <ToolbarAction task={task} />
+        <ToolbarAction
+          task={task}
+          onCommand={requestCommand}
+          outcome={outcome}
+          submitting={submitting}
+        />
       </div>
-      <IssueDecisionPanel task={task} compact={tab === "terminal"} />
+      <IssueDecisionPanel
+        task={task}
+        compact={tab === "terminal"}
+        onCommand={requestCommand}
+        outcome={outcome}
+        submitting={submitting}
+      />
 
       <div className="tab-body pr-page-body" data-tab-body={tab}>
         {tab === "overview" ? <Overview task={task} /> : null}
@@ -128,11 +160,34 @@ export function Detail({ task }: { task: Task }) {
           ) : null}
         </Suspense>
       </div>
+      {confirmHead ? (
+        <ConfirmIssueApproval
+          task={task}
+          headSha={confirmHead}
+          changed={reviewedHead !== confirmHead}
+          disabled={submitting || reviewedHead !== confirmHead}
+          onCancel={() => setConfirmHead(null)}
+          onConfirm={() => {
+            setConfirmHead(null);
+            void send({ type: "approve", headSha: confirmHead });
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ToolbarAction({ task }: { task: Task }) {
+function ToolbarAction({
+  task,
+  onCommand,
+  outcome,
+  submitting,
+}: {
+  task: Task;
+  onCommand: (command: HumanCommand) => void;
+  outcome: HumanCommandOutcome;
+  submitting: boolean;
+}) {
   const action = useStore(
     (state) =>
       issueDecisions(state, task).decisions.find(
@@ -140,7 +195,6 @@ function ToolbarAction({ task }: { task: Task }) {
       )?.actions[0],
   );
   const store = useStoreApi();
-  const { send, outcome, submitting } = useHumanCommand(task.id);
   if (!action) return null;
   return (
     <div className="issue-toolbar-action">
@@ -149,7 +203,7 @@ function ToolbarAction({ task }: { task: Task }) {
         disabled={submitting || !!action.disabledReason}
         title={action.disabledReason ?? undefined}
         onClick={() => {
-          if (action.command) void send(action.command());
+          if (action.command) onCommand(action.command());
           else if (action.intent === "terminal") store.setTab("terminal");
         }}
       >
@@ -164,6 +218,66 @@ function ToolbarAction({ task }: { task: Task }) {
         </span>
       ) : null}
     </div>
+  );
+}
+
+function ConfirmIssueApproval({
+  task,
+  headSha,
+  changed,
+  disabled,
+  onCancel,
+  onConfirm,
+}: {
+  task: Task;
+  headSha: Sha;
+  changed: boolean;
+  disabled: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    const element = dialog.current;
+    element?.showModal();
+    return () => {
+      element?.close();
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus();
+    };
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="create-issue-dialog pr-confirm"
+      aria-labelledby="issue-approve-title"
+      onKeyDown={(event) => event.stopPropagation()}
+      onCancel={(event) => {
+        event.preventDefault();
+        onCancel();
+      }}
+    >
+      <h2 id="issue-approve-title">Approve merge</h2>
+      <p>{displayName(task)}</p>
+      <p>
+        Approve reviewed head <code>{headSha}</code> for merge.
+      </p>
+      {changed ? (
+        <p role="alert">
+          The reviewed head changed. Cancel and review the refreshed issue
+          before confirming.
+        </p>
+      ) : null}
+      <div className="pr-actions">
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" disabled={disabled} onClick={onConfirm}>
+          Confirm approval
+        </button>
+      </div>
+    </dialog>
   );
 }
 

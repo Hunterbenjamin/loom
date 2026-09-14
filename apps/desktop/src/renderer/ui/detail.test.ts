@@ -194,7 +194,7 @@ test("provider requests expose their primary action in the toolbar", () => {
   ).toBe("Accept");
 });
 
-test("approve sends exactly the displayed evidence once and renders a refusal", async () => {
+test("approve confirms the displayed evidence before sending once and renders a refusal", async () => {
   const h = setup("merge");
   const sender = vi.fn(async () => ({
     ok: false as const,
@@ -211,6 +211,14 @@ test("approve sends exactly the displayed evidence once and renders a refusal", 
       .find((button) => button.textContent === "Approve merge")
       ?.click(),
   );
+  expect(sender).not.toHaveBeenCalled();
+  const dialog = h.host.querySelector<HTMLDialogElement>(".pr-confirm");
+  expect(dialog?.textContent).toContain("b".repeat(40));
+  await act(async () =>
+    [...h.host.querySelectorAll("button")]
+      .find((button) => button.textContent === "Confirm approval")
+      ?.click(),
+  );
   expect(sender).toHaveBeenCalledExactlyOnceWith({
     kind: "human",
     taskId: h.task.id,
@@ -222,6 +230,63 @@ test("approve sends exactly the displayed evidence once and renders a refusal", 
   expect(h.host.querySelector('[role="status"]')?.textContent).toContain(
     "Review the latest head",
   );
+});
+
+test("the toolbar and panel share the same merge approval confirmation", async () => {
+  const h = setup("merge");
+  const sender = vi.fn(async () => ({
+    ok: true as const,
+    result: { kind: "human" as const, inputId: inputId("confirmed-merge") },
+  }));
+  h.store.setSender(sender);
+  h.render();
+  await act(async () =>
+    h.host
+      .querySelector<HTMLButtonElement>(".issue-decision-actions button")
+      ?.click(),
+  );
+  expect(h.host.querySelectorAll(".pr-confirm")).toHaveLength(1);
+  expect(sender).not.toHaveBeenCalled();
+  await act(async () =>
+    [...h.host.querySelectorAll("button")]
+      .find((button) => button.textContent === "Cancel")
+      ?.click(),
+  );
+  expect(h.host.querySelector(".pr-confirm")).toBeNull();
+  await act(async () =>
+    h.host
+      .querySelector<HTMLButtonElement>(".issue-toolbar-action button")
+      ?.click(),
+  );
+  expect(h.host.querySelectorAll(".pr-confirm")).toHaveLength(1);
+  expect(sender).not.toHaveBeenCalled();
+});
+
+test("merge confirmation refuses a reviewed head that changed while open", async () => {
+  const h = setup("merge");
+  h.render();
+  await act(async () =>
+    h.host
+      .querySelector<HTMLButtonElement>(".issue-toolbar-action button")
+      ?.click(),
+  );
+  h.store.getState().inbox = [
+    {
+      taskId: h.task.id,
+      reasonRuns: {},
+      reviewedHead: "c".repeat(40) as never,
+      planVersion: null,
+    },
+  ];
+  await act(async () => h.store.setConnection("connected"));
+  expect(h.host.querySelector('[role="alert"]')?.textContent).toContain(
+    "reviewed head changed",
+  );
+  expect(
+    [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "Confirm approval",
+    )?.disabled,
+  ).toBe(true);
 });
 
 test("a queued command becomes applied from its matching transition without exposing the input id", async () => {

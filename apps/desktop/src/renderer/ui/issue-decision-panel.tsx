@@ -1,4 +1,4 @@
-import type { IsoTime, Task } from "@loom/core";
+import type { HumanCommand, IsoTime, Task } from "@loom/core";
 import { useState } from "react";
 import {
   type DecisionAction,
@@ -7,14 +7,20 @@ import {
 } from "../store/issue-actions.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { since } from "./format.js";
-import { useHumanCommand } from "./use-human-command.js";
+import type { HumanCommandOutcome } from "./use-human-command.js";
 
 export function IssueDecisionPanel({
   task,
   compact = false,
+  onCommand,
+  outcome,
+  submitting,
 }: {
   task: Task;
   compact?: boolean;
+  onCommand: (command: HumanCommand) => void;
+  outcome: HumanCommandOutcome;
+  submitting: boolean;
 }) {
   const store = useStoreApi();
   const data = useStore((state) => issueDecisions(state, task));
@@ -24,7 +30,6 @@ export function IssueDecisionPanel({
   const [expanded, setExpanded] = useState(!compact);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [questions, setQuestions] = useState<Record<string, string>>({});
-  const { send, outcome, submitting } = useHumanCommand(task.id);
   if (compact && !expanded)
     return (
       <div className="issue-decision-panel compact">
@@ -140,7 +145,7 @@ export function IssueDecisionPanel({
                       onSend={() => {
                         const command = action.command?.(note.trim());
                         if (!command) return;
-                        void send(
+                        onCommand(
                           command.type === "answer_question" && selectedQuestion
                             ? { ...command, questionId: selectedQuestion.id }
                             : command,
@@ -186,8 +191,7 @@ export function IssueDecisionPanel({
 }
 
 function noteRequiredReason(actionId: string) {
-  if (actionId === "reject-plan")
-    return "Enter feedback to reject the plan";
+  if (actionId === "reject-plan") return "Enter feedback to reject the plan";
   if (actionId === "request-changes")
     return "Enter feedback to request changes";
   if (actionId === "answer-question") return "Enter an answer";
