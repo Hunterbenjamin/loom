@@ -11,7 +11,7 @@ import { REASON_LABELS } from "../store/inbox.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
 import { InboxView } from "./inbox.js";
-import { InboxActions } from "./inbox-actions.js";
+import { IssueDecisionPanel } from "./issue-decision-panel.js";
 import { useShortcuts } from "./keys.js";
 import { ListView } from "./list.js";
 
@@ -48,6 +48,8 @@ function setup(reason: AttentionReason, mode: Run["mode"] = "interactive") {
     since: fixture.now,
     reasonSince: { [reason]: fixture.now },
   };
+  if (reason === "plan_needs_approval") task.stage = "plan_approval";
+  if (reason === "needs_approval") task.stage = "awaiting_approval";
   for (const other of fixture.tasks)
     if (other.id !== task.id)
       other.attention = { reasons: [], reasonSince: {}, since: null };
@@ -91,19 +93,19 @@ function setup(reason: AttentionReason, mode: Run["mode"] = "interactive") {
 }
 
 const tabs: Record<AttentionReason, string> = {
-  plan_needs_approval: "plan",
-  needs_approval: "review",
-  question: "terminal",
+  plan_needs_approval: "overview",
+  needs_approval: "overview",
+  question: "overview",
   provider_permission: "terminal",
   provider_input: "terminal",
-  blocked: "activity",
-  failed: "activity",
-  run_vanished: "activity",
-  stalled: "activity",
-  idle_without_submission: "activity",
-  status_unknown: "activity",
+  blocked: "overview",
+  failed: "overview",
+  run_vanished: "overview",
+  stalled: "overview",
+  idle_without_submission: "overview",
+  status_unknown: "overview",
   observability_failure: "activity",
-  over_budget: "activity",
+  over_budget: "overview",
 };
 for (const [reason, tab] of Object.entries(tabs))
   test(`selecting ${reason} opens ${tab} with its exact run`, () => {
@@ -119,17 +121,27 @@ for (const [reason, tab] of Object.entries(tabs))
       tab,
     });
   });
+
+test("renders section headers and rows through the shared list primitives", () => {
+  const h = setup("plan_needs_approval");
+  expect(h.host.querySelector(".list-row")?.getAttribute("data-reason")).toBe(
+    "plan_needs_approval",
+  );
+  expect(h.host.querySelector(".list-group")?.textContent).toContain(
+    "Decisions",
+  );
+});
 for (const reason of [
   "question",
   "provider_permission",
   "provider_input",
 ] as const)
-  test(`headless ${reason} routes to Activity with Enter`, () => {
+  test(`headless ${reason} routes to Overview with Enter`, () => {
     const h = setup(reason, "headless");
     act(() =>
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" })),
     );
-    expect(h.store.getState().ui.tab).toBe("activity");
+    expect(h.store.getState().ui.tab).toBe("overview");
   });
 
 test("merge approval sends the full displayed reviewed SHA once and shows rejection", async () => {
@@ -144,8 +156,10 @@ test("merge approval sends the full displayed reviewed SHA once and shows reject
     },
   }));
   h.store.setSender(sender);
-  h.render(createElement(InboxActions, { task: h.task, key: "actions" }));
-  expect(h.host.textContent).toContain("a".repeat(40));
+  h.render(createElement(IssueDecisionPanel, { task: h.task, key: "actions" }));
+  expect(
+    h.host.querySelector('[title="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]'),
+  ).not.toBeNull();
   await act(async () => {
     [...h.host.querySelectorAll("button")]
       .find((b) => b.textContent === "Approve merge")

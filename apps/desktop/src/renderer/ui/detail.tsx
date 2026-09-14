@@ -1,11 +1,13 @@
 import { displayName, type Run, type Task } from "@loom/core";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
+import { issueDecisions } from "../store/issue-actions.js";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, taskFindings, taskRuns } from "../store/selectors.js";
 import type { TabId } from "../store/store.js";
 import { AttentionChips } from "./bits.js";
 import { clock, RUN_STATUS_LABELS, since, stageLabel } from "./format.js";
-import { InboxActions } from "./inbox-actions.js";
+import { IssueDecisionPanel } from "./issue-decision-panel.js";
+import { useHumanCommand } from "./use-human-command.js";
 
 // Both pull in a large dependency (Pierre, xterm) that the first screen never needs.
 const DiffTab = lazy(() =>
@@ -16,16 +18,16 @@ const TerminalTab = lazy(() =>
 );
 
 const TABS: { id: TabId; label: string }[] = [
-  { id: "activity", label: "Activity" },
+  { id: "overview", label: "Overview" },
   { id: "plan", label: "Plan" },
   { id: "agents", label: "Agents" },
   { id: "terminal", label: "Terminal" },
   { id: "review", label: "Review" },
+  { id: "activity", label: "Activity" },
 ];
 
 export function Detail({ task }: { task: Task }) {
   const store = useStoreApi();
-  const reason = useStore((s) => s.ui.openReason);
   const live = useStore((s) => s.live);
   const tab = useStore((s) => s.ui.tab);
   const theme = useStore((s) => s.ui.theme);
@@ -47,58 +49,69 @@ export function Detail({ task }: { task: Task }) {
   ];
 
   return (
-    <div className="detail" data-testid="detail" data-task={task.id}>
-      <header className="detail-head">
-        <div className="detail-meta">
+    <div className="detail pr-detail" data-testid="detail" data-task={task.id}>
+      <header className="pr-page-head">
+        <div className="pr-breadcrumb">
           <span className="mono faint">
             {issueKeyFor(task, repo ? [repo] : [])}
           </span>
+          <span className="faint" aria-hidden="true">
+            ›
+          </span>
+          <span className="faint">●</span>
+          <strong className="pr-header-title" title={task.title}>
+            {displayName(task)}
+          </strong>
           <span className="chip">{stageLabel(task.stage)}</span>
           <AttentionChips task={task} />
-          <span className="spacer" />
-          <button type="button" onClick={() => store.open(null)}>
-            Close <kbd>esc</kbd>
-          </button>
         </div>
-        <h2 title={task.title}>{displayName(task)}</h2>
-        <div className="detail-meta faint">
-          <span>{repo?.github}</span>
-          {task.branch ? <span className="mono">{task.branch}</span> : null}
-          {prNumbers.map((number) => (
-            <button
-              key={number}
-              type="button"
-              onClick={() =>
-                store.openPullRequest({
-                  repoId: task.repoId,
-                  number,
-                })
-              }
-            >
-              PR #{number}
-            </button>
-          ))}
-          <span>in this stage {since(now, task.stageEnteredAt)}</span>
-          <span>v{task.version}</span>
-        </div>
-        <InboxActions key={`${task.id}:${reason}`} task={task} />
-      </header>
-      <div className="tabs" role="tablist">
-        {TABS.map((item) => (
+        {prNumbers.map((number) => (
           <button
-            key={item.id}
+            key={number}
             type="button"
-            role="tab"
-            aria-selected={tab === item.id}
-            data-tab={item.id}
-            onClick={() => store.setTab(item.id)}
+            className="pr-github-chip"
+            onClick={() =>
+              store.openPullRequest({
+                repoId: task.repoId,
+                number,
+              })
+            }
           >
-            {item.label}
+            PR #{number}
           </button>
         ))}
+        <SecondaryMenu task={task} />
+        <button type="button" onClick={() => store.open(null)}>
+          Close <kbd>esc</kbd>
+        </button>
+      </header>
+      <div className="issue-meta-line faint">
+        <span>{repo?.github}</span>
+        {task.branch ? <span className="mono">{task.branch}</span> : null}
+        <span>in stage for {since(now, task.stageEnteredAt)}</span>
       </div>
+      <div className="pr-toolbar">
+        <div className="pr-segments" role="tablist">
+          {TABS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.id}
+              data-tab={item.id}
+              onClick={() => store.setTab(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <span className="spacer" />
+        <ToolbarAction task={task} />
+      </div>
+      <IssueDecisionPanel task={task} compact={tab === "terminal"} />
 
-      <div className="tab-body" data-tab-body={tab}>
+      <div className="tab-body pr-page-body" data-tab-body={tab}>
+        {tab === "overview" ? <Overview task={task} /> : null}
         {tab === "activity" ? <Activity task={task} /> : null}
         {tab === "plan" ? <PlanTab task={task} /> : null}
         {tab === "agents" ? <Agents task={task} /> : null}
@@ -115,6 +128,163 @@ export function Detail({ task }: { task: Task }) {
           ) : null}
         </Suspense>
       </div>
+    </div>
+  );
+}
+
+function ToolbarAction({ task }: { task: Task }) {
+  const action = useStore(
+    (state) => issueDecisions(state, task).decisions[0]?.actions[0],
+  );
+  const store = useStoreApi();
+  const { send, outcome, submitting } = useHumanCommand(task.id);
+  if (!action) return null;
+  return (
+    <div className="issue-toolbar-action">
+      <button
+        type="button"
+        disabled={submitting || !!action.disabledReason}
+        title={action.disabledReason ?? undefined}
+        onClick={() => {
+          if (action.command) void send(action.command());
+          else if (action.intent === "terminal") store.setTab("terminal");
+        }}
+      >
+        {action.label}
+      </button>
+      {action.disabledReason ? (
+        <span className="disabled-reason">{action.disabledReason}</span>
+      ) : null}
+      {outcome.message ? (
+        <span className="pr-outcome" role="status">
+          {outcome.message}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function SecondaryMenu({ task }: { task: Task }) {
+  const store = useStoreApi();
+  const actions = useStore(
+    (state) => issueDecisions(state, task).status.secondaryActions,
+  );
+  const { send, outcome } = useHumanCommand(task.id);
+  return (
+    <details className="pr-menu">
+      <summary aria-label="Issue actions">•••</summary>
+      <div className="pr-menu-items">
+        {actions.map((action) => (
+          <button
+            key={action.id}
+            type="button"
+            disabled={!!action.disabledReason}
+            title={action.disabledReason ?? undefined}
+            onClick={() => {
+              if (action.intent === "terminal") store.setTab("terminal");
+              else if (action.intent === "pull-request" && task.prNumber)
+                store.openPullRequest({
+                  repoId: task.repoId,
+                  number: task.prNumber,
+                });
+              else if (action.command) void send(action.command());
+            }}
+          >
+            {action.label}
+          </button>
+        ))}
+        {outcome.message ? (
+          <div className="pr-outcome" role="status">
+            {outcome.message}
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+function Overview({ task }: { task: Task }) {
+  const plan = useStore((state) => state.snapshot.plans[task.id]);
+  const runs = useStore(
+    (state) => taskRuns(state.snapshot, task),
+    shallowArray,
+  );
+  const tests = useStore(
+    (state) =>
+      state.snapshot.testResults.filter((test) =>
+        runs.some((run) => run.id === test.runId),
+      ),
+    shallowArray,
+  );
+  const events = useStore(
+    (state) =>
+      state.snapshot.transitions
+        .filter((transition) => transition.taskId === task.id)
+        .slice(-5)
+        .reverse(),
+    shallowArray,
+  );
+  const store = useStoreApi();
+  return (
+    <div className="pr-overview issue-overview">
+      <main className="pr-story">
+        <h1>{displayName(task)}</h1>
+        <p className="task-description">
+          {task.description.trim() || "No description."}
+        </p>
+        <div className="section-title">Plan</div>
+        {plan ? (
+          <div className="panel">
+            <strong>{plan.goal}</strong>
+            <div className="faint">
+              {plan.steps.length} steps · version {plan.version}
+            </div>
+            <button type="button" onClick={() => store.setTab("plan")}>
+              Open plan
+            </button>
+          </div>
+        ) : (
+          <div className="faint">No plan yet.</div>
+        )}
+        <div className="section-title">Recent activity</div>
+        {events.map((event) => (
+          <div className="event" key={event.id}>
+            <span className="dot" />
+            <span>{event.reason}</span>
+          </div>
+        ))}
+        <button type="button" onClick={() => store.setTab("activity")}>
+          View all activity
+        </button>
+      </main>
+      <aside className="pr-rail">
+        <div className="section-title">Agents</div>
+        {runs.map((run) => (
+          <div className="panel" key={run.id}>
+            <strong>{run.role}</strong> · {run.provider}
+            <div className="faint">
+              {RUN_STATUS_LABELS[run.status]} ·{" "}
+              {run.lastTurn?.outcome ??
+                (run.status === "working" ? "working" : "idle")}
+            </div>
+          </div>
+        ))}
+        <div className="section-title">Tests</div>
+        {tests.length ? (
+          tests.map((test) => (
+            <div key={`${test.command}:${test.ranAt}`}>
+              <span
+                className={`chip ${test.outcome === "passed" ? "good" : "danger"}`}
+              >
+                {test.outcome}
+              </span>{" "}
+              <span className="mono">{test.command}</span>
+            </div>
+          ))
+        ) : (
+          <div className="faint">No test results yet.</div>
+        )}
+      </aside>
     </div>
   );
 }
@@ -251,14 +421,22 @@ function PlanTab({ task }: { task: Task }) {
         ))}
       </ul>
       <div className="section-title">Steps</div>
-      {plan.steps.map((step) => (
+      {plan.steps.map((step, index) => (
         <div className="panel" key={step.title}>
-          <strong>{step.title}</strong>
+          <strong>
+            {index + 1}. {step.title}
+          </strong>
           <div className="dim">{step.detail}</div>
         </div>
       ))}
       <div className="section-title">Areas</div>
-      <div className="mono dim">{plan.areas.join("  ")}</div>
+      <div className="detail-meta">
+        {plan.areas.map((area) => (
+          <span className="chip mono" key={area}>
+            {area}
+          </span>
+        ))}
+      </div>
       <div className="section-title">Acceptance criteria</div>
       <ul className="plain">
         {plan.acceptanceCriteria.map((item) => (
@@ -374,6 +552,12 @@ function Agents({ task }: { task: Task }) {
                 <dd className="mono">{run.lastTurn.error}</dd>
               </>
             ) : null}
+            <dt>Turn state</dt>
+            <dd>
+              {run.lastTurn?.error ??
+                run.lastTurn?.outcome ??
+                (run.status === "working" ? "working" : "idle")}
+            </dd>
           </dl>
           {run.pendingRequests.map((request) => (
             <div className="panel" key={request.id} style={{ marginTop: 6 }}>
@@ -385,6 +569,15 @@ function Agents({ task }: { task: Task }) {
               </div>
             </div>
           ))}
+          {run.pendingDialog ? (
+            <div className="panel" style={{ marginTop: 6 }}>
+              <span className="chip attention">{run.pendingDialog.kind}</span>{" "}
+              <span className="mono">{run.pendingDialog.tool}</span>
+              <div className="faint">
+                {run.pendingDialog.command ?? "Waiting for terminal input"}
+              </div>
+            </div>
+          ) : null}
         </div>
       ))}
 
@@ -428,15 +621,34 @@ function LiveReview({ task }: { task: Task }) {
     <div className="pad">
       <div className="section-title">Review findings</div>
       {findings.length ? (
-        findings.map((f) => (
-          <div className="panel" key={f.id}>
-            <strong>{f.title}</strong>
-            <div>
-              {f.severity} · {f.status}
+        [...findings]
+          .sort(
+            (a, b) =>
+              Number(["resolved", "fixed", "waived"].includes(a.status)) -
+              Number(["resolved", "fixed", "waived"].includes(b.status)),
+          )
+          .map((f) => (
+            <div className="panel" key={f.id}>
+              <div className="detail-meta">
+                <strong>{f.title}</strong>
+                <span
+                  className={`chip ${f.severity === "blocker" || f.severity === "major" ? "danger" : ""}`}
+                >
+                  {f.severity}
+                </span>
+                <span className="chip">{f.status}</span>
+                {f.blocking ? (
+                  <span className="chip danger">blocking</span>
+                ) : null}
+              </div>
+              {f.location?.path ? (
+                <div className="mono faint">
+                  {f.location.path}:{f.location.startLine ?? "?"}
+                </div>
+              ) : null}
+              <p style={{ whiteSpace: "pre-wrap" }}>{f.body}</p>
             </div>
-            <p>{f.body}</p>
-          </div>
-        ))
+          ))
       ) : (
         <div className="faint">No findings in the current snapshot.</div>
       )}
@@ -445,43 +657,25 @@ function LiveReview({ task }: { task: Task }) {
 }
 
 function RestartRun({ task, run }: { task: Task; run: Run }) {
-  const store = useStoreApi();
   const connected = useStore((s) => s.live && s.connection === "connected");
-  const [pending, setPending] = useState(false);
-  const [outcome, setOutcome] = useState("");
-  const restart = async () => {
-    if (pending) return;
-    setPending(true);
-    try {
-      const result = await store.command({
-        kind: "human",
-        taskId: task.id,
-        command: { type: "restart_run", runId: run.id },
-      });
-      setOutcome(
-        result.ok
-          ? "Restart queued. The replacement appears here after the previous agent stops."
-          : `${result.error.code}: ${result.error.message}`,
-      );
-    } catch (error) {
-      setOutcome(error instanceof Error ? error.message : "Restart failed");
-    } finally {
-      setPending(false);
-    }
-  };
+  const { send, outcome, submitting } = useHumanCommand(task.id);
   return (
     <div className="panel">
       <button
         type="button"
-        disabled={!connected || pending}
-        onClick={() => void restart()}
+        disabled={!connected || submitting}
+        onClick={() => void send({ type: "restart_run", runId: run.id })}
       >
         Restart with current agent settings
       </button>
       <div className="faint">
         Starts a fresh session. Keeps this issue’s worktree, plan and findings.
       </div>
-      {outcome ? <div role="status">{outcome}</div> : null}
+      {outcome.message ? (
+        <div className="pr-outcome" role="status">
+          {outcome.message}
+        </div>
+      ) : null}
     </div>
   );
 }

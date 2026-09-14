@@ -67,7 +67,7 @@ export interface Snapshot {
   messages: Message[];
   findings: Finding[];
   approvals: Approval[];
-  plans: Record<string, Plan>;
+  plans: Record<string, Plan & { version?: number }>;
   testResults: TestResult[];
   transitions: Transition[];
   comments: Comment[];

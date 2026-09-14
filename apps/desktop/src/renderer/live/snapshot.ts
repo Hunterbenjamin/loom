@@ -45,7 +45,10 @@ export function projectSnapshot(
   if (has("approval")) next.approvals = [...c.approval.values()];
   if (has("plan"))
     next.plans = Object.fromEntries(
-      [...c.plan.values()].map((p) => [p.taskId, p.plan]),
+      [...c.plan.values()].map((p) => [
+        p.taskId,
+        { ...p.plan, version: p.version },
+      ]),
     );
   if (has("test_results"))
     next.testResults = [...c.test_results.values()].flatMap((t) => t.results);

@@ -1,11 +1,18 @@
 import type { PullRequestRow } from "@loom/protocol";
 import { pullRequestKey } from "@loom/protocol";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { type KeyboardEvent, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { reviewAgentWorking, reviewGroups } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor } from "../store/selectors.js";
 import { since } from "./format.js";
+import {
+  ListGroupHeader,
+  ListRow,
+  ListToolbar,
+  LoadMore,
+  stopButtonShortcut,
+} from "./list-rows.js";
 import { PullRequestGlyph } from "./pull-request-glyph.js";
 
 type Group = ReturnType<typeof reviewGroups>[number];
@@ -66,62 +73,29 @@ export function PullRequestsView() {
 
   return (
     <>
-      <div className="reviews-toolbar">
-        <div className="reviews-tabs">
-          {(
-            [
-              ["for-you", "For you"],
-              ["created", "Created"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={ui.prTab === value}
-              onClick={() => store.setPrTab(value)}
-              onKeyDown={buttonKeyDown}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="reviews-search" data-active={!!ui.prQuery}>
-          <input
-            ref={search}
-            data-pr-search
-            aria-label="Filter reviews"
-            placeholder="Filter reviews…"
-            value={ui.prQuery}
-            onChange={(e) => store.setPrQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                store.setPrQuery("");
-                e.currentTarget.blur();
-                e.stopPropagation();
-              }
-            }}
-          />
+      <ListToolbar
+        query={ui.prQuery}
+        onQuery={store.setPrQuery}
+        inputRef={search}
+        label="Filter reviews"
+      >
+        {(
+          [
+            ["for-you", "For you"],
+            ["created", "Created"],
+          ] as const
+        ).map(([value, label]) => (
           <button
+            key={value}
             type="button"
-            aria-label="Filter reviews"
-            title="Filter reviews (/)"
-            onClick={() => search.current?.focus()}
-            onKeyDown={buttonKeyDown}
+            aria-pressed={ui.prTab === value}
+            onClick={() => store.setPrTab(value)}
+            onKeyDown={stopButtonShortcut}
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              aria-hidden="true"
-            >
-              <path d="M2 4h12M4 8h8M6 12h4" />
-            </svg>
+            {label}
           </button>
-        </div>
-      </div>
+        ))}
+      </ListToolbar>
       <div
         className="list reviews-list"
         ref={scroller}
@@ -157,28 +131,17 @@ export function PullRequestsView() {
                 }}
               >
                 {entry.kind === "header" ? (
-                  <button
-                    type="button"
-                    className="reviews-group"
-                    aria-expanded={!entry.group.collapsed}
-                    onClick={() => store.togglePrSection(entry.group.id)}
-                    onKeyDown={buttonKeyDown}
-                  >
-                    <span>{entry.group.label}</span>
-                    <span className="nums">{entry.group.count}</span>
-                    <span aria-hidden="true">
-                      {entry.group.collapsed ? "▸" : "▾"}
-                    </span>
-                  </button>
+                  <ListGroupHeader
+                    label={entry.group.label}
+                    count={entry.group.count}
+                    collapsed={entry.group.collapsed}
+                    onToggle={() => store.togglePrSection(entry.group.id)}
+                  />
                 ) : entry.kind === "more" ? (
-                  <button
-                    type="button"
-                    className="list-load-more"
+                  <LoadMore
+                    label={`Load ${Math.min(20, entry.group.remaining)} more`}
                     onClick={() => store.loadMoreCompletedPrs()}
-                    onKeyDown={buttonKeyDown}
-                  >
-                    Load {Math.min(20, entry.group.remaining)} more
-                  </button>
+                  />
                 ) : (
                   <ReviewRow
                     pr={entry.pr}
@@ -193,10 +156,6 @@ export function PullRequestsView() {
       </div>
     </>
   );
-}
-
-function buttonKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-  if (event.key === "Enter" || event.key === " ") event.stopPropagation();
 }
 
 function ReviewRow({
@@ -232,44 +191,39 @@ function ReviewRow({
     store.openPullRequest({ repoId: pr.repoId, number: pr.number });
   };
   return (
-    <div
-      className="review-row"
-      data-cursor={index === cursor}
+    <ListRow
+      cursor={index === cursor}
+      onOpen={open}
+      leading={<PullRequestGlyph state={pr.state} />}
+      text={pr.title}
+      title={pr.title}
       data-pr={pullRequestKey(pr.repoId, pr.number)}
+      age={since(now, pr.createdAt)}
+      meta={
+        <span
+          className={`review-status ${status?.[2] ?? ""}`}
+          role="img"
+          aria-label={status?.[0] ?? "No checks"}
+          title={status?.[0]}
+        >
+          {status?.[1]}
+        </span>
+      }
     >
-      <button
-        type="button"
-        className="review-row-open"
-        tabIndex={index === cursor ? 0 : -1}
-        onClick={open}
-        onKeyDown={buttonKeyDown}
-        title={pr.title}
-      >
-        <PullRequestGlyph state={pr.state} />
-        <span className="text">{pr.title}</span>
-      </button>
       {pr.taskId ? (
         <button
           type="button"
           className="pr-task-link mono"
-          onClick={() => store.open(pr.taskId)}
-          onKeyDown={buttonKeyDown}
+          onClick={(event) => {
+            event.stopPropagation();
+            store.open(pr.taskId);
+          }}
+          onKeyDown={stopButtonShortcut}
           title={`Open issue ${linkedIssue}`}
         >
           {linkedIssue}
         </button>
       ) : null}
-      <span
-        className={`review-status ${status?.[2] ?? ""}`}
-        role="img"
-        aria-label={status?.[0] ?? "No checks"}
-        title={status?.[0]}
-      >
-        {status?.[1]}
-      </span>
-      <span className="faint nums review-age" title={pr.createdAt}>
-        {since(now, pr.createdAt)}
-      </span>
-    </div>
+    </ListRow>
   );
 }
