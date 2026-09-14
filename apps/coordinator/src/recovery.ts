@@ -5,7 +5,7 @@
 // `store.outbox.startupRunning` never replays on its own. Every row here is either recorded with
 // the result the owner proves, or requeued for the executor to run again.
 
-import type { ActionResult, InputId, Repo, TaskId } from "@loom/core";
+import type { ActionResult, InputId, Repo, RunId, TaskId } from "@loom/core";
 import type { RunningAction, Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import type { LaunchDeps } from "./launch.js";
@@ -145,6 +145,7 @@ export async function recoverAction(
 }
 
 export interface RecoveryReport {
+  interrupted: RunId[];
   recorded: string[];
   requeued: string[];
   resumedCodex: string[];
@@ -158,12 +159,42 @@ export async function recover(
   startupRunning: readonly RunningAction[],
 ): Promise<RecoveryReport> {
   const report: RecoveryReport = {
+    interrupted: [],
     recorded: [],
     requeued: [],
     resumedCodex: [],
     relaunched: [],
     reconciled: [],
   };
+  const tasks = deps.store.tasks();
+  // Persisted provider facts must be captured before the first post-restart observation can
+  // replace them. The deterministic identity makes repeated recovery safe.
+  for (const task of tasks) {
+    if (TERMINAL.includes(task.stage)) continue;
+    const state = deps.store.loadTaskState(task.id);
+    for (const run of state.runs) {
+      if (
+        run.origin !== "loom" ||
+        run.endedAt ||
+        !run.sessionId ||
+        !run.inFlightTurnId
+      )
+        continue;
+      const id = `restart_interrupted:${run.id}:${run.inFlightTurnId}`;
+      if (deps.store.hasInput(id)) continue;
+      deps.store.enqueueInput(task.id, {
+        id: id as InputId,
+        receivedAt: deps.now() as never,
+        type: "coordinator",
+        event: {
+          type: "restart_interrupted",
+          runId: run.id,
+          turnId: run.inFlightTurnId,
+        },
+      });
+      report.interrupted.push(run.id);
+    }
+  }
   for (const running of startupRunning) {
     const result = await recoverAction(deps, running);
     if (result) {
@@ -183,7 +214,6 @@ export async function recover(
 
   // Rewrite settings files for all non-ended Claude runs so they pick up stable ports on restart.
   // Skip terminal tasks (done/canceled) as they have no active runs and no app-servers should be started.
-  const tasks = deps.store.tasks();
   for (const task of tasks) {
     if (TERMINAL.includes(task.stage)) continue;
     const state = deps.store.loadTaskState(task.id);

@@ -206,6 +206,16 @@ export const runSchema = contract<Run>()(
         error: text.nullable(),
       })
       .nullable(),
+    inFlightTurnId: id.nullable().optional(),
+    restartInterruption: z
+      .object({
+        turnId: id,
+        recordedAt: time,
+        outcome: z.enum(["continued", "completed", "not_needed"]).nullable(),
+        decidedAt: time.nullable(),
+      })
+      .nullable()
+      .optional(),
     pendingRequests: z.array(
       z.object({
         id,
@@ -257,6 +267,7 @@ export const messageSchema = contract<Message>()(
       "fix_round",
       "answer",
       "plan_feedback",
+      "restart_continuation",
       "human",
     ]),
     text,

@@ -756,6 +756,12 @@ export class Store {
   enqueueInput(taskId: TaskId, input: Input): boolean {
     return this.outbox.enqueueInput(taskId, input);
   }
+  hasInput(inputId: string): boolean {
+    return (
+      this.db.prepare("SELECT 1 FROM inbox WHERE id = ?").get(inputId) !==
+      undefined
+    );
+  }
   pendingInputs(taskId: TaskId, limit = 1): Input[] {
     positive.parse(limit);
     return this.db

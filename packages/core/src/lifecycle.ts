@@ -2,7 +2,26 @@ import type { Context } from "./context.js";
 import type { Run } from "./entities.js";
 import { later, read, runId } from "./helpers.js";
 import type { RunId, WorktreePath } from "./ids.js";
+import type {
+  ClaudeSessionObservation,
+  CodexThreadObservation,
+} from "./observations.js";
 import { deriveStatus } from "./status.js";
+
+export function inFlightTurnId(
+  provider: CodexThreadObservation | ClaudeSessionObservation,
+): string | null {
+  if (provider.provider === "codex") {
+    const turn = provider.turns.at(-1);
+    return turn?.status === "inProgress" ? turn.id : null;
+  }
+  const prompt = provider.hooks.promptSubmits.at(-1);
+  return prompt &&
+    !provider.hooks.sessionEnd &&
+    provider.hooks.lastStop?.promptId !== prompt.promptId
+    ? prompt.promptId
+    : null;
+}
 
 export function observeRuns(c: Context): void {
   // Enforce terminal-task invariant: end all external runs on done/canceled tasks
@@ -88,6 +107,7 @@ export function observeRuns(c: Context): void {
           row.retryAt = undefined;
         }
         const turn = provider.turns.at(-1);
+        run.inFlightTurnId = inFlightTurnId(provider);
         if (turn)
           run.lastTurn = {
             id: turn.id,
@@ -104,6 +124,7 @@ export function observeRuns(c: Context): void {
         )
           run.pendingDialog = { ...provider.hooks.pendingDialog };
         else delete run.pendingDialog;
+        run.inFlightTurnId = inFlightTurnId(provider);
         if (provider.hooks.lastStop)
           run.lastTurn = {
             id: provider.hooks.lastStop.promptId,

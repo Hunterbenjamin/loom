@@ -318,6 +318,10 @@ export type Input =
   | (InputBase & { type: "human"; command: HumanCommand })
   | (InputBase & { type: "mcp"; runId: RunId; call: McpCall })
   | (InputBase & {
+      type: "coordinator";
+      event: { type: "restart_interrupted"; runId: RunId; turnId: string };
+    })
+  | (InputBase & {
       type: "action_result";
       key: ActionKey;
       result: ActionResult;

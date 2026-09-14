@@ -332,7 +332,8 @@ async function serve(config: CoordinatorConfig): Promise<void> {
   process.stderr.write(
     `loom ${config.instance} listening on ${coordinator.protocol.url}; mcp on ${coordinator.mcpUrl}\n` +
       `recovered: ${report.recorded.length} recorded, ${report.requeued.length} requeued, ` +
-      `${report.resumedCodex.length} Codex threads resumed, ${report.relaunched.length} panes relaunched\n` +
+      `${report.interrupted.length} interrupted runs captured, ${report.resumedCodex.length} Codex threads resumed, ` +
+      `${report.relaunched.length} panes relaunched\n` +
       `codex app-servers: ${adapters.codexServerCount()}\n`,
   );
   // Periodically log app-server count for observability

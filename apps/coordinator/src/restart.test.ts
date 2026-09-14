@@ -148,3 +148,72 @@ test("the recipes a restart reads back can relaunch an interactive run", async (
     second.paneHost.launches.filter((r) => r.runId === before?.runId),
   ).toHaveLength(1);
 }, 30_000);
+
+test("an in-flight Codex turn gets exactly one continuation after restart", async () => {
+  const first = track(await createHarness());
+  const taskId = start(first);
+  const driver = new ScenarioDriver(first, await scenarios("walking-skeleton"));
+  await driver.run({
+    until: () =>
+      first.store
+        .loadTaskState(taskId)
+        .runs.some((run) => run.role === "implementer" && !!run.inFlightTurnId),
+    maxSteps: 300,
+  });
+  const before = first.store
+    .loadTaskState(taskId)
+    .runs.find((run) => run.role === "implementer");
+  if (!before?.sessionId || !before.inFlightTurnId)
+    throw new Error("Missing in-flight implementer");
+
+  const second = track(await first.restart());
+  // Fake providers are process-local. Recreate the persisted native thread as the replacement
+  // app-server would hydrate it, with the prior turn now marked interrupted.
+  second.providers.create(
+    "codex",
+    before.worktreePath,
+    before.sessionId,
+    before.mode,
+  );
+  second.providers.status(before.sessionId, "working");
+  const native = second.providers.get(before.sessionId);
+  if (native.value.provider !== "codex")
+    throw new Error("Missing Codex thread");
+  const turn = native.value.turns.at(-1);
+  if (!turn) throw new Error("Missing native turn");
+  turn.id = before.inFlightTurnId;
+  second.providers.finish(before.sessionId, "interrupted");
+
+  await second.coordinator.settle();
+  const continuations = second.store
+    .messages(taskId)
+    .filter((message) => message.purpose === "restart_continuation");
+  expect(continuations).toHaveLength(1);
+  expect(
+    second.store.outbox
+      .list(taskId)
+      .filter(
+        (row) =>
+          row.action?.kind === "send_message" &&
+          row.action.messageId === continuations[0]?.id,
+      ),
+  ).toHaveLength(1);
+  expect(
+    second.store.loadTaskState(taskId).runs.find((run) => run.id === before.id),
+  ).toMatchObject({
+    sessionId: before.sessionId,
+    sessionEpoch: before.sessionEpoch,
+    restartInterruption: {
+      turnId: before.inFlightTurnId,
+      outcome: "continued",
+    },
+  });
+
+  const third = track(await second.restart());
+  await third.coordinator.settle();
+  expect(
+    third.store
+      .messages(taskId)
+      .filter((message) => message.purpose === "restart_continuation"),
+  ).toHaveLength(1);
+}, 30_000);
