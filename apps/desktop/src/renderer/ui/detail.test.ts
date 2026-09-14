@@ -4,7 +4,7 @@ import { stateFromSnapshot } from "@loom/protocol";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
-import { inputId, transitionId } from "../fixtures/ids.js";
+import { inputId, questionId, transitionId } from "../fixtures/ids.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
 import { StoreProvider } from "../store/react.js";
@@ -21,7 +21,9 @@ afterEach(() =>
   }),
 );
 
-function setup(kind: "plan" | "merge" | "failed" = "plan") {
+function setup(
+  kind: "plan" | "merge" | "question" | "failed" | "provider" = "plan",
+) {
   const snapshot = buildSnapshot(8);
   const task = snapshot.tasks[0];
   if (!task) throw new Error("missing task");
@@ -31,17 +33,50 @@ function setup(kind: "plan" | "merge" | "failed" = "plan") {
       : kind === "merge"
         ? "awaiting_approval"
         : "in_progress";
-  const reason =
-    kind === "plan"
-      ? "plan_needs_approval"
-      : kind === "merge"
-        ? "needs_approval"
-        : "failed";
+  const reason = {
+    plan: "plan_needs_approval",
+    merge: "needs_approval",
+    question: "question",
+    failed: "failed",
+    provider: "provider_permission",
+  } as const;
   task.attention = {
-    reasons: [reason],
-    reasonSince: { [reason]: snapshot.now },
+    reasons: [reason[kind]],
+    reasonSince: { [reason[kind]]: snapshot.now },
     since: snapshot.now,
   };
+  if (kind === "question") {
+    const run = snapshot.runs[0];
+    if (!run) throw new Error("missing question run");
+    run.taskId = task.id;
+    snapshot.questions.push({
+      id: questionId("navigation-question"),
+      taskId: task.id,
+      runId: run.id,
+      question: "Which approach should we use?",
+      options: [],
+      blocking: true,
+      askedAt: snapshot.now,
+      answer: null,
+      answeredAt: null,
+    });
+  }
+  if (kind === "provider") {
+    const run = snapshot.runs[0];
+    if (!run) throw new Error("missing provider run");
+    run.taskId = task.id;
+    run.endedAt = null;
+    run.pendingRequests = [
+      {
+        id: "navigation-request",
+        generation: 4,
+        kind: "permission",
+        blocking: true,
+        summary: "Use the network",
+        receivedAt: snapshot.now,
+      },
+    ];
+  }
   snapshot.plans[task.id] = {
     goal: "A clear plan",
     nonGoals: [],
@@ -112,8 +147,8 @@ test("entering a note does not clear a coordinator availability reason", () => {
   expect(h.host.textContent).toContain("Connect to the coordinator");
 });
 
-test.each(["plan", "merge", "failed"] as const)(
-  "%s actions do not depend on the opening path",
+test.each(["plan", "merge", "question", "failed", "provider"] as const)(
+  "%s actions and disabled states do not depend on the opening path",
   (kind) => {
     const h = setup(kind);
     h.store.openAttention(
@@ -135,6 +170,19 @@ test.each(["plan", "merge", "failed"] as const)(
       ),
     ].map((button) => `${button.textContent}:${button.disabled}`);
     expect(list).toEqual(inbox);
+    act(() => {
+      h.store.openPullRequest({
+        repoId: h.task.repoId,
+        number: h.task.prNumber ?? 1,
+      });
+      h.store.open(h.task.id);
+    });
+    const breadcrumb = [
+      ...h.host.querySelectorAll<HTMLButtonElement>(
+        ".issue-decision-actions button",
+      ),
+    ].map((button) => `${button.textContent}:${button.disabled}`);
+    expect(breadcrumb).toEqual(inbox);
   },
 );
 
