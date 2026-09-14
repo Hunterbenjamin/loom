@@ -330,11 +330,10 @@ describe("Codex app-server adapter", () => {
       ],
     });
     expect(
-      fake.messages
-        .slice(before)
-        .flatMap((entry) =>
-          "method" in entry.message ? [entry.message.method] : [],
-        ),
+      fake.messages.slice(before).flatMap((entry) => {
+        const message = entry.message as { method?: string };
+        return message.method ? [message.method] : [];
+      }),
     ).toEqual(["thread/read"]);
   });
   it("checks resumability on a fresh read-only connection: notLoaded exists, gone does not", async () => {
