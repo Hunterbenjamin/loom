@@ -2599,6 +2599,13 @@ ul.plain {
   text-align: right;
 }
 .settings-reset.placeholder {
+  display: none;
+}
+/* Number and text boxes line up down a card whether or not their row can reset. */
+.settings-row:not(.wide)
+  > .settings-row-control:has(> .settings-input)
+  > .settings-reset.placeholder {
+  display: inline-block;
   visibility: hidden;
 }
 .settings-reset:hover {
