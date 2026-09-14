@@ -2241,6 +2241,12 @@ ul.plain {
 .detail.pr-detail {
   grid-template-rows: auto auto auto auto minmax(0, 1fr);
 }
+/* The decision panel renders nothing when the header holds the only action (plan approval). Pin the
+   body to the flexible last row, or it takes the panel's auto row and strict containment gives it
+   no height. */
+.detail.pr-detail > .tab-body {
+  grid-row: 5;
+}
 .issue-meta-line {
   display: flex;
   gap: 12px;
