@@ -18,6 +18,7 @@ export function LeadBar({
   const mode = useWindowMode();
   const store = useStoreApi();
   const toggle = useRef<HTMLButtonElement>(null);
+  const mainWasOpen = useRef(false);
   const connection = useStore((s) => s.connection);
   const instance = useStore((s) => s.instance);
   const readyCount = useStore(readyToMergeCount);
@@ -51,8 +52,8 @@ export function LeadBar({
     if (mainOpen && status !== "working") store.markMainRead();
   }, [mainOpen, status, store]);
   useEffect(() => {
-    if (!mainOpen && document.activeElement?.closest(".chat-window"))
-      toggle.current?.focus();
+    if (mainWasOpen.current && !mainOpen) toggle.current?.focus();
+    mainWasOpen.current = mainOpen;
   }, [mainOpen]);
   return (
     <>

@@ -83,6 +83,7 @@ test("Cmd+J opens a floating Main chat without mounting a terminal", async () =>
   expect(
     host.querySelector(".lead-toggle")?.getAttribute("aria-expanded"),
   ).toBe("false");
+  expect(document.activeElement).toBe(host.querySelector(".lead-toggle"));
 });
 
 test("Open terminal asks the Workbench to select Main", async () => {
