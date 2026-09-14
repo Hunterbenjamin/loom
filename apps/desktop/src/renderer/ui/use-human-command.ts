@@ -18,6 +18,8 @@ export function useHumanCommand(taskId: TaskId) {
     kind: "idle",
     message: "",
   });
+  // The command whose button shows progress until the coordinator applies or refuses it.
+  const [lastType, setLastType] = useState<HumanCommand["type"] | null>(null);
   const transition = useStore((state) =>
     input.current
       ? state.snapshot.transitions.find(
@@ -43,6 +45,7 @@ export function useHumanCommand(taskId: TaskId) {
     if (submitting.current) return;
     submitting.current = true;
     input.current = null;
+    setLastType(command.type);
     setOutcome({ kind: "sending", message: "Waiting for coordinator…" });
     try {
       const result = await store.command({ kind: "human", taskId, command });
@@ -83,5 +86,7 @@ export function useHumanCommand(taskId: TaskId) {
       submitting.current = false;
     }
   };
-  return { send, outcome, submitting: outcome.kind === "sending" };
+  const pending =
+    outcome.kind === "sending" || outcome.kind === "queued" ? lastType : null;
+  return { send, outcome, submitting: outcome.kind === "sending", pending };
 }

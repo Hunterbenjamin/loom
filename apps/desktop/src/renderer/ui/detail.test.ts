@@ -131,7 +131,11 @@ test("plan approval opened from the Issues list shows only the header actions", 
         ".issue-toolbar-action button",
       ),
     ].map((button) => `${button.textContent}:${button.disabled}`),
-  ).toEqual(["Approve plan:false", "Change plan:false"]);
+  ).toEqual(["Change plan:false", "Approve plan:false"]);
+  // Change plan is the quiet secondary action; Approve plan stays primary on the right.
+  expect(
+    h.host.querySelector(".issue-toolbar-action button")?.className,
+  ).toContain("secondary");
 });
 
 test("Change plan requires feedback and sends the trimmed request", async () => {
@@ -183,9 +187,15 @@ test("Change plan requires feedback and sends the trimmed request", async () => 
       feedback: "Clarify the test strategy",
     },
   });
-  expect(
-    h.host.querySelector(".issue-toolbar-action .pr-outcome")?.textContent,
-  ).toContain("Queued");
+  // Progress shows on the Change plan button itself, not as status text.
+  const changeButton = [
+    ...h.host.querySelectorAll<HTMLButtonElement>(
+      ".issue-toolbar-action button",
+    ),
+  ].find((button) => button.textContent === "Change plan");
+  expect(changeButton?.getAttribute("aria-busy")).toBe("true");
+  expect(changeButton?.querySelector(".button-spinner")).not.toBeNull();
+  expect(h.host.querySelector(".issue-toolbar-action .pr-outcome")).toBeNull();
 });
 
 test("canceling Change plan preserves its draft without sending", async () => {
@@ -521,7 +531,7 @@ test("merge confirmation refuses a reviewed head that changed while open", async
   ).toBe(true);
 });
 
-test("a queued command becomes applied from its matching transition without exposing the input id", async () => {
+test("an approved plan shows a loading button until its transition applies, without status text or the input id", async () => {
   const h = setup("plan");
   const queuedId = inputId("hidden-command-id");
   const sender = vi.fn(async () => ({
@@ -540,9 +550,22 @@ test("a queued command becomes applied from its matching transition without expo
     taskId: h.task.id,
     command: { type: "approve_plan", planVersion: 9 },
   });
-  expect(h.host.querySelector('[role="status"]')?.textContent).toContain(
-    "Queued",
-  );
+  // While queued, the clicked button shows a spinner and both actions wait; no status text.
+  const buttons = () => [
+    ...h.host.querySelectorAll<HTMLButtonElement>(
+      ".issue-toolbar-action button",
+    ),
+  ];
+  const approve = buttons().find((b) => b.textContent === "Approve plan");
+  expect(approve?.getAttribute("aria-busy")).toBe("true");
+  expect(approve?.querySelector(".button-spinner")).not.toBeNull();
+  expect(buttons().every((b) => b.disabled)).toBe(true);
+  expect(
+    buttons()
+      .find((b) => b.textContent === "Change plan")
+      ?.getAttribute("aria-busy"),
+  ).toBeNull();
+  expect(h.host.querySelector(".issue-toolbar-action .pr-outcome")).toBeNull();
   expect(h.host.textContent).not.toContain(queuedId);
   const source = h.snapshot.transitions[0];
   if (!source) throw new Error("missing transition fixture");
@@ -557,9 +580,8 @@ test("a queued command becomes applied from its matching transition without expo
   });
   const { body, meta } = toSnapshot(h.snapshot);
   await act(async () => h.store.applyProtocol(stateFromSnapshot(meta, body)));
-  expect(h.host.querySelector('[role="status"]')?.textContent).toContain(
-    "Plan approval → In progress",
-  );
+  // Applied: the plan is no longer awaiting approval, so nothing is left spinning.
+  expect(h.host.querySelector('[aria-busy="true"]')).toBeNull();
   expect(h.host.textContent).not.toContain(queuedId);
 });
 
