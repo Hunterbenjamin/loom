@@ -673,7 +673,6 @@ export class Coordinator {
       lead: (repoId) => this.leadFor(repoId),
       now: () => this.now(),
       after: this.after,
-      deliveryTimeoutMs: this.config.deliveryTimeoutMs,
       replace: (owner, rows) =>
         this.protocol.publish(this.published.replace(owner, null, rows)),
       log: (message) => this.log(message),
@@ -819,13 +818,7 @@ export class Coordinator {
 
   /** Starts the timers that make this a long-running process, rather than a driven loop. */
   run(): void {
-    this.leadPoll = setInterval(() => {
-      for (const lead of this.leads.values())
-        void lead
-          .flushQueued()
-          .then(() => this.conversationViews.hint(lead.sessionId));
-      void this.publishLead();
-    }, 1500);
+    this.leadPoll = setInterval(() => void this.pollLeads(), 1500);
     this.leadPoll.unref?.();
     this.pump = setInterval(() => {
       void this.settle().catch((error) =>
@@ -835,6 +828,23 @@ export class Coordinator {
     this.pump.unref?.();
     this.resync = setInterval(() => this.resyncAll(), this.config.resyncMs);
     this.resync.unref?.();
+  }
+
+  async pollLeads(): Promise<void> {
+    await Promise.all(
+      [...this.leads.values()].map(async (lead) => {
+        try {
+          await lead.flushQueued();
+          await lead.confirmMessages();
+          this.conversationViews.hint(lead.sessionId);
+        } catch (error) {
+          this.log(
+            `Main poll failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }),
+    );
+    await this.publishLead();
   }
 
   async stop(): Promise<void> {

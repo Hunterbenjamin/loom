@@ -713,6 +713,71 @@ test("opening a live Main sends it nothing, whatever its native status", async (
   expect(paste).not.toHaveBeenCalled();
 });
 
+test("Main polling confirms receipts and fails only idle timed-out messages without moving sentAt", async () => {
+  const { h } = await setup();
+  const target = await h.coordinator.leadFor(h.repo.id).open();
+  const sessionId = present(target.sessionId);
+  h.providers.create("claude", h.repo.root as never, sessionId, "interactive");
+  const lead = h.coordinator.leadFor(h.repo.id);
+
+  await lead.sendMessage("poll-delivered", "First message");
+  const delivered = present(
+    h.store.leadMessages.get(h.repo.id, "poll-delivered"),
+  );
+  const session = h.providers.get(sessionId);
+  if (session.value.provider !== "claude") throw new Error("Wrong provider");
+  session.value.hooks.promptSubmits.push({
+    promptId: "prompt-poll",
+    textHash: delivered.textHash,
+    at: h.clock.now(),
+  });
+  await h.coordinator.pollLeads();
+  expect(h.store.leadMessages.get(h.repo.id, "poll-delivered")).toMatchObject({
+    state: "delivered",
+    deliveredAt: h.clock.now(),
+  });
+
+  await lead.sendMessage("poll-timeout", "Second message");
+  const sentAt = present(
+    h.store.leadMessages.get(h.repo.id, "poll-timeout"),
+  ).sentAt;
+  h.providers.status(sessionId, "working");
+  h.clock.advance(h.config.deliveryTimeoutMs);
+  await h.coordinator.pollLeads();
+  expect(h.store.leadMessages.get(h.repo.id, "poll-timeout")).toMatchObject({
+    state: "sent",
+    reason: null,
+    sentAt,
+  });
+
+  h.providers.status(sessionId, "idle");
+  await h.coordinator.pollLeads();
+  expect(h.store.leadMessages.get(h.repo.id, "poll-timeout")).toMatchObject({
+    state: "failed",
+    reason: expect.stringContaining("check Main's terminal"),
+    sentAt,
+  });
+  const writes = h.paneHost.writes.length;
+  expect(await lead.sendMessage("poll-timeout", "Second message")).toEqual({
+    id: "poll-timeout",
+    state: "sent",
+  });
+  expect(h.paneHost.writes).toHaveLength(writes);
+
+  session.value.hooks.promptSubmits.push({
+    promptId: "prompt-late",
+    textHash: present(h.store.leadMessages.get(h.repo.id, "poll-timeout"))
+      .textHash,
+    at: h.clock.now(),
+  });
+  await h.coordinator.pollLeads();
+  expect(h.store.leadMessages.get(h.repo.id, "poll-timeout")).toMatchObject({
+    state: "delivered",
+    deliveredAt: h.clock.now(),
+    sentAt,
+  });
+});
+
 test("each repository has a private Main, scoped tools, notes and independent recovery", async () => {
   const { h, cli } = await setup();
   const other = {

@@ -22,7 +22,6 @@ export interface ConversationViewsDeps {
   lead(repoId: string): LeadSession;
   now(): IsoTime;
   after(ms: number, callback: () => void): () => void;
-  deliveryTimeoutMs: number;
   replace(owner: string, rows: Row[]): void;
   log(message: string): void;
 }
@@ -169,12 +168,7 @@ export class ConversationViews {
       const hooks = await this.deps.adapters.claude.hookSummary(
         lead.sessionId as ProviderSessionId,
       );
-      await this.confirmLead(
-        target.repoId,
-        lead.sessionId as ProviderSessionId,
-        lead.cwd,
-        hooks,
-      );
+      await lead.confirmMessages(hooks);
       const result = await this.deps.adapters.claude.readConversation({
         sessionId: lead.sessionId as ProviderSessionId,
         cwd: lead.cwd,
@@ -267,48 +261,6 @@ export class ConversationViews {
       );
     }
   }
-  private async confirmLead(
-    repoId: string,
-    sessionId: ProviderSessionId,
-    cwd: string,
-    hooks: Awaited<ReturnType<Adapters["claude"]["hookSummary"]>>,
-  ): Promise<void> {
-    for (const message of this.deps.store.leadMessages
-      .list(repoId)
-      .filter((m) => m.state === "sent" && m.sentAt)) {
-      let receipt = hooks.promptSubmits.find(
-        (p) =>
-          p.textHash === message.textHash && p.at >= (message.sentAt as string),
-      );
-      receipt ??=
-        (await this.deps.adapters.claude.promptReceipt({
-          sessionId,
-          cwd: cwd as never,
-          textHash: message.textHash,
-          after: message.sentAt as IsoTime,
-          before: this.deps.now(),
-        })) ?? undefined;
-      if (receipt)
-        this.deps.store.leadMessages.update(
-          repoId,
-          message.id,
-          "delivered",
-          null,
-          receipt.at,
-        );
-      else if (
-        Date.parse(this.deps.now()) - Date.parse(message.sentAt as string) >=
-        this.deps.deliveryTimeoutMs
-      )
-        this.deps.store.leadMessages.update(
-          repoId,
-          message.id,
-          "sent",
-          "not confirmed by Claude",
-          this.deps.now(),
-        );
-    }
-  }
   private publish(
     target: ConversationTarget,
     provider: "claude" | "codex",
@@ -354,7 +306,9 @@ export class ConversationViews {
                     ? m.attempts
                       ? "sent"
                       : "queued"
-                    : m.status,
+                    : m.status === "sent" && m.deliveryAttention
+                      ? "failed"
+                      : m.status,
                 at: m.pendingSince ?? m.sentAt ?? this.deps.now(),
                 reason:
                   m.deliveryReason ??

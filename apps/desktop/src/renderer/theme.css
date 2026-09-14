@@ -2155,6 +2155,7 @@ ul.plain {
   opacity: 0.55;
 }
 .chat-send.refused,
+.chat-send.failed,
 .chat-error {
   color: var(--danger, #ef7b67);
 }

@@ -39,10 +39,10 @@ function leadDeps(
         sessionId: "session-1",
         cwd: "/repo",
         state: vi.fn(async () => ({ status: options.status ?? "idle" })),
+        confirmMessages: vi.fn(async () => {}),
       }) as never,
     now: () => now,
     after: () => () => {},
-    deliveryTimeoutMs: 1_000,
     replace: (owner: string, rows: never[]) => {
       const changes = published.replace(owner, null, rows);
       if (changes.length) patches(changes);
@@ -157,7 +157,6 @@ test("a stopped Main publishes stopped without reading or launching", async () =
       }) as never,
     now: () => now,
     after: () => () => {},
-    deliveryTimeoutMs: 1_000,
     replace,
     log: vi.fn(),
   });
@@ -200,7 +199,6 @@ test("an unloaded Codex thread reports an error without starting a server", asyn
     lead: vi.fn() as never,
     now: () => now,
     after: () => () => {},
-    deliveryTimeoutMs: 1_000,
     replace,
     log: vi.fn(),
   });
@@ -211,6 +209,83 @@ test("an unloaded Codex thread reports an error without starting a server", asyn
   expect(replace.mock.calls[0]?.[1][0].value.error).toBe(
     "Codex thread is not loaded; open the terminal",
   );
+  await views.stop();
+});
+
+test("run delivery attention publishes as failed until provider delivery", async () => {
+  const run = {
+    id: "run-1",
+    taskId: "task-1",
+    origin: "loom",
+    provider: "codex",
+    sessionId: "thread-1",
+    status: "idle",
+    endedAt: null,
+    pendingRequests: [],
+  } as never;
+  const messages = [
+    {
+      id: "message-failed",
+      runId: "run-1",
+      taskId: "task-1",
+      purpose: "human",
+      text: "Did this land?",
+      status: "sent",
+      attempts: 1,
+      deliveryAttention: true,
+      deliveryReason: "not confirmed by the provider",
+      sentAt: now,
+      pendingSince: null,
+      when: "now",
+    },
+    {
+      id: "message-delivered",
+      runId: "run-1",
+      taskId: "task-1",
+      purpose: "human",
+      text: "This landed later",
+      status: "delivered",
+      attempts: 1,
+      deliveryAttention: true,
+      deliveryReason: "not confirmed by the provider",
+      sentAt: now,
+      pendingSince: null,
+      when: "now",
+    },
+  ];
+  const replace = vi.fn();
+  const scope = {
+    kind: "conversation",
+    target: { kind: "run", runId: "run-1" },
+  } as Subscription;
+  const views = new ConversationViews({
+    store: {
+      tasks: vi.fn(() => [{ id: "task-1" }]),
+      runs: vi.fn(() => [run]),
+      messages: vi.fn(() => messages),
+    } as never,
+    adapters: {
+      codexIfRunning: vi.fn(() => ({
+        readConversation: vi.fn(async () => ({ items: [], truncated: false })),
+      })),
+    } as never,
+    lead: vi.fn() as never,
+    now: () => now,
+    after: () => () => {},
+    replace,
+    log: vi.fn(),
+  });
+  views.subscriptions([scope]);
+  views.ensure([scope]);
+  await vi.waitFor(() => expect(replace).toHaveBeenCalled());
+  expect(replace.mock.calls[0]?.[1][0].value.sends).toEqual([
+    expect.objectContaining({
+      id: "message-failed",
+      state: "failed",
+      reason: "not confirmed by the provider",
+    }),
+    expect.objectContaining({ id: "message-delivered", state: "delivered" }),
+  ]);
   await views.stop();
 });
 
@@ -247,10 +322,10 @@ test("an in-flight read cannot republish or cache rows after the last viewer lea
         sessionId: "session-1",
         cwd: "/repo",
         state: vi.fn(async () => ({ status: "idle" })),
+        confirmMessages: vi.fn(async () => {}),
       }) as never,
     now: () => "2026-09-14T01:00:00.000Z" as never,
     after: () => () => {},
-    deliveryTimeoutMs: 1_000,
     replace,
     log,
   });
@@ -300,10 +375,10 @@ test("a hint during a read schedules one follow-up read", async () => {
         sessionId: "session-1",
         cwd: "/repo",
         state: vi.fn(async () => ({ status: "idle" })),
+        confirmMessages: vi.fn(async () => {}),
       }) as never,
     now: () => "2026-09-14T01:00:00.000Z" as never,
     after: () => () => {},
-    deliveryTimeoutMs: 1_000,
     replace: vi.fn(),
     log: () => {},
   });
