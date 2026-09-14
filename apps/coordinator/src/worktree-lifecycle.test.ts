@@ -96,3 +96,32 @@ test("canceled worktree removal waits for a live task terminal, then keeps the b
     h.git("show-ref", "--verify", `refs/heads/${started.worktree.branch}`),
   ).resolves.toContain(started.worktree.branch);
 });
+
+test("a restart restores a terminal worktree removal retry timer", async () => {
+  h = await createHarness();
+  const started = await startSmall("Cleanup after restart");
+  if (!started.worktree?.paneWorkspaceId) throw new Error("Missing workspace");
+  await h.paneHost.createScratch({
+    workspaceId: started.worktree.paneWorkspaceId,
+    key: "human",
+    cwd: started.worktree.path,
+    executable: "/bin/sh",
+    args: [],
+    env: {},
+  });
+  h.coordinator.submitHuman(started.task.id, {
+    type: "cancel",
+    reason: "fixture",
+  });
+  await h.coordinator.settle();
+  expect(h.store.loadTaskState(started.task.id).worktree?.removedAt).toBeNull();
+
+  h = await h.restart();
+  await h.coordinator.settle();
+  expect(h.store.loadTaskState(started.task.id).worktree?.removedAt).toBeNull();
+  h.clock.advance(10_000);
+  await h.coordinator.settle();
+  expect(
+    h.store.loadTaskState(started.task.id).worktree?.removedAt,
+  ).not.toBeNull();
+});

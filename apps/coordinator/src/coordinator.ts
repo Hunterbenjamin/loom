@@ -786,15 +786,19 @@ export class Coordinator {
     for (const task of this.store.tasks())
       if (TERMINAL.includes(task.stage)) {
         const state = this.store.loadTaskState(task.id);
+        const retries = state.outbox.filter(
+          (row) => row.status === "failed" && row.retryAt,
+        );
         if (
           (state.worktree && state.worktree.removedAt === null) ||
-          state.outbox.some(
-            (row) =>
-              row.status === "pending" ||
-              (row.status === "failed" && row.retryAt),
-          )
+          state.outbox.some((row) => row.status === "pending") ||
+          retries.length
         )
           this.loop.enqueue(task.id);
+        // A succeeded schedule row cannot restore its in-memory timer after a restart.
+        for (const row of retries)
+          if (row.retryAt && row.retryAt > this.now())
+            this.schedule(task.id, row.retryAt, "retry recovery");
       }
     await this.refreshAll([]);
     await this.inventory.refresh();
