@@ -58,3 +58,55 @@ test("an in-flight read cannot republish or cache rows after the last viewer lea
   await vi.waitFor(() => expect(readConversation).toHaveBeenCalledTimes(2));
   await views.stop();
 });
+
+test("a hint during a read schedules one follow-up read", async () => {
+  let finishRead: (value: ConversationRead) => void = () => {};
+  const readConversation = vi
+    .fn()
+    .mockImplementationOnce(
+      () =>
+        new Promise<ConversationRead>((resolve) => {
+          finishRead = resolve;
+        }),
+    )
+    .mockResolvedValue({ items: [], truncated: false });
+  const views = new ConversationViews({
+    store: {
+      leadMessages: { list: vi.fn(() => []), update: vi.fn() },
+    } as never,
+    adapters: {
+      claude: {
+        hookSummary: vi.fn(async () => ({
+          transcriptPath: null,
+          pendingDialog: null,
+          promptSubmits: [],
+        })),
+        readConversation,
+      },
+    } as never,
+    lead: () =>
+      ({
+        sessionId: "session-1",
+        cwd: "/repo",
+        state: vi.fn(async () => ({ status: "idle" })),
+      }) as never,
+    now: () => "2026-09-14T01:00:00.000Z" as never,
+    after: () => () => {},
+    deliveryTimeoutMs: 1_000,
+    replace: vi.fn(),
+    log: () => {},
+  });
+  const scope = {
+    kind: "conversation",
+    target: { kind: "lead", repoId: "repo-1" },
+  } as Subscription;
+
+  views.subscriptions([scope]);
+  views.ensure([scope]);
+  await vi.waitFor(() => expect(readConversation).toHaveBeenCalledTimes(1));
+  views.hint("session-1");
+  views.hint("session-1");
+  finishRead({ items: [], truncated: false });
+  await vi.waitFor(() => expect(readConversation).toHaveBeenCalledTimes(2));
+  await views.stop();
+});

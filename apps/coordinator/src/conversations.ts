@@ -31,6 +31,7 @@ export class ConversationViews {
   private active = new Map<string, Scope>();
   private timers = new Map<string, () => void>();
   private reads = new Map<string, Promise<void>>();
+  private refreshAgain = new Set<string>();
   private loaded = new Set<string>();
   private latest = new Map<string, Parameters<ConversationViews["publish"]>>();
   private stopped = false;
@@ -48,6 +49,7 @@ export class ConversationViews {
         this.timers.delete(key);
         this.loaded.delete(key);
         this.latest.delete(key);
+        this.refreshAgain.delete(key);
         this.deps.replace(`conversation:${key}`, []);
       }
     this.active = next;
@@ -92,7 +94,10 @@ export class ConversationViews {
   private refresh(scope: Scope): Promise<void> {
     const key = conversationKey(scope.target);
     const pending = this.reads.get(key);
-    if (pending) return pending;
+    if (pending) {
+      this.refreshAgain.add(key);
+      return pending;
+    }
     const started = Date.now();
     const read = this.read(scope)
       .catch((error) => {
@@ -126,6 +131,9 @@ export class ConversationViews {
         this.reads.delete(key);
         if (this.active.has(key)) this.loaded.add(key);
         this.deps.log(`Conversation ${key} read in ${Date.now() - started}ms`);
+        const refreshAgain = this.refreshAgain.delete(key);
+        const active = this.active.get(key);
+        if (refreshAgain && active) void this.refresh(active);
       });
     this.reads.set(key, read);
     return read;
