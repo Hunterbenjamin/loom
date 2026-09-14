@@ -1,5 +1,4 @@
 import {
-  displayName,
   type Finding,
   issueKey,
   type Run,
@@ -72,7 +71,6 @@ const computeRows = memo1(
     snapshot: Snapshot,
     view: ViewId,
     repo: string,
-    query: string,
     inbox: TaskInbox[],
   ): Row[] => {
     const byTask = new Map<string, Run[]>();
@@ -92,19 +90,11 @@ const computeRows = memo1(
         continue;
       blocking.set(finding.taskId, (blocking.get(finding.taskId) ?? 0) + 1);
     }
-    const needle = query.trim().toLowerCase();
     const now = Date.parse(snapshot.now);
     const rows: Row[] = [];
     for (const task of snapshot.tasks) {
       if (task.repoId !== repo) continue;
       if (!matchesView(task, view)) continue;
-      if (
-        needle &&
-        !`${issueKeyFor(task, snapshot.repos)} ${task.number} ${task.name ?? ""} ${displayName(task)} ${task.title} ${task.id}`
-          .toLowerCase()
-          .includes(needle)
-      )
-        continue;
       const runs = byTask.get(task.id) ?? [];
       // Select the most recent live run, or fall back to the last run
       let live: Run | undefined;
@@ -142,7 +132,6 @@ let previousRows:
       snapshot: Snapshot;
       view: ViewId;
       repo: string;
-      query: string;
       inbox: TaskInbox[];
       rows: Row[];
     }
@@ -151,7 +140,6 @@ export function rowsFor(
   snapshot: Snapshot,
   view: ViewId,
   repo: string,
-  query: string,
   inbox: TaskInbox[] = snapshot.inbox,
 ): Row[] {
   const p = previousRows;
@@ -162,12 +150,11 @@ export function rowsFor(
     p.snapshot.findings === snapshot.findings &&
     p.inbox === inbox &&
     p.view === view &&
-    p.repo === repo &&
-    p.query === query
+    p.repo === repo
   )
     return p.rows;
-  const rows = computeRows(snapshot, view, repo, query, inbox);
-  previousRows = { snapshot, view, repo, query, inbox, rows };
+  const rows = computeRows(snapshot, view, repo, inbox);
+  previousRows = { snapshot, view, repo, inbox, rows };
   return rows;
 }
 
@@ -316,7 +303,6 @@ export function selectedRows(state: State): Row[] {
     state.snapshot,
     state.ui.view,
     state.ui.repo,
-    state.ui.query,
     state.inbox,
   );
   return sortRows(rows, state.ui.sort, state.ui.descending);

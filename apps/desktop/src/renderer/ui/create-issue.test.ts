@@ -200,7 +200,6 @@ test("defaults to the sidebar repo and sends the complete backlog payload with m
   h.store.toggleListSection("backlog");
   h.store.toggleListSection("in_progress");
   h.store.setView("done");
-  h.store.setQuery("unrelated");
   h.store.setPane("board");
   await h.submit();
   expect(h.send).toHaveBeenCalledExactlyOnceWith({
@@ -222,7 +221,6 @@ test("defaults to the sidebar repo and sends the complete backlog payload with m
     view: "all",
     pane: "list",
     repo: repo.id,
-    query: "",
     toast: `Created ${id}`,
   });
   // The coordinator's patch can arrive after the ack; select its actual sorted position.

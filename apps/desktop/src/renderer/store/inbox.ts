@@ -1,11 +1,4 @@
-import {
-  type AttentionReason,
-  displayName,
-  type IsoTime,
-  issueKey,
-  type Run,
-  type Task,
-} from "@loom/core";
+import type { AttentionReason, IsoTime, Run, Task } from "@loom/core";
 import type { TaskInbox } from "@loom/protocol";
 import type { State, TabId } from "./store.js";
 
@@ -72,32 +65,24 @@ let cache:
       tasks: Task[];
       inbox: TaskInbox[];
       repo: string;
-      query: string;
       rows: InboxRow[];
     }
   | undefined;
 export function inboxRows(state: State): InboxRow[] {
   const { tasks } = state.snapshot;
   const { inbox } = state;
-  const { repo, query } = state.ui;
+  const { repo } = state.ui;
   if (
     cache &&
     cache.tasks === tasks &&
     cache.inbox === inbox &&
-    cache.repo === repo &&
-    cache.query === query
+    cache.repo === repo
   )
     return cache.rows;
   const metadata = new Map(inbox.map((i) => [i.taskId, i]));
-  const needle = query.trim().toLowerCase();
   const rows = tasks
     .flatMap((task) => {
       if (task.repoId !== repo) return [];
-      const taskRepo = state.snapshot.repos.find(
-        (item) => item.id === task.repoId,
-      );
-      const search = `${taskRepo ? issueKey(taskRepo, task) : ""} ${task.number} ${displayName(task)} ${task.title} ${task.id}`;
-      if (needle && !search.toLowerCase().includes(needle)) return [];
       const info = metadata.get(task.id);
       return task.attention.reasons.map((reason) => ({
         key: `${task.id}:${reason}`,
@@ -118,7 +103,7 @@ export function inboxRows(state: State): InboxRow[] {
         (a.since ?? "9999").localeCompare(b.since ?? "9999") ||
         a.key.localeCompare(b.key),
     );
-  cache = { tasks, inbox, repo, query, rows };
+  cache = { tasks, inbox, repo, rows };
   return rows;
 }
 export function attentionCount(state: State): number {
