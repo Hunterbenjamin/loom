@@ -129,9 +129,6 @@ export function Palette() {
             <Command.Item onSelect={() => run(() => store.toggleTheme())}>
               Toggle theme
             </Command.Item>
-            <Command.Item onSelect={() => run(() => store.setSearching(true))}>
-              Search issues
-            </Command.Item>
           </Command.Group>
 
           <Command.Group heading="Issues">

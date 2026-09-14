@@ -36,26 +36,15 @@ describe("views", () => {
   it("filters by repository", () => {
     const snapshot = buildSnapshot();
     const repo = must(snapshot.repos[1]);
-    const rows = rowsFor(snapshot, "all", repo.id, "");
+    const rows = rowsFor(snapshot, "all", repo.id);
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) expect(row.task.repoId).toBe(repo.id);
-  });
-
-  it("searches on id and title", () => {
-    const snapshot = buildSnapshot();
-    const rows = rowsFor(snapshot, "all", "repo-loom", "worktree");
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) {
-      expect(`${row.task.id} ${row.task.title}`.toLowerCase()).toContain(
-        "worktree",
-      );
-    }
   });
 });
 
 describe("the list", () => {
   it("sorts by age and reverses", () => {
-    const rows = rowsFor(buildSnapshot(), "all", "repo-loom", "");
+    const rows = rowsFor(buildSnapshot(), "all", "repo-loom");
     const oldest = sortRows(rows, "age", false);
     const newest = sortRows(rows, "age", true);
     expect(must(oldest[0]).ageMinutes).toBeGreaterThanOrEqual(
@@ -68,7 +57,7 @@ describe("the list", () => {
 
   it("groups by stage without losing or duplicating a row", () => {
     const rows = sortRows(
-      rowsFor(buildSnapshot(), "all", "repo-loom", ""),
+      rowsFor(buildSnapshot(), "all", "repo-loom"),
       "stage",
       false,
     );
@@ -205,8 +194,8 @@ it("all selectors, counts, inbox and board stay within the selected project", as
         .reduce((sum, task) => sum + task.attention.reasons.length, 0),
     );
   }
-  expect(rowsFor(snapshot, "all", "all", "")).toEqual([]);
-  expect(rowsFor(snapshot, "all", "", "")).toEqual([]);
+  expect(rowsFor(snapshot, "all", "all")).toEqual([]);
+  expect(rowsFor(snapshot, "all", "")).toEqual([]);
 });
 
 it("live selection changes only when the coordinator publishes it", async () => {

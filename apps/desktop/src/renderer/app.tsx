@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { attentionCount, inboxRows } from "./store/inbox.js";
 import { selectedPullRequests } from "./store/pull-requests.js";
 import { useStore, useStoreApi } from "./store/react.js";
@@ -60,8 +60,6 @@ export function App() {
   );
   const pane = useStore((s) => s.ui.pane);
   const view = useStore((s) => s.ui.view);
-  const searching = useStore((s) => s.ui.searching);
-  const query = useStore((s) => s.ui.query);
   const toast = useStore((s) => s.ui.toast);
   const count = useStore((s) =>
     s.ui.view === "settings"
@@ -84,7 +82,6 @@ export function App() {
       : null,
   );
   const openPr = useStore((s) => s.ui.openPr);
-  const search = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -96,10 +93,6 @@ export function App() {
       requestAnimationFrame(() => window.loomHost.interactive()),
     );
   }, []);
-
-  useEffect(() => {
-    if (searching) search.current?.focus();
-  }, [searching]);
 
   useEffect(() => {
     if (!toast) return;
@@ -123,23 +116,6 @@ export function App() {
             <span className="faint nums">{count}</span>
           )}
           <span className="spacer" />
-          {view === "pull-requests" ||
-          view === "settings" ? null : searching ? (
-            <input
-              ref={search}
-              className="search"
-              placeholder="Search issues"
-              value={query}
-              onChange={(event) => store.setQuery(event.target.value)}
-              onBlur={() => {
-                if (query === "") store.setSearching(false);
-              }}
-            />
-          ) : (
-            <button type="button" onClick={() => store.setSearching(true)}>
-              Search <kbd>/</kbd>
-            </button>
-          )}
           {view !== "pull-requests" && view !== "settings" && (
             <div className="segmented">
               <button

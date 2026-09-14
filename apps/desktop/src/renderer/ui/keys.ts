@@ -43,7 +43,6 @@ export function useShortcuts(store: Store): void {
       if (event.key === "Escape") {
         if (ui.palette) return store.setPalette(false);
         if (ui.stagePicker) return store.setStagePicker(false);
-        if (ui.searching) return store.setSearching(false);
         if (ui.openPr) return store.openPullRequest(null);
         if (ui.openTask) return store.open(null);
         return;
@@ -161,10 +160,6 @@ export function useShortcuts(store: Store): void {
         case "C":
           event.preventDefault();
           store.setCreateIssue(true);
-          return;
-        case "/":
-          event.preventDefault();
-          store.setSearching(true);
           return;
         case "e":
           event.preventDefault();

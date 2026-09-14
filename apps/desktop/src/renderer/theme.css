@@ -232,15 +232,6 @@ kbd {
   background: var(--bg-active);
 }
 
-.search {
-  height: 26px;
-  width: 220px;
-  background: var(--bg-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 0 8px;
-}
-
 /* ------------------------------------------------------------------ list */
 
 .list {

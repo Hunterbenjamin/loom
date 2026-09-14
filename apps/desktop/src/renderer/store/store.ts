@@ -93,8 +93,6 @@ export interface UiState {
   tab: TabId;
   sort: SortKey;
   descending: boolean;
-  query: string;
-  searching: boolean;
   theme: Theme;
   palette: boolean;
   chimeMuted: boolean;
@@ -196,8 +194,6 @@ const initialUi: UiState = {
   tab: "overview",
   sort: "stage",
   descending: false,
-  query: "",
-  searching: false,
   theme: "dark",
   palette: false,
   chimeMuted: false,
@@ -730,16 +726,6 @@ export function createStore(
     setTab(tab: TabId) {
       setUi({ tab });
     },
-    setQuery(query: string) {
-      setUi({ query, cursor: null });
-    },
-    setSearching(searching: boolean) {
-      setUi({
-        searching,
-        query: searching ? state.ui.query : "",
-        cursor: null,
-      });
-    },
     setTheme(theme: Theme) {
       setUi({ theme });
     },
@@ -760,8 +746,6 @@ export function createStore(
         view: "all",
         pane: "list",
         ...(live ? {} : { repo }),
-        query: "",
-        searching: false,
         openTask: null,
         openRun: null,
         openReason: null,
