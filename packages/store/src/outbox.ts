@@ -110,13 +110,25 @@ export class Outbox {
         const row = ownedRow.parse(previous);
         if (row.task_id !== taskId)
           throw new Error("Cross-task outbox key collision");
-        assertSame(
-          decode(outboxSchema, row.data).action,
-          entry.action,
-          "Outbox action intent is immutable",
-        );
+        const previousEntry = decode(outboxSchema, row.data);
+        const replaceSchedule =
+          previousEntry.action?.kind === "schedule" &&
+          entry.action.kind === "schedule" &&
+          previousEntry.action.taskId === entry.action.taskId &&
+          previousEntry.action.why === entry.action.why &&
+          entry.status === "pending";
+        if (!replaceSchedule)
+          assertSame(
+            previousEntry.action,
+            entry.action,
+            "Outbox action intent is immutable",
+          );
         this.db
-          .prepare("UPDATE outbox SET data = ? WHERE key = ?")
+          .prepare(
+            replaceSchedule
+              ? "UPDATE outbox SET data = ?, started_at = NULL, executor_finished_at = NULL, result_input_id = NULL WHERE key = ?"
+              : "UPDATE outbox SET data = ? WHERE key = ?",
+          )
           .run(encodedUpdate(outboxSchema, row.data, entry), entry.key);
       } else {
         this.db

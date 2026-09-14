@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { InputId, TaskId } from "@loom/core";
+import type { ActionKey, InputId, TaskId } from "@loom/core";
 import { reconcile } from "@loom/core";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -78,6 +78,45 @@ it("parses the CI stage and a legacy gate without a cached reading", () => {
 });
 
 describe("task transactions", () => {
+  it("replaces a completed stall schedule under its stable key", async () => {
+    const store = await seeded();
+    const key = `schedule:${taskId}:stall_check` as ActionKey;
+    const first = {
+      key,
+      taskId,
+      kind: "schedule" as const,
+      at: "2026-09-12T00:15:00.000Z" as typeof now,
+      why: "stall_check" as const,
+    };
+    const entry = {
+      key,
+      kind: "schedule" as const,
+      action: first,
+      status: "succeeded" as const,
+      attempts: 1,
+      createdAt: now,
+      finishedAt: now,
+    };
+    store.outbox.save(taskId, [entry], [first]);
+    const replacement = {
+      ...first,
+      at: "2026-09-12T00:30:00.000Z" as typeof now,
+    };
+    store.outbox.save(
+      taskId,
+      [{ ...entry, action: replacement, status: "pending", finishedAt: null }],
+      [replacement],
+    );
+
+    expect(store.outbox.list(taskId)).toEqual([
+      expect.objectContaining({
+        key,
+        status: "pending",
+        action: replacement,
+      }),
+    ]);
+  });
+
   it("records Main chat sends idempotently per repository", async () => {
     const store = await open();
     const first = {

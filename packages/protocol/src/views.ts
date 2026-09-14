@@ -309,6 +309,7 @@ export const leadState = z.strictObject({
   id: repoId,
   sessionId: providerSessionId.nullable(),
   status: z.enum(["working", "idle", "waiting", "unknown", "stopped"]),
+  reason: z.string().nullable().optional(),
 });
 export type LeadState = z.output<typeof leadState>;
 

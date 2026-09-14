@@ -70,6 +70,7 @@ function leadDirectory(dataDirectory: string, repoId: string): string {
 export class LeadSession {
   private recipe: Recipe | null = null;
   private tail: Promise<unknown> = Promise.resolve();
+  private readonly loggedStateErrors = new Set<string>();
   private readonly directory: string;
   constructor(
     private readonly deps: {
@@ -80,6 +81,7 @@ export class LeadSession {
       repo: Repo;
       mcpEntry(token: string): McpServerEntry;
       now(): string;
+      log(message: string): void;
     },
   ) {
     this.directory = leadDirectory(deps.dataDirectory, deps.repo.id);
@@ -438,9 +440,19 @@ export class LeadSession {
   async state(): Promise<LeadState> {
     if (!this.recipe || this.recipe.stopped)
       return { id: this.deps.repo.id, sessionId: null, status: "stopped" };
-    const sessions = await this.deps.adapters.claude
-      .listSessions()
-      .catch(() => []);
+    let sessions: Awaited<ReturnType<Adapters["claude"]["listSessions"]>>;
+    let reason: string | null = null;
+    try {
+      sessions = await this.deps.adapters.claude.listSessions();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      reason = `claude agents --json failed: ${message}`;
+      if (!this.loggedStateErrors.has(reason)) {
+        this.loggedStateErrors.add(reason);
+        this.deps.log(`Main status unavailable: ${reason}`);
+      }
+      sessions = [];
+    }
     const session = sessions.find(
       (s) =>
         s.sessionId === this.recipe?.sessionId && s.cwd === this.recipe.cwd,
@@ -448,6 +460,7 @@ export class LeadSession {
     return leadState.parse({
       id: this.deps.repo.id,
       sessionId: this.recipe.sessionId,
+      reason,
       status:
         session?.status === "busy"
           ? "working"

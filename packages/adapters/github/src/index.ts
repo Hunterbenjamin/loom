@@ -299,7 +299,13 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
     async disableAutoMerge(req) {
       s.repo.parse(req.repo);
       s.id.parse(req.number);
-      if ((await freshPull(req.repo, req.number)).auto_merge === null) return;
+      const before = await freshPull(req.repo, req.number);
+      if (
+        before.merged ||
+        before.state === "closed" ||
+        before.auto_merge === null
+      )
+        return;
       let disableError: unknown;
       try {
         await command([
@@ -313,7 +319,16 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
       } catch (error) {
         disableError = error;
       }
-      if ((await freshPull(req.repo, req.number)).auto_merge === null) return;
+      if (
+        disableError instanceof Error &&
+        /auto.?merge is not enabled|pull request (?:is )?(?:already )?(?:merged|closed)/i.test(
+          disableError.message,
+        )
+      )
+        return;
+      const after = await freshPull(req.repo, req.number);
+      if (after.merged || after.state === "closed" || after.auto_merge === null)
+        return;
       if (disableError) throw disableError;
       throw new GitHubError("retryable", "GitHub auto-merge is still enabled");
     },

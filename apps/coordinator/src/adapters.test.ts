@@ -16,9 +16,11 @@ test("a stopped task server is forgotten, so the count is honest and a later use
   const first = await codex.codex(task);
   expect(await codex.codex(task)).toBe(first);
   expect(codex.codexServerCount()).toBe(1);
+  expect(codex.codexServerRunning(task)).toBe(true);
   await codex.stopCodexServer(task);
   expect(first.stopServer).toHaveBeenCalledOnce();
   expect(codex.codexServerCount()).toBe(0);
+  expect(codex.codexServerRunning(task)).toBe(false);
   const second = await codex.codex(task);
   expect(second).not.toBe(first);
   expect(second.startServer).toHaveBeenCalledOnce();

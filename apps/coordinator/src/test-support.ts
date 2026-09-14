@@ -226,6 +226,7 @@ async function open(
     codexIfRunning: () => providers.codex,
     stopCodexServer: async () => {}, // No-op in tests
     codexServerCount: () => 0, // Tests use fake provider, not real servers
+    codexServerRunning: () => false,
     close: async () => {},
   };
   const logs: string[] = [];

@@ -165,6 +165,13 @@ test("Main tools share the CLI command path and inspection view; core still reje
     ok: true,
     value: inspectTask(h.store, task.id, h.adapters),
   });
+  expect(
+    inspectTask(h.store, task.id, h.adapters).task.codexServerRunning,
+  ).toBe(false);
+  h.adapters.codexServerRunning = (taskId) => taskId === task.id;
+  expect(
+    inspectTask(h.store, task.id, h.adapters).task.codexServerRunning,
+  ).toBe(true);
   const submit = vi.spyOn(h.coordinator, "submitHuman");
   const commands: [string, HumanCommand][] = [
     ["approve_plan", { type: "approve_plan", planVersion: 3 }],
@@ -303,6 +310,27 @@ test("Main status comes from the provider entry and a matching cwd", async () =>
       expected,
     );
   }
+});
+
+test("Main unknown status carries and deduplicates provider failures", async () => {
+  const { h } = await setup();
+  await h.coordinator.leadFor(h.repo.id).open();
+  vi.spyOn(h.adapters.claude, "listSessions").mockRejectedValue(
+    new Error("spawn claude ENOENT"),
+  );
+
+  await expect(h.coordinator.leadFor(h.repo.id).state()).resolves.toMatchObject(
+    {
+      status: "unknown",
+      reason: "claude agents --json failed: spawn claude ENOENT",
+    },
+  );
+  await h.coordinator.leadFor(h.repo.id).state();
+  expect(
+    h.logs.filter((line) => line.includes("Main status unavailable")),
+  ).toEqual([
+    "Main status unavailable: claude agents --json failed: spawn claude ENOENT",
+  ]);
 });
 
 test("Main chat sends are gated, idempotent, provider-confirmed, and stale prompts are refused", async () => {

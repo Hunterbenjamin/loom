@@ -200,6 +200,10 @@ export class Coordinator {
   private readonly attachments: Attachments;
   private readonly baselineConfig: CoordinatorConfig;
   readonly leads = new Map<string, LeadSession>();
+  private readonly schedules = new Map<
+    string,
+    { at: string; cancel: () => void }
+  >();
   leadFor(repoId: string): LeadSession {
     const repo = this.store.repos().find((repo) => repo.id === repoId);
     if (!repo) throw new Error("Unknown registered repository");
@@ -213,6 +217,7 @@ export class Coordinator {
         repo,
         mcpEntry: (token) => this.launchDeps().mcpEntry(token),
         now: () => this.now(),
+        log: (message) => this.log(message),
       });
       this.leads.set(repoId, lead);
     }
@@ -1100,11 +1105,22 @@ export class Coordinator {
   }
 
   private schedule(taskId: TaskId, at: string, why: string): void {
+    const key = `${taskId}:${why}`;
+    const previous = this.schedules.get(key);
+    if (previous?.at === at) return;
+    if (previous) {
+      previous.cancel();
+      this.timers.delete(previous.cancel);
+    }
     const delay = Math.max(0, Date.parse(at) - Date.parse(this.now()));
     this.log(`Scheduled ${why} for ${taskId} in ${delay} ms`);
     const cancel = this.after(delay, () => {
+      if (this.schedules.get(key)?.cancel === cancel)
+        this.schedules.delete(key);
+      this.timers.delete(cancel);
       this.loop.enqueue(taskId);
     });
+    this.schedules.set(key, { at, cancel });
     this.timers.add(cancel);
   }
 

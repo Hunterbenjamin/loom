@@ -673,6 +673,34 @@ describe("GitHub actions", () => {
     ).resolves.toBeUndefined();
   });
 
+  it.each([
+    "GraphQL: Pull request auto-merge is not enabled (disablePullRequestAutoMerge)",
+    "GraphQL: Pull request is already merged",
+    "GraphQL: Pull request is already closed",
+  ])("accepts an idempotent disable response: %s", async (stderr) => {
+    const fake = setup();
+    fake.set(pr, { ...original, auto_merge: { merge_method: "squash" } });
+    fake.mutate(async () => ({ stdout: "", stderr, exitCode: 1 }));
+    await expect(
+      fake.adapter.disableAutoMerge(mergeRequest),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each([{ merged: true }, { state: "closed" }])(
+    "accepts a PR that is already merged or closed: %s",
+    async (change) => {
+      const fake = setup();
+      fake.set(pr, {
+        ...original,
+        auto_merge: { merge_method: "squash" },
+        ...change,
+      });
+      await expect(
+        fake.adapter.disableAutoMerge(mergeRequest),
+      ).resolves.toBeUndefined();
+    },
+  );
+
   it("maps mutation rate limits to retryable without leaking diagnostics", async () => {
     const fake = setup();
     fake.open();
@@ -709,6 +737,23 @@ describe("GitHub boundary failures", () => {
     });
     await expect(fake.adapter.findPullRequest(request)).rejects.toMatchObject({
       code,
+    });
+  });
+
+  it("includes a redacted API status and message in fatal errors", async () => {
+    const fake = setup();
+    fake.routes.set(list, {
+      stdout: http({ message: "Bad credentials for dev@example.com" }).replace(
+        "200 OK",
+        "401 Unauthorized",
+      ),
+      stderr: "",
+      exitCode: 1,
+    });
+    await expect(fake.adapter.findPullRequest(request)).rejects.toMatchObject({
+      code: "fatal",
+      message:
+        "GitHub request failed (HTTP 401): Bad credentials for [redacted-email]",
     });
   });
 

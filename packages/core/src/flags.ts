@@ -260,8 +260,14 @@ export function attention(c: Context): void {
     fixRoundStallAfterMs: state.config.fixRoundStallAfterMs,
     unknownGraceMs: state.config.unknownGraceMs,
   });
-  for (const { at, why } of schedules)
-    c.emit(`schedule:${task.id}:${why}:${at}`, { kind: "schedule", at, why });
+  for (const { at, why } of schedules) {
+    const key =
+      why === "stall_check"
+        ? `schedule:${task.id}:${why}`
+        : `schedule:${task.id}:${why}:${at}`;
+    if (why === "stall_check") c.reschedule(key, { kind: "schedule", at, why });
+    else c.emit(key, { kind: "schedule", at, why });
+  }
   task.attention = derived;
 }
 

@@ -115,7 +115,50 @@ export function failure(
     )
   )
     return new GitHubError("retryable", "GitHub temporarily unavailable");
-  return new GitHubError("fatal", "GitHub request failed");
+  const detail = failureDetail(result, status);
+  return new GitHubError(
+    "fatal",
+    `GitHub request failed${status === undefined ? "" : ` (HTTP ${status})`}${detail ? `: ${detail}` : ""}`,
+  );
+}
+
+function failureDetail(result: GhResult, status?: number): string | null {
+  let message: string | null = null;
+  if (status !== undefined) {
+    const body = /\r?\n\r?\n([\s\S]*)$/.exec(result.stdout)?.[1];
+    if (body) {
+      try {
+        const parsed = JSON.parse(body) as unknown;
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          "message" in parsed &&
+          typeof parsed.message === "string"
+        )
+          message = parsed.message;
+      } catch {
+        // Malformed response bodies are never copied into errors.
+      }
+    }
+  } else {
+    message = result.stderr.trim().split(/\r?\n/, 1)[0] ?? null;
+  }
+  if (!message) return null;
+  return message
+    .replace(/https?:\/\/\S+/gi, "[redacted-url]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/\bsk-[\w-]+/g, "[redacted-token]")
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted-token]")
+    .replace(
+      /\b(?:gh[opusr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]+)\b/g,
+      "[redacted-token]",
+    )
+    .replace(
+      /\b(?:token|authorization|password|secret)\s*[:=]\s*\S+/gi,
+      "$1=[redacted]",
+    )
+    .replace(/\s+/g, " ")
+    .slice(0, 240);
 }
 
 export function parse<T>(schema: z.ZodType<T>, value: unknown): T {

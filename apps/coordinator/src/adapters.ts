@@ -29,6 +29,8 @@ export interface Adapters {
   stopCodexServer(taskId: TaskId): Promise<void>;
   /** Count of running Codex app-servers. */
   codexServerCount(): number;
+  /** Whether this task currently owns a started Codex app-server. */
+  codexServerRunning(taskId: TaskId): boolean;
   /** Stops the child processes this coordinator started. Never a shared daemon. */
   close(): Promise<void>;
 }
@@ -44,7 +46,12 @@ export function codexPerTask(
   factory: CodexFactory,
 ): Pick<
   Adapters,
-  "codex" | "codexIfRunning" | "stopCodexServer" | "codexServerCount" | "close"
+  | "codex"
+  | "codexIfRunning"
+  | "stopCodexServer"
+  | "codexServerCount"
+  | "codexServerRunning"
+  | "close"
 > {
   const servers = new Map<string, CodexAdapter>();
   return {
@@ -68,6 +75,9 @@ export function codexPerTask(
     },
     codexServerCount() {
       return servers.size;
+    },
+    codexServerRunning(taskId) {
+      return servers.has(taskId);
     },
     async close() {
       const all = [...servers.values()];

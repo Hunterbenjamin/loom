@@ -205,6 +205,34 @@ describe("idle runs awaiting submission", () => {
       unknownGraceMs: f.state.config.unknownGraceMs,
     });
 
+  it("replaces a task's stall check instead of appending another row", () => {
+    const f = idleFixture();
+    const first = fixed(f.state, f.observations);
+    const row = first.next.outbox.find(
+      (entry) =>
+        entry.action?.kind === "schedule" && entry.action.why === "stall_check",
+    );
+    if (row?.action?.kind !== "schedule")
+      throw new Error("missing stall check");
+    row.status = "succeeded";
+    row.finishedAt = f.observations.now;
+    const run = first.next.runs[0];
+    if (!run) throw new Error("missing run");
+    run.idleSince = at(1_000);
+
+    const second = fixed(first.next, f.observations);
+    const rows = second.next.outbox.filter(
+      (entry) =>
+        entry.action?.kind === "schedule" && entry.action.why === "stall_check",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      key: `schedule:${f.state.task.id}:stall_check`,
+      status: "pending",
+      action: { at: at(f.state.config.stallAfterMs + 1_000) },
+    });
+  });
+
   for (const [stage, role] of roles) {
     it(`${role} raises distinct attention at the deadline, without stopping or moving the task`, () => {
       const f = idleFixture(stage);
