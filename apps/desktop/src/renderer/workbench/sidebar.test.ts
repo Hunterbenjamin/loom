@@ -146,9 +146,9 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
     );
     await act(async () => grouped?.click());
     expect(grouped?.getAttribute("aria-pressed")).toBe("false");
-    expect(
-      element.querySelector(".wb-sidebar-footer button")?.textContent,
-    ).toBe("«");
+    // The sidebar can't be collapsed: no toggle anywhere.
+    expect(element.querySelector('[aria-label="Collapse sidebar"]')).toBeNull();
+    expect(element.querySelector(".wb-sidebar-footer")).toBeNull();
     expect(element.querySelector(".wb-spaces-footer")).toBeNull();
     expect(element.querySelector("#agent-filter")).toBeNull();
     // Spaces are never collapsible: their tabs are always shown.
@@ -385,7 +385,7 @@ test.each([false, true])(
       ).not.toEqual(expect.arrayContaining(["Coordinator", "Desktop"]));
       expect(element.querySelectorAll(".wb-agent-list button")).toHaveLength(0);
       const fixed = element.querySelector(".wb-workbench-sessions");
-      expect(fixed?.nextElementSibling?.className).toBe("wb-sidebar-footer");
+      expect(fixed?.nextElementSibling).toBeNull();
       expect(
         [...(fixed?.querySelectorAll("button") ?? [])].map(
           (row) => row.textContent,

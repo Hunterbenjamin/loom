@@ -1,5 +1,6 @@
 import type { RepoId } from "@loom/core";
 import type {
+  AckResult,
   ConversationTarget,
   LeadTarget,
   PaneIdentity,
@@ -66,6 +67,15 @@ const identity = (p: PaneIdentity): PaneIdentity => ({
   windowId: p.windowId,
   paneId: p.paneId,
 });
+/** The terminal a create command made: new scratch terminals ack either shape. */
+const createdTerminal = (outcome: AckResult): PaneIdentity | undefined =>
+  outcome.kind === "scratch_created"
+    ? outcome.pane
+    : outcome.kind === "attach_session" &&
+        "identity" in outcome.target &&
+        outcome.target.identity === "pane"
+      ? outcome.target.target
+      : undefined;
 const Placeholder = ({ api }: IGridviewPanelProps) => (
   <div className="wb-cell" data-cell={api.id} />
 );
@@ -353,7 +363,6 @@ export function Workbench() {
     [store, tabs, active, focused],
   );
   const [zoom, setZoom] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [filter, setFilter] = useState("");
   const [palette, setPalette] = useState(false);
   const paletteRuns = useStore((s) => s.snapshot.runs);
@@ -434,11 +443,10 @@ export function Workbench() {
         workspace: name,
       });
       if (!result.ok) throw new Error(result.error.message);
-      const outcome = result.result;
-      const created =
-        outcome.kind === "scratch_created"
-          ? store.getState().panes.find((p) => sameTerminal(p, outcome.pane))
-          : undefined;
+      const ref = createdTerminal(result.result);
+      const created = ref
+        ? store.getState().panes.find((p) => sameTerminal(p, ref))
+        : undefined;
       if (!created) throw new Error("Space creation was not confirmed");
       openGroup([created], created.sessionName);
       setPendingTab(null);
@@ -453,15 +461,7 @@ export function Workbench() {
       ...(split ? { split: split.direction } : {}),
     });
     if (!result.ok) throw new Error(result.error.message);
-    const outcome = result.result;
-    const ref =
-      outcome.kind === "scratch_created"
-        ? outcome.pane
-        : outcome.kind === "attach_session" &&
-            "identity" in outcome.target &&
-            outcome.target.identity === "pane"
-          ? outcome.target.target
-          : undefined;
+    const ref = createdTerminal(result.result);
     const created = ref
       ? store.getState().panes.find((p) => sameTerminal(p, ref))
       : undefined;
@@ -959,8 +959,6 @@ export function Workbench() {
           }
           selectedSpace={openSpace ?? undefined}
           selectedTab={active}
-          collapsed={sidebarCollapsed}
-          toggleSidebar={() => setSidebarCollapsed((value) => !value)}
           showMenu={() => setPalette(true)}
           filter={filter}
           setFilter={setFilter}

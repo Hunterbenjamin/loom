@@ -98,10 +98,45 @@ async function harness(
         paneId: "%99",
         windowId: command.split ? source.windowId : "@99",
         windowName: command.split ? source.windowName : command.label,
+        ...(command.workspace
+          ? { sessionName: command.workspace, sessionId: "$99" }
+          : {}),
       };
       native.set(created.id, created);
       publish();
-      return { ok: true, result: { kind: "scratch_created", pane: created } };
+      // Like the coordinator: a created terminal is acknowledged as a pane to attach.
+      return {
+        ok: true,
+        result: {
+          kind: "attach_session",
+          target: {
+            identity: "pane",
+            target: {
+              hostGeneration: created.hostGeneration,
+              sessionName: created.sessionName,
+              windowId: created.windowId,
+              paneId: created.paneId,
+            },
+            attach: {
+              kind: "pane_host",
+              argv: ["tmux"],
+              cwd: created.startCwd,
+              env: {},
+            },
+            pane: {
+              hostGeneration: created.hostGeneration,
+              sessionName: created.sessionName,
+              windowId: created.windowId,
+              paneId: created.paneId,
+              dead: false,
+              exitStatus: null,
+              attachedClients: 0,
+              size: null,
+              observedAt: at("2026-09-13T00:00:00.000Z"),
+            },
+          },
+        },
+      };
     }
     if (command.kind === "open_lead_session") {
       const sessionName = `loom-lead-${command.repoId}`;
@@ -653,6 +688,52 @@ test("new tab targets the selected space and split targets the active native win
     });
     const active = h.element.querySelector('.wb-tab[style*="display: block"]');
     expect(active?.querySelectorAll("[data-attached-pane]")).toHaveLength(2);
+  } finally {
+    await h.close();
+  }
+});
+
+test("a new space opens without a warning once the coordinator acknowledges the pane", async () => {
+  const h = await harness([pane]);
+  try {
+    await act(async () =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "n",
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    const input = h.element.querySelector<HTMLInputElement>("dialog input");
+    if (!input) throw new Error("New space dialog did not open");
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      setter?.call(input, "Scratch work");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      h.element
+        .querySelector("dialog form, form")
+        ?.dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+    });
+    expect(h.send).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        kind: "open_workbench_terminal",
+        workspace: "Scratch work",
+      }),
+    );
+    expect(h.element.textContent).not.toContain("not confirmed");
+    expect(h.element.querySelector("dialog")).toBeNull();
+    expect(
+      h.element.querySelector('[data-attached-pane*="%99"]'),
+    ).not.toBeNull();
   } finally {
     await h.close();
   }
