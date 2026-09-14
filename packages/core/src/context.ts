@@ -123,6 +123,36 @@ export class Context {
     });
     return full.key;
   }
+  /** Internal timers may move without creating a new durable intent identity. */
+  reschedule(
+    key: string,
+    action: Extract<ActionData, { kind: "schedule" }>,
+  ): ActionKey {
+    const existing = this.state.outbox.find((row) => row.key === key);
+    if (!existing) return this.emit(key, action);
+    if (
+      existing.status === "running" ||
+      existing.action?.kind !== "schedule" ||
+      existing.action.why !== action.why
+    )
+      return existing.key;
+    if (existing.action.at === action.at) return existing.key;
+    const full: Action = {
+      ...action,
+      key: existing.key,
+      taskId: this.task.id,
+    } as Action;
+    existing.action = full;
+    existing.status = "pending";
+    existing.attempts = 0;
+    existing.finishedAt = null;
+    delete existing.error;
+    delete existing.retryAt;
+    delete existing.retriedBy;
+    delete existing.retryBaseAttempt;
+    this.result.actions.push(full);
+    return existing.key;
+  }
   audit(
     from: Stage,
     blocked: BlockedReason | null,

@@ -27,6 +27,7 @@ export function LeadBar({
   const readyCount = useStore(readyToMergeCount);
   const count = useStore((s) => inboxRows(s).length);
   const status = useStore((s) => s.lead.status);
+  const statusReason = useStore((s) => s.lead.reason);
   const repo = useStore((s) => s.ui.repo);
   const chatTarget = useStore((s) => s.ui.chatTarget);
   const chatView = useStore((s) => s.ui.chatView);
@@ -99,6 +100,7 @@ export function LeadBar({
           ref={toggle}
           type="button"
           className="lead-toggle"
+          title={statusReason ?? undefined}
           aria-expanded={active && mainOpen}
           onClick={() => store.toggleMainChat()}
         >

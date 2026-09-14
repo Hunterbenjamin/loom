@@ -101,6 +101,7 @@ export async function createRealAdapters(
     codexIfRunning: codex.codexIfRunning,
     stopCodexServer: codex.stopCodexServer,
     codexServerCount: codex.codexServerCount,
+    codexServerRunning: codex.codexServerRunning,
     async close() {
       await codex.close();
       await claude.close();

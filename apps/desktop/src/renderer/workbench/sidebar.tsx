@@ -372,7 +372,7 @@ export function Sidebar({
               aria-current={selected === "main" ? "true" : undefined}
               {...rowMenu("main", "main")}
               onClick={() => openPinned("main")}
-              title="Open Main terminal"
+              title={lead.reason ?? "Open Main terminal"}
             >
               <Status state={pinnedState(lead.status, mainFinished)} />
               <span className="wb-row-copy">
