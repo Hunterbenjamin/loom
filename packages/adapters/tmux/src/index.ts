@@ -613,7 +613,26 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
           throw error;
         }
         await delay(options.pasteSettleMs);
-        await tmux(["send-keys", "-t", row.paneId, "Enter"]);
+        const submitBuffer = `${buffer}-submit`;
+        await tmux(["set-buffer", "-b", submitBuffer, "--", "\r"]);
+        try {
+          // send-keys is handled by copy-mode after a human scrolls back. An unbracketed raw
+          // paste still reaches the pane while preserving the viewer's copy-mode position.
+          await tmux([
+            "paste-buffer",
+            "-d",
+            "-r",
+            "-b",
+            submitBuffer,
+            "-t",
+            row.paneId,
+          ]);
+        } catch (error) {
+          await tmux(["delete-buffer", "-b", submitBuffer]).catch(
+            () => undefined,
+          );
+          throw error;
+        }
         // Bytes were written. Whether they became a prompt is the provider's to say.
         return "written" as const;
       });

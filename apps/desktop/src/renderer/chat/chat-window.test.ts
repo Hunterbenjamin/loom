@@ -444,6 +444,25 @@ test("lead send, prefix rejection, delivery state and prompt answer are wired", 
   });
 });
 
+test("a failed send renders its state and delivery reason", () => {
+  const { host } = mount(
+    header({
+      sends: [
+        {
+          id: "send-failed",
+          text: "Please continue",
+          state: "failed",
+          at: readAt,
+          reason: "not confirmed by the provider",
+        },
+      ],
+    }),
+  );
+  const failed = host.querySelector(".chat-send.failed");
+  expect(failed?.textContent).toContain("failed");
+  expect(failed?.textContent).toContain("not confirmed by the provider");
+});
+
 test("a run conversation sends through the existing human command", async () => {
   const body = snapshot();
   const run = body.runs[0];

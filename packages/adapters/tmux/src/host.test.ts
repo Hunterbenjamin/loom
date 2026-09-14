@@ -614,6 +614,41 @@ describe.skipIf(!available)("tmux pane host", () => {
     await host.closePane(ref);
   });
 
+  it("submits pasted text while preserving copy mode", async () => {
+    const workspace = await host.ensureWorkspace({
+      taskId: "t-copy-paste" as TaskId,
+      cwd,
+      label: "copy paste",
+    });
+    const out = join(dir, "copy-paste.txt");
+    const ref = await host.ensurePane({
+      workspaceId: workspace.workspaceId,
+      runId: "run-copy-paste" as RunId,
+      cwd,
+      executable: "/bin/sh",
+      args: ["-c", `stty raw -echo; dd bs=1 count=3 of=${out}; sleep 30`],
+      env: paneEnv(),
+    });
+    await until(async () => (await host.getPane(ref))?.dead === false);
+    await tmux("copy-mode", "-t", ref.paneId);
+    expect(
+      (
+        await tmux("display-message", "-p", "-t", ref.paneId, "#{pane_in_mode}")
+      ).trim(),
+    ).toBe("1");
+
+    expect(await host.pasteText(ref, "go")).toBe("written");
+    await until(
+      async () => (await readFile(out, "utf8").catch(() => null)) === "go\r",
+    );
+    expect(
+      (
+        await tmux("display-message", "-p", "-t", ref.paneId, "#{pane_in_mode}")
+      ).trim(),
+    ).toBe("1");
+    await host.closePane(ref);
+  });
+
   it("refuses text a TUI would read as a command", async () => {
     const workspace = await host.ensureWorkspace({
       taskId: "t-slash" as TaskId,

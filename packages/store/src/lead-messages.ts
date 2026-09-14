@@ -62,4 +62,10 @@ export class LeadMessageStore {
       WHERE repo_id=? AND id=?`)
       .run(state, reason, state, at, state, at, repoId, id);
   }
+  fail(repoId: string, id: string, reason: string): void {
+    this.db
+      .prepare(`UPDATE lead_messages SET state='failed', reason=?
+      WHERE repo_id=? AND id=? AND state='sent'`)
+      .run(reason, repoId, id);
+  }
 }

@@ -13,6 +13,7 @@ import {
 import { join } from "node:path";
 import { textHash } from "@loom/adapter-claude";
 import type {
+  IsoTime,
   McpServerEntry,
   PaneRef,
   ProviderSessionId,
@@ -80,7 +81,7 @@ export class LeadSession {
       dataDirectory: string;
       repo: Repo;
       mcpEntry(token: string): McpServerEntry;
-      now(): string;
+      now(): IsoTime;
       log(message: string): void;
     },
   ) {
@@ -261,6 +262,72 @@ export class LeadSession {
         null,
         this.deps.now(),
       );
+    });
+  }
+
+  confirmMessages(
+    observedHooks?: Awaited<ReturnType<Adapters["claude"]["hookSummary"]>>,
+  ): Promise<void> {
+    return this.exclusive(async () => {
+      const recipe = this.recipe;
+      if (!recipe || recipe.stopped) return;
+      const messages = this.deps.store.leadMessages
+        .list(this.deps.repo.id)
+        .filter(
+          (message) =>
+            (message.state === "sent" || message.state === "failed") &&
+            message.sentAt,
+        );
+      if (!messages.length) return;
+      const now = this.deps.now();
+      const hooks =
+        observedHooks ??
+        (await this.deps.adapters.claude.hookSummary(
+          recipe.sessionId as ProviderSessionId,
+        ));
+      let status: LeadState["status"] | null = null;
+      for (const message of messages) {
+        const sentAt = message.sentAt as IsoTime;
+        let receipt = hooks.promptSubmits.find(
+          (prompt) =>
+            prompt.textHash === message.textHash && prompt.at >= sentAt,
+        );
+        receipt ??=
+          (await this.deps.adapters.claude.promptReceipt({
+            sessionId: recipe.sessionId as ProviderSessionId,
+            cwd: recipe.cwd as WorktreePath,
+            textHash: message.textHash,
+            after: sentAt,
+            before: now,
+          })) ?? undefined;
+        if (receipt) {
+          this.deps.store.leadMessages.update(
+            this.deps.repo.id,
+            message.id,
+            "delivered",
+            null,
+            receipt.at,
+          );
+          continue;
+        }
+        if (
+          message.state === "sent" &&
+          Date.parse(now) - Date.parse(sentAt) >=
+            this.deps.config.deliveryTimeoutMs
+        ) {
+          status ??= (await this.state()).status;
+          if (status === "idle") {
+            const seconds = Math.ceil(
+              this.deps.config.deliveryTimeoutMs / 1_000,
+            );
+            this.deps.store.leadMessages.fail(
+              this.deps.repo.id,
+              message.id,
+              `Claude did not receive it within ${seconds}s; check Main's terminal`,
+            );
+          }
+        }
+      }
     });
   }
 

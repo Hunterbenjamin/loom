@@ -140,6 +140,12 @@ describe("task transactions", () => {
       state: "sent",
       sentAt: now,
     });
+    store.leadMessages.fail("repo-a", "client-1", "not received");
+    expect(store.leadMessages.list("repo-a")[0]).toMatchObject({
+      state: "failed",
+      reason: "not received",
+      sentAt: now,
+    });
     expect(
       store.leadMessages.create({ ...first, repoId: "repo-b" }).repoId,
     ).toBe("repo-b");
