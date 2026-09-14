@@ -130,6 +130,7 @@ test("renders section headers and rows through the shared list primitives", () =
   expect(h.host.querySelector(".list-group")?.textContent).toContain(
     "Decisions",
   );
+  expect(h.host.querySelector(".list-row")?.textContent).toContain("plan v7");
 });
 for (const reason of [
   "question",

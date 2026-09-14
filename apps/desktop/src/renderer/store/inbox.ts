@@ -31,6 +31,7 @@ export interface InboxRow {
   since: IsoTime | null;
   runs: Run[];
   reviewedHead: TaskInbox["reviewedHead"];
+  planVersion: TaskInbox["planVersion"];
   forHuman: TaskInbox["forHuman"];
   section: InboxSection;
 }
@@ -106,6 +107,7 @@ export function inboxRows(state: State): InboxRow[] {
         since: task.attention.reasonSince[reason] ?? task.attention.since,
         runs: info?.reasonRuns[reason] ?? [],
         reviewedHead: info?.reviewedHead ?? null,
+        planVersion: info?.planVersion ?? null,
         forHuman: info?.forHuman ?? null,
         section: sectionFor(reason, info?.forHuman ?? null),
       }));

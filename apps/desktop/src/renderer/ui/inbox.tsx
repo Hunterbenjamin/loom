@@ -142,7 +142,9 @@ function InboxRow({
     row.reason === "needs_approval" && row.reviewedHead
       ? row.reviewedHead.slice(0, 7)
       : row.reason === "plan_needs_approval"
-        ? "plan"
+        ? row.planVersion == null
+          ? null
+          : `plan v${row.planVersion}`
         : null;
   return (
     <ListRow
