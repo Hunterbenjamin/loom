@@ -302,8 +302,7 @@ function SecondaryMenu({ task }: { task: Task }) {
               title={action.disabledReason ?? undefined}
               onClick={() => {
                 if (action.id === "cancel") setCanceling(true);
-                else if (action.intent === "terminal")
-                  store.setTab("terminal");
+                else if (action.intent === "terminal") store.setTab("terminal");
                 else if (action.intent === "pull-request" && task.prNumber)
                   store.openPullRequest({
                     repoId: task.repoId,

@@ -207,9 +207,9 @@ test("cancel requires a reason before sending it", async () => {
       .find((button) => button.textContent === "Cancel issue")
       ?.click(),
   );
-  const confirm = [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(
-    (button) => button.textContent === "Confirm cancellation",
-  );
+  const confirm = [
+    ...h.host.querySelectorAll<HTMLButtonElement>("button"),
+  ].find((button) => button.textContent === "Confirm cancellation");
   expect(confirm?.disabled).toBe(true);
   const reason = h.host.querySelector<HTMLTextAreaElement>(
     '[aria-label="Cancellation reason"]',
