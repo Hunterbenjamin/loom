@@ -3,14 +3,22 @@
 # on that instance's private tmux server, so they outlive any terminal and can be restarted
 # independently. Nothing here touches the default tmux socket or another instance.
 #
-# Usage: scripts/dev.sh up|down|restart|status|logs [coordinator|app]
+# Usage: scripts/dev.sh up|sync|down|restart|status|logs|install-launcher [coordinator|app]
 #   scripts/dev.sh up                 start both (a running one is left alone)
+#   scripts/dev.sh sync               the one safe button: start what is down, restart what is
+#                                     stale, leave the rest alone (coordinator first)
 #   scripts/dev.sh restart            stop and start both, coordinator first
 #   scripts/dev.sh restart app        just the desktop app (after a main-process change)
 #   scripts/dev.sh restart coordinator
 #   scripts/dev.sh down               stop both
-#   scripts/dev.sh status             what is running, on which ports, with which app-servers
+#   scripts/dev.sh status             what is running, whether it is stale, ports, app-servers
 #   scripts/dev.sh logs [coordinator|app]   tail the log
+#   scripts/dev.sh install-launcher   build "Loom Dev.app" in ~/Applications for the Dock
+#
+# Staleness: each start records a fingerprint of the files that process was built from (see
+# coordinator_paths / app_paths). `status` compares it with the working tree, and `sync` restarts
+# only what differs. The renderer hot-reloads, so it is not part of the app's fingerprint.
+#
 # Environment comes from $LOOM_DATA_ROOT/$LOOM_INSTANCE/env (default ~/.loom/dev/env), which must
 # export LOOM_INSTANCE, LOOM_DATA_ROOT and LOOM_TOKEN at least.
 set -euo pipefail
@@ -22,12 +30,51 @@ socket="loom-$instance"
 repo="$(cd "$(dirname "$0")/.." && pwd -P)"
 serve_log="$root/$instance/serve.log"
 app_log="$root/$instance/desktop-dev.log"
+started_dir="$root/$instance/started"
 tmux_bin="${LOOM_TMUX_BIN:-$(command -v tmux || true)}"
 
 die() { printf 'dev.sh: %s\n' "$*" >&2; exit 1; }
 [ -x "$tmux_bin" ] || die "tmux is required"
 [ -f "$env_file" ] || die "no environment file at $env_file (export LOOM_INSTANCE, LOOM_DATA_ROOT, LOOM_TOKEN there)"
 tm() { "$tmux_bin" -L "$socket" "$@"; }
+
+# What each process is built from. Anything the coordinator or Electron's main process loads;
+# the renderer (apps/desktop/src/renderer) hot-reloads and is deliberately absent.
+coordinator_paths=(apps/coordinator packages package.json pnpm-lock.yaml pnpm-workspace.yaml)
+app_paths=(apps/desktop/src/main apps/desktop/src/preload apps/desktop/src/shared
+  apps/desktop/electron.vite.config.ts apps/desktop/package.json packages pnpm-lock.yaml)
+
+fingerprint() {  # content hash of the given paths as they are in the working tree, plus the env
+  {
+    git -C "$repo" ls-files -s -- "$@"
+    git -C "$repo" diff -- "$@"
+    git -C "$repo" ls-files -o --exclude-standard -- "$@" | while IFS= read -r f; do
+      stat -f '%N %z %m' "$repo/$f" 2>/dev/null || true
+    done
+    cat "$env_file"
+  } | shasum -a 256 | cut -c1-16
+}
+current_fingerprint() {
+  case "$1" in
+    coordinator) fingerprint "${coordinator_paths[@]}" ;;
+    app) fingerprint "${app_paths[@]}" ;;
+  esac
+}
+record_start() {  # <name>: remember what this process was started from
+  mkdir -p "$started_dir"
+  printf '%s %s\n' "$(current_fingerprint "$1")" "$(git -C "$repo" rev-parse --short HEAD)" > "$started_dir/$1"
+}
+started_at() { [ -f "$started_dir/$1" ] && awk '{print $2}' "$started_dir/$1" || true; }
+stale() {  # <name>: true when the running process was started from different sources
+  [ -f "$started_dir/$1" ] || return 0
+  [ "$(awk '{print $1}' "$started_dir/$1")" != "$(current_fingerprint "$1")" ]
+}
+freshness() {  # <name>: a phrase for status
+  local at; at="$(started_at "$1")"
+  if stale "$1"; then
+    if [ -n "$at" ]; then echo "STALE (started from $at, sources changed since)"; else echo "STALE (no start record)"; fi
+  else echo "up to date (started from $at)"; fi
+}
 
 port_pids() {  # every listener the coordinator holds: protocol, MCP host, hook receiver
   local pids=""
@@ -42,6 +89,7 @@ app_running() { pgrep -f "electron-vite.js dev" >/dev/null 2>&1; }
 start_coordinator() {
   if coordinator_running; then echo "coordinator: already running (pid $(port_pids | head -1))"; return; fi
   tm kill-session -t "=loom-coordinator" 2>/dev/null || true
+  record_start coordinator
   tm new-session -d -s loom-coordinator -n serve -c "$repo" \
     "set -a; . '$env_file'; set +a; exec pnpm loom serve 2>&1 | tee -a '$serve_log'"
   local i=0
@@ -64,6 +112,7 @@ stop_coordinator() {
 start_app() {
   if app_running; then echo "app: already running"; return; fi
   tm kill-session -t "=loom-desktop" 2>/dev/null || true
+  record_start app
   tm new-session -d -s loom-desktop -n dev -c "$repo" \
     "set -a; . '$env_file'; set +a; export LOOM_DEBUG_PORT='${LOOM_DEBUG_PORT:-}'; exec pnpm --filter @loom/desktop dev 2>&1 | tee -a '$app_log'"
   local i=0
@@ -79,18 +128,56 @@ stop_app() {
   echo "app: stopped"
 }
 
+sync() {  # start what is down, restart what is stale, leave the rest alone
+  if ! coordinator_running; then start_coordinator
+  elif stale coordinator; then echo "coordinator: stale, restarting"; stop_coordinator; start_coordinator
+  else echo "coordinator: up to date (started from $(started_at coordinator))"; fi
+  if ! app_running; then start_app
+  elif stale app; then echo "app: stale, restarting"; stop_app; start_app
+  else echo "app: up to date (started from $(started_at app))"; fi
+}
+
 status() {
-  if coordinator_running; then echo "coordinator: running (pid $(port_pids | head -1), ws://127.0.0.1:${LOOM_BIND_PORT:-47800})"; else echo "coordinator: not running"; fi
-  if app_running; then echo "app: running"; else echo "app: not running"; fi
+  if coordinator_running; then echo "coordinator: running (pid $(port_pids | head -1), ws://127.0.0.1:${LOOM_BIND_PORT:-47800}), $(freshness coordinator)"; else echo "coordinator: not running"; fi
+  if app_running; then echo "app: running, $(freshness app)"; else echo "app: not running"; fi
   # Each server is a node shim plus the codex binary; count binaries only, so one server reads x1.
-  local servers; servers="$(ps -axo args= | grep "[a]pp-server --listen unix://$root/$instance/codex/" | grep -v '^node ' | grep -o 'codex/t-[a-z0-9]*' | sort | uniq -c | awk '{print "  " $2 " x" $1}')"
+  local servers; servers="$(ps -axo args= | grep "[a]pp-server --listen unix://$root/$instance/codex/" | grep -v '^node ' | grep -o 'codex/t-[a-z0-9]*' | sort | uniq -c | awk '{print "  " $2 " x" $1}' || true)"
   echo "task app-servers:${servers:+$'\n'$servers}"
   echo "windows: tmux -L $socket attach -t loom-coordinator | loom-desktop"
+}
+
+install_launcher() {  # a Dock app that runs this script through a login shell and shows the output
+  command -v osacompile >/dev/null || die "osacompile is required (macOS only)"
+  local app="$HOME/Applications/Loom Dev.app" src; src="$(mktemp -t loom-dev-launcher).applescript"
+  mkdir -p "$HOME/Applications"
+  cat > "$src" <<APPLESCRIPT
+set repo to "$repo"
+set labels to {"Sync: start what is down, restart what changed", "Status", "Start", "Restart everything", "Restart coordinator", "Restart app", "Stop"}
+set commands to {"sync", "status", "up", "restart", "restart coordinator", "restart app", "down"}
+set choice to choose from list labels with title "Loom Dev" with prompt "Dev instance at " & repo default items {item 1 of labels}
+if choice is false then return
+set command to ""
+repeat with i from 1 to count of labels
+  if item i of labels is item 1 of choice then set command to item i of commands
+end repeat
+set shell to "cd " & quoted form of repo & " && scripts/dev.sh " & command & " 2>&1"
+try
+  set output to do shell script "/bin/zsh -lc " & quoted form of shell
+on error message
+  set output to "Failed:" & return & message
+end try
+display dialog output with title ("Loom Dev: " & command) buttons {"OK"} default button "OK"
+APPLESCRIPT
+  rm -rf "$app"
+  osacompile -o "$app" "$src"
+  rm -f "$src"
+  echo "installed: $app (drag it to the Dock; every button runs scripts/dev.sh in $repo)"
 }
 
 cmd="${1:-status}"; what="${2:-all}"
 case "$cmd" in
   up) [ "$what" != app ] && start_coordinator; [ "$what" != coordinator ] && start_app ;;
+  sync) sync ;;
   down) [ "$what" != coordinator ] && stop_app; [ "$what" != app ] && stop_coordinator ;;
   restart)
     case "$what" in
@@ -101,5 +188,6 @@ case "$cmd" in
     esac ;;
   status) status ;;
   logs) case "$what" in app) tail -n 50 -f "$app_log" ;; *) tail -n 50 -f "$serve_log" ;; esac ;;
-  *) die "usage: scripts/dev.sh up|down|restart|status|logs [coordinator|app]" ;;
+  install-launcher) install_launcher ;;
+  *) die "usage: scripts/dev.sh up|sync|down|restart|status|logs|install-launcher [coordinator|app]" ;;
 esac

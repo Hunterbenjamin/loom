@@ -29,12 +29,20 @@ Run the dev instance (coordinator and desktop app) with the launcher; both live 
 instance's private tmux server, so they survive your terminal and restart independently:
 
 ```sh
-pnpm dev                    # start both
-pnpm dev:restart            # restart both, coordinator first (after merges that touch either)
-scripts/dev.sh restart app  # just the app, after a main-process or preload change
-scripts/dev.sh status       # what is running, and one app-server per task
+pnpm dev:sync               # the one safe command: start what is down, restart what is stale
+pnpm dev                    # start both (running ones are left alone)
+pnpm dev:restart            # restart both, coordinator first
+scripts/dev.sh restart app  # just the app
+scripts/dev.sh status       # what is running, whether it is stale, and one app-server per task
 scripts/dev.sh logs         # follow the coordinator log
+scripts/dev.sh install-launcher   # "Loom Dev.app" in ~/Applications with the same buttons
 ```
+
+Each start records a fingerprint of the sources that process was built from: the coordinator and
+`packages/*` for the coordinator; Electron's main, preload and shared code plus `packages/*` for
+the app. The renderer hot-reloads and is not part of it. `status` reports STALE when the working
+tree differs from the record, and `sync` restarts exactly those. After a merge or an edit, run
+`pnpm dev:sync` and nothing else.
 
 It reads `~/.loom/dev/env`, which must export `LOOM_INSTANCE`, `LOOM_DATA_ROOT` and `LOOM_TOKEN`.
 
