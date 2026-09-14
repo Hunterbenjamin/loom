@@ -439,6 +439,33 @@ test("Main can queue until idle and interrupt only a working turn", async () => 
     }),
   ).toMatchObject({ ok: true, result: { state: "queued" } });
   expect(h.paneHost.writes).toHaveLength(writes);
+  // A second queued message can steer: it goes in now, during the turn.
+  await cli.command({
+    kind: "send_lead_message",
+    repoId: h.repo.id,
+    text: "Steer this in",
+    clientMessageId: "00000000-0000-4000-8000-000000000016",
+    when: "after_turn",
+    attachmentIds: [],
+  });
+  expect(
+    await cli.command({
+      kind: "steer_lead_message",
+      repoId: h.repo.id,
+      clientMessageId: "00000000-0000-4000-8000-000000000016",
+    }),
+  ).toMatchObject({
+    ok: true,
+    result: { kind: "lead_message", state: "sent" },
+  });
+  expect(h.paneHost.writes.at(-1)?.text).toBe("Steer this in");
+  expect(
+    await cli.command({
+      kind: "steer_lead_message",
+      repoId: h.repo.id,
+      clientMessageId: "00000000-0000-4000-8000-000000000016",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "guard_failed" } });
 
   expect(
     await cli.command({ kind: "interrupt_lead", repoId: h.repo.id }),

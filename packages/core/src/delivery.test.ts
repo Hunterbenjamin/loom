@@ -92,6 +92,27 @@ describe("delivery requires provider evidence", () => {
       attempts: 0,
       deliveryReason: "waiting for the current turn to finish",
     });
+    // Steering a queued message delivers it into the running turn instead of waiting.
+    const messageId = held.next.messages[0]?.id;
+    if (!messageId) throw new Error("Missing queued message");
+    const steered = fixed(held.next, {
+      ...f.observations,
+      inputs: [command({ type: "steer_message", messageId }, "steer-input")],
+    });
+    expect(steered.inputs.at(-1)).toMatchObject({ accepted: true });
+    expect(steered.actions).toContainEqual(
+      expect.objectContaining({
+        kind: "send_message",
+        via: "codex_turn_steer",
+      }),
+    );
+    // Only a message still queued for after the turn can steer.
+    expect(
+      fixed(steered.next, {
+        ...f.observations,
+        inputs: [command({ type: "steer_message", messageId }, "steer-again")],
+      }).inputs.at(-1),
+    ).toMatchObject({ accepted: false });
     observation.provider.value.status = "idle";
     const turn = observation.provider.value.turns[0];
     if (!turn) throw new Error("Missing active turn");

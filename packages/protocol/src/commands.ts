@@ -164,6 +164,12 @@ export const command = z.union([
   z.strictObject({ kind: z.literal("open_lead_session"), repoId }),
   z.strictObject({ kind: z.literal("stop_lead_session"), repoId }),
   z.strictObject({ kind: z.literal("interrupt_lead"), repoId }),
+  /** Deliver a message queued for after Main's turn now, into the running turn. */
+  z.strictObject({
+    kind: z.literal("steer_lead_message"),
+    repoId,
+    clientMessageId: z.string().min(1),
+  }),
   z.strictObject({
     kind: z.literal("stage_attachment"),
     name: z.string().min(1).max(255),

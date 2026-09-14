@@ -203,6 +203,41 @@ export class LeadSession {
     });
   }
 
+  /** Sends one queued message now, while Main's turn runs; Claude takes it as input mid-turn. */
+  steerMessage(id: string): Promise<{ id: string; state: "sent" | "refused" }> {
+    return this.exclusive(async () => {
+      const message = this.deps.store.leadMessages.get(this.deps.repo.id, id);
+      if (!message || message.state !== "queued")
+        throw new PreconditionFailed("Only a queued message can steer");
+      const at = this.deps.now();
+      if (!this.recipe?.pane || this.recipe.stopped) {
+        this.deps.store.leadMessages.update(
+          this.deps.repo.id,
+          id,
+          "refused",
+          "Main is not running",
+          at,
+        );
+        return { id, state: "refused" as const };
+      }
+      const pane = await this.deps.adapters.paneHost.getPane(this.recipe.pane);
+      if (!pane || pane.dead)
+        throw new PreconditionFailed("Main terminal is not live");
+      await this.deps.adapters.paneHost.pasteText(
+        this.recipe.pane,
+        message.text,
+      );
+      this.deps.store.leadMessages.update(
+        this.deps.repo.id,
+        id,
+        "sent",
+        null,
+        at,
+      );
+      return { id, state: "sent" as const };
+    });
+  }
+
   flushQueued(): Promise<void> {
     return this.exclusive(async () => {
       const message = this.deps.store.leadMessages

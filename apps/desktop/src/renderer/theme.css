@@ -2148,6 +2148,18 @@ ul.plain {
   margin-top: 3px;
   color: var(--muted);
 }
+.chat-send.waiting {
+  opacity: 0.9;
+  border: 1px dashed var(--line-strong, rgb(127 127 127 / 40%));
+}
+.chat-steer {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--line-strong, rgb(127 127 127 / 40%));
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--text);
+}
 .chat-send.delivered {
   opacity: 0.55;
 }
@@ -2168,7 +2180,8 @@ ul.plain {
   min-width: 0;
 }
 .chat-composer textarea {
-  flex: 1;
+  /* A column flexbox would zero a flex-basis height; the resize code sets the height. */
+  flex: none;
   min-height: 24px;
   max-height: 84px;
   box-sizing: border-box;
