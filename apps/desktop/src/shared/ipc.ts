@@ -80,7 +80,16 @@ export interface NativeSettings {
   keybindings: import("./keybindings.js").KeybindingsConfig;
 }
 
+export const devControlCommand = z.enum([
+  "sync",
+  "restart-coordinator",
+  "restart-app",
+]);
+export type DevControlCommand = z.output<typeof devControlCommand>;
+
 export interface HostBridge {
+  devControl(command: DevControlCommand): Promise<void>;
+  devControlAvailable(): Promise<boolean>;
   chooseRepository(): Promise<{ root: string; github: string } | null>;
   keybindings(): Promise<import("./keybindings.js").KeybindingsState>;
   onKeybindingsChanged(

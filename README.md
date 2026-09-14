@@ -38,6 +38,12 @@ scripts/dev.sh logs         # follow the coordinator log
 scripts/dev.sh install-launcher   # "Loom Dev.app" in ~/Applications with the same buttons
 ```
 
+The same controls are available in the Workbench when running from a development checkout:
+right-click Coordinator or Desktop for its restart action and **Sync dev instance**, or use
+**Dev: sync instance**, **Dev: restart coordinator**, and **Dev: restart app** in the command palette.
+They run the checkout's `scripts/dev.sh` in a detached session on the instance's private tmux server;
+output stays in its tmux window and the pinned rows show process status.
+
 Each start records a fingerprint of the sources that process was built from: the coordinator and
 `packages/*` for the coordinator; Electron's main, preload and shared code plus `packages/*` for
 the app. The renderer hot-reloads and is not part of it. `status` reports STALE when the working
