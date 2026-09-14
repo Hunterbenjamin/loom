@@ -186,6 +186,14 @@ test.each(["plan", "merge", "question", "failed", "provider"] as const)(
   },
 );
 
+test("provider requests expose their primary action in the toolbar", () => {
+  const h = setup("provider");
+  h.render();
+  expect(
+    h.host.querySelector(".issue-toolbar-action button")?.textContent,
+  ).toBe("Accept");
+});
+
 test("approve sends exactly the displayed evidence once and renders a refusal", async () => {
   const h = setup("merge");
   const sender = vi.fn(async () => ({

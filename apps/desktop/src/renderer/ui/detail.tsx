@@ -134,7 +134,10 @@ export function Detail({ task }: { task: Task }) {
 
 function ToolbarAction({ task }: { task: Task }) {
   const action = useStore(
-    (state) => issueDecisions(state, task).decisions[0]?.actions[0],
+    (state) =>
+      issueDecisions(state, task).decisions.find(
+        (decision) => decision.actions.length > 0,
+      )?.actions[0],
   );
   const store = useStoreApi();
   const { send, outcome, submitting } = useHumanCommand(task.id);
