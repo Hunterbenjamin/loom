@@ -56,11 +56,8 @@ export function chatTimeline(
   );
   const timestamped = items.some((item) => item.at !== null);
   sends.forEach((send, sendIndex) => {
-    if (
-      matched.has(sendIndex) ||
-      (send.when === "after_turn" && send.state === "queued")
-    )
-      return;
+    // Queued messages stay in the conversation, in order, where they can be steered.
+    if (matched.has(sendIndex)) return;
     let slot = items.length;
     if (timestamped) {
       slot = 0;
@@ -112,7 +109,6 @@ export function ChatWindow() {
   const conversation = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  const end = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const key = target ? conversationKey(target) : "";
   const header = state.conversations.find(
@@ -135,21 +131,21 @@ export function ChatWindow() {
         ? `${run.role[0]?.toUpperCase()}${run.role.slice(1)}`
         : "Agent";
   const prefixError = /^[!/]/.test(text.trimStart());
-  const contentVersion = `${items.length}:${header?.sends.length ?? 0}`;
   useLayoutEffect(() => {
     if (composer.current) resizeChatComposer(composer.current);
+    // Pin to the bottom after every render, not only when the item count
+    // changes: the transcript is capped at its last 300 items and streamed
+    // text updates items in place, so the count often stays the same.
+    const element = conversation.current;
+    if (element && following.current) element.scrollTop = element.scrollHeight;
   });
-  useEffect(() => {
-    void contentVersion;
-    if (view !== "minimized" && following.current)
-      end.current?.scrollIntoView({ block: "end" });
-  }, [contentVersion, view]);
   useEffect(() => {
     void key;
     if (view === "minimized") return;
     following.current = true;
     setShowJump(false);
-    end.current?.scrollIntoView({ block: "end" });
+    const element = conversation.current;
+    if (element) element.scrollTop = element.scrollHeight;
     requestAnimationFrame(() => composer.current?.focus());
   }, [key, view]);
   useEffect(() => {
@@ -195,7 +191,9 @@ export function ChatWindow() {
       );
     }
   };
-  const send = async (when: "now" | "after_turn" = "now") => {
+  // While a turn runs, new messages queue for after it; each queued message can steer instead.
+  const send = async () => {
+    const when = header?.status === "working" ? "after_turn" : "now";
     const value =
       text.trim() ||
       (attachments.length ? "Please review the attached files." : "");
@@ -231,8 +229,24 @@ export function ChatWindow() {
     if (outcome?.ok) {
       setText("");
       setAttachments([]);
+      following.current = true;
+      setShowJump(false);
     }
     setSending(false);
+  };
+  const steer = (id: string) => {
+    if (target.kind === "lead")
+      void store.command({
+        kind: "steer_lead_message",
+        repoId: target.repoId,
+        clientMessageId: id,
+      });
+    else if (task)
+      void store.command({
+        kind: "human",
+        taskId: task.id,
+        command: { type: "steer_message", messageId: id as never },
+      });
   };
   const stop = () => {
     if (target.kind === "lead")
@@ -297,13 +311,11 @@ export function ChatWindow() {
       });
   };
   const timeline = chatTimeline(header?.sends ?? [], items);
-  const queued = (header?.sends ?? []).filter(
-    (send) => send.when === "after_turn" && send.state === "queued",
-  );
   const jumpToLatest = () => {
     following.current = true;
     setShowJump(false);
-    end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    const element = conversation.current;
+    if (element) element.scrollTop = element.scrollHeight;
   };
   return (
     <section
@@ -412,20 +424,36 @@ export function ChatWindow() {
           <div className="chat-empty">No messages yet.</div>
         ) : null}
         {timeline.map((entry) => {
-          if (entry.kind === "send")
+          if (entry.kind === "send") {
+            const waiting =
+              entry.send.when === "after_turn" && entry.send.state === "queued";
             return (
               <div
                 key={`send:${entry.send.id}`}
-                className={`chat-send ${entry.send.state}`}
+                className={`chat-send ${entry.send.state}${waiting ? " waiting" : ""}`}
                 title={entry.send.reason ?? undefined}
               >
                 {entry.send.text}
                 <small>
-                  {entry.send.state}
-                  {entry.send.reason ? ` · ${entry.send.reason}` : ""}
+                  {waiting
+                    ? "Queued · sends when this turn ends"
+                    : entry.send.state}
+                  {!waiting && entry.send.reason
+                    ? ` · ${entry.send.reason}`
+                    : ""}
+                  {waiting ? (
+                    <button
+                      type="button"
+                      className="chat-steer"
+                      onClick={() => steer(entry.send.id)}
+                    >
+                      Steer now
+                    </button>
+                  ) : null}
                 </small>
               </div>
             );
+          }
           const item = entry.item;
           return item.kind === "text" ? (
             <div key={item.id} className={`chat-message ${item.role}`}>
@@ -496,15 +524,6 @@ export function ChatWindow() {
             )}
           </div>
         )}
-        {queued.length ? (
-          <div className="chat-queued">
-            <strong>Queued</strong>
-            {queued.map((send) => (
-              <div key={send.id}>{send.text}</div>
-            ))}
-          </div>
-        ) : null}
-        <div ref={end} />
         {showJump && (
           <button
             type="button"
@@ -568,7 +587,7 @@ export function ChatWindow() {
               !e.nativeEvent.isComposing
             ) {
               e.preventDefault();
-              void send(header?.status === "working" ? "after_turn" : "now");
+              void send();
             }
           }}
         />
@@ -592,6 +611,8 @@ export function ChatWindow() {
             >
               📎
             </button>
+          </div>
+          <div className="chat-send-actions">
             {window.loomHost.platform === "darwin" ? (
               <button
                 type="button"
@@ -605,53 +626,34 @@ export function ChatWindow() {
                 🎙
               </button>
             ) : null}
-          </div>
-          <div className="chat-send-actions">
             {header?.status === "working" ? (
-              <>
-                <button
-                  type="button"
-                  className="chat-stop-button"
-                  aria-label="Stop turn"
-                  onClick={stop}
-                >
-                  ■
-                </button>
-                {text.trim() || attachments.length ? (
-                  <>
-                    <button
-                      type="button"
-                      disabled={prefixError || sending}
-                      onClick={() => void send("now")}
-                    >
-                      Steer
-                    </button>
-                    <button
-                      type="button"
-                      disabled={prefixError || sending}
-                      onClick={() => void send("after_turn")}
-                    >
-                      Send after turn
-                    </button>
-                  </>
-                ) : null}
-              </>
-            ) : (
               <button
                 type="button"
-                className="chat-send-button"
-                aria-label="Send message"
-                disabled={
-                  (!text.trim() && !attachments.length) ||
-                  prefixError ||
-                  sending ||
-                  header?.status === "stopped"
-                }
-                onClick={() => void send("now")}
+                className="chat-stop-button"
+                aria-label="Stop turn"
+                onClick={stop}
               >
-                ↑
+                ■
               </button>
-            )}
+            ) : null}
+            <button
+              type="button"
+              className="chat-send-button"
+              aria-label={
+                header?.status === "working"
+                  ? "Queue message for after this turn"
+                  : "Send message"
+              }
+              disabled={
+                (!text.trim() && !attachments.length) ||
+                prefixError ||
+                sending ||
+                header?.status === "stopped"
+              }
+              onClick={() => void send()}
+            >
+              ↑
+            </button>
           </div>
         </div>
       </fieldset>

@@ -1628,6 +1628,14 @@ export class Coordinator {
           await this.publishLead();
           return { ok: true, result: { kind: "lead_stopped" } };
         }
+        case "steer_lead_message": {
+          const lead = this.leadFor(command.repoId as string);
+          const result = await lead.steerMessage(
+            command.clientMessageId as string,
+          );
+          this.conversationViews.hint(lead.sessionId);
+          return { ok: true, result: { kind: "lead_message", ...result } };
+        }
         case "interrupt_lead": {
           await this.leadFor(command.repoId as string).interrupt();
           return { ok: true, result: { kind: "lead_interrupted" } };

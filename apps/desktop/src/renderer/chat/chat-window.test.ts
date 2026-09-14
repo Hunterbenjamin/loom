@@ -179,7 +179,7 @@ test("scrolling away from the bottom offers an explicit jump", async () => {
   Object.defineProperties(scroller, {
     scrollHeight: { configurable: true, value: 800 },
     clientHeight: { configurable: true, value: 300 },
-    scrollTop: { configurable: true, value: 100 },
+    scrollTop: { configurable: true, writable: true, value: 100 },
   });
   await act(async () => scroller?.dispatchEvent(new Event("scroll")));
   expect(host.querySelector(".chat-jump-latest")?.textContent).toBe(
@@ -189,6 +189,38 @@ test("scrolling away from the bottom offers an explicit jump", async () => {
     host.querySelector<HTMLButtonElement>(".chat-jump-latest")?.click(),
   );
   expect(host.querySelector(".chat-jump-latest")).toBeNull();
+  expect(scroller?.scrollTop).toBe(800);
+});
+
+test("the chat follows output that grows an existing item, and stops following once scrolled away", async () => {
+  const conversation = header();
+  const { host, store } = mount(conversation, [item()]);
+  const scroller = host.querySelector<HTMLDivElement>(".chat-conversation");
+  let scrollHeight = 800;
+  Object.defineProperties(scroller, {
+    scrollHeight: { configurable: true, get: () => scrollHeight },
+    clientHeight: { configurable: true, value: 300 },
+    scrollTop: { configurable: true, writable: true, value: 500 },
+  });
+  const stream = (text: string) =>
+    act(async () =>
+      store.applyProtocol(
+        stateFromSnapshot(meta, {
+          ...snapshot(),
+          conversations: [conversation],
+          conversationItems: [item({ role: "assistant", text })],
+        }),
+      ),
+    );
+  scrollHeight = 1200;
+  await stream("streaming more text");
+  expect(scroller?.scrollTop).toBe(1200);
+
+  if (scroller) scroller.scrollTop = 200;
+  await act(async () => scroller?.dispatchEvent(new Event("scroll")));
+  scrollHeight = 1600;
+  await stream("streaming even more text");
+  expect(scroller?.scrollTop).toBe(200);
 });
 
 test("opening the chat focuses the composer", async () => {
@@ -202,23 +234,72 @@ test("opening the chat focuses the composer", async () => {
   );
 });
 
-test("a working turn offers stop, steer, and send-after-turn", async () => {
-  const { host, send } = mount(header({ status: "working" }));
+test("during a turn new messages queue by default and a queued message can steer", async () => {
+  const { host, send } = mount(
+    header({
+      status: "working",
+      sends: [
+        {
+          id: "queued-1",
+          text: "use the other branch",
+          state: "queued",
+          at: readAt,
+          reason: null,
+          when: "after_turn",
+        },
+      ],
+    }),
+  );
+  // The composer has no steer or send-after-turn choice: Enter queues for after this turn.
+  const buttons = () => [...host.querySelectorAll<HTMLButtonElement>("button")];
+  expect(buttons().some((b) => b.textContent === "Send after turn")).toBe(
+    false,
+  );
+  expect(
+    host.querySelector(".chat-composer")?.textContent?.includes("Steer"),
+  ).toBe(false);
   const input = host.querySelector<HTMLTextAreaElement>("textarea");
   await act(async () => enter(input, "hold this"));
-  expect(host.querySelector('[aria-label="Stop turn"]')).not.toBeNull();
   await act(async () =>
-    [...host.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent === "Send after turn")
-      ?.click(),
+    input?.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }),
+    ),
   );
   expect(send).toHaveBeenCalledWith(
     expect.objectContaining({ kind: "send_lead_message", when: "after_turn" }),
   );
+  // The queued message sits in the conversation with its own Steer button.
+  const queued = host.querySelector(".chat-send.waiting");
+  expect(queued?.textContent).toContain("use the other branch");
+  await act(async () =>
+    [...(queued?.querySelectorAll<HTMLButtonElement>("button") ?? [])]
+      .find((b) => b.textContent === "Steer now")
+      ?.click(),
+  );
+  expect(send).toHaveBeenLastCalledWith({
+    kind: "steer_lead_message",
+    repoId,
+    clientMessageId: "queued-1",
+  });
   await act(async () =>
     host.querySelector<HTMLButtonElement>('[aria-label="Stop turn"]')?.click(),
   );
   expect(send).toHaveBeenLastCalledWith({ kind: "interrupt_lead", repoId });
+});
+
+test("the voice button sits with the send button on the right", () => {
+  window.loomHost = {
+    ...window.loomHost,
+    platform: "darwin",
+  } as typeof window.loomHost;
+  const { host } = mount(header());
+  const right = host.querySelector(".chat-send-actions");
+  expect(right?.querySelector('[aria-label="Dictate message"]')).not.toBeNull();
+  expect(right?.querySelector('[aria-label="Send message"]')).not.toBeNull();
 });
 
 test("the composer grows, caps at four lines, and shrinks after send", async () => {

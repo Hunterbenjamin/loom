@@ -247,6 +247,24 @@ export function human(
       });
       return null;
     }
+    case "steer_message": {
+      const message = state.messages.find((m) => m.id === cmd.messageId);
+      const run = message
+        ? state.runs.find(
+            (r) => r.id === message.runId && r.origin === "loom" && !r.endedAt,
+          )
+        : undefined;
+      if (!message || !run)
+        return guard("Choose a message for a live Loom run");
+      if (message.status !== "pending" || message.when !== "after_turn")
+        return guard(
+          "Only a message still queued for after the turn can steer",
+        );
+      // Delivery sends it on the next pass: a Codex steer, or Claude's input during the turn.
+      message.when = "now";
+      message.deliveryReason = null;
+      return null;
+    }
     case "interrupt_run": {
       const run = state.runs.find(
         (r) => r.id === cmd.runId && r.origin === "loom" && !r.endedAt,

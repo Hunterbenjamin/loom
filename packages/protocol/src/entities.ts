@@ -660,6 +660,7 @@ export const humanCommand = z.union([
       })
       .optional(),
   }),
+  z.strictObject({ type: z.literal("steer_message"), messageId }),
   z.strictObject({
     type: z.literal("interrupt_run"),
     runId,

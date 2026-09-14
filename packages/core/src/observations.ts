@@ -16,6 +16,7 @@ import type {
   FindingId,
   InputId,
   IsoTime,
+  MessageId,
   ProviderSessionId,
   QuestionId,
   RunId,
@@ -337,6 +338,8 @@ export type HumanCommand =
       runId: RunId;
       expectedRun: { sessionEpoch: number; attempts: number };
     }
+  /** Deliver a message queued for after the turn into the current turn instead. */
+  | { type: "steer_message"; messageId: MessageId }
   | { type: "retry" }
   | { type: "restart_run"; runId: RunId }
   | { type: "grant_review_round" }
