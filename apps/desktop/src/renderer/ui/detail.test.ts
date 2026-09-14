@@ -95,6 +95,23 @@ test("plan approval opened from the Issues list shows the current plan actions",
   expect(h.host.textContent).toContain("Enter feedback to reject the plan");
 });
 
+test("entering a note does not clear a coordinator availability reason", () => {
+  const h = setup("plan");
+  h.store.setConnection("disconnected");
+  h.render();
+  const textarea = h.host.querySelector<HTMLTextAreaElement>("textarea");
+  if (!textarea) throw new Error("missing feedback field");
+  act(() => {
+    textarea.value = "Please revise the plan";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const reject = [...h.host.querySelectorAll("button")].find(
+    (button) => button.textContent === "Reject plan",
+  );
+  expect(reject?.disabled).toBe(true);
+  expect(h.host.textContent).toContain("Connect to the coordinator");
+});
+
 test.each(["plan", "merge", "failed"] as const)(
   "%s actions do not depend on the opening path",
   (kind) => {

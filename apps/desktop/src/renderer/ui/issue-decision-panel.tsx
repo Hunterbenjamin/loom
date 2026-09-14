@@ -126,7 +126,11 @@ export function IssueDecisionPanel({
                     "answer-question",
                   ].includes(action.id);
                   const reason =
-                    noteAction && note.trim() ? null : action.disabledReason;
+                    noteAction &&
+                    note.trim() &&
+                    action.disabledReason === noteRequiredReason(action.id)
+                      ? null
+                      : action.disabledReason;
                   return (
                     <ActionButton
                       key={action.id}
@@ -179,6 +183,15 @@ export function IssueDecisionPanel({
       ) : null}
     </section>
   );
+}
+
+function noteRequiredReason(actionId: string) {
+  if (actionId === "reject-plan")
+    return "Enter feedback to reject the plan";
+  if (actionId === "request-changes")
+    return "Enter feedback to request changes";
+  if (actionId === "answer-question") return "Enter an answer";
+  return null;
 }
 
 function needsNote(decision: IssueDecision) {
