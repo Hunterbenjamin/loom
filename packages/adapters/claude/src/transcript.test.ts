@@ -1,4 +1,10 @@
-import { appendFile, copyFile, mkdtemp, truncate } from "node:fs/promises";
+import {
+  appendFile,
+  copyFile,
+  mkdtemp,
+  truncate,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -36,5 +42,22 @@ describe("Claude transcript conversation", () => {
     expect((await readConversation(request)).items.at(-1)?.text).toBe("Done");
     await truncate(path, 0);
     expect((await readConversation(request)).items).toEqual([]);
+  });
+  test("keeps UTF-8 intact when an incomplete line splits a character", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "loom-transcript-"));
+    const path = join(dir, "session.jsonl");
+    const bytes = Buffer.from(
+      '{"type":"assistant","uuid":"a1","message":{"role":"assistant","content":"你好"}}\n',
+    );
+    const split = bytes.indexOf(Buffer.from("你")) + 1;
+    await writeFile(path, bytes.subarray(0, split));
+    const request = {
+      sessionId: "session-utf8" as never,
+      cwd: dir as never,
+      transcriptPath: path,
+    };
+    expect((await readConversation(request)).items).toEqual([]);
+    await appendFile(path, bytes.subarray(split));
+    expect((await readConversation(request)).items[0]?.text).toBe("你好");
   });
 });

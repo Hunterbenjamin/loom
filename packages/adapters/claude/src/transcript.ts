@@ -1,6 +1,7 @@
 import { open, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import type {
   ClaudeAdapter,
   ConversationItem,
@@ -40,6 +41,7 @@ interface Cache {
   inode: number;
   offset: number;
   partial: string;
+  decoder: StringDecoder;
   items: ConversationItem[];
   tools: Map<string, ConversationItem>;
 }
@@ -152,6 +154,7 @@ export const readConversation: ClaudeAdapter["readConversation"] = async (
       inode: info.ino,
       offset: 0,
       partial: "",
+      decoder: new StringDecoder("utf8"),
       items: [],
       tools: new Map(),
     };
@@ -169,7 +172,7 @@ export const readConversation: ClaudeAdapter["readConversation"] = async (
       );
       cache.offset += bytesRead;
       const input =
-        cache.partial + bytes.subarray(0, bytesRead).toString("utf8");
+        cache.partial + cache.decoder.write(bytes.subarray(0, bytesRead));
       const lines = input.split("\n");
       cache.partial = lines.pop() ?? "";
       for (const value of lines) consume(cache, value);
