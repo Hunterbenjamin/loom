@@ -1,8 +1,10 @@
+import { displayName } from "@loom/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type KeyboardEvent, memo, useEffect, useMemo, useRef } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
 import {
   cursorRows,
+  issueKeyFor,
   type ListItem,
   selectedListItems,
 } from "../store/selectors.js";
@@ -155,6 +157,7 @@ function Row({
 }) {
   const store = useStoreApi();
   const { task } = item.row;
+  const repos = useStore((s) => s.snapshot.repos);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the keyboard path is j/k then enter, in ui/keys.ts
     // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard path is j/k then enter, in ui/keys.ts
@@ -168,12 +171,12 @@ function Row({
     >
       <div className="cell-title">
         <RunDot run={item.row.run} />
-        <span className="id">{task.id}</span>
+        <span className="id">{issueKeyFor(task, repos)}</span>
         <span
           className="text task-copy"
           title={`${task.title} — ${item.row.summary}`}
         >
-          {task.title}
+          {displayName(task)}
           {item.row.summary ? (
             <span className="task-summary"> — {item.row.summary}</span>
           ) : null}

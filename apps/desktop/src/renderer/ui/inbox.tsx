@@ -1,7 +1,9 @@
+import { displayName } from "@loom/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useEffect, useRef, useState } from "react";
 import { inboxRows, REASON_LABELS, reasonTab } from "../store/inbox.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { issueKeyFor } from "../store/selectors.js";
 import { age } from "./format.js";
 
 /** A clock confined to inbox rows: waiting-time updates do not invalidate the task list. */
@@ -10,6 +12,7 @@ export const InboxView = memo(function InboxView() {
   const rows = useStore(inboxRows);
   const cursor = useStore((s) => s.ui.cursor);
   const connection = useStore((s) => s.connection);
+  const repos = useStore((s) => s.snapshot.repos);
   const parent = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -76,8 +79,10 @@ export const InboxView = memo(function InboxView() {
                 </span>
               </span>
               <span>
-                <span title={row.forHuman?.summary}>{row.task.title}</span>{" "}
-                <span className="faint mono">{row.task.id}</span>
+                <span title={row.task.title}>{displayName(row.task)}</span>{" "}
+                <span className="faint mono">
+                  {issueKeyFor(row.task, repos)}
+                </span>
               </span>
               <span className="faint">
                 {row.runs

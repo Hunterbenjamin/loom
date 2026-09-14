@@ -1,4 +1,4 @@
-import type { HumanCommand, Task } from "@loom/core";
+import { type HumanCommand, runLabel, type Task } from "@loom/core";
 import { findingId } from "@loom/protocol";
 import { useState } from "react";
 import { REASON_LABELS, reasonTab } from "../store/inbox.js";
@@ -72,7 +72,7 @@ export function InboxActions({ task }: { task: Task }) {
         >
           {runs.map((run) => (
             <option key={run.id} value={run.id}>
-              {run.role} · {run.provider} · {run.mode} · {run.id}
+              {runLabel(run)} · {run.provider} · {run.mode}
             </option>
           ))}
         </select>

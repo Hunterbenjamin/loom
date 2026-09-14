@@ -4,6 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type KeyboardEvent, useEffect, useMemo, useRef } from "react";
 import { reviewAgentWorking, reviewGroups } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { issueKeyFor } from "../store/selectors.js";
 import { since } from "./format.js";
 import { PullRequestGlyph } from "./pull-request-glyph.js";
 
@@ -210,6 +211,13 @@ function ReviewRow({
   const store = useStoreApi();
   const now = useStore((s) => s.snapshot.now);
   const working = useStore((s) => reviewAgentWorking(s, pr));
+  const linkedTask = useStore((s) =>
+    pr.taskId
+      ? s.snapshot.tasks.find((task) => task.id === pr.taskId)
+      : undefined,
+  );
+  const repos = useStore((s) => s.snapshot.repos);
+  const linkedIssue = linkedTask ? issueKeyFor(linkedTask, repos) : pr.taskId;
   const status = working
     ? ["Agent working", "ϟ", "working"]
     : pr.checks === "failure"
@@ -246,9 +254,9 @@ function ReviewRow({
           className="pr-task-link mono"
           onClick={() => store.open(pr.taskId)}
           onKeyDown={buttonKeyDown}
-          title={`Open issue ${pr.taskId}`}
+          title={`Open issue ${linkedIssue}`}
         >
-          {pr.taskId}
+          {linkedIssue}
         </button>
       ) : null}
       <span

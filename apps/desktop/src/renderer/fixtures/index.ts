@@ -286,6 +286,8 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
     const task: Task = {
       id,
       repoId: repo.id,
+      number: index + 101,
+      name: null,
       title,
       description:
         `Part of the ${STAGE_LABELS[stage].toLowerCase()} work in ${repo.github}. ` +

@@ -1,12 +1,18 @@
 // Offline diagnostics read coordinator-owned records; no provider observation or reconciliation.
 import { stripVTControlCharacters } from "node:util";
-import type { FindingStatus, TaskId } from "@loom/core";
+import {
+  displayName,
+  type FindingStatus,
+  issueKey,
+  type TaskId,
+} from "@loom/core";
 import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 
 export function inspectTask(store: Store, taskId: TaskId, adapters?: Adapters) {
   const state = store.loadTaskState(taskId);
   const task = state.task;
+  const repo = store.repos().find((repo) => repo.id === task.repoId);
   const runs = store.runs(taskId);
   const messages = store.messages(taskId);
   const counts: Record<FindingStatus, number> = {
@@ -31,6 +37,10 @@ export function inspectTask(store: Store, taskId: TaskId, adapters?: Adapters) {
     task: {
       signature: task.signature ?? null,
       id: task.id,
+      number: task.number,
+      name: task.name,
+      issue: repo ? issueKey(repo, task) : null,
+      displayName: displayName(task),
       title: task.title,
       stage: task.stage,
       stageEnteredAt: task.stageEnteredAt,

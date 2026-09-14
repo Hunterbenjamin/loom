@@ -1,11 +1,19 @@
 import {
+  displayName,
   type Finding,
+  issueKey,
   type Run,
   type Stage,
   summarizeTask,
   type Task,
 } from "@loom/core";
 import { type Snapshot, STAGES } from "../fixtures/index.js";
+
+export const issueKeyFor = (task: Task, repos: Snapshot["repos"]): string => {
+  const repo = repos.find((repo) => repo.id === task.repoId);
+  return repo ? issueKey(repo, task) : `ISSUE-${task.number}`;
+};
+
 import {
   LIST_PAGE_SIZE,
   type ListSections,
@@ -81,7 +89,12 @@ const computeRows = memo1(
     for (const task of snapshot.tasks) {
       if (task.repoId !== repo) continue;
       if (!matchesView(task, view)) continue;
-      if (needle && !`${task.id} ${task.title}`.toLowerCase().includes(needle))
+      if (
+        needle &&
+        !`${issueKeyFor(task, snapshot.repos)} ${task.number} ${task.name ?? ""} ${displayName(task)} ${task.title} ${task.id}`
+          .toLowerCase()
+          .includes(needle)
+      )
         continue;
       const runs = byTask.get(task.id) ?? [];
       // Select the most recent live run, or fall back to the last run

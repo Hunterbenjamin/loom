@@ -1,4 +1,4 @@
-import type { Question, Run } from "@loom/core";
+import { type Question, type Run, runLabel } from "@loom/core";
 import type { PaneView } from "@loom/protocol";
 
 /** Provider/coordinator facts only. A shell exiting or a quiet terminal is not completion. */
@@ -78,15 +78,15 @@ export function terminalAgents(
         run.pane.paneId !== pane.paneId
       )
         return [];
-      const name =
-        pane.windowName || pane.title || `${run.role} · ${run.provider}`;
+      const name = runLabel(run);
+      const subtext = `${pane.taskName ?? pane.issueKey ?? "Issue"} · ${run.provider}`;
       if (
-        !`${name} ${pane.taskLabel ?? ""} ${run.role} ${run.provider}`
+        !`${name} ${subtext} ${pane.issueKey ?? ""} ${pane.taskId ?? ""}`
           .toLowerCase()
           .includes(filter.trim().toLowerCase())
       )
         return [];
-      return [{ pane, run, name, state: agentState(run, questions) }];
+      return [{ pane, run, name, subtext, state: agentState(run, questions) }];
     })
     .sort(
       (a, b) =>

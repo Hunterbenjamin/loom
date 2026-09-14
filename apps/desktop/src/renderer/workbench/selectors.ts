@@ -1,4 +1,4 @@
-import type { Run } from "@loom/core";
+import { type Run, runLabel } from "@loom/core";
 import type { PaneIdentity, PaneView } from "@loom/protocol";
 
 export const sameTerminal = (a: PaneIdentity, b: PaneIdentity) =>
@@ -109,6 +109,7 @@ export type TreePane = { pane: PaneView; name: string; indicator: Indicator };
 export type TreeTab = {
   key: string;
   name: string;
+  windowName: string;
   panes: TreePane[];
   indicator: Indicator;
 };
@@ -116,6 +117,7 @@ export type TreeSpace = {
   key: string;
   name: string;
   label: string;
+  subtext: string | null;
   branch: string | null;
   tabs: TreeTab[];
   indicator: Indicator;
@@ -163,23 +165,40 @@ export function spaces(
       space = {
         key,
         name: pane.sessionName,
-        label: pane.taskLabel ?? pane.sessionName,
+        label: pane.taskName ?? pane.sessionName,
+        subtext:
+          pane.issueKey && pane.taskStage
+            ? `${pane.issueKey} · ${pane.taskStage.replaceAll("_", " ")}`
+            : null,
         branch: pane.branch,
         tabs: [],
         indicator: indicators.idle,
       };
       groups.set(key, space);
     }
-    if (pane.taskLabel) {
-      space.label = pane.taskLabel;
+    if (pane.taskName) {
+      space.label = pane.taskName;
+      space.subtext =
+        pane.issueKey && pane.taskStage
+          ? `${pane.issueKey} · ${pane.taskStage.replaceAll("_", " ")}`
+          : null;
       space.branch = pane.branch;
     }
     const windowKey = tabKey(pane);
     let tab = tabs.get(windowKey);
     if (!tab) {
+      const linkedRun = pane.runId ? byRun.get(pane.runId) : undefined;
       tab = {
         key: windowKey,
-        name: pane.windowName || pane.windowId || "Tab",
+        name:
+          (linkedRun
+            ? runLabel(linkedRun)
+            : pane.role
+              ? `${pane.role[0]?.toUpperCase()}${pane.role.slice(1)}`
+              : pane.windowName) ||
+          pane.windowId ||
+          "Tab",
+        windowName: pane.windowName || pane.windowId || "Tab",
         panes: [],
         indicator: indicators.idle,
       };
@@ -204,21 +223,24 @@ export function spaces(
         tabs: space.tabs
           .map((tab) => ({
             ...tab,
-            panes: tab.panes.filter(({ pane, name }) =>
-              fuzzyMatch(
-                [
-                  space.name,
-                  space.label,
-                  tab.name,
-                  pane.taskId,
-                  pane.paneId,
-                  name,
-                ]
-                  .join(" ")
-                  .toLowerCase(),
-                words,
-              ),
-            ),
+            panes: tab.panes.filter(({ pane, name }) => {
+              const fields = [
+                space.name,
+                space.label,
+                space.subtext,
+                tab.name,
+                tab.windowName,
+                pane.taskId,
+                pane.taskName,
+                pane.issueKey,
+                pane.issueKey?.split("-").at(-1),
+                pane.paneId,
+                name,
+              ].map((value) => String(value ?? "").toLowerCase());
+              return words.every((word) =>
+                fields.some((field) => fuzzyMatch(field, [word])),
+              );
+            }),
           }))
           .filter((tab) => tab.panes.length),
       };

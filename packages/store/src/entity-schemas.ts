@@ -70,6 +70,14 @@ export const taskSchema = contract<Task>()(
     signature: z.string().nullable().optional(),
     id,
     repoId: id,
+    number: positive,
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(32)
+      .regex(/^[^\r\n]*$/, "Name must be one line")
+      .nullable(),
     title: text,
     description: text,
     summary: z

@@ -5,7 +5,7 @@ import {
   mergeDisabledReason,
 } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
-import { terminalsForTask } from "../store/selectors.js";
+import { issueKeyFor, terminalsForTask } from "../store/selectors.js";
 import type { UiState } from "../store/store.js";
 import {
   PULL_REQUEST_ACTION_EVENT,
@@ -45,6 +45,7 @@ export function PullRequestDetail({
   const task = useStore((s) =>
     s.snapshot.tasks.find((t) => t.id === (row?.taskId ?? summary?.taskId)),
   );
+  const repos = useStore((s) => s.snapshot.repos);
   const branchTask = useStore((s) => {
     const tasks = s.snapshot.tasks.filter(
       (t) =>
@@ -145,7 +146,7 @@ export function PullRequestDetail({
         <div className="pr-breadcrumb">
           {task ? (
             <button type="button" onClick={() => store.open(task.id)}>
-              {task.id}
+              {issueKeyFor(task, repos)}
             </button>
           ) : (
             <span className="faint">No issue</span>

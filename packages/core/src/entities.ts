@@ -131,6 +131,10 @@ export interface Task {
   signature?: string | null;
   id: TaskId;
   repoId: RepoId;
+  /** Per-repository sequence assigned by the store. Display only; never a join key. */
+  number: number;
+  /** Optional one-line human name, at most 32 characters, set at creation. */
+  name: string | null;
   title: string;
   description: string;
   /**

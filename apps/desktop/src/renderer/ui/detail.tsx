@@ -1,7 +1,7 @@
-import type { Run, Task } from "@loom/core";
+import { displayName, type Run, type Task } from "@loom/core";
 import { lazy, Suspense, useState } from "react";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
-import { taskFindings, taskRuns } from "../store/selectors.js";
+import { issueKeyFor, taskFindings, taskRuns } from "../store/selectors.js";
 import type { TabId } from "../store/store.js";
 import { AttentionChips } from "./bits.js";
 import { clock, RUN_STATUS_LABELS, since, stageLabel } from "./format.js";
@@ -50,7 +50,9 @@ export function Detail({ task }: { task: Task }) {
     <div className="detail" data-testid="detail" data-task={task.id}>
       <header className="detail-head">
         <div className="detail-meta">
-          <span className="mono faint">{task.id}</span>
+          <span className="mono faint">
+            {issueKeyFor(task, repo ? [repo] : [])}
+          </span>
           <span className="chip">{stageLabel(task.stage)}</span>
           <AttentionChips task={task} />
           <span className="spacer" />
@@ -58,7 +60,7 @@ export function Detail({ task }: { task: Task }) {
             Close <kbd>esc</kbd>
           </button>
         </div>
-        <h2>{task.title}</h2>
+        <h2 title={task.title}>{displayName(task)}</h2>
         <div className="detail-meta faint">
           <span>{repo?.github}</span>
           {task.branch ? <span className="mono">{task.branch}</span> : null}

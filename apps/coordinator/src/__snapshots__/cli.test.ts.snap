@@ -4,6 +4,10 @@ exports[`empty task diagnostics omit questions and approvals in text 1`] = `
 "Issue
   signature:              -
   id:                     t1
+  number:                 1
+  name:                   -
+  issue:                  FIXTURE-1
+  displayName:            Implement core
   title:                  Implement core
   stage:                  backlog
   stageEnteredAt:         2026-09-12T00:00:00.000Z
@@ -35,6 +39,10 @@ exports[`task inspect prints a complete fixture without a coordinator 1`] = `
 "Issue
   signature:              -
   id:                     t1
+  number:                 1
+  name:                   -
+  issue:                  FIXTURE-1
+  displayName:            Implement core
   title:                  Implement core
   stage:                  in_progress
   stageEnteredAt:         2026-09-12T00:00:00.000Z

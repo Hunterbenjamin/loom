@@ -23,7 +23,9 @@ test("inline rename validates, cancels, reports errors and waits for native patc
   const linked = {
     ...pane,
     taskId: "t-1" as TaskId,
-    taskLabel: "t-1 · Keep task title",
+    taskName: "Keep task title",
+    issueKey: "LOOM-1",
+    taskStage: "in_progress" as const,
   };
   const publish = (
     sessionName = pane.sessionName,
@@ -107,7 +109,7 @@ test("inline rename validates, cancels, reports errors and waits for native patc
     expect(send).not.toHaveBeenCalled();
     await key(input(), "Escape");
     expect(input()).toBeNull();
-    expect(element.textContent).toContain(linked.taskLabel);
+    expect(element.textContent).toContain(linked.taskName);
     await act(async () =>
       element
         .querySelector(".wb-space")
@@ -143,7 +145,7 @@ test("inline rename validates, cancels, reports errors and waits for native patc
     expect(element.querySelector(".wb-space")?.getAttribute("title")).toBe(
       "Accepted space",
     );
-    expect(element.textContent).toContain(linked.taskLabel);
+    expect(element.textContent).toContain(linked.taskName);
     await key(
       element.querySelector(".wb-tab-row > .wb-tree-row") as Element,
       "F2",

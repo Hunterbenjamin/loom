@@ -1,6 +1,8 @@
 import {
   deriveAttention,
+  displayName,
   type GitAdapter,
+  issueKey,
   type PaneHost,
   type PaneObservation,
   type TaskState,
@@ -19,6 +21,7 @@ export function assemblePanes(
   leadPane: string | null,
   leadWaiting: boolean,
   leadPanes: ReadonlySet<string> = new Set(),
+  repos: import("@loom/core").Repo[] = [],
 ): PaneView[] {
   return observations.map((p) => {
     const matches = states.flatMap((state) =>
@@ -34,6 +37,9 @@ export function assemblePanes(
     const task =
       match?.state.task ??
       (workspaces.length === 1 ? workspaces[0]?.task : undefined);
+    const repo = task
+      ? repos.find((repo) => repo.id === task.repoId)
+      : undefined;
     let attention =
       (leadPane === paneKey(p.ref) && leadWaiting) ||
       leadPanes.has(paneKey(p.ref));
@@ -74,7 +80,9 @@ export function assemblePanes(
       attachedClients: counts.get(p.ref.sessionName) ?? 0,
       unavailable: false,
       taskId: task?.id ?? null,
-      taskLabel: task ? `${task.id} · ${task.title}` : null,
+      taskName: task ? displayName(task) : null,
+      issueKey: task && repo ? issueKey(repo, task) : null,
+      taskStage: task?.stage ?? null,
       branch: task?.branch ?? null,
       runId: match?.run.id ?? null,
       role: match?.run.role ?? null,
@@ -97,6 +105,7 @@ export class PaneInventory {
     private git: Pick<GitAdapter, "currentBranch">,
     private metadata: () => {
       states: TaskState[];
+      repos?: import("@loom/core").Repo[];
       now: string;
       leadPane?: string | null;
       leadWaiting?: boolean;
@@ -139,6 +148,7 @@ export class PaneInventory {
           m.leadPane ?? null,
           m.leadWaiting ?? false,
           m.leadPanes,
+          m.repos ?? [],
         );
         // Share each cwd read (including failures) for this refresh only. The next
         // poll or hint must observe branch switches and recover unreadable paths.

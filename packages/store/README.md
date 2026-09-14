@@ -118,6 +118,10 @@ versus explicit-null semantics. The migration from v1 initializes context only f
 version-0 backlog tasks; it refuses to silently fabricate context for older active
 rows by leaving them unloadable.
 
+Task JSON includes a positive per-repository `number` and nullable one-line `name`. Creation assigns
+the next number inside the existing immediate transaction; the `tasks_repo_number` expression index
+is the uniqueness backstop. Migration 0007 backfills numbers in `createdAt`, then ID, order per repo.
+
 `hooks` implements Claude's `HookLog`, preserving append order and extra payload
 fields. Startup and `hooks.prune(now)` remove receipts strictly older than seven
 days. Capacity counts include starting/working/blocked non-ended runs; dependency

@@ -1,9 +1,9 @@
-import type { Stage } from "@loom/core";
+import { displayName, type Stage } from "@loom/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useRef, useState } from "react";
 import { STAGES } from "../fixtures/index.js";
 import { useStore, useStoreApi } from "../store/react.js";
-import { type Row, selectedRows } from "../store/selectors.js";
+import { issueKeyFor, type Row, selectedRows } from "../store/selectors.js";
 import { AttentionChips, ProviderLabel, RunDot } from "./bits.js";
 import { age, stageLabel } from "./format.js";
 
@@ -56,6 +56,7 @@ function Column({ rows }: { rows: Row[] }) {
   const store = useStoreApi();
   const cursor = useStore((s) => s.ui.cursor);
   const all = useStore(selectedRows);
+  const repos = useStore((s) => s.snapshot.repos);
   const scroller = useRef<HTMLDivElement>(null);
   const virtual = useVirtualizer({
     count: rows.length,
@@ -99,11 +100,11 @@ function Column({ rows }: { rows: Row[] }) {
               >
                 <div className="card-meta">
                   <RunDot run={row.run} />
-                  <span className="mono">{row.task.id}</span>
+                  <span className="mono">{issueKeyFor(row.task, repos)}</span>
                   <span className="spacer" />
                   <span className="nums">{age(row.ageMinutes)}</span>
                 </div>
-                <div className="card-title">{row.task.title}</div>
+                <div className="card-title">{displayName(row.task)}</div>
                 {row.summary ? (
                   <div className="card-summary">{row.summary}</div>
                 ) : null}

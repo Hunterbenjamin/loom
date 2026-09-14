@@ -34,9 +34,12 @@ import type {
 } from "@loom/core";
 import {
   DEFAULT_SETTINGS,
+  displayName,
+  issueKey,
   MODEL_CATALOG,
   mergeSettings,
   resolveSettings,
+  resolveTaskRef,
   SETTINGS_CATALOG,
   type SettingsPatch,
   type SettingsScope,
@@ -69,6 +72,7 @@ import { type RecoveryReport, recover } from "./recovery.js";
 import { registerRepo } from "./repos.js";
 import { ProtocolServer } from "./server.js";
 import { runShell, type Shell } from "./shell.js";
+import { resolveCommandTaskRefs } from "./task-refs.js";
 import { openTaskTerminal } from "./task-terminal.js";
 import {
   changesRow,
@@ -106,6 +110,7 @@ export interface CoordinatorOptions {
 export interface CreateTaskInput {
   repoId: RepoId;
   title: string;
+  name?: string | null;
   description: string;
   summary?: string | null;
   providers?: ProviderRules | null;
@@ -656,6 +661,7 @@ export class Coordinator {
       this.adapters.git,
       () => ({
         states: this.store.tasks().map((t) => this.store.loadTaskState(t.id)),
+        repos: this.store.repos(),
         now: this.now(),
         leadPanes: new Set(
           [...this.leads.entries()].flatMap(([id, lead]) =>
@@ -830,9 +836,10 @@ export class Coordinator {
     const settings = this.effectiveSettings(repo.id);
     const now = this.now();
     const id = `t-${randomUUID().slice(0, 8)}` as TaskId;
-    const task: Task = {
+    const task: Omit<Task, "number"> = {
       id,
       repoId: repo.id,
+      name: input.name ?? null,
       title: input.title,
       description: input.description,
       summary: input.summary ?? null,
@@ -959,7 +966,32 @@ export class Coordinator {
         ) => {
           if (!repoId) throw new Error("Main repository identity is required");
           const lead = this.leadFor(repoId);
-          if (name === "message_agent")
+          const tasks = this.store.tasks();
+          const repos = this.store.repos();
+          const resolveLeadRef = (reference: string) => {
+            const result = resolveTaskRef(reference, { tasks, repos, repoId });
+            if (!result.ok) throw new Error(result.message);
+            return result.task.id;
+          };
+          if (name === "message_agent") {
+            if (
+              typeof input.to === "object" &&
+              input.to !== null &&
+              "taskId" in input.to &&
+              typeof input.to.taskId === "string"
+            ) {
+              const result = resolveTaskRef(input.to.taskId, {
+                tasks,
+                repos,
+                repoId,
+              });
+              if (!result.ok)
+                return { delivered: "refused", reason: result.message };
+              input = {
+                ...input,
+                to: { ...input.to, taskId: result.task.id },
+              };
+            }
             return messageAgent(
               {
                 store: this.store,
@@ -970,33 +1002,32 @@ export class Coordinator {
               repoId,
               input,
             );
+          }
           if (name === "set_note") return lead.setNote(input.note as string);
-          if (name === "list_tasks")
-            return this.store.tasks().filter((task) => task.repoId === repoId);
+          if (name === "list_tasks") {
+            const repo = this.repoById(repoId as RepoId);
+            return tasks
+              .filter((task) => task.repoId === repoId)
+              .map((task) => ({
+                ...task,
+                issue: issueKey(repo, task),
+                displayName: displayName(task),
+              }));
+          }
           if (name === "list_repos")
             return this.store.repos().filter((repo) => repo.id === repoId);
-          if (
-            input.taskId &&
-            !this.store
-              .tasks()
-              .some(
-                (task) => task.id === input.taskId && task.repoId === repoId,
-              )
-          )
-            throw new Error("Task is outside Main's repository");
+          if (typeof input.taskId === "string")
+            input = { ...input, taskId: resolveLeadRef(input.taskId) };
           if (input.repoId && input.repoId !== repoId)
             throw new Error("Repository is outside Main's scope");
           if (name === "create_task") input = { ...input, repoId };
-          if (
-            Array.isArray(input.blockedBy) &&
-            input.blockedBy.some(
-              (id) =>
-                !this.store
-                  .tasks()
-                  .some((task) => task.id === id && task.repoId === repoId),
-            )
-          )
-            throw new Error("Dependency is outside Main's repository");
+          if (Array.isArray(input.blockedBy))
+            input = {
+              ...input,
+              blockedBy: input.blockedBy.map((value) =>
+                resolveLeadRef(String(value)),
+              ),
+            };
           if (name === "inspect_task")
             return inspectTask(
               this.store,
@@ -1289,7 +1320,10 @@ export class Coordinator {
         };
       }
     }
-    const command = commandSchema.parse(value) as {
+    const parsedCommand = commandSchema.parse(value);
+    const resolved = resolveCommandTaskRefs(parsedCommand, this.store);
+    if (!resolved.ok) return resolved;
+    const command = resolved.command as {
       kind: string;
       taskId?: TaskId;
       runId?: string;
@@ -1566,6 +1600,7 @@ export class Coordinator {
           const state = this.createTask({
             repoId: command.repoId as RepoId,
             title: command.title as string,
+            name: (command.name ?? null) as string | null,
             description: command.description as string,
             summary: (command.summary ?? null) as string | null,
             providers: (command.providers ?? null) as ProviderRules | null,

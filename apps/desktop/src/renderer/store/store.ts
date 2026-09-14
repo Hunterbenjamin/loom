@@ -806,6 +806,7 @@ export function createStore(
       title: string,
       repo: string,
       options: {
+        name?: string | null;
         description?: string;
         size?: Task["size"];
         requirePlanApproval?: boolean;
@@ -821,6 +822,8 @@ export function createStore(
       const task: Task = {
         id,
         repoId: repoId as Task["repoId"],
+        number: state.snapshot.tasks.length + 101,
+        name: options.name ?? null,
         title,
         description: options.description ?? "",
         summary: null,
