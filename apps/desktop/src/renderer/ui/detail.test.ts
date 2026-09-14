@@ -366,23 +366,21 @@ test("Change plan refuses a plan version that changed while the modal was open",
   ).toBe(true);
 });
 
-test("entering a note does not clear a coordinator availability reason", () => {
+test("merge approval actions stay disabled with the coordinator's reason while disconnected", () => {
   const h = setup("merge");
   h.store.setConnection("disconnected");
   h.render();
-  const textarea = h.host.querySelector<HTMLTextAreaElement>(
-    '[aria-label="Feedback for the agent"]',
+  const buttons = [
+    ...h.host.querySelectorAll<HTMLButtonElement>(
+      ".issue-toolbar-action button",
+    ),
+  ];
+  expect(
+    buttons.map((button) => `${button.textContent}:${button.disabled}`),
+  ).toEqual(["Request changes:true", "Approve merge:true"]);
+  expect(h.host.querySelector(".issue-toolbar-action")?.textContent).toContain(
+    "Connect to the coordinator",
   );
-  if (!textarea) throw new Error("missing feedback field");
-  act(() => {
-    textarea.value = "Please revise the implementation";
-    textarea.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-  const requestChanges = [...h.host.querySelectorAll("button")].find(
-    (button) => button.textContent === "Request changes",
-  );
-  expect(requestChanges?.disabled).toBe(true);
-  expect(h.host.textContent).toContain("Connect to the coordinator");
 });
 
 test.each(["plan", "merge", "question", "failed", "provider"] as const)(
@@ -499,15 +497,12 @@ test("approve confirms the displayed evidence before sending once and renders a 
     taskId: h.task.id,
     command: { type: "approve", headSha: "b".repeat(40) },
   });
-  expect(h.host.querySelector('[role="status"]')?.textContent).toContain(
-    "guard_failed: Head changed",
-  );
-  expect(h.host.querySelector('[role="status"]')?.textContent).toContain(
-    "Review the latest head",
-  );
+  const refusal = h.host.querySelector('.issue-toolbar-action [role="alert"]');
+  expect(refusal?.textContent).toContain("guard_failed: Head changed");
+  expect(refusal?.textContent).toContain("Review the latest head");
 });
 
-test("the toolbar and panel share the same merge approval confirmation", async () => {
+test("merge approval lives in the header: Request changes left and quiet, Approve merge right and confirmed", async () => {
   const h = setup("merge");
   const sender = vi.fn(async () => ({
     ok: true as const,
@@ -515,11 +510,18 @@ test("the toolbar and panel share the same merge approval confirmation", async (
   }));
   h.store.setSender(sender);
   h.render();
-  await act(async () =>
-    h.host
-      .querySelector<HTMLButtonElement>(".issue-decision-actions button")
-      ?.click(),
-  );
+  expect(h.host.querySelector(".issue-decision-panel")).toBeNull();
+  const buttons = [
+    ...h.host.querySelectorAll<HTMLButtonElement>(
+      ".issue-toolbar-action button",
+    ),
+  ];
+  expect(buttons.map((button) => button.textContent)).toEqual([
+    "Request changes",
+    "Approve merge",
+  ]);
+  expect(buttons[0]?.className).toContain("secondary");
+  await act(async () => buttons[1]?.click());
   expect(h.host.querySelectorAll(".pr-confirm")).toHaveLength(1);
   expect(sender).not.toHaveBeenCalled();
   await act(async () =>
@@ -528,21 +530,64 @@ test("the toolbar and panel share the same merge approval confirmation", async (
       ?.click(),
   );
   expect(h.host.querySelector(".pr-confirm")).toBeNull();
-  await act(async () =>
-    h.host
-      .querySelector<HTMLButtonElement>(".issue-toolbar-action button")
-      ?.click(),
+});
+
+test("Request changes asks for feedback in a dialog and sends it to the implementer", async () => {
+  const h = setup("merge");
+  const sender = vi.fn(async () => ({
+    ok: true as const,
+    result: { kind: "human" as const, inputId: inputId("request-changes") },
+  }));
+  h.store.setSender(sender);
+  h.render();
+  const button = (text: string) =>
+    [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(
+      (item) => item.textContent === text,
+    );
+  await act(async () => button("Request changes")?.click());
+  const dialog = h.host.querySelector(".pr-confirm");
+  expect(dialog?.textContent).toContain("Request changes");
+  expect(dialog?.textContent).toContain("b".repeat(7));
+  expect(button("Send to implementer")?.disabled).toBe(true);
+  const textarea = h.host.querySelector<HTMLTextAreaElement>(
+    '[aria-label="Requested changes"]',
   );
-  expect(h.host.querySelectorAll(".pr-confirm")).toHaveLength(1);
-  expect(sender).not.toHaveBeenCalled();
+  if (!textarea) throw new Error("missing feedback field");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set?.call(textarea, "  Handle the empty list  ");
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => button("Send to implementer")?.click());
+  expect(sender).toHaveBeenCalledOnce();
+  const sent = (sender.mock.calls[0] as unknown[] | undefined)?.[0] as {
+    command: { type: string; findings: { body: string }[] };
+  };
+  expect(sent.command.type).toBe("request_changes");
+  expect(sent.command.findings[0]?.body).toBe("Handle the empty list");
+  expect(
+    [
+      ...h.host.querySelectorAll<HTMLButtonElement>(
+        ".issue-toolbar-action button",
+      ),
+    ]
+      .find((item) => item.textContent === "Request changes")
+      ?.getAttribute("aria-busy"),
+  ).toBe("true");
 });
 
 test("merge confirmation refuses a reviewed head that changed while open", async () => {
   const h = setup("merge");
   h.render();
   await act(async () =>
-    h.host
-      .querySelector<HTMLButtonElement>(".issue-toolbar-action button")
+    [
+      ...h.host.querySelectorAll<HTMLButtonElement>(
+        ".issue-toolbar-action button",
+      ),
+    ]
+      .find((button) => button.textContent === "Approve merge")
       ?.click(),
   );
   h.store.getState().inbox = [

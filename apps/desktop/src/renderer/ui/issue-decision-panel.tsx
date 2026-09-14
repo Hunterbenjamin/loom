@@ -30,11 +30,14 @@ export function IssueDecisionPanel({
   const [expanded, setExpanded] = useState(!compact);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [questions, setQuestions] = useState<Record<string, string>>({});
+  // Plan and merge approvals live in the header's buttons, not in this panel.
   const decisions = data.decisions.filter(
-    (decision) => decision.kind !== "plan_needs_approval",
+    (decision) =>
+      decision.kind !== "plan_needs_approval" &&
+      decision.kind !== "needs_approval",
   );
-  const hasPlanDecision = decisions.length !== data.decisions.length;
-  if (hasPlanDecision && decisions.length === 0) return null;
+  const hasHeaderDecision = decisions.length !== data.decisions.length;
+  if (hasHeaderDecision && decisions.length === 0) return null;
   if (compact && !expanded)
     return (
       <div className="issue-decision-panel compact">
