@@ -60,14 +60,10 @@ export function Sidebar({
   selected,
   selectedSpace,
   selectedTab,
-  collapsed: sidebarCollapsed = false,
-  toggleSidebar,
 }: {
   selectedSpace?: string;
   selectedTab?: string;
   selected?: PaneIdentity | "main";
-  collapsed?: boolean;
-  toggleSidebar?: () => void;
   /** Accepted for compatibility; the palette owns this now. */
   showMenu?: () => void;
   filter: string;
@@ -242,256 +238,235 @@ export function Sidebar({
   return (
     <aside
       ref={sidebar}
-      className={`wb-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}
+      className="wb-sidebar"
       aria-label="Spaces and terminals"
     >
-      {!sidebarCollapsed && (
-        <>
-          <section className="wb-terminals" aria-label="Terminal tree">
-            <div className="wb-section-heading">
-              <h2>spaces</h2>
-            </div>
-            {unavailable && (
-              <p role="status">
-                Terminal host unavailable. Showing last known terminals.
-              </p>
-            )}
-            <div className="wb-terminal-list">
-              {tree.map((space) => (
-                <section key={space.key} aria-label={space.label}>
-                  <div
-                    className="wb-space-row"
-                    {...rowMenu("space", space.key)}
-                  >
-                    <RenameRow
-                      kind="space"
-                      pane={space.tabs[0]?.panes[0]?.pane}
-                      name={space.label}
-                      title={space.tabs[0]?.panes[0]?.pane.spaceTitle ?? null}
-                      editing={
-                        editingRow?.kind === "space" &&
-                        editingRow.key === space.key
-                      }
-                      onEditingChange={(editing) => {
-                        setEditingRow(
-                          editing ? { kind: "space", key: space.key } : null,
-                        );
-                      }}
-                      className="wb-space"
-                      current={
-                        selectedSpace === space.key ||
-                        (!!selectedPane && spaceKey(selectedPane) === space.key)
-                      }
-                      ariaLabel={`Open space ${space.label}`}
-                      toggle={() =>
-                        openGroup(rowPanes("space", space.key), space.label)
-                      }
-                    >
-                      {/* A space is a place, not an agent: its row keeps the plain circle and
-                          the rows inside it carry the live indicators. */}
-                      <span className="wb-status idle" aria-hidden="true">
-                        ○
-                      </span>
-                      <span className="wb-row-copy">
-                        <span className="wb-tree-name">{space.label}</span>
-                        <small
-                          className="wb-space-branch"
-                          title={space.branch ?? "Branch unavailable"}
-                        >
-                          {space.subtext ?? space.branch ?? "—"}
-                        </small>
-                      </span>
-                    </RenameRow>
-                  </div>
-                  {space.tabs.map((tab) => (
-                    <section
-                      className="wb-tree-tab"
-                      key={tab.key}
-                      aria-label={tab.name}
-                    >
-                      <div
-                        className="wb-tab-row"
-                        aria-current={
-                          selectedTab === tab.key ||
-                          (selectedPane && tabKey(selectedPane) === tab.key)
-                            ? "true"
-                            : undefined
-                        }
-                        {...rowMenu("tab", tab.key)}
-                      >
-                        <RenameRow
-                          kind="tab"
-                          pane={tab.panes[0]?.pane}
-                          name={tab.name}
-                          title={tab.panes[0]?.pane.tabTitle ?? null}
-                          editing={
-                            editingRow?.kind === "tab" &&
-                            editingRow.key === tab.key
-                          }
-                          onEditingChange={(editing) => {
-                            setEditingRow(
-                              editing ? { kind: "tab", key: tab.key } : null,
-                            );
-                          }}
-                          ariaLabel={`Open tab ${tab.name}`}
-                          disabled={
-                            !rowPanes("tab", tab.key).some(
-                              (pane) =>
-                                !unavailable && !pane.unavailable && !pane.dead,
-                            )
-                          }
-                          toggle={() =>
-                            openGroup(rowPanes("tab", tab.key), tab.name)
-                          }
-                        >
-                          <Status state={tab.indicator} />
-                          <span className="wb-tree-name" title={tab.windowName}>
-                            {tab.name}
-                          </span>
-                        </RenameRow>
-                      </div>
-                    </section>
-                  ))}
-                </section>
-              ))}
-              {!tree.length && (
-                <p className="wb-muted">
-                  {filter ? "No matching terminals" : "No terminals"}
-                </p>
-              )}
-            </div>
-          </section>
-          <section className="wb-agents" aria-label="Agents">
-            <div className="wb-section-heading">
-              <h2>agents</h2>
-              <button
-                type="button"
-                aria-label="Group agents by space"
-                aria-pressed={grouped}
-                onClick={() => setGrouped((value) => !value)}
-              >
-                {grouped ? "grouped" : "ungrouped"}
-              </button>
-            </div>
-            <section className="wb-pinned" aria-label="Pinned terminals">
-              <div className="wb-pinned-agent">
-                <button
-                  type="button"
-                  className="wb-tree-row wb-agent-row"
-                  disabled={!repo}
-                  data-pinned="main"
-                  aria-current={selected === "main" ? "true" : undefined}
-                  {...rowMenu("main", "main")}
-                  onClick={() => openPinned("main")}
-                  title="Open Main terminal"
-                >
-                  <Status state={pinnedState(lead.status, mainFinished)} />
-                  <span className="wb-row-copy">
-                    <strong>Main</strong>
-                    <small>{lead.status}</small>
-                  </span>
-                </button>
-              </div>
-            </section>
-            <div className="wb-agent-list">
-              {agents.map(({ pane, name, indicator, space, tab }) => (
+      <section className="wb-terminals" aria-label="Terminal tree">
+        <div className="wb-section-heading">
+          <h2>spaces</h2>
+        </div>
+        {unavailable && (
+          <p role="status">
+            Terminal host unavailable. Showing last known terminals.
+          </p>
+        )}
+        <div className="wb-terminal-list">
+          {tree.map((space) => (
+            <section key={space.key} aria-label={space.label}>
+              <div className="wb-space-row" {...rowMenu("space", space.key)}>
                 <RenameRow
-                  key={pane.id}
-                  kind="pane"
-                  pane={pane}
-                  name={name}
-                  title={pane.paneTitle}
-                  dataPaneKey={paneKey(pane)}
-                  className={`wb-agent-row ${pane.dead ? "dead" : ""}`}
-                  ariaLabel={`Open agent ${space.label} ${tab.name} ${pane.paneId}`}
-                  current={isSelected(pane)}
-                  disabled={unavailable || pane.unavailable || pane.dead}
+                  kind="space"
+                  pane={space.tabs[0]?.panes[0]?.pane}
+                  name={space.label}
+                  title={space.tabs[0]?.panes[0]?.pane.spaceTitle ?? null}
                   editing={
-                    editingRow?.kind === "pane" &&
-                    editingRow.key === paneKey(pane)
+                    editingRow?.kind === "space" && editingRow.key === space.key
                   }
                   onEditingChange={(editing) => {
                     setEditingRow(
-                      editing ? { kind: "pane", key: paneKey(pane) } : null,
+                      editing ? { kind: "space", key: space.key } : null,
                     );
                   }}
-                  onContextMenu={rowMenu("pane", paneKey(pane)).onContextMenu}
-                  toggle={() => choose(pane)}
-                  onKeyDown={(e) => {
-                    rowMenu("pane", paneKey(pane)).onKeyDown(e);
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      choose(pane, true);
-                    }
-                  }}
+                  className="wb-space"
+                  current={
+                    selectedSpace === space.key ||
+                    (!!selectedPane && spaceKey(selectedPane) === space.key)
+                  }
+                  ariaLabel={`Open space ${space.label}`}
+                  toggle={() =>
+                    openGroup(rowPanes("space", space.key), space.label)
+                  }
                 >
-                  <Status state={indicator} />
+                  {/* A space is a place, not an agent: its row keeps the plain circle and
+                      the rows inside it carry the live indicators. */}
+                  <span className="wb-status idle" aria-hidden="true">
+                    ○
+                  </span>
                   <span className="wb-row-copy">
-                    <span className="wb-tree-name">
-                      <strong>{name}</strong>
-                    </span>
-                    <small>
-                      {pane.taskName ?? pane.issueKey ?? "Issue"} ·{" "}
-                      {pane.provider ?? pane.agent ?? "—"}
+                    <span className="wb-tree-name">{space.label}</span>
+                    <small
+                      className="wb-space-branch"
+                      title={space.branch ?? "Branch unavailable"}
+                    >
+                      {space.subtext ?? space.branch ?? "—"}
                     </small>
                   </span>
                 </RenameRow>
-              ))}
-              {!agents.length && (
-                <p className="wb-muted">
-                  {filter ? "No matching agents" : "No agents"}
-                </p>
-              )}
-            </div>
-          </section>
-          {!!services.length && (
-            <section
-              className="wb-workbench-sessions"
-              aria-label="Workbench terminals"
-            >
-              {services.map((service) => {
-                const servicePanes = rowPanes("space", service.key);
-                return (
-                  <button
-                    type="button"
-                    key={service.key}
-                    className="wb-tree-row wb-agent-row"
-                    aria-label={`Open ${service.label} terminal`}
+              </div>
+              {space.tabs.map((tab) => (
+                <section
+                  className="wb-tree-tab"
+                  key={tab.key}
+                  aria-label={tab.name}
+                >
+                  <div
+                    className="wb-tab-row"
                     aria-current={
-                      selectedSpace === service.key ||
-                      (!!selectedPane && spaceKey(selectedPane) === service.key)
+                      selectedTab === tab.key ||
+                      (selectedPane && tabKey(selectedPane) === tab.key)
                         ? "true"
                         : undefined
                     }
-                    disabled={
-                      !servicePanes.some(
-                        (pane) =>
-                          !unavailable && !pane.unavailable && !pane.dead,
-                      )
-                    }
-                    {...rowMenu("space", service.key)}
-                    onClick={() => openGroup(servicePanes, service.name)}
-                    title={`Open ${service.label} terminal`}
+                    {...rowMenu("tab", tab.key)}
                   >
-                    <Status state={service.indicator} />
-                    <span className="wb-tree-name">{service.label}</span>
-                  </button>
-                );
-              })}
+                    <RenameRow
+                      kind="tab"
+                      pane={tab.panes[0]?.pane}
+                      name={tab.name}
+                      title={tab.panes[0]?.pane.tabTitle ?? null}
+                      editing={
+                        editingRow?.kind === "tab" && editingRow.key === tab.key
+                      }
+                      onEditingChange={(editing) => {
+                        setEditingRow(
+                          editing ? { kind: "tab", key: tab.key } : null,
+                        );
+                      }}
+                      ariaLabel={`Open tab ${tab.name}`}
+                      disabled={
+                        !rowPanes("tab", tab.key).some(
+                          (pane) =>
+                            !unavailable && !pane.unavailable && !pane.dead,
+                        )
+                      }
+                      toggle={() =>
+                        openGroup(rowPanes("tab", tab.key), tab.name)
+                      }
+                    >
+                      <Status state={tab.indicator} />
+                      <span className="wb-tree-name" title={tab.windowName}>
+                        {tab.name}
+                      </span>
+                    </RenameRow>
+                  </div>
+                </section>
+              ))}
             </section>
+          ))}
+          {!tree.length && (
+            <p className="wb-muted">
+              {filter ? "No matching terminals" : "No terminals"}
+            </p>
           )}
-        </>
-      )}
-      <footer className="wb-sidebar-footer">
-        <button
-          type="button"
-          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-expanded={!sidebarCollapsed}
-          onClick={toggleSidebar}
+        </div>
+      </section>
+      <section className="wb-agents" aria-label="Agents">
+        <div className="wb-section-heading">
+          <h2>agents</h2>
+          <button
+            type="button"
+            aria-label="Group agents by space"
+            aria-pressed={grouped}
+            onClick={() => setGrouped((value) => !value)}
+          >
+            {grouped ? "grouped" : "ungrouped"}
+          </button>
+        </div>
+        <section className="wb-pinned" aria-label="Pinned terminals">
+          <div className="wb-pinned-agent">
+            <button
+              type="button"
+              className="wb-tree-row wb-agent-row"
+              disabled={!repo}
+              data-pinned="main"
+              aria-current={selected === "main" ? "true" : undefined}
+              {...rowMenu("main", "main")}
+              onClick={() => openPinned("main")}
+              title="Open Main terminal"
+            >
+              <Status state={pinnedState(lead.status, mainFinished)} />
+              <span className="wb-row-copy">
+                <strong>Main</strong>
+                <small>{lead.status}</small>
+              </span>
+            </button>
+          </div>
+        </section>
+        <div className="wb-agent-list">
+          {agents.map(({ pane, name, indicator, space, tab }) => (
+            <RenameRow
+              key={pane.id}
+              kind="pane"
+              pane={pane}
+              name={name}
+              title={pane.paneTitle}
+              dataPaneKey={paneKey(pane)}
+              className={`wb-agent-row ${pane.dead ? "dead" : ""}`}
+              ariaLabel={`Open agent ${space.label} ${tab.name} ${pane.paneId}`}
+              current={isSelected(pane)}
+              disabled={unavailable || pane.unavailable || pane.dead}
+              editing={
+                editingRow?.kind === "pane" && editingRow.key === paneKey(pane)
+              }
+              onEditingChange={(editing) => {
+                setEditingRow(
+                  editing ? { kind: "pane", key: paneKey(pane) } : null,
+                );
+              }}
+              onContextMenu={rowMenu("pane", paneKey(pane)).onContextMenu}
+              toggle={() => choose(pane)}
+              onKeyDown={(e) => {
+                rowMenu("pane", paneKey(pane)).onKeyDown(e);
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  choose(pane, true);
+                }
+              }}
+            >
+              <Status state={indicator} />
+              <span className="wb-row-copy">
+                <span className="wb-tree-name">
+                  <strong>{name}</strong>
+                </span>
+                <small>
+                  {pane.taskName ?? pane.issueKey ?? "Issue"} ·{" "}
+                  {pane.provider ?? pane.agent ?? "—"}
+                </small>
+              </span>
+            </RenameRow>
+          ))}
+          {!agents.length && (
+            <p className="wb-muted">
+              {filter ? "No matching agents" : "No agents"}
+            </p>
+          )}
+        </div>
+      </section>
+      {!!services.length && (
+        <section
+          className="wb-workbench-sessions"
+          aria-label="Workbench terminals"
         >
-          {sidebarCollapsed ? "»" : "«"}
-        </button>
-      </footer>
+          {services.map((service) => {
+            const servicePanes = rowPanes("space", service.key);
+            return (
+              <button
+                type="button"
+                key={service.key}
+                className="wb-tree-row wb-agent-row"
+                aria-label={`Open ${service.label} terminal`}
+                aria-current={
+                  selectedSpace === service.key ||
+                  (!!selectedPane && spaceKey(selectedPane) === service.key)
+                    ? "true"
+                    : undefined
+                }
+                disabled={
+                  !servicePanes.some(
+                    (pane) => !unavailable && !pane.unavailable && !pane.dead,
+                  )
+                }
+                {...rowMenu("space", service.key)}
+                onClick={() => openGroup(servicePanes, service.name)}
+                title={`Open ${service.label} terminal`}
+              >
+                <Status state={service.indicator} />
+                <span className="wb-tree-name">{service.label}</span>
+              </button>
+            );
+          })}
+        </section>
+      )}
       {menu && (
         <RowMenu
           {...menu}

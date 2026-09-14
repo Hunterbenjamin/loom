@@ -128,9 +128,6 @@
   --wb-dim: var(--text-dim);
   --wb-selected: var(--bg-active);
 }
-.wb-sidebar.collapsed {
-  width: 30px;
-}
 .wb-sidebar [hidden] {
   display: none;
 }
@@ -175,10 +172,6 @@
 }
 .wb-section-heading button,
 .wb-spaces-footer button,
-.wb-sidebar-footer button {
-  padding: 0;
-  color: var(--wb-dim);
-}
 .wb-sidebar button:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text);
@@ -280,11 +273,6 @@
 .wb-terminals > [role="status"] {
   color: var(--wb-dim);
   margin: 0;
-  padding: 6px 12px;
-}
-.wb-sidebar-footer {
-  flex: none;
-  margin-top: auto;
   padding: 6px 12px;
 }
 .wb-new-terminal {
