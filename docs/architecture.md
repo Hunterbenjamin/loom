@@ -53,7 +53,7 @@ carry for them are in [`docs/design/ui.md`](design/ui.md).
 | Issue fields, stage, plans, findings, test results, approvals, run records | Coordinator (SQLite + artifact files) | Authoritative |
 | Branches (including PR head existence), PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time; repository PR lists, readiness counts derived from them, and subscribed detail/patch projections are disposable, including PRs without issues |
 | Diffs | The worktree or the PR | Computed on demand |
-| Session transcripts and live status | Codex daemon / Claude Code | Cache + references |
+| Session transcripts and live status | Codex daemon / Claude Code | Cache + references; conversation rows are a disposable, subscription-scoped projection |
 | Terminal processes | tmux, only while its server is alive | References (`{hostGeneration, sessionName, windowId, paneId}`), plus each run's intended command line and environment, so Loom can relaunch it. Pane IDs restart at `%0` after a server death, so every ref is scoped to a host generation |
 
 Done is derived from GitHub: an issue is Done only once its PR is merged.
@@ -168,7 +168,7 @@ Each provider has four channels:
 | Channel | Codex | Claude Code |
 |---|---|---|
 | **Control** | App-server over a unix socket: `thread/start`, `turn/start`, `turn/steer`, `turn/interrupt`; the coordinator answers approval requests. | Headless roles: Agent SDK or `claude -p --output-format stream-json`. Interactive: the pane host's `pasteText` (refusing text that starts with `/` or `!`), and `sendKey Escape` to interrupt. |
-| **Observe** | App-server notifications: `turn/*`, `item/*`, `turn/diff/updated`, `turn/plan/updated`, `account/rateLimits/updated`. | `claude agents --json` owns live status (`busy`, `waiting`, `idle`). Per-session hooks from `--settings` add detail: HTTP for most events, a `command` hook for SessionStart. The pane host supplies no status at all. See [Claude Code](#claude-code). |
+| **Observe** | App-server notifications plus `readConversation` through `thread/read {includeTurns:true}`. | `claude agents --json` owns live status (`busy`, `waiting`, `idle`). Per-session hooks add detail and `readConversation` incrementally reads the provider-given transcript path. The pane host supplies no status at all. See [Claude Code](#claude-code). |
 | **Attach** | A tmux pane running `codex resume <thread> --remote unix://…` against the coordinator's server. Concurrent attach verified on 0.154.0; see [spike 01 findings](../spikes/01-codex-shared-thread/FINDINGS.md). | A tmux pane; "take over" a headless run with `claude --resume <id>`. For the in-app view, see [Embedded terminals](#embedded-terminals). |
 | **Signal** (agent → Loom) | Loom MCP tools | Loom MCP tools |
 
@@ -251,6 +251,21 @@ Main message notes and idempotency receipts use dedicated SQLite tables. Destina
 task/run or task/role identities; Main never waits for an answer or assigns work through messages. The human-command tools enqueue the same guarded inputs as the CLI; they do not
 change stage ownership. Issue-run tools and Main tools reject each other's identities. See
 [Main](design/ui.md#main) for its lifecycle, recovery and bottom-bar UI.
+
+### Conversation view
+
+Conversation views are disposable, subscription-scoped projections of provider-owned history.
+Claude JSONL is read incrementally from the hook's `transcript_path` (falling back to Claude's
+session location); Codex uses only `thread/read` on an already-running task app-server. A view read
+never starts a server, resumes, launches, or forks a session. Both are normalized into bounded text,
+thinking and tool rows (300 items; bounded text and tool payloads), and refresh from provider hints
+plus status-sensitive polling.
+
+Run sends reuse the existing recorded `send_message` transport. Main sends are recorded in
+`lead_messages`, freshly gated against its recorded live pane and Claude status, then use the same
+pane paste boundary. A paste is only `sent`; Claude `UserPromptSubmit` or a native transcript receipt
+confirms `delivered`. Pending Claude dialogs and Codex requests are answered through the existing
+pane/provider request paths with stale-occurrence guards.
 
 ### Claude Code
 

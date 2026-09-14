@@ -88,6 +88,10 @@ export const change = z.union([
   remove("review_state"),
   upsert("changes"),
   remove("changes"),
+  upsert("conversation"),
+  remove("conversation"),
+  upsert("conversation_item"),
+  remove("conversation_item"),
 ]);
 
 export type Change = z.output<typeof change>;
@@ -138,6 +142,8 @@ const emptyCollections = (): ClientState["collections"] => ({
   thread: new Map(),
   review_state: new Map(),
   changes: new Map(),
+  conversation: new Map(),
+  conversation_item: new Map(),
 });
 
 /** A fresh client state from a full snapshot. Replaces whatever the client held. */

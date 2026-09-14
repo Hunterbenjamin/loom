@@ -27,6 +27,20 @@ import {
   taskDiff,
 } from "./views.js";
 
+const leadMessageText = z
+  .string()
+  .trim()
+  .min(1)
+  .max(16384)
+  .refine(
+    (text) => !text.startsWith("/") && !text.startsWith("!"),
+    "Messages beginning with / or ! are not allowed",
+  );
+const paneChoice = z.union([
+  z.number().int().min(0).max(9),
+  z.enum(["enter", "escape"]),
+]);
+
 /**
  * Error codes. The first group is the transport's; the second is `McpErrorCode` from
  * `@loom/core`, so a command reconcile rejects carries the same code the MCP tools use.
@@ -148,6 +162,21 @@ export const command = z.union([
   }),
   z.strictObject({ kind: z.literal("open_lead_session"), repoId }),
   z.strictObject({ kind: z.literal("stop_lead_session"), repoId }),
+  z.strictObject({
+    kind: z.literal("send_lead_message"),
+    repoId,
+    text: leadMessageText,
+    clientMessageId: z.string().uuid(),
+  }),
+  z.strictObject({
+    kind: z.literal("answer_lead_prompt"),
+    repoId,
+    choice: paneChoice,
+    expectedDialog: z.strictObject({
+      requestId: z.string().optional(),
+      at: z.string().datetime(),
+    }),
+  }),
   z.strictObject({ kind: z.literal("select_repo"), repoId }),
   z.strictObject({
     kind: z.literal("add_repo"),
@@ -257,6 +286,12 @@ export const ackResult = z.union([
   z.strictObject({ kind: z.literal("scratch_created"), pane: paneView }),
   z.strictObject({ kind: z.literal("terminal_closed"), target: paneIdentity }),
   z.strictObject({ kind: z.literal("lead_stopped") }),
+  z.strictObject({ kind: z.literal("lead_prompt_answered") }),
+  z.strictObject({
+    kind: z.literal("lead_message"),
+    id: z.string().min(1),
+    state: z.enum(["queued", "sent", "delivered", "failed", "refused"]),
+  }),
   z.strictObject({ kind: z.literal("repo_selected"), repoId }),
   z.strictObject({ kind: z.literal("repo_added"), repoId }),
   /**

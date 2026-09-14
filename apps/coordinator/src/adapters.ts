@@ -23,6 +23,8 @@ export interface Adapters {
   claude: ClaudeAdapter;
   /** Per task: `startServer` is idempotent and the server outlives a pane host restart. */
   codex(taskId: TaskId): Promise<CodexAdapter>;
+  /** Existing adapter only: conversation reads must never launch an app-server. */
+  codexIfRunning(taskId: TaskId): CodexAdapter | null;
   /** Stop a specific task's app-server without affecting others. Idempotent. */
   stopCodexServer(taskId: TaskId): Promise<void>;
   /** Count of running Codex app-servers. */
@@ -40,7 +42,10 @@ export type CodexFactory = (
 export function codexPerTask(
   dataDirectory: string,
   factory: CodexFactory,
-): Pick<Adapters, "codex" | "stopCodexServer" | "codexServerCount" | "close"> {
+): Pick<
+  Adapters,
+  "codex" | "codexIfRunning" | "stopCodexServer" | "codexServerCount" | "close"
+> {
   const servers = new Map<string, CodexAdapter>();
   return {
     async codex(taskId) {
@@ -50,6 +55,9 @@ export function codexPerTask(
       servers.set(taskId, adapter);
       await adapter.startServer();
       return adapter;
+    },
+    codexIfRunning(taskId) {
+      return servers.get(taskId) ?? null;
     },
     async stopCodexServer(taskId) {
       const adapter = servers.get(taskId);

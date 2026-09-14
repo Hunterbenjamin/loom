@@ -363,6 +363,7 @@ export const message = z.strictObject({
   expectedTurnId: z.string().min(1).nullable().optional(),
   baselineTurnId: z.string().min(1).nullable().optional(),
   deliveryAttention: z.boolean().optional(),
+  deliveryReason: z.string().nullable().optional(),
   pendingSince: isoTime.optional(),
 });
 
@@ -615,7 +616,7 @@ export const humanCommand = z.union([
       .object({
         requestId: z.string(),
         at: isoTime,
-        command: z.string(),
+        command: z.string().optional(),
         sessionEpoch: z.number().int().nonnegative(),
       })
       .optional(),

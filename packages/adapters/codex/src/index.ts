@@ -4,6 +4,8 @@ import {
   type CodexAdapter,
   type CodexErrorObservation,
   type CodexThreadObservation,
+  type ConversationItem,
+  type ConversationRead,
   type IsoTime,
   type McpServerEntry,
   normalizeText,
@@ -478,6 +480,128 @@ class AppServerAdapter implements CodexAdapter {
       }
       return this.observe(connection, threadId, thread);
     }, true);
+  }
+  async readConversation(
+    threadId: ProviderSessionId,
+  ): Promise<ConversationRead> {
+    const connection = this.rpc();
+    const params: ThreadReadParams = { threadId, includeTurns: true };
+    let thread: z.output<typeof schemas.conversationThreadResult>["thread"];
+    try {
+      ({ thread } = await connection.rpc(
+        "thread/read",
+        params,
+        schemas.conversationThreadResult,
+      ));
+    } catch (error) {
+      if (isNotMaterialized(error)) return { items: [], truncated: false };
+      throw error;
+    }
+    this.assertCurrent(connection);
+    const items: ConversationItem[] = [];
+    const bounded = (value: unknown, max: number) => {
+      const raw =
+        typeof value === "string" ? value : JSON.stringify(value ?? "");
+      return raw.slice(0, max);
+    };
+    for (const turn of thread.turns) {
+      for (let index = 0; index < turn.items.length; index += 1) {
+        const raw = turn.items[index];
+        if (!raw) continue;
+        const id = `${turn.id}:${raw.id ?? index}`;
+        const base = { id, at: null, clipped: false } as const;
+        if (raw.type === "userMessage") {
+          const text = (raw.content ?? [])
+            .flatMap((part) =>
+              typeof part !== "string" && part.type === "text"
+                ? [part.text]
+                : [],
+            )
+            .join("\n");
+          items.push({
+            ...base,
+            role: "user",
+            kind: "text",
+            text: bounded(text, 8192),
+            clipped: text.length > 8192,
+            tool: null,
+          });
+        } else if (raw.type === "agentMessage") {
+          const text = raw.text ?? "";
+          items.push({
+            ...base,
+            role: "assistant",
+            kind: "text",
+            text: bounded(text, 8192),
+            clipped: text.length > 8192,
+            tool: null,
+          });
+        } else if (raw.type === "reasoning") {
+          const text = [
+            ...(raw.summary ?? []).map((part) =>
+              typeof part === "string" ? part : part.text,
+            ),
+            ...(raw.content ?? []).flatMap((part) =>
+              typeof part === "string" ? [part] : [],
+            ),
+          ].join("\n");
+          items.push({
+            ...base,
+            role: "assistant",
+            kind: "thinking",
+            text: bounded(text, 8192),
+            clipped: text.length > 8192,
+            tool: null,
+          });
+        } else if (
+          [
+            "commandExecution",
+            "fileChange",
+            "mcpToolCall",
+            "webSearch",
+          ].includes(raw.type)
+        ) {
+          const failed =
+            raw.status === "failed" ||
+            raw.error != null ||
+            (raw.exitCode != null && raw.exitCode !== 0);
+          items.push({
+            ...base,
+            role: "assistant",
+            kind: "tool",
+            text: "",
+            tool: {
+              name:
+                raw.type === "mcpToolCall"
+                  ? `${raw.server ?? "mcp"}.${raw.tool ?? "tool"}`
+                  : raw.type,
+              input: bounded(
+                raw.command ?? raw.arguments ?? raw.changes ?? raw.query ?? "",
+                2048,
+              ),
+              status: failed
+                ? "failed"
+                : raw.status === "inProgress"
+                  ? "running"
+                  : "done",
+              output: bounded(
+                raw.aggregatedOutput ?? raw.result ?? raw.error ?? "",
+                2048,
+              ),
+            },
+          });
+        } else {
+          items.push({
+            ...base,
+            role: "system",
+            kind: "notice",
+            text: raw.type,
+            tool: null,
+          });
+        }
+      }
+    }
+    return { items: items.slice(-300), truncated: items.length > 300 };
   }
   private async observe(
     connection: RpcConnection,

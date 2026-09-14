@@ -200,6 +200,15 @@ in the latency numbers.
 
 ## Main
 
+Cmd+J and the bottom-right Main status button open a rounded floating conversation window above
+the status bar. It overlays the current Tracker or Workbench content without resizing it and can be
+minimized, expanded, or closed without changing the provider session. A stopped Main is never
+started merely by opening chat; its empty state offers an explicit Start action. The pinned Main row
+in Workbench remains the terminal entry point.
+
+Agent pane row menus include **Open as chat**. That action opens the same floating window against the
+run's existing Claude session or Codex thread, so its terminal may remain visible simultaneously.
+
 Every window has a 34px bottom bar: connection state and instance on the left, and a Main toggle
 with the number of Needs-you rows on the right. The bar also shows the selected repository's
 *Ready to merge* PR count (see slice 5 below). `⌘J` opens or closes Main, including while typing

@@ -159,7 +159,7 @@ export function Sidebar({
   const isSelected = (pane: PaneView) =>
     !!selectedPane && paneKey(pane) === paneKey(selectedPane);
   const [menu, setMenu] = useState<{
-    kind: "space" | "tab" | "pane";
+    kind: "space" | "tab" | "pane" | "main";
     key: string;
     x: number;
     y: number;
@@ -167,32 +167,34 @@ export function Sidebar({
   } | null>(null);
   const dismiss = useCallback(() => setMenu(null), []);
   // Resolve against the full inventory, never the filtered descendants or a stale row object.
-  const rowPanes = (kind: "space" | "tab" | "pane", key: string) =>
-    panes
-      .filter(
-        (pane) =>
-          (kind === "space"
-            ? spaceKey(pane)
-            : kind === "tab"
-              ? tabKey(pane)
-              : paneKey(pane)) === key,
-      )
-      .sort(
-        (a, b) =>
-          (a.windowIndex ?? Number.MAX_SAFE_INTEGER) -
-            (b.windowIndex ?? Number.MAX_SAFE_INTEGER) ||
-          (a.windowId ?? "").localeCompare(b.windowId ?? "", undefined, {
-            numeric: true,
-          }) ||
-          a.paneId.localeCompare(b.paneId, undefined, { numeric: true }),
-      );
+  const rowPanes = (kind: "space" | "tab" | "pane" | "main", key: string) =>
+    kind === "main"
+      ? []
+      : panes
+          .filter(
+            (pane) =>
+              (kind === "space"
+                ? spaceKey(pane)
+                : kind === "tab"
+                  ? tabKey(pane)
+                  : paneKey(pane)) === key,
+          )
+          .sort(
+            (a, b) =>
+              (a.windowIndex ?? Number.MAX_SAFE_INTEGER) -
+                (b.windowIndex ?? Number.MAX_SAFE_INTEGER) ||
+              (a.windowId ?? "").localeCompare(b.windowId ?? "", undefined, {
+                numeric: true,
+              }) ||
+              a.paneId.localeCompare(b.paneId, undefined, { numeric: true }),
+          );
   const menuRows = menu ? rowPanes(menu.kind, menu.key) : [];
   const liveRows = menuRows.filter(
     (pane) => !unavailable && !pane.unavailable && !pane.dead,
   );
   const menuName =
     menu?.kind === "space" ? menuRows[0]?.sessionName : menuRows[0]?.windowName;
-  const rowMenu = (kind: "space" | "tab" | "pane", key: string) => ({
+  const rowMenu = (kind: "space" | "tab" | "pane" | "main", key: string) => ({
     onContextMenu: (event: React.MouseEvent<HTMLElement>) => {
       event.preventDefault();
       setMenu({
@@ -349,6 +351,7 @@ export function Sidebar({
                   disabled={!repo}
                   data-pinned="main"
                   aria-current={selected === "main" ? "true" : undefined}
+                  {...rowMenu("main", "main")}
                   onClick={() => openPinned("main")}
                   title="Open Main terminal"
                 >
@@ -452,114 +455,153 @@ export function Sidebar({
         <RowMenu
           {...menu}
           dismiss={dismiss}
-          actions={[
-            ...devControlActions(
-              devControlAvailable,
-              menu.kind === "space" ? menuName : undefined,
-            ),
-            {
-              label: "Open",
-              disabled: !liveRows.length,
-              run: () => {
-                if (menu.kind === "pane" && liveRows[0]) choose(liveRows[0]);
-                else openGroup(menuRows, menuName ?? "Tab");
-              },
-            },
-            {
-              label: "Open space",
-              disabled: !liveRows.length,
-              run: () => {
-                if (menu.kind === "pane" && liveRows[0])
-                  choose(liveRows[0], true);
-                else openGroup(menuRows, menuName ?? "Tab");
-              },
-            },
-            {
-              label: "Rename",
-              disabled: true,
-              reason: "Native rename is provided by Workbench v2 slice 3",
-              run: () => {},
-            },
-            ...(menu.kind === "pane" &&
-            menuRows[0]?.runId &&
-            menuRows[0]?.taskId
+          actions={
+            menu.kind === "main"
               ? [
                   {
-                    label: "Restart agent",
-                    reason:
-                      "Fresh session for this run; the replacement appears once the previous agent stops",
+                    label: "Open terminal",
+                    disabled: !repo,
+                    run: () => openPinned("main"),
+                  },
+                  {
+                    label: "Open as chat",
+                    disabled: !repo,
                     run: () => {
-                      const target = menuRows[0];
-                      if (!target?.runId || !target.taskId) return;
+                      if (!repo) return;
+                      window.dispatchEvent(
+                        new CustomEvent("loom:open-chat", {
+                          detail: { kind: "lead", repoId: repo },
+                        }),
+                      );
+                    },
+                  },
+                ]
+              : [
+                  ...devControlActions(
+                    devControlAvailable,
+                    menu.kind === "space" ? menuName : undefined,
+                  ),
+                  {
+                    label: "Open",
+                    disabled: !liveRows.length,
+                    run: () => {
+                      if (menu.kind === "pane" && liveRows[0])
+                        choose(liveRows[0]);
+                      else openGroup(menuRows, menuName ?? "Tab");
+                    },
+                  },
+                  {
+                    label: "Open space",
+                    disabled: !liveRows.length,
+                    run: () => {
+                      if (menu.kind === "pane" && liveRows[0])
+                        choose(liveRows[0], true);
+                      else openGroup(menuRows, menuName ?? "Tab");
+                    },
+                  },
+                  {
+                    label: "Rename",
+                    disabled: true,
+                    reason: "Native rename is provided by Workbench v2 slice 3",
+                    run: () => {},
+                  },
+                  ...(menu.kind === "pane" &&
+                  menuRows[0]?.runId &&
+                  menuRows[0]?.taskId
+                    ? [
+                        {
+                          label: "Open as chat",
+                          run: () => {
+                            const runId = menuRows[0]?.runId;
+                            if (runId)
+                              window.dispatchEvent(
+                                new CustomEvent("loom:open-chat", {
+                                  detail: { kind: "run", runId },
+                                }),
+                              );
+                          },
+                        },
+                        {
+                          label: "Restart agent",
+                          reason:
+                            "Fresh session for this run; the replacement appears once the previous agent stops",
+                          run: () => {
+                            const target = menuRows[0];
+                            if (!target?.runId || !target.taskId) return;
+                            void store
+                              .command({
+                                kind: "human",
+                                taskId: target.taskId,
+                                command: {
+                                  type: "restart_run",
+                                  runId: target.runId,
+                                },
+                              })
+                              .then((outcome) => {
+                                if (!outcome.ok)
+                                  window.alert(outcome.error.message);
+                              });
+                          },
+                        },
+                      ]
+                    : []),
+                  {
+                    label: "Copy attach command",
+                    disabled: !liveRows.length,
+                    reason: "Attach to the first live pane in this row",
+                    run: () => {
+                      if (liveRows[0]) copyAttach(liveRows[0]);
+                    },
+                  },
+                  {
+                    label:
+                      menu.kind === "space"
+                        ? "Close space"
+                        : menu.kind === "tab"
+                          ? "Close tab"
+                          : "Close pane",
+                    disabled: !liveRows.length,
+                    reason:
+                      menu.kind === "space"
+                        ? "Kills every process in this space"
+                        : menu.kind === "tab"
+                          ? "Kills every process in this tab"
+                          : "Kills this pane's process",
+                    run: () => {
+                      const target = liveRows[0];
+                      if (!target) return;
+                      const count = liveRows.length;
+                      if (
+                        menu.kind !== "pane" &&
+                        !window.confirm(
+                          `Close ${menu.kind} "${menuName ?? ""}" and kill ${count} process${count === 1 ? "" : "es"}?`,
+                        )
+                      )
+                        return;
                       void store
                         .command({
-                          kind: "human",
-                          taskId: target.taskId,
-                          command: { type: "restart_run", runId: target.runId },
+                          kind: "close_terminal",
+                          target: {
+                            hostGeneration: target.hostGeneration,
+                            sessionName: target.sessionName,
+                            windowId: target.windowId,
+                            paneId: target.paneId,
+                          },
+                          scope:
+                            menu.kind === "space"
+                              ? "session"
+                              : menu.kind === "tab"
+                                ? "window"
+                                : "pane",
                         })
                         .then((outcome) => {
-                          if (!outcome.ok) window.alert(outcome.error.message);
+                          if (outcome.ok) hidePanels(menuRows);
+                          else window.alert(outcome.error.message);
                         });
                     },
                   },
                 ]
-              : []),
-            {
-              label: "Copy attach command",
-              disabled: !liveRows.length,
-              reason: "Attach to the first live pane in this row",
-              run: () => {
-                if (liveRows[0]) copyAttach(liveRows[0]);
-              },
-            },
-            {
-              label:
-                menu.kind === "space"
-                  ? "Close space"
-                  : menu.kind === "tab"
-                    ? "Close tab"
-                    : "Close pane",
-              disabled: !liveRows.length,
-              reason:
-                menu.kind === "space"
-                  ? "Kills every process in this space"
-                  : menu.kind === "tab"
-                    ? "Kills every process in this tab"
-                    : "Kills this pane's process",
-              run: () => {
-                const target = liveRows[0];
-                if (!target) return;
-                const count = liveRows.length;
-                if (
-                  menu.kind !== "pane" &&
-                  !window.confirm(
-                    `Close ${menu.kind} "${menuName ?? ""}" and kill ${count} process${count === 1 ? "" : "es"}?`,
-                  )
-                )
-                  return;
-                void store
-                  .command({
-                    kind: "close_terminal",
-                    target: {
-                      hostGeneration: target.hostGeneration,
-                      sessionName: target.sessionName,
-                      windowId: target.windowId,
-                      paneId: target.paneId,
-                    },
-                    scope:
-                      menu.kind === "space"
-                        ? "session"
-                        : menu.kind === "tab"
-                          ? "window"
-                          : "pane",
-                  })
-                  .then((outcome) => {
-                    if (outcome.ok) hidePanels(menuRows);
-                    else window.alert(outcome.error.message);
-                  });
-              },
-            },
-          ]}
+          }
         />
       )}
     </aside>

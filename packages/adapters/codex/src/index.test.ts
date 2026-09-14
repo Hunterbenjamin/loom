@@ -310,6 +310,89 @@ describe("Codex app-server adapter", () => {
       expect(adapter.activityAt(threadId)).not.toBe(previous),
     );
   });
+  it("normalizes v2 conversation items using thread/read without resuming", async () => {
+    thread.turns[0].items = [
+      {
+        type: "userMessage",
+        id: "user-1",
+        content: [{ type: "text", text: "Please inspect" }],
+      },
+      { type: "agentMessage", id: "agent-1", text: "Inspecting" },
+      {
+        type: "reasoning",
+        id: "reasoning-1",
+        summary: ["Summary"],
+        content: ["Detail"],
+      },
+      {
+        type: "commandExecution",
+        id: "command-1",
+        command: "pnpm test",
+        status: "completed",
+        aggregatedOutput: "passed",
+        exitCode: 0,
+      },
+      {
+        type: "fileChange",
+        id: "change-1",
+        changes: [{ path: "README.md", kind: "update" }],
+        status: "completed",
+      },
+      {
+        type: "mcpToolCall",
+        id: "mcp-1",
+        server: "loom",
+        tool: "get_task_context",
+        status: "failed",
+        arguments: { taskId: "t-1" },
+        error: "unavailable",
+      },
+      {
+        type: "webSearch",
+        id: "search-1",
+        query: "Loom",
+        status: "inProgress",
+      },
+      { type: "futureItem", id: "future-1" },
+    ];
+    const before = fake.messages.length;
+    const result = await adapter.readConversation(threadId);
+    expect(result.items.map(({ kind }) => kind)).toEqual([
+      "text",
+      "text",
+      "thinking",
+      "tool",
+      "tool",
+      "tool",
+      "tool",
+      "notice",
+    ]);
+    expect(result.items[2]).toMatchObject({
+      id: `${turnId}:reasoning-1`,
+      kind: "thinking",
+      text: "Summary\nDetail",
+    });
+    expect(result.items[3]?.tool).toMatchObject({
+      name: "commandExecution",
+      status: "done",
+      output: "passed",
+    });
+    expect(result.items[5]?.tool).toMatchObject({
+      name: "loom.get_task_context",
+      status: "failed",
+    });
+    expect(result.items[6]?.tool).toMatchObject({ status: "running" });
+    expect(result.items[7]).toMatchObject({
+      kind: "notice",
+      text: "futureItem",
+    });
+    expect(
+      fake.messages.slice(before).flatMap((entry) => {
+        const message = entry.message as { method?: string };
+        return message.method ? [message.method] : [];
+      }),
+    ).toEqual(["thread/read"]);
+  });
   it("checks resumability on a fresh read-only connection: notLoaded exists, gone does not", async () => {
     thread.status = { type: "notLoaded" };
     expect(await adapter.checkResumable(threadId)).toBe(true);

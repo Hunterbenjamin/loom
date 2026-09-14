@@ -38,12 +38,14 @@ import {
   readMcpConfig,
   writeSettingsFiles,
 } from "./settings.js";
+import { readConversation } from "./transcript.js";
 
 export * from "./agents.js";
 export * from "./headless.js";
 export * from "./hooks.js";
 export * from "./receiver.js";
 export * from "./settings.js";
+export * from "./transcript.js";
 
 export interface ClaudeAdapterConfig {
   onDiagnostic?: (event: import("@loom/core").AdapterDiagnostic) => void;
@@ -110,6 +112,7 @@ export async function createClaudeAdapter(
   return {
     hookBaseUrl: receiver.baseUrl,
     promptReceipt,
+    readConversation,
 
     listSessions: (): Promise<ClaudeAgentsEntry[]> =>
       readAgents(config.agents ?? {}),

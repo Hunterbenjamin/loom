@@ -112,13 +112,16 @@ if (config.mode === "live") {
   });
   store.setSender((command) => client.command(command));
   store.subscribe(() => {
-    const { openTask, openRun } = store.getState().ui;
+    const { openTask, openRun, chatTarget, chatView } = store.getState().ui;
     client.setDetail([
       { kind: "panes" },
       { kind: "agents" },
       ...pullRequestSubscriptions(store.getState()),
       ...(openTask ? [{ kind: "task" as const, taskId: openTask }] : []),
       ...(openRun ? [{ kind: "run" as const, runId: openRun }] : []),
+      ...(chatTarget && chatView !== "minimized"
+        ? [{ kind: "conversation" as const, target: chatTarget }]
+        : []),
     ]);
   });
   client.setDetail([{ kind: "panes" }, { kind: "agents" }]);

@@ -385,6 +385,8 @@ export interface Message {
   expectedTurnId?: string | null;
   baselineTurnId?: string | null;
   deliveryAttention?: boolean;
+  /** Current observable send blocker, suitable for a delivery-state tooltip. */
+  deliveryReason?: string | null;
 }
 
 export interface Question {

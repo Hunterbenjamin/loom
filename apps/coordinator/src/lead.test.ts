@@ -305,6 +305,107 @@ test("Main status comes from the provider entry and a matching cwd", async () =>
   }
 });
 
+test("Main chat sends are gated, idempotent, provider-confirmed, and stale prompts are refused", async () => {
+  const { h, cli } = await setup();
+  const stopped = await cli.command({
+    kind: "send_lead_message",
+    repoId: h.repo.id,
+    text: "Before start",
+    clientMessageId: "00000000-0000-4000-8000-000000000001",
+  });
+  expect(stopped).toMatchObject({
+    ok: true,
+    result: { kind: "lead_message", state: "refused" },
+  });
+  expect(
+    await cli.command({
+      kind: "send_lead_message",
+      repoId: h.repo.id,
+      text: "Before start",
+      clientMessageId: "00000000-0000-4000-8000-000000000001",
+    }),
+  ).toEqual(stopped);
+  expect(
+    await cli.command({
+      kind: "send_lead_message",
+      repoId: h.repo.id,
+      text: "/unsafe",
+      clientMessageId: "00000000-0000-4000-8000-000000000002",
+    } as never),
+  ).toMatchObject({ ok: false, error: { code: "invalid_frame" } });
+
+  const target = await h.coordinator.leadFor(h.repo.id).open();
+  const sessionId = present(target.sessionId);
+  h.providers.create("claude", h.repo.root as never, sessionId, "interactive");
+  await cli.subscribe([
+    {
+      kind: "conversation",
+      target: { kind: "lead", repoId: h.repo.id },
+    },
+  ]);
+  const sent = await cli.command({
+    kind: "send_lead_message",
+    repoId: h.repo.id,
+    text: "Hello Main",
+    clientMessageId: "00000000-0000-4000-8000-000000000003",
+  });
+  expect(sent).toMatchObject({
+    ok: true,
+    result: { kind: "lead_message", state: "sent" },
+  });
+  expect(h.paneHost.writes.at(-1)?.text).toBe("Hello Main");
+  const record = present(
+    h.store.leadMessages.get(h.repo.id, "00000000-0000-4000-8000-000000000003"),
+  );
+  const session = h.providers.get(sessionId);
+  if (session.value.provider !== "claude") throw new Error("Wrong provider");
+  session.value.hooks.promptSubmits.push({
+    promptId: "prompt-chat",
+    textHash: record.textHash,
+    at: h.clock.now(),
+  });
+  h.providers.event(sessionId);
+  await vi.waitFor(() =>
+    expect(
+      h.store.leadMessages.get(
+        h.repo.id,
+        "00000000-0000-4000-8000-000000000003",
+      )?.state,
+    ).toBe("delivered"),
+  );
+
+  h.providers.request(sessionId, "approval", "Approve this tool");
+  const dialog = present(
+    (await h.adapters.claude.hookSummary(sessionId)).pendingDialog,
+  );
+  expect(
+    await cli.command({
+      kind: "send_lead_message",
+      repoId: h.repo.id,
+      text: "While waiting",
+      clientMessageId: "00000000-0000-4000-8000-000000000004",
+    }),
+  ).toMatchObject({
+    ok: true,
+    result: { kind: "lead_message", state: "refused" },
+  });
+  expect(
+    await cli.command({
+      kind: "answer_lead_prompt",
+      repoId: h.repo.id,
+      choice: 1,
+      expectedDialog: {
+        requestId: dialog.requestId,
+        at: "2026-09-14T00:00:00.000Z" as never,
+      },
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: { code: "guard_failed" },
+  });
+  expect(h.paneHost.keys).toEqual([]);
+});
+
 test("a lost pane receipt is recovered by explicit open, never by adopting the workspace's human shell", async () => {
   const { h } = await setup();
   const cwd = h.repo.root as never;

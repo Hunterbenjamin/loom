@@ -92,7 +92,7 @@ export type Action = ActionBase &
         expectedDialog?: {
           requestId: string;
           at: IsoTime;
-          command: string;
+          command?: string;
           sessionEpoch: number;
         };
         text?: string;

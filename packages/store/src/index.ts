@@ -7,6 +7,7 @@ import { migrate } from "./migrations.js";
 import { Store } from "./store.js";
 
 export { SqliteHookLog } from "./hooks.js";
+export * from "./lead-messages.js";
 export * from "./main-messages.js";
 export type { ClaimedAction, RunningAction } from "./outbox.js";
 export * from "./settings.js";

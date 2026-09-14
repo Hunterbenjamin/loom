@@ -98,6 +98,7 @@ export async function createRealAdapters(
     paneHost,
     claude,
     codex: codex.codex,
+    codexIfRunning: codex.codexIfRunning,
     stopCodexServer: codex.stopCodexServer,
     codexServerCount: codex.codexServerCount,
     async close() {

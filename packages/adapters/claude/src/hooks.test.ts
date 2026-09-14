@@ -232,6 +232,7 @@ describe("hook receiver and fold", () => {
   test("an empty log folds to an empty summary", async () => {
     expect(await summary()).toEqual({
       lastEventAt: null,
+      transcriptPath: null,
       pendingDialog: null,
       promptSubmits: [],
       lastStop: null,

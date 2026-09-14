@@ -3,6 +3,7 @@ import type {
   ClaudeSessionObservation,
   CodexAdapter,
   CodexThreadObservation,
+  ConversationItem,
   Hint,
   IsoTime,
   OnHint,
@@ -46,6 +47,8 @@ export interface FakeSession {
   dropDelivery: boolean;
   answer: "accept" | "decline" | "answer" | null;
   transcript: ClaudeSessionObservation["hooks"]["promptSubmits"];
+  conversation: ConversationItem[];
+  conversationReads: number;
 }
 export class FakeProviders {
   readonly sessions = new Map<ProviderSessionId, FakeSession>();
@@ -96,6 +99,7 @@ export class FakeProviders {
             },
             hooks: {
               lastEventAt: this.clock.now(),
+              transcriptPath: null,
               pendingDialog: null,
               promptSubmits: [],
               lastStop: null,
@@ -118,8 +122,14 @@ export class FakeProviders {
       dropDelivery: false,
       answer: null,
       transcript: [],
+      conversation: [],
+      conversationReads: 0,
     });
     return id;
+  }
+  appendConversation(id: ProviderSessionId, item: ConversationItem): void {
+    this.get(id).conversation.push(structuredClone(item));
+    this.event(id);
   }
   event(id: ProviderSessionId) {
     const s = this.get(id);
@@ -426,6 +436,14 @@ export class FakeProviders {
         throw new Error("Thread unavailable");
       return structuredClone(s.value);
     },
+    readConversation: async (id) => {
+      const s = this.get(id);
+      s.conversationReads += 1;
+      return {
+        items: structuredClone(s.conversation.slice(-300)),
+        truncated: s.conversation.length > 300,
+      };
+    },
     resumeThread: async (id) => {
       const s = this.get(id);
       if (s.value.provider !== "codex") throw new Error("Wrong provider");
@@ -469,6 +487,14 @@ export class FakeProviders {
     subscribe: this.hints.subscribe,
   };
   readonly claude: ClaudeAdapter = {
+    readConversation: async ({ sessionId }) => {
+      const s = this.get(sessionId);
+      s.conversationReads += 1;
+      return {
+        items: structuredClone(s.conversation.slice(-300)),
+        truncated: s.conversation.length > 300,
+      };
+    },
     promptReceipt: async (request) => {
       const session = this.get(request.sessionId);
       if (session.cwd !== request.cwd) return null;

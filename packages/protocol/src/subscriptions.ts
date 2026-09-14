@@ -14,7 +14,11 @@ import { z } from "zod";
 import { repoId, runId, taskId } from "./ids.js";
 import type { Change } from "./patch.js";
 import type { CollectionName } from "./snapshot.js";
-import { reviewRangeMode } from "./views.js";
+import {
+  conversationKey,
+  conversationTarget,
+  reviewRangeMode,
+} from "./views.js";
 
 export const viewName = z.enum([
   "all",
@@ -56,6 +60,10 @@ export const subscription = z.union([
   }),
   /** One run's attach target and pane state, for a terminal panel. */
   z.strictObject({ kind: z.literal("run"), runId }),
+  z.strictObject({
+    kind: z.literal("conversation"),
+    target: conversationTarget,
+  }),
 ]);
 
 export type Subscription = z.output<typeof subscription>;
@@ -102,6 +110,7 @@ export interface Scope {
   tasks: Set<string>;
   diffs: Set<string>;
   runs: Set<string>;
+  conversations: Set<string>;
 }
 
 export function scopeOf(subscriptions: readonly Subscription[]): Scope {
@@ -114,6 +123,7 @@ export function scopeOf(subscriptions: readonly Subscription[]): Scope {
     tasks: new Set(),
     diffs: new Set(),
     runs: new Set(),
+    conversations: new Set(),
   };
   for (const s of subscriptions) {
     if (s.kind === "pull_requests") scope.pullRequestRepos.add(s.repoId);
@@ -128,7 +138,8 @@ export function scopeOf(subscriptions: readonly Subscription[]): Scope {
     else if (s.kind === "diff") scope.diffs.add(`${s.taskId}#${s.mode}`);
     else if (s.kind === "panes") scope.panes = true;
     else if (s.kind === "agents") scope.agents = true;
-    else scope.runs.add(s.runId);
+    else if (s.kind === "run") scope.runs.add(s.runId);
+    else scope.conversations.add(conversationKey(s.target));
   }
   return scope;
 }
@@ -148,7 +159,11 @@ export function taskInScope(scope: Scope, task: Task): boolean {
 
 /** The task a change belongs to, or null when it isn't task-scoped. */
 export function ownerTask(change: Change): string | null {
-  if (change.op === "delete") return change.taskId;
+  if (change.op === "delete")
+    return change.collection === "conversation" ||
+      change.collection === "conversation_item"
+      ? null
+      : change.taskId;
   if (
     change.collection === "pull_requests" ||
     change.collection === "pull_request" ||
@@ -158,6 +173,11 @@ export function ownerTask(change: Change): string | null {
     change.collection === "settings" ||
     change.collection === "lead" ||
     change.collection === "pane_inventory"
+  )
+    return null;
+  if (
+    change.collection === "conversation" ||
+    change.collection === "conversation_item"
   )
     return null;
   if (change.collection === "task") return change.value.id;
@@ -187,6 +207,20 @@ export function inScope(scope: Scope, change: Change): boolean {
   }
   if (change.collection === "pane" || change.collection === "pane_inventory")
     return scope.panes;
+  if (change.collection === "conversation") {
+    const key =
+      change.op === "delete"
+        ? change.key
+        : conversationKey(change.value.target);
+    return scope.conversations.has(key);
+  }
+  if (change.collection === "conversation_item") {
+    const key =
+      change.op === "delete"
+        ? (change.key.split("#", 1)[0] ?? "")
+        : change.value.conversationKey;
+    return scope.conversations.has(key);
+  }
   if (ALWAYS.includes(change.collection)) return true;
   if (
     scope.agents &&

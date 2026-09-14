@@ -40,6 +40,7 @@ import {
 } from "./entity-schemas.js";
 import { SqliteHookLog } from "./hooks.js";
 import { dispositionSchema, inputSchema } from "./input-schemas.js";
+import { LeadMessageStore } from "./lead-messages.js";
 import { MainMessageStore } from "./main-messages.js";
 import { Outbox } from "./outbox.js";
 import {
@@ -81,6 +82,7 @@ class CommitConflict extends Error {
 export class Store {
   private roleProfilesForTask?: (task: Task) => ReconcileConfig["roleProfiles"];
   readonly mainMessages: MainMessageStore;
+  readonly leadMessages: LeadMessageStore;
   readonly hooks: SqliteHookLog;
   readonly outbox: Outbox;
   readonly settings: SettingsStore;
@@ -90,6 +92,7 @@ export class Store {
     private config: ReconcileConfig,
   ) {
     this.mainMessages = new MainMessageStore(db);
+    this.leadMessages = new LeadMessageStore(db);
     this.hooks = new SqliteHookLog(db);
     this.outbox = new Outbox(db);
     this.settings = new SettingsStore(db);

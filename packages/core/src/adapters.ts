@@ -18,6 +18,7 @@ import type {
   ClaudeHookSummary,
   ClaudeSessionObservation,
   CodexThreadObservation,
+  ConversationRead,
   GitWorktreeObservation,
   PaneObservation,
   PullRequestObservation,
@@ -420,6 +421,8 @@ export interface CodexAdapter {
     options?: { config?: Record<string, unknown> },
   ): Promise<CodexThreadObservation>;
   readThread(threadId: ProviderSessionId): Promise<CodexThreadObservation>;
+  /** Read existing items only. Must never start/resume a thread or server. */
+  readConversation(threadId: ProviderSessionId): Promise<ConversationRead>;
   unsubscribe(threadId: ProviderSessionId): Promise<void>;
   /** Rejects if `generation` isn't current: request IDs restart with the server. */
   answerRequest(req: {
@@ -451,6 +454,11 @@ export interface ClaudeAdapter {
   listSessions(): Promise<ClaudeAgentsEntry[]>;
   /** Hooks received for the session, folded. */
   hookSummary(sessionId: ProviderSessionId): Promise<ClaudeHookSummary>;
+  readConversation(request: {
+    sessionId: ProviderSessionId;
+    cwd: WorktreePath;
+    transcriptPath?: string | null;
+  }): Promise<ConversationRead>;
   /** Re-read a submitted user prompt from the provider transcript, scoped to this attempt. */
   promptReceipt(request: {
     sessionId: ProviderSessionId;
