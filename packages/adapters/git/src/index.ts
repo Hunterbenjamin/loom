@@ -8,7 +8,7 @@ import {
   rename,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import type { GitAdapter, GitWorktreeObservation } from "@loom/core";
 import { z } from "zod";
 import {
@@ -28,6 +28,8 @@ import { parseDirty, parseHunks, parseNumstat, parseRaw } from "./metadata.js";
 
 export type { FileChange, GitAdapter } from "@loom/core";
 export { GitError } from "./git.js";
+
+export class UnsafeWorktreePathError extends Error {}
 
 const fileName = z
   .string()
@@ -243,11 +245,24 @@ export function createGitAdapter(
       }
       return observation.parse(result);
     },
+    async fetchBase(req) {
+      const repoRoot = pathSchema.parse(req.repoRoot);
+      await validateBranch(repoRoot, req.baseBranch);
+      const remoteRef = `refs/remotes/${remote}/${req.baseBranch}`;
+      await git(repoRoot, [
+        "fetch",
+        "--no-tags",
+        "--no-recurse-submodules",
+        remote,
+        `+refs/heads/${req.baseBranch}:${remoteRef}`,
+      ]);
+      return { baseSha: await commit(repoRoot, remoteRef) };
+    },
     async createWorktree(req) {
       const repoRoot = pathSchema.parse(req.repoRoot);
       const desired = pathSchema.parse(resolve(req.path));
       await validateBranch(repoRoot, req.branch);
-      const baseSha = await commit(repoRoot, req.baseBranch);
+      const baseSha = sha.parse(req.baseSha);
       const findExisting = async () => {
         const fields = nulFields(
           (await git(repoRoot, ["worktree", "list", "--porcelain", "-z"]))
@@ -272,6 +287,21 @@ export function createGitAdapter(
         repoRoot,
         `refs/heads/${req.branch}`,
       );
+      if (branchHead === null) {
+        await commit(repoRoot, baseSha);
+        for (const required of z.array(sha).parse(req.requiredCommits ?? [])) {
+          await commit(repoRoot, required);
+          const ancestor = await git(
+            repoRoot,
+            ["merge-base", "--is-ancestor", required, baseSha],
+            [0, 1],
+          );
+          if (ancestor.code === 1)
+            throw new Error(
+              `Fetched base ${baseSha} does not contain dependency merge ${required} yet`,
+            );
+        }
+      }
       try {
         await git(
           repoRoot,
@@ -288,6 +318,68 @@ export function createGitAdapter(
       if (!created)
         throw new Error("Created worktree missing from Git metadata");
       return created;
+    },
+    async removeWorktree(req) {
+      const repoRoot = await rootPath(pathSchema.parse(req.repoRoot));
+      const allowedRoot = pathSchema.parse(await realpath(req.allowedRoot));
+      const desired = pathSchema.parse(resolve(req.path));
+      const inside = (candidate: string) =>
+        candidate.startsWith(`${allowedRoot}${sep}`) &&
+        candidate !== allowedRoot;
+      if (!inside(desired))
+        throw new UnsafeWorktreePathError(
+          `Refusing to remove a worktree outside ${allowedRoot}`,
+        );
+      await validateBranch(repoRoot, req.branch);
+      try {
+        await lstat(desired);
+      } catch (error) {
+        if (!missing(error)) throw error;
+        await git(repoRoot, ["worktree", "prune"]);
+        return { removed: false };
+      }
+      const canonical = pathSchema.parse(await realpath(desired));
+      if (!inside(canonical) || canonical === repoRoot)
+        throw new UnsafeWorktreePathError(
+          `Refusing to remove a worktree outside ${allowedRoot}`,
+        );
+      const fields = nulFields(
+        (await git(repoRoot, ["worktree", "list", "--porcelain", "-z"])).output,
+      );
+      let listedPath: string | null = null;
+      let registered = false;
+      for (const field of fields) {
+        if (field.startsWith("worktree ")) listedPath = field.slice(9);
+        else if (
+          field === `branch refs/heads/${req.branch}` &&
+          listedPath !== null &&
+          (await realpath(listedPath)) === canonical &&
+          canonical !== repoRoot
+        )
+          registered = true;
+        else if (field === "") listedPath = null;
+      }
+      if (!registered)
+        throw new Error(
+          `Refusing to remove ${canonical}: it is not the registered worktree for ${req.branch}`,
+        );
+      const dirty = parseDirty(
+        (
+          await git(canonical, [
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+          ])
+        ).output,
+      );
+      if (dirty.length)
+        throw new Error(
+          `Refusing to remove dirty worktree: ${dirty.join(", ")}`,
+        );
+      await git(repoRoot, ["worktree", "remove", "--", canonical]);
+      await git(repoRoot, ["worktree", "prune"]);
+      return { removed: true };
     },
     async push(req) {
       const path = await rootPath(req.worktreePath);

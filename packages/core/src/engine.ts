@@ -4,7 +4,12 @@ import { delivery } from "./delivery.js";
 import { attention, budget, reconcileFlags } from "./flags.js";
 import { structurallyEqual } from "./helpers.js";
 import { human } from "./human.js";
-import { observeRuns, retireFinishedPanes, startDesired } from "./lifecycle.js";
+import {
+  observeRuns,
+  removeFinishedWorktree,
+  retireFinishedPanes,
+  startDesired,
+} from "./lifecycle.js";
 import type { Reconcile } from "./reconcile.js";
 import { continueInterrupted, restartInterrupted } from "./restart.js";
 import {
@@ -78,6 +83,7 @@ export const reconcile: Reconcile = (state, observations) => {
   }
   startDesired(c);
   retireFinishedPanes(c);
+  removeFinishedWorktree(c);
   delivery(c);
   automate(c);
   // Last among emitters: voided approvals and cancellations earlier in the pass count.

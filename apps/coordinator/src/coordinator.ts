@@ -782,16 +782,20 @@ export class Coordinator {
       this.store.outbox.runningAtStartup(),
     );
     for (const taskId of report.reconciled) this.loop.enqueue(taskId);
-    // A finished task is not resynced, so give one with intents still queued (a pane retire held
-    // back by a merge that never ran, say) a pass to release or cancel them.
+    // A finished task is not resynced, so backfill cleanup and resume its pending retries.
     for (const task of this.store.tasks())
-      if (
-        TERMINAL.includes(task.stage) &&
-        this.store
-          .loadTaskState(task.id)
-          .outbox.some((row) => row.status === "pending")
-      )
-        this.loop.enqueue(task.id);
+      if (TERMINAL.includes(task.stage)) {
+        const state = this.store.loadTaskState(task.id);
+        if (
+          (state.worktree && state.worktree.removedAt === null) ||
+          state.outbox.some(
+            (row) =>
+              row.status === "pending" ||
+              (row.status === "failed" && row.retryAt),
+          )
+        )
+          this.loop.enqueue(task.id);
+      }
     await this.refreshAll([]);
     await this.inventory.refresh();
     this.panePoll = setInterval(() => void this.inventory.refresh(), 2000);

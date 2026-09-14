@@ -1,5 +1,7 @@
+import { resolve, sep } from "node:path";
 import { isStaleEntry } from "@loom/adapter-claude";
 import { StaleCodexRequestError } from "@loom/adapter-codex";
+import { UnsafeWorktreePathError } from "@loom/adapter-git";
 import { GitHubError } from "@loom/adapter-github";
 import { type PullRequestCommand, pullRequestDetail } from "@loom/protocol";
 import { observeRun } from "./observe.js";
@@ -286,11 +288,16 @@ export class Executor {
     switch (action.kind) {
       case "create_worktree": {
         const repo = this.deps.repoById(action.repoId);
+        const { baseSha } = await adapters.git.fetchBase({
+          repoRoot: repo.root,
+          baseBranch: action.baseBranch,
+        });
         const created = await adapters.git.createWorktree({
           repoRoot: repo.root,
           path: action.path,
           branch: action.branch,
-          baseBranch: action.baseBranch,
+          baseSha,
+          requiredCommits: action.requiredCommits,
         });
         // The repo's own setup (dependency install, generated files) runs here, once, so no
         // agent spends a turn discovering an empty node_modules. Idempotent: a retry after a
@@ -298,6 +305,40 @@ export class Executor {
         const setup = (await this.deps.workflow.read(repo.root)).setup;
         if (setup) await this.deps.shell(setup, created.path);
         return created;
+      }
+      case "remove_worktree": {
+        const runs = [...state.runs, ...store.runs(action.taskId)];
+        if (
+          runs.some(
+            (run) =>
+              run.worktreePath === action.worktreePath && run.endedAt === null,
+          )
+        )
+          throw new Error("Waiting for live runs to leave the worktree");
+        const root = resolve(action.worktreePath);
+        const panes = await adapters.paneHost.listPanes();
+        if (
+          panes.some(
+            (pane) =>
+              !pane.dead &&
+              (resolve(pane.startCwd) === root ||
+                resolve(pane.startCwd).startsWith(`${root}${sep}`)),
+          )
+        )
+          throw new Error("Waiting for live panes to leave the worktree");
+        const repo = this.deps.repoById(action.repoId);
+        try {
+          return await adapters.git.removeWorktree({
+            repoRoot: repo.root,
+            path: action.worktreePath,
+            branch: action.branch,
+            allowedRoot: this.deps.config.worktreeRoot,
+          });
+        } catch (error) {
+          if (error instanceof UnsafeWorktreePathError)
+            throw new Fatal(error.message);
+          throw error;
+        }
       }
       case "write_task_files": {
         const files = action.artifacts.map(({ kind, version }) => {

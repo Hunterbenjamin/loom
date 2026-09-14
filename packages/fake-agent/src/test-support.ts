@@ -213,6 +213,9 @@ export async function setup(stage: Stage = "todo", withPr = true) {
           break;
         case "create_worktree":
           throw new Error("Fixture already has a worktree");
+        case "remove_worktree":
+          output = { removed: true };
+          break;
         case "answer_provider_request": {
           const run = runner.state.runs.find((r) => r.id === action.runId);
           if (!run?.sessionId) throw new Error("No session");

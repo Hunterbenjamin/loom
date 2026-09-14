@@ -828,6 +828,8 @@ export class Store {
           taskId: task.id,
           stage: task.stage,
           merged: task.stage === "done",
+          mergeCommitSha: null,
+          branch: task.branch,
         };
       });
   }

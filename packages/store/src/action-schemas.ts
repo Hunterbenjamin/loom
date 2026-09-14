@@ -19,7 +19,14 @@ import {
 } from "./schema-helpers.js";
 
 const fields = {
-  create_worktree: { repoId: id, path: text, branch: text, baseBranch: text },
+  create_worktree: {
+    repoId: id,
+    path: text,
+    branch: text,
+    baseBranch: text,
+    requiredCommits: z.array(sha).optional(),
+  },
+  remove_worktree: { repoId: id, worktreePath: text, branch: text },
   write_task_files: {
     worktreePath: text,
     artifacts: z.array(z.object({ kind: artifactKind, version: positive })),
@@ -113,6 +120,12 @@ export const actionSchema = contract<Action>()(
       taskId: id,
       kind: z.literal("create_worktree"),
       ...fields.create_worktree,
+    }),
+    z.object({
+      key: id,
+      taskId: id,
+      kind: z.literal("remove_worktree"),
+      ...fields.remove_worktree,
     }),
     z.object({
       key: id,
@@ -215,6 +228,7 @@ export const actionSchema = contract<Action>()(
 const empty = z.object({});
 const outputs = {
   create_worktree: z.object({ path: text, headSha: sha, baseSha: sha }),
+  remove_worktree: z.object({ removed: z.boolean() }),
   write_task_files: empty,
   open_workspace: z.object({ workspaceId: text }),
   start_run: z.object({
@@ -247,6 +261,11 @@ export const actionResultSchema = contract<ActionResult>()(
       kind: z.literal("create_worktree"),
       ok: z.literal(true),
       output: outputs.create_worktree,
+    }),
+    z.object({
+      kind: z.literal("remove_worktree"),
+      ok: z.literal(true),
+      output: outputs.remove_worktree,
     }),
     z.object({
       kind: z.literal("write_task_files"),

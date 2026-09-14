@@ -73,6 +73,12 @@ test("a task runs Todo to Done through plan, review, a fix round and a merge", a
 
   const done = h.store.loadTaskState(taskId);
   expect(done.runs.every((run) => run.endedAt !== null)).toBe(true);
+  expect(done.worktree?.removedAt).not.toBeNull();
+  if (!done.worktree) throw new Error("Missing worktree history");
+  await expect(stat(done.worktree.path)).rejects.toThrow();
+  await expect(
+    h.git("show-ref", "--verify", `refs/heads/${done.worktree.branch}`),
+  ).resolves.toContain(done.worktree.branch);
   for (const run of done.runs) {
     if (run.provider !== "claude" || run.mode !== "headless" || !run.sessionId)
       continue;
