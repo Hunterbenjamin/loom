@@ -2,7 +2,16 @@ import type { InputId, McpToolName, McpTools } from "@loom/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, expect, test } from "vitest";
-import { finding, head, now, plan } from "../../core/test/fixtures.js";
+import {
+  finding,
+  head,
+  now,
+  plan as storedPlan,
+} from "../../core/test/fixtures.js";
+
+// Agents submit steps as one-line outcomes; Loom stores them as { title, detail }.
+const plan = { ...storedPlan, steps: ["Implement"] };
+
 import { outputSchemas, resultSchema } from "./schemas.js";
 import { createMcpServer, McpGuardError } from "./server.js";
 import { setup } from "./test-support.js";
@@ -102,6 +111,19 @@ test("submit_plan reconciles and returns the committed plan version", async () =
   expect(host.state.task.stage).toBe("in_progress");
   expect(host.inputs).toHaveLength(1);
   expect(host.passes).toBe(1);
+});
+test("submit_plan takes one-line steps, stores them as titles, and refuses step objects and long steps", async () => {
+  const { call, host } = await connect(setup("planning", "planner"));
+  expect(
+    await call("submit_plan", {
+      plan: { ...plan, steps: [{ title: "Implement", detail: "Change code" }] },
+    }),
+  ).toMatchObject({ ok: false, error: { code: "invalid_input" } });
+  expect(
+    await call("submit_plan", { plan: { ...plan, steps: ["x".repeat(201)] } }),
+  ).toMatchObject({ ok: false, error: { code: "invalid_input" } });
+  expect(await call("submit_plan", { plan })).toMatchObject({ ok: true });
+  expect(host.state.plan?.steps).toEqual([{ title: "Implement", detail: "" }]);
 });
 test("report_progress records decisions and test results", async () => {
   const { call, host } = await connect();

@@ -9,15 +9,15 @@ test("Main introduces itself in two sentences, waits, and has full access", () =
   );
   expect(introduction?.[1]?.split(".").filter((s) => s.trim())).toHaveLength(2);
   expect(prompt).toContain("Make no tool calls before your introduction");
-  expect(prompt).toContain("Never start work on your own");
+  expect(prompt).toContain("don't start work on your own");
   expect(prompt).toContain("restart drills");
   expect(prompt).toContain("the brain of this workspace, with hands");
   expect(prompt).toContain(
     "Create a Loom issue via create_task when the work is large",
   );
-  expect(prompt).toContain("Never poll");
+  expect(prompt).toContain("Don't poll or wait for an issue");
   expect(prompt).toContain(
-    "merging, and pushing to a base branch. Never do either yourself",
+    "merge only when the human tells you to in this conversation and CI is green, and don't push to a base branch",
   );
   expect(prompt).not.toContain("No shell");
 });
@@ -38,8 +38,10 @@ test("Main reads its bounded memory as context, and panel summaries do not start
 
 test("Main messages never wait and have no Operator reply plumbing", () => {
   const prompt = leadBrief("", "example/repo");
-  expect(prompt).toContain("Never wait for the answer");
-  expect(prompt).toContain("Never use it to drive an agent's work");
+  expect(prompt).toContain("Don't wait or poll for an answer");
+  expect(prompt).toContain(
+    "Use an issue, not a message, for anything that is work",
+  );
   expect(prompt).not.toContain("Operator");
   expect(prompt).not.toContain("read_agent_replies");
   expect(mainPanelBrief()).not.toContain("read_agent_replies");
@@ -61,12 +63,14 @@ test("plans are short and record decisions; acceptance criteria are the bar impl
       worktreePath: "/tmp/t-1",
     });
   expect(brief("planner")).toContain("about 300 to 600 words");
-  expect(brief("planner")).toContain("no line numbers");
+  expect(brief("planner")).toContain("Each step is one line naming an outcome");
+  expect(brief("planner")).toContain("Loom rejects plans over 800 words");
   expect(brief("planner")).toContain("at most eight acceptance criteria");
   expect(brief("planner")).toContain("don't add requirements beyond it");
   expect(brief("implementer")).toContain("acceptance criteria are the bar");
   expect(brief("reviewer")).toContain("an unmet acceptance criterion");
   expect(brief("reviewer")).toContain("The rest of the plan is guidance");
+  expect(brief("reviewer")).not.toContain("AGENTS.md, and judge");
   expect(leadBrief()).toContain(
     "never add requirements the human did not ask for",
   );

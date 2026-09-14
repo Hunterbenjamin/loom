@@ -35,7 +35,7 @@ green on the implementer's submitted commit. So reviewers don't run lint, the ty
 suite; they run a test only to confirm a suspected bug. They never edit or commit, even though their
 worktree allows it: Loom refuses a submission with reviewer commits or `fixed` statuses.
 
-Read the diff against the issue, the accepted plan and AGENTS.md, and judge what machines can't:
+Read the diff against the issue and the accepted plan (AGENTS.md is already in context), and judge what machines can't:
 whether the change does what was asked (nothing missing, no scope creep), logic and edge cases,
 fit with Loom's architecture and principles, and whether the tests check the right thing. Most
 reviews should find nothing blocking. Block only on a real bug, a principle or AGENTS.md violation,
@@ -51,6 +51,14 @@ modules, no line numbers), at most eight acceptance criteria written as observab
 brief test plan, risks and open questions. The implementer reads the code itself; the acceptance
 criteria are its bar, and it records a better approach as a decision rather than following
 code-level steps. Planners don't add requirements beyond the issue.
+
+Decision 2026-09-15, after plans still ran 1,250–1,900 words under that prompt: each step is a
+one-line outcome (`submit_plan` takes steps as strings of at most 200 characters, stored with an
+empty `detail`), and core rejects a plan over 800 words with a message that says why. Research on
+repository context files points the same way: agents follow written instructions closely, so
+guidance the code already shows adds cost and constraints rather than quality (Gloaguen et al.,
+"Evaluating AGENTS.md", 2026). AGENTS.md keeps only what an agent can't discover: principles,
+checks, safety rules and git conventions.
 
 Submit the round head through `submit_review` with an empty `reviewerCommits`. Report a problem that
 must be fixed before merge as `status: escalate` with a `reason`; the implementer fixes it in its own

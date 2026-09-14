@@ -10,7 +10,7 @@
           "plan": {
             "goal": "Change the example file",
             "nonGoals": [],
-            "steps": [{ "title": "Edit", "detail": "Write the new value" }],
+            "steps": ["Edit"],
             "areas": ["example.txt"],
             "acceptanceCriteria": ["example.txt holds the new value"],
             "testPlan": ["read the file"],
