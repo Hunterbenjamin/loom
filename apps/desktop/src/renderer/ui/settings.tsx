@@ -551,7 +551,6 @@ export function SettingsView() {
         {section === "agents" ? <Agents context={context} /> : null}
         {section === "workflow" ? <Workflow context={context} /> : null}
         {section === "keyboard" ? <KeyboardSettings context={context} /> : null}
-        {section === "integrations" ? <Integrations context={context} /> : null}
         {section === "advanced" ? <Advanced context={context} /> : null}
         {section === "history" ? <History document={global} /> : null}
       </main>
