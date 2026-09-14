@@ -34,6 +34,10 @@ export const MONITOR_SESSION = "loom-monitor";
 export const EVENT_OPTION = "@loom_event";
 /** Set on every pane Loom starts, so discovery never has to guess from a command name. */
 export const RUN_OPTION = "@loom_run";
+/** Display metadata uses distinct names so tmux's option inheritance cannot leak parent titles. */
+export const SPACE_TITLE_OPTION = "@loom_space_title";
+export const TAB_TITLE_OPTION = "@loom_tab_title";
+export const PANE_TITLE_OPTION = "@loom_pane_title";
 /**
  * The window that holds a task's session open while its first real window is created. tmux
  * cannot create a session without a window, and a session with none is gone; `listPanes`

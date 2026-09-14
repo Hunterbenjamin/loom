@@ -20,7 +20,7 @@ const fixture = (name: string): string =>
   readFileSync(join(import.meta.dirname, "fixtures", name), "utf8");
 
 describe("pane rows", () => {
-  const rows = parsePanes(fixture("list-panes.txt"));
+  const rows = parsePanes(fixture("list-panes-titles.txt"));
 
   it("reads every field of the recorded output", () => {
     expect(rows).toHaveLength(6);
@@ -65,7 +65,10 @@ describe("pane rows", () => {
     expect(observation).toEqual({
       sessionId: "$1",
       windowName: "agent",
-      title: "terminal",
+      windowIndex: 0,
+      spaceTitle: null,
+      tabTitle: null,
+      paneTitle: null,
       ref: {
         hostGeneration: "loom-dev#4242",
         sessionName: "loom-t-42",
@@ -85,7 +88,7 @@ describe("pane rows", () => {
   });
 
   it("asks tmux for exactly the fields it parses", () => {
-    expect(PANE_FORMAT.split("")).toHaveLength(17);
+    expect(PANE_FORMAT.split("")).toHaveLength(19);
     expect(PANE_FORMAT).toContain("#{pane_start_path}");
     expect(PANE_FORMAT).toContain("#{pane_dead_status}");
   });
@@ -190,18 +193,27 @@ describe("monitor", () => {
 });
 
 test("native window index and layout survive the validated observation boundary", () => {
-  const line = fixture("list-panes.txt").trim().split("\n")[0];
+  const line = fixture("list-panes-titles.txt").trim().split("\n")[0];
   const fields = line?.split("\u001f") ?? [];
-  fields[14] = "workspace";
-  fields[15] = "3";
-  fields[16] = "abcd,120x40,0,0,2";
+  fields[13] = "workspace";
+  fields[14] = "3";
+  fields[15] = "abcd,120x40,0,0,2";
+  fields[16] = "Space";
+  fields[17] = "Tab";
+  fields[18] = "Pane";
   const parsed = parsePanes(fields.join("\u001f"))[0];
   expect(parsed).toBeDefined();
   if (!parsed) throw new Error("Missing row");
   expect(
     toObservation(parsed, "loom-test#1", "/tmp" as WorktreePath),
-  ).toMatchObject({ windowIndex: 3, windowLayout: fields[16] });
-  fields[15] = "invalid";
+  ).toMatchObject({
+    windowIndex: 3,
+    windowLayout: fields[15],
+    spaceTitle: "Space",
+    tabTitle: "Tab",
+    paneTitle: "Pane",
+  });
+  fields[14] = "invalid";
   expect(parsePanes(fields.join("\u001f"))).toEqual([]);
 });
 

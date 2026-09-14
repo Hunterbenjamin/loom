@@ -120,7 +120,7 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
       ".wb-agent-list button",
     );
     expect(agent?.textContent).toContain(
-      "ImplementerFix delivery race · codex",
+      "implementer · codexFix delivery race · codex",
     );
     expect(agent?.querySelector("small")?.textContent).toBe(
       "Fix delivery race · codex",

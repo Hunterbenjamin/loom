@@ -380,7 +380,9 @@ export const paneView = paneIdentity
     windowName: z.string().nullable(),
     windowIndex: z.number().int().nonnegative().optional(),
     windowLayout: z.string().max(65536).optional(),
-    title: z.string().nullable(),
+    spaceTitle: z.string().nullable(),
+    tabTitle: z.string().nullable(),
+    paneTitle: z.string().nullable(),
     command: z.string(),
     /** The agent CLI in the pane's process tree, when the host found one. */
     agent: z.enum(["codex", "claude"]).nullable().optional(),

@@ -26,15 +26,17 @@ test("inline rename validates, cancels, reports errors and waits for native patc
     taskName: "Keep task title",
     issueKey: "LOOM-1",
     taskStage: "in_progress" as const,
+    agent: "claude" as const,
   };
   const publish = (
-    sessionName = pane.sessionName,
-    windowName = pane.windowName,
+    spaceTitle: string | null = null,
+    tabTitle: string | null = null,
+    paneTitle: string | null = null,
   ) =>
     store.applyProtocol(
       stateFromSnapshot(meta, {
         ...emptySnapshotBody(),
-        panes: [{ ...linked, sessionName, windowName }],
+        panes: [{ ...linked, spaceTitle, tabTitle, paneTitle }],
       }),
     );
   publish();
@@ -99,12 +101,12 @@ test("inline rename validates, cancels, reports errors and waits for native patc
       ),
     );
     await key(element.querySelector(".wb-space") as Element, "F2");
-    expect(input().value).toBe("research");
+    expect(input().value).toBe("Keep task title");
     expect(document.activeElement).toBe(input());
-    await change("bad.name");
+    await change("x".repeat(81));
     await submit();
     expect(element.querySelector('[role="alert"]')?.textContent).toContain(
-      "cannot contain . or :",
+      "80 characters",
     );
     expect(send).not.toHaveBeenCalled();
     await key(input(), "Escape");
@@ -119,27 +121,27 @@ test("inline rename validates, cancels, reports errors and waits for native patc
     await submit();
     await submit();
     expect(send).toHaveBeenCalledExactlyOnceWith({
-      kind: "rename_space",
+      kind: "set_title",
       hostGeneration: pane.hostGeneration,
-      sessionId: pane.sessionId,
-      name: "New space",
+      target: { kind: "space", sessionId: pane.sessionId },
+      title: "New space",
     });
     await act(async () =>
       resolve({
         ok: false,
-        error: { code: "internal", message: "duplicate session", details: [] },
+        error: { code: "internal", message: "title failed", details: [] },
       }),
     );
     expect(input().value).toBe("New space");
     expect(element.querySelector('[role="alert"]')?.textContent).toContain(
-      "duplicate session",
+      "title failed",
     );
     await change("Accepted space");
     await submit();
-    await act(async () => resolve({ ok: true, result: { kind: "renamed" } }));
+    await act(async () => resolve({ ok: true, result: { kind: "titled" } }));
     expect(input()).toBeNull();
     expect(element.querySelector(".wb-space")?.getAttribute("title")).toBe(
-      "research",
+      "Keep task title",
     );
     await act(async () => publish("Accepted space"));
     expect(element.querySelector(".wb-space")?.getAttribute("title")).toBe(
@@ -153,28 +155,72 @@ test("inline rename validates, cancels, reports errors and waits for native patc
     await change("Tab: v2.0");
     await submit();
     expect(send).toHaveBeenLastCalledWith({
-      kind: "rename_tab",
+      kind: "set_title",
       hostGeneration: pane.hostGeneration,
-      windowId: pane.windowId,
-      name: "Tab: v2.0",
+      target: { kind: "tab", windowId: pane.windowId },
+      title: "Tab: v2.0",
     });
     await act(async () => {
       publish("Accepted space", "Tab: v2.0");
-      resolve({ ok: true, result: { kind: "renamed" } });
+      resolve({ ok: true, result: { kind: "titled" } });
     });
     expect(
       element.querySelector(".wb-tab-row > .wb-tree-row")?.textContent,
     ).toContain("Tab: v2.0");
-    await key(
-      element.querySelector(".wb-tab-row > .wb-tree-row") as Element,
-      "F2",
+    await key(element.querySelector(".wb-agent-list button") as Element, "F2");
+    await change("My agent");
+    await submit();
+    expect(send).toHaveBeenLastCalledWith({
+      kind: "set_title",
+      hostGeneration: pane.hostGeneration,
+      target: { kind: "pane", paneId: pane.paneId },
+      title: "My agent",
+    });
+    await act(async () => {
+      publish("Accepted space", "Tab: v2.0", "My agent");
+      resolve({ ok: true, result: { kind: "titled" } });
+    });
+    expect(element.querySelector(".wb-agent-list strong")?.textContent).toBe(
+      "My agent",
     );
-    await change("Canceled tab");
-    await key(input(), "Escape");
     expect(
-      element.querySelector(".wb-tab-row > .wb-tree-row")?.textContent,
-    ).toContain("Tab: v2.0");
-    expect(send).toHaveBeenCalledTimes(3);
+      element
+        .querySelector(".wb-agent-list .wb-status")
+        ?.getAttribute("aria-label"),
+    ).toBe("Idle");
+    await key(element.querySelector(".wb-agent-list button") as Element, "F2");
+    await change("");
+    await submit();
+    expect(send).toHaveBeenLastCalledWith({
+      kind: "set_title",
+      hostGeneration: pane.hostGeneration,
+      target: { kind: "pane", paneId: pane.paneId },
+      title: "",
+    });
+    await act(async () => resolve({ ok: true, result: { kind: "titled" } }));
+    expect(send).toHaveBeenCalledTimes(5);
+
+    for (const [selector, kind] of [
+      [".wb-space", "space"],
+      [".wb-tab-row > .wb-tree-row", "tab"],
+      [".wb-agent-list button", "pane"],
+    ] as const) {
+      await act(async () =>
+        element.querySelector(selector)?.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+          }),
+        ),
+      );
+      const rename = [
+        ...element.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
+      ].find((item) => item.textContent === "Rename");
+      expect(rename?.disabled).toBe(false);
+      await act(async () => rename?.click());
+      expect(input().getAttribute("aria-label")).toBe(`Rename ${kind}`);
+      await key(input(), "Escape");
+    }
   } finally {
     await act(async () => root.unmount());
     element.remove();
