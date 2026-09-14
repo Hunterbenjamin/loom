@@ -5,8 +5,9 @@
 #
 # Usage: scripts/dev.sh up|sync|down|restart|status|logs|install-launcher [coordinator|app]
 #   scripts/dev.sh up                 start both (a running one is left alone)
-#   scripts/dev.sh sync               the one safe button: start what is down, restart what is
-#                                     stale, leave the rest alone (coordinator first)
+#   scripts/dev.sh sync               the one safe button: pull the latest main when that is safe,
+#                                     start what is down, restart what is stale, leave the rest
+#                                     alone (coordinator first)
 #   scripts/dev.sh restart            stop and start both, coordinator first
 #   scripts/dev.sh restart app        just the desktop app (after a main-process change)
 #   scripts/dev.sh restart coordinator
@@ -17,7 +18,13 @@
 #
 # Staleness: each start records a fingerprint of the files that process was built from (see
 # coordinator_paths / app_paths). `status` compares it with the working tree, and `sync` restarts
-# only what differs. The renderer hot-reloads, so it is not part of the app's fingerprint.
+# only what differs. The renderer hot-reloads local edits, so it is not part of the app's
+# fingerprint; renderer changes arriving in new commits still restart the app.
+#
+# Updating: `up`, `sync` and `restart` first fetch origin and fast-forward the checkout when it is
+# on the base branch (LOOM_BASE_BRANCH, default main) with no uncommitted tracked changes. On any
+# other branch, or with local changes, the checkout is left alone and the missing commits are
+# reported. A changed lockfile runs `pnpm install --frozen-lockfile`. LOOM_NO_UPDATE=1 skips it.
 #
 # Environment comes from $LOOM_DATA_ROOT/$LOOM_INSTANCE/env (default ~/.loom/dev/env), which must
 # export LOOM_INSTANCE, LOOM_DATA_ROOT and LOOM_TOKEN at least.
@@ -88,7 +95,43 @@ record_start() {  # <name>: remember what this process was started from
 started_at() { [ -f "$started_dir/$1" ] && awk '{print $2}' "$started_dir/$1" || true; }
 stale() {  # <name>: true when the running process was started from different sources
   [ -f "$started_dir/$1" ] || return 0
-  [ "$(awk '{print $1}' "$started_dir/$1")" != "$(current_fingerprint "$1")" ]
+  [ "$(awk '{print $1}' "$started_dir/$1")" != "$(current_fingerprint "$1")" ] && return 0
+  # Hot reload covers edits, not a restart's worth of pulled commits: renderer changes committed
+  # since the app started make it stale too.
+  local at; at="$(started_at "$1")"
+  [ "$1" = app ] && [ -n "$at" ] &&
+    [ -n "$(git -C "$repo" diff --name-only "$at" HEAD -- apps/desktop/src/renderer 2>/dev/null)" ]
+}
+
+base_branch="${LOOM_BASE_BRANCH:-main}"
+update_checkout() {  # fast-forward to origin/<base> when that is safe; otherwise say what is missing
+  [ "${LOOM_NO_UPDATE:-}" = 1 ] && return 0
+  if ! git -C "$repo" fetch --quiet origin "$base_branch" 2>/dev/null; then
+    echo "update: could not fetch origin/$base_branch; using the checked-out code"
+    return 0
+  fi
+  local behind branch before
+  behind="$(git -C "$repo" rev-list --count "HEAD..origin/$base_branch")"
+  [ "$behind" = 0 ] && return 0
+  branch="$(git -C "$repo" symbolic-ref --quiet --short HEAD || echo detached)"
+  if [ "$branch" != "$base_branch" ]; then
+    echo "update: on $branch; $behind commit(s) on origin/$base_branch are not included (left as is)"
+    return 0
+  fi
+  if [ -n "$(git -C "$repo" status --porcelain --untracked-files=no)" ]; then
+    echo "update: $base_branch has uncommitted changes; not pulling $behind commit(s)"
+    return 0
+  fi
+  before="$(git -C "$repo" rev-parse HEAD)"
+  if ! git -C "$repo" merge --ff-only --quiet "origin/$base_branch" 2>/dev/null; then
+    echo "update: $base_branch has diverged from origin/$base_branch; not pulling"
+    return 0
+  fi
+  echo "update: $base_branch $(git -C "$repo" rev-parse --short "$before") -> $(git -C "$repo" rev-parse --short HEAD) ($behind commit(s))"
+  if [ -n "$(git -C "$repo" diff --name-only "$before" HEAD -- pnpm-lock.yaml '*package.json')" ]; then
+    echo "update: dependencies changed; pnpm install"
+    (cd "$repo" && pnpm install --frozen-lockfile) || die "pnpm install failed after updating $base_branch"
+  fi
 }
 freshness() {  # <name>: a phrase for status
   local at; at="$(started_at "$1")"
@@ -165,6 +208,10 @@ sync() {  # start what is down, restart what is stale, leave the rest alone
 }
 
 status() {
+  if git -C "$repo" fetch --quiet origin "$base_branch" 2>/dev/null; then
+    local behind; behind="$(git -C "$repo" rev-list --count "HEAD..origin/$base_branch")"
+    [ "$behind" != 0 ] && echo "checkout: $(git -C "$repo" symbolic-ref --quiet --short HEAD || echo detached), $behind commit(s) behind origin/$base_branch"
+  fi
   if coordinator_running; then echo "coordinator: running (pid $(port_pids | head -1), ws://127.0.0.1:${LOOM_BIND_PORT:-47800}), $(freshness coordinator)"; else echo "coordinator: not running"; fi
   if app_running; then echo "app: running, $(freshness app)"; else echo "app: not running"; fi
   # Each server is a node shim plus the codex binary; count binaries only, so one server reads x1.
@@ -190,7 +237,7 @@ install_launcher() {  # a Dock app: Status shows a dialog; everything else runs 
   mkdir -p "$HOME/Applications"
   cat > "$src" <<APPLESCRIPT
 set repo to "$repo"
-set labels to {"Sync: start what is down, restart what changed", "Status", "Start", "Restart everything", "Restart coordinator", "Restart app", "Stop"}
+set labels to {"Sync: pull main, start what is down, restart what changed", "Status", "Start", "Restart everything", "Restart coordinator", "Restart app", "Stop"}
 set commands to {"sync", "status", "up", "restart", "restart coordinator", "restart app", "down"}
 set choice to choose from list labels with title "Loom Dev" with prompt "Dev instance at " & repo default items {item 1 of labels}
 if choice is false then return
@@ -219,6 +266,9 @@ APPLESCRIPT
 }
 
 cmd="${1:-status}"; what="${2:-all}"
+case "$cmd" in
+  up|sync|restart) update_checkout ;;
+esac
 case "$cmd" in
   up) [ "$what" != app ] && start_coordinator; [ "$what" != coordinator ] && start_app ;;
   sync) sync ;;
