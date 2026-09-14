@@ -213,7 +213,7 @@ it("fake GraphQL maps all list states, draft, failed checks and changes requeste
   expect(calls.every((args) => args[1] === "graphql")).toBe(true);
 });
 
-it("120 merged PRs require two GraphQL pages and no per-PR detail calls", async () => {
+it("120 merged PRs read as the newest 100 in one GraphQL page and no per-PR detail calls", async () => {
   const fake = new FakeGitHub(new FakeClock(), repo, raw.head.ref);
   const base = await (await contract("gh")).readPullRequest(repo, raw.number);
   for (let number = 1; number <= 120; number++)
@@ -226,6 +226,12 @@ it("120 merged PRs require two GraphQL pages and no per-PR detail calls", async 
       return ok(http(await fake.graphql(input ?? "")));
     },
   });
-  expect(await adapter.listPullRequests(repo, "merged")).toHaveLength(120);
-  expect(calls).toBe(2);
+  const rows = await adapter.listPullRequests(repo, "merged");
+  expect(rows).toHaveLength(100);
+  expect(rows[0]?.number).toBe(120);
+  expect(rows.at(-1)?.number).toBe(21);
+  expect(calls).toBe(1);
+  expect(await fake.listPullRequests(repo, "merged")).toEqual(
+    rows.map((row) => ({ ...row, observedAt: expect.any(String) })),
+  );
 });
