@@ -315,14 +315,18 @@ export class Executor {
           )
         )
           throw new Error("Waiting for live runs to leave the worktree");
-        const root = resolve(action.worktreePath);
+        const canonical = async (path: string) =>
+          adapters.git.realpath(path).catch(() => resolve(path));
+        const root = await canonical(action.worktreePath);
         const panes = await adapters.paneHost.listPanes();
+        const livePanePaths = await Promise.all(
+          panes
+            .filter((pane) => !pane.dead)
+            .map((pane) => canonical(pane.startCwd)),
+        );
         if (
-          panes.some(
-            (pane) =>
-              !pane.dead &&
-              (resolve(pane.startCwd) === root ||
-                resolve(pane.startCwd).startsWith(`${root}${sep}`)),
+          livePanePaths.some(
+            (path) => path === root || path.startsWith(`${root}${sep}`),
           )
         )
           throw new Error("Waiting for live panes to leave the worktree");

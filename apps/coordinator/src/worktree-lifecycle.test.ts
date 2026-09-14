@@ -1,4 +1,5 @@
-import { stat } from "node:fs/promises";
+import { stat, symlink } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { Sha } from "@loom/core";
 import { afterEach, expect, test, vi } from "vitest";
 import { createHarness, type Harness } from "./test-support.js";
@@ -139,6 +140,17 @@ test("canceled worktree removal waits for a live task terminal, then keeps the b
     args: [],
     env: {},
   });
+  const aliasedCwd = join(dirname(started.worktree.path), "worktree-alias");
+  await symlink(started.worktree.path, aliasedCwd, "dir");
+  const originalListPanes = h.paneHost.listPanes.bind(h.paneHost);
+  const listPanes = vi.spyOn(h.paneHost, "listPanes");
+  listPanes.mockImplementation(async () =>
+    (await originalListPanes()).map((pane) =>
+      pane.ref.paneId === terminal.paneId
+        ? { ...pane, startCwd: aliasedCwd as never }
+        : pane,
+    ),
+  );
   h.coordinator.submitHuman(started.task.id, {
     type: "cancel",
     reason: "fixture",
