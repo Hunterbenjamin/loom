@@ -347,6 +347,7 @@ export const conversationSend = z.strictObject({
   state: z.enum(["queued", "sent", "delivered", "failed", "refused"]),
   at: isoTime,
   reason: z.string().nullable(),
+  when: z.enum(["now", "after_turn"]).optional(),
 });
 
 export const conversation = z

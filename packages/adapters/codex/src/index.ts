@@ -42,8 +42,9 @@ export interface CodexAdapterOptions {
   /** Store-backed session owners checked immediately before recovery signals a task server. */
   liveSessionOwners?: () => Promise<readonly ProviderSessionId[]>;
 }
-const textInput = (text: string) => [
+const userInput = (text: string, images: string[] = []) => [
   { type: "text" as const, text: normalizeText(text), text_elements: [] },
+  ...images.map((path) => ({ type: "localImage" as const, path })),
 ];
 const iso = (seconds: number): IsoTime =>
   new Date(seconds * 1000).toISOString() as IsoTime;
@@ -370,7 +371,7 @@ class AppServerAdapter implements CodexAdapter {
     return this.rpcWithReconnect(async () => {
       const params: TurnStartParams = {
         threadId: req.threadId,
-        input: textInput(req.text),
+        input: userInput(req.text, req.images),
         ...(req.model ? { model: req.model } : {}),
         ...(req.effort ? { effort: req.effort } : {}),
       };
@@ -387,7 +388,7 @@ class AppServerAdapter implements CodexAdapter {
       const params: TurnSteerParams = {
         threadId: req.threadId,
         expectedTurnId: req.expectedTurnId,
-        input: textInput(req.text),
+        input: userInput(req.text, req.images),
       };
       const result = await this.rpc().rpc(
         "turn/steer",

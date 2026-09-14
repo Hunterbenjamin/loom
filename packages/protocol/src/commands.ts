@@ -163,11 +163,20 @@ export const command = z.union([
   }),
   z.strictObject({ kind: z.literal("open_lead_session"), repoId }),
   z.strictObject({ kind: z.literal("stop_lead_session"), repoId }),
+  z.strictObject({ kind: z.literal("interrupt_lead"), repoId }),
+  z.strictObject({
+    kind: z.literal("stage_attachment"),
+    name: z.string().min(1).max(255),
+    mediaType: z.string().min(1).max(255),
+    dataBase64: z.string().min(1),
+  }),
   z.strictObject({
     kind: z.literal("send_lead_message"),
     repoId,
     text: leadMessageText,
     clientMessageId: z.string().uuid(),
+    when: z.enum(["now", "after_turn"]).optional(),
+    attachmentIds: z.array(z.string().uuid()).max(10).optional(),
   }),
   z.strictObject({
     kind: z.literal("answer_lead_prompt"),
@@ -287,6 +296,14 @@ export const ackResult = z.union([
   z.strictObject({ kind: z.literal("scratch_created"), pane: paneView }),
   z.strictObject({ kind: z.literal("terminal_closed"), target: paneIdentity }),
   z.strictObject({ kind: z.literal("lead_stopped") }),
+  z.strictObject({ kind: z.literal("lead_interrupted") }),
+  z.strictObject({
+    kind: z.literal("attachment_staged"),
+    attachmentId: z.string().uuid(),
+    name: z.string(),
+    mediaType: z.string(),
+    path: z.string(),
+  }),
   z.strictObject({ kind: z.literal("lead_prompt_answered") }),
   z.strictObject({
     kind: z.literal("lead_message"),

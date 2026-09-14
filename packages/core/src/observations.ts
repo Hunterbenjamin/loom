@@ -327,7 +327,15 @@ export type HumanCommand =
       type: "send_message";
       runId: RunId;
       text: string;
+      when?: "now" | "after_turn";
+      /** Attachment IDs at the protocol boundary; coordinator-resolved image paths in core. */
+      attachmentIds?: string[];
       expectedRun?: { sessionEpoch: number; attempts: number };
+    }
+  | {
+      type: "interrupt_run";
+      runId: RunId;
+      expectedRun: { sessionEpoch: number; attempts: number };
     }
   | { type: "retry" }
   | { type: "restart_run"; runId: RunId }

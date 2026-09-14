@@ -404,6 +404,53 @@ test("Main chat sends are gated, idempotent, provider-confirmed, and stale promp
     error: { code: "guard_failed" },
   });
   expect(h.paneHost.keys).toEqual([]);
+
+  // PreToolUse is recorded before a bypassed tool runs, so a lingering hook dialog while the
+  // authoritative session remains busy must not refuse ordinary input.
+  h.providers.status(sessionId, "working");
+  expect(
+    await cli.command({
+      kind: "send_lead_message",
+      repoId: h.repo.id,
+      text: "While the tool runs",
+      clientMessageId: "00000000-0000-4000-8000-000000000005",
+    }),
+  ).toMatchObject({
+    ok: true,
+    result: { kind: "lead_message", state: "sent" },
+  });
+});
+
+test("Main can queue until idle and interrupt only a working turn", async () => {
+  const { h, cli } = await setup();
+  const target = await h.coordinator.leadFor(h.repo.id).open();
+  const sessionId = present(target.sessionId);
+  h.providers.create("claude", h.repo.root as never, sessionId, "interactive");
+  h.providers.status(sessionId, "working");
+  const writes = h.paneHost.writes.length;
+  expect(
+    await cli.command({
+      kind: "send_lead_message",
+      repoId: h.repo.id,
+      text: "After this turn",
+      clientMessageId: "00000000-0000-4000-8000-000000000006",
+      when: "after_turn",
+      attachmentIds: [],
+    }),
+  ).toMatchObject({ ok: true, result: { state: "queued" } });
+  expect(h.paneHost.writes).toHaveLength(writes);
+
+  expect(
+    await cli.command({ kind: "interrupt_lead", repoId: h.repo.id }),
+  ).toMatchObject({ ok: true, result: { kind: "lead_interrupted" } });
+  expect(h.paneHost.keys.at(-1)?.key).toBe("Escape");
+
+  h.providers.status(sessionId, "idle");
+  await h.coordinator.leadFor(h.repo.id).flushQueued();
+  expect(h.paneHost.writes.at(-1)?.text).toBe("After this turn");
+  expect(
+    await cli.command({ kind: "interrupt_lead", repoId: h.repo.id }),
+  ).toMatchObject({ ok: false, error: { code: "guard_failed" } });
 });
 
 test("a lost pane receipt is recovered by explicit open, never by adopting the workspace's human shell", async () => {

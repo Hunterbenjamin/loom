@@ -415,6 +415,7 @@ export interface CodexAdapter {
   startTurn(req: {
     threadId: ProviderSessionId;
     text: string;
+    images?: string[];
     model?: string;
     effort?: string;
   }): Promise<{ turnId: string }>;
@@ -422,6 +423,7 @@ export interface CodexAdapter {
     threadId: ProviderSessionId;
     expectedTurnId: string;
     text: string;
+    images?: string[];
   }): Promise<{ turnId: string }>;
   interruptTurn(req: {
     threadId: ProviderSessionId;

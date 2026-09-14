@@ -271,6 +271,8 @@ export const messageSchema = contract<Message>()(
       "human",
     ]),
     text,
+    when: z.enum(["now", "after_turn"]).optional(),
+    images: z.array(text).optional(),
     textHash: hash,
     status: z.enum(["pending", "sent", "delivered", "failed"]),
     attempts: count,

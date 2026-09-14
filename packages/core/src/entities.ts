@@ -379,6 +379,10 @@ export interface Message {
   runId: RunId;
   purpose: MessagePurpose;
   text: string;
+  /** Whether Loom may deliver during the current turn. Defaults to now for legacy rows. */
+  when?: "now" | "after_turn";
+  /** Coordinator-resolved local images for Codex native input. */
+  images?: string[];
   /** sha256 of the text after the provider's normalization (tab → 4 spaces, CRLF → LF). */
   textHash: string;
   status: MessageStatus;

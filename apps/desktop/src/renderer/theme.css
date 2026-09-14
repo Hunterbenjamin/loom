@@ -2157,6 +2157,7 @@ ul.plain {
 }
 .chat-composer {
   display: flex;
+  flex-direction: column;
   align-items: flex-end;
   gap: 8px;
   margin: 10px;
@@ -2164,6 +2165,7 @@ ul.plain {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg);
+  min-width: 0;
 }
 .chat-composer textarea {
   flex: 1;
@@ -2179,15 +2181,61 @@ ul.plain {
   background: transparent;
   font: inherit;
   line-height: 20px;
+  width: 100%;
+}
+.chat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+.chat-attachment {
+  padding: 4px 7px;
+  border-radius: 7px;
+  background: var(--surface-raised);
+  font-size: 12px;
+}
+.chat-attachment small {
+  color: var(--muted);
+}
+.chat-attachment-remove,
+.chat-icon-button {
+  border: 0;
+  background: transparent;
+}
+.chat-composer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+.chat-send-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chat-stop-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--danger, #ef7b67);
+}
+.chat-queued {
+  margin: 10px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.chat-queued strong {
+  display: block;
+  margin-bottom: 4px;
 }
 .chat-send-button {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-}
-.chat-future-slot {
-  width: 12px;
-  min-height: 24px;
 }
 .chat-error {
   padding: 0 14px 10px;

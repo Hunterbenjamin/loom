@@ -29,6 +29,7 @@ import type {
   TaskId,
   TaskState,
 } from "@loom/core";
+import { deriveStatus } from "@loom/core";
 import type { Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
@@ -626,6 +627,7 @@ export class Executor {
               await codex.startTurn({
                 threadId: sessionId,
                 text: action.text,
+                images: action.images,
                 model: run.model,
                 ...(run.reasoningEffort ? { effort: run.reasoningEffort } : {}),
               })
@@ -642,6 +644,7 @@ export class Executor {
                 threadId: sessionId,
                 expectedTurnId: action.expectedTurnId,
                 text: action.text,
+                images: action.images,
               })
             ).turnId,
           };
@@ -700,11 +703,21 @@ export class Executor {
     const { adapters } = this.deps;
     const run = this.run(state, action.runId);
     if (!run.sessionId) return {};
+    if (action.reason === "human requested stop") {
+      const current = deriveStatus(
+        run,
+        await observeRun(adapters, this.deps.now(), run),
+      );
+      if (current.status !== "working")
+        throw new PreconditionFailed(
+          "Refusing to interrupt: the run is not working",
+        );
+    }
     if (run.provider === "codex") {
-      const turn = run.lastTurn;
-      if (!turn) return {};
+      const turnId = run.inFlightTurnId ?? run.lastTurn?.id;
+      if (!turnId) return {};
       const codex = await adapters.codex(action.taskId);
-      await codex.interruptTurn({ threadId: run.sessionId, turnId: turn.id });
+      await codex.interruptTurn({ threadId: run.sessionId, turnId: turnId });
       return {};
     }
     if (run.mode === "headless")
