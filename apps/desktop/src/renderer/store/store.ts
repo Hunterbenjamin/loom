@@ -154,6 +154,7 @@ export const VIEWS: { id: ViewId; label: string; hint: string }[] = [
 const IN_PROGRESS: Stage[] = [
   "planning",
   "in_progress",
+  "ci",
   "in_review",
   "merging",
 ];
@@ -237,7 +238,7 @@ export function createStore(
     ui: { ...initialUi, repo: live ? "" : (snapshot.repos[0]?.id ?? "") },
     live,
     connection: live ? "connecting" : "fixtures",
-    inbox: [],
+    inbox: snapshot.inbox,
     notes: [],
     panes: [],
     panesUnavailable: false,

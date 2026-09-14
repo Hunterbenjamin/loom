@@ -7,6 +7,7 @@ import {
   summarizeTask,
   type Task,
 } from "@loom/core";
+import type { TaskInbox } from "@loom/protocol";
 import { type Snapshot, STAGES } from "../fixtures/index.js";
 
 export const issueKeyFor = (task: Task, repos: Snapshot["repos"]): string => {
@@ -35,6 +36,7 @@ export interface Row {
   openBlocking: number;
   ageMinutes: number;
   stageMinutes: number;
+  ci: TaskInbox["ci"] | null;
 }
 
 const stageOrder = new Map(STAGES.map((stage, index) => [stage, index]));
@@ -66,7 +68,13 @@ const liveStatuses: Run["status"][] = [
 ];
 
 const computeRows = memo1(
-  (snapshot: Snapshot, view: ViewId, repo: string, query: string): Row[] => {
+  (
+    snapshot: Snapshot,
+    view: ViewId,
+    repo: string,
+    query: string,
+    inbox: TaskInbox[],
+  ): Row[] => {
     const byTask = new Map<string, Run[]>();
     for (const run of snapshot.runs) {
       const list = byTask.get(run.taskId);
@@ -74,6 +82,7 @@ const computeRows = memo1(
       else byTask.set(run.taskId, [run]);
     }
     const blocking = new Map<string, number>();
+    const inboxByTask = new Map(inbox.map((row) => [row.taskId, row]));
     for (const finding of snapshot.findings) {
       if (
         !finding.blocking ||
@@ -121,6 +130,7 @@ const computeRows = memo1(
         stageMinutes: Math.round(
           (now - Date.parse(task.stageEnteredAt)) / 60_000,
         ),
+        ci: inboxByTask.get(task.id)?.ci ?? null,
       });
     }
     return rows;
@@ -133,6 +143,7 @@ let previousRows:
       view: ViewId;
       repo: string;
       query: string;
+      inbox: TaskInbox[];
       rows: Row[];
     }
   | undefined;
@@ -141,6 +152,7 @@ export function rowsFor(
   view: ViewId,
   repo: string,
   query: string,
+  inbox: TaskInbox[] = snapshot.inbox,
 ): Row[] {
   const p = previousRows;
   if (
@@ -148,13 +160,14 @@ export function rowsFor(
     p.snapshot.tasks === snapshot.tasks &&
     p.snapshot.runs === snapshot.runs &&
     p.snapshot.findings === snapshot.findings &&
+    p.inbox === inbox &&
     p.view === view &&
     p.repo === repo &&
     p.query === query
   )
     return p.rows;
-  const rows = computeRows(snapshot, view, repo, query);
-  previousRows = { snapshot, view, repo, query, rows };
+  const rows = computeRows(snapshot, view, repo, query, inbox);
+  previousRows = { snapshot, view, repo, query, inbox, rows };
   return rows;
 }
 
@@ -304,6 +317,7 @@ export function selectedRows(state: State): Row[] {
     state.ui.view,
     state.ui.repo,
     state.ui.query,
+    state.inbox,
   );
   return sortRows(rows, state.ui.sort, state.ui.descending);
 }

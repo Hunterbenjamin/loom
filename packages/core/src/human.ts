@@ -82,6 +82,7 @@ export function human(
           "planning",
           "plan_approval",
           "in_progress",
+          "ci",
           "in_review",
           "awaiting_approval",
         ].includes(task.stage)

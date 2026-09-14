@@ -26,7 +26,9 @@ import {
   taskId,
 } from "../test/fixtures.js";
 import { actionKind, actionSchema } from "./action-schemas.js";
+import { contextSchema } from "./entity-schemas.js";
 import { openReadOnlyStore, openStore, type Store } from "./index.js";
+import { stage as stageSchema } from "./schema-helpers.js";
 
 let root: string;
 const stores: Store[] = [];
@@ -63,6 +65,17 @@ function snapshotSql() {
     connection.close();
   }
 }
+
+it("parses the CI stage and a legacy gate without a cached reading", () => {
+  expect(stageSchema.parse("ci")).toBe("ci");
+  const f = coreFixture("ci");
+  expect(
+    contextSchema.parse({
+      ...f.state,
+      ciGate: { headSha: "a".repeat(40), since: now },
+    }).ciGate,
+  ).toMatchObject({ headSha: "a".repeat(40) });
+});
 
 describe("task transactions", () => {
   it("records Main chat sends idempotently per repository", async () => {

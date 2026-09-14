@@ -197,6 +197,7 @@ retry/timing thresholds. `githubPollMs` is the coordinator's polling policy; cor
 | `planning` | planner (interactive, in a pane) | |
 | `plan_approval` | nobody | Only when `requirePlanApproval`. |
 | `in_progress` | implementer (interactive, in a pane) | |
+| `ci` | nobody | The implementer's session stays alive, but owes no work while checks run. |
 | `in_review` | reviewer (interactive by default, with worktree write/commit access) | The implementer's session stays alive for fix rounds. An ended interactive run's pane is closed (`stop_run` with `retire`) once its role is no longer needed: a planner's after the plan is settled, a reviewer's after its round, an implementer's when the task ends; sessions stay resumable by ID. |
 | `awaiting_approval` | nobody | Human reviews the diff. |
 | `merging` | nobody | Merge requested; waiting to see it on GitHub. |
@@ -223,7 +224,11 @@ a committed launch/session result and an authoritative usable reading before the
 | 6 | planning | in_progress | M `submit_plan` | Plan passes schema; not `requirePlanApproval`; capacity CAS | Store plan vN; `stop_run` planner; `write_task_files`; start implementer |
 | 7 | plan_approval | in_progress | H `approve_plan(v)` | `v` is the latest plan version; capacity CAS | Insert plan Approval; `write_task_files`; start implementer |
 | 8 | plan_approval | planning | H `reject_plan(feedback)` | — | Resume the planner's session; `send_message` feedback |
-| 9 | in_progress | in_review | M `submit_for_review`, then R CI gate | `headSha` = worktree HEAD; tree clean; ahead of base. The submission records `ciGate` and stays in_progress; the move happens when CI for exactly that commit is green (or no check reported within `CI_START_GRACE_MS` of the push) and the head is unchanged | On submit: store handoff; `push_branch(headSha)`. On green: resolve earlier `ci` findings; `reviewRound += 1`; start reviewer for the round. On red: one blocking `ci` finding per failed check; `send_message` fix round to the implementer (stays in_progress) |
+| 9a | in_progress | ci | M `submit_for_review` | `headSha` = worktree HEAD; tree clean; ahead of base | Store handoff and `ciGate`; `push_branch(headSha)` |
+| 9b | ci | in_review | R CI gate | CI for exactly the gate head is green, or no check was reported within `CI_START_GRACE_MS` of the successful push; worktree head unchanged | Resolve earlier `ci` findings; clear gate; `reviewRound += 1`; start reviewer for the round |
+| 9c | ci | in_progress | R CI gate | CI for exactly the gate head is red | One blocking `ci` finding per failed check; clear gate; `send_message` fix round to the implementer |
+| 9d | ci | in_progress | R worktree head changed | Worktree head differs from the gate head | Clear gate; submission withdrawn |
+| 9e | in_progress | ci | R legacy gate | A stored pre-`ci` task still has `ciGate` | Migrate it, then apply the same gate edges |
 | 10 | in_review | awaiting_approval | M `submit_review`, then R publication | Clean task-branch HEAD is the round head; no `reviewerCommits` and no `fixed` statuses (the reviewer is a checker); verdicts for addressed/disputed and open blocking findings; 0 open blocking; published PR head = reviewed head, positively `mergeable`, CI for that head not failing | Store submission, findings and verdicts; end reviewer; `push_branch(reviewedSha)` before `open_pr` (if none); wait in_review for publication; `notify` attention |
 | 11 | in_review | in_progress | M `submit_review` | Same clean HEAD, ancestry, commit-list and verdict guards; explicit `escalate` with reason and open blocking > 0; `reviewRound < reviewRoundCap`; converging | Store findings and escalation reasons; end reviewer; `send_message` fix round to the implementer (resume it if it ended) |
 | 12 | in_review | in_review, flag | M `submit_review` | Escalated open blocking > 0 and `reviewRound ≥ cap` → `blocked: review_round_cap`. A finding re-escalated, or escalated open blocking ≥ last round's → `blocked: review_not_converging` | Store findings; `stop_run` reviewer; `notify` attention |
@@ -237,9 +242,9 @@ a committed launch/session result and an authoritative usable reading before the
 | 19 | in_review | in_progress | H `request_changes(findings)` | At least one finding | Store them as blocking `human` findings; void approval (`stage_left`); clear review state (end current reviewer round); `send_message` fix round to the implementer (resuming its run if it ended). Doesn't count against the cap. |
 | 20 | merging | awaiting_approval | R `merge_pr` failed with `precondition` (head moved, not mergeable) | — | Void approval; `notify`. If the head moved, #16 applies instead. |
 | 21 | any but done | done | R PR `merged` | — | Void open approvals; end all runs (`task_done`): `stop_run` headless runs, leave interactive panes to the human; `notify` |
-| 22 | any but done, canceled | canceled | H `cancel` | — | `interrupt_run` working runs, `stop_run` headless runs, end runs (`canceled`); void approvals; `disable_auto_merge` if enabled. The PR and branch stay as they are. |
+| 22 | any but done, canceled | canceled | H `cancel` | — | `interrupt_run` working runs, `stop_run` headless runs, end runs (`canceled`); void approvals; `disable_auto_merge` if enabled. The PR and branch stay as they are. This includes `ci`. |
 | 23 | canceled | backlog | H `reopen` | PR not merged | Runs stay ended; the next start is a new attempt. |
-| 24 | planning … awaiting_approval | backlog | H `move backlog` | — | `interrupt_run` working runs; `stop_run` headless runs; void approvals (`stage_left`). Plan and findings are kept. |
+| 24 | planning … awaiting_approval (including ci) | backlog | H `move backlog` | — | `interrupt_run` working runs; `stop_run` headless runs; void approvals (`stage_left`). Plan and findings are kept. |
 
 Notes on the rules:
 
@@ -275,6 +280,11 @@ Notes on the rules:
   A submission may return `next: in_review` while the coordinator waits for fresh matching PR/CI
   evidence; the reviewer has completed its work and must not submit again. An existing matching
   published PR can advance immediately. The implementer's transition 9 push stays unchanged.
+- **CI display cache.** `ciGate.ci` optionally caches the latest matching GitHub reading without
+  check-run IDs: conclusion, check names/statuses/conclusions/URLs, and `observedAt`. The inbox
+  projection publishes it while the gate exists. Polls compare conclusion and checks but ignore
+  `observedAt`, so an identical reading does not bump the task version. Older rows without the cache
+  remain valid.
 - **Clean tree.** The git adapter excludes ignored files, including `.task/` and ignored build output,
   and supplies all offending paths in `dirtyPaths` for actionable `guard_failed` details.
 
@@ -351,7 +361,7 @@ while any of these reasons holds:
 | `stalled` | A run is `working` with no provider activity for `stallAfterMs`. Nothing is killed. |
 | `idle_without_submission` | A live Loom run stays idle for `stallAfterMs` (15 minutes by default; `fixRoundStallAfterMs`, 5 minutes, once a `fix_round` message to it has been delivered) while its role owes a submission: planner in `planning`, implementer in `in_progress`, reviewer in `in_review`. This includes a final provider turn reported `completed` or `interrupted`: only an accepted Loom submission ends the run. Suppressed while the task is blocked/failed, a message to that run is pending/sent, or its question is unanswered. Nothing is killed or relaunched. |
 | `status_unknown` | A run has been `unknown` for longer than `unknownGraceMs` |
-| `over_budget` | Time in stages `planning` through `awaiting_approval` exceeds `budgetMinutes` |
+| `over_budget` | Time in stages `planning` through `awaiting_approval`, including `ci`, exceeds `budgetMinutes` |
 
 `Attention` keeps a `since` per reason: `reasonSince` has exactly one entry per current reason, each
 the time that reason first appeared and has held since, and `since` is the earliest of them. A queue
@@ -361,7 +371,7 @@ back to the set's `since`.
 
 Terminal tasks (`done`, `canceled`) suppress attention while retaining historical questions and failures.
 Uncertain delivery uses `provider_input` attention plus a notification. `activeElapsedMs` accumulates
-only time in `planning`, `plan_approval`, `in_progress`, `in_review`, and `awaiting_approval`; parked,
+only time in `planning`, `plan_approval`, `in_progress`, `ci`, `in_review`, and `awaiting_approval`; parked,
 queued, merging and terminal time do not count. The store must reload this counter and its accounting
 timestamp instead of recomputing elapsed time from `stageEnteredAt`.
 

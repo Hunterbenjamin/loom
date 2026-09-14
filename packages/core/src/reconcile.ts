@@ -4,6 +4,7 @@ import type { Action, ActionError, ActionKind } from "./actions.js";
 import type {
   Approval,
   Artifact,
+  CiConclusion,
   Finding,
   Message,
   Plan,
@@ -117,7 +118,21 @@ export interface TaskState {
    * Store: the implementer's submitted head waiting for CI before review. Review starts only on a
    * green (or absent) CI for exactly this commit; red sends the failures back to the implementer.
    */
-  ciGate?: { headSha: Sha; since: IsoTime } | null;
+  ciGate?: {
+    headSha: Sha;
+    since: IsoTime;
+    /** Latest matching CI observation, cached for published views. */
+    ci?: {
+      conclusion: CiConclusion;
+      checks: {
+        name: string;
+        status: "queued" | "in_progress" | "completed";
+        conclusion: string | null;
+        url: string | null;
+      }[];
+      observedAt: IsoTime;
+    } | null;
+  } | null;
   /** Store: null when no launch/resume intent is waiting. */
   desiredRun: {
     role: Role;

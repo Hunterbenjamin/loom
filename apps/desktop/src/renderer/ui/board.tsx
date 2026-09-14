@@ -4,8 +4,14 @@ import { memo, useRef, useState } from "react";
 import { STAGES } from "../fixtures/index.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, type Row, selectedRows } from "../store/selectors.js";
-import { AttentionChips, ProviderLabel, RunDot } from "./bits.js";
-import { age, stageLabel } from "./format.js";
+import {
+  AttentionChips,
+  CiChip,
+  CiDot,
+  ProviderLabel,
+  RunDot,
+} from "./bits.js";
+import { age, since, stageLabel } from "./format.js";
 
 function BoardViewComponent() {
   const rows = useStore(selectedRows);
@@ -64,6 +70,7 @@ function Column({ rows }: { rows: Row[] }) {
   const cursor = useStore((s) => s.ui.cursor);
   const all = useStore(selectedRows);
   const repos = useStore((s) => s.snapshot.repos);
+  const now = useStore((s) => s.snapshot.now);
   const scroller = useRef<HTMLDivElement>(null);
   const virtual = useVirtualizer({
     count: rows.length,
@@ -106,12 +113,28 @@ function Column({ rows }: { rows: Row[] }) {
                 onDoubleClick={() => store.open(row.task.id)}
               >
                 <div className="card-meta">
-                  <RunDot run={row.run} />
+                  {row.task.stage === "ci" ? (
+                    <CiDot ci={row.ci} />
+                  ) : (
+                    <RunDot run={row.run} />
+                  )}
                   <span className="mono">{issueKeyFor(row.task, repos)}</span>
                   <span className="spacer" />
                   <span className="nums">{age(row.ageMinutes)}</span>
                 </div>
                 <div className="card-title">{displayName(row.task)}</div>
+                {row.task.stage === "ci" ? (
+                  <div className="card-meta">
+                    <CiChip
+                      ci={row.ci}
+                      elapsed={
+                        row.ci
+                          ? since(now, row.ci.since)
+                          : age(row.stageMinutes)
+                      }
+                    />
+                  </div>
+                ) : null}
                 {row.summary ? (
                   <div className="card-summary">{row.summary}</div>
                 ) : null}

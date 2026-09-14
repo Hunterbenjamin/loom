@@ -24,7 +24,7 @@ import type {
   Transition,
   Worktree,
 } from "@loom/core";
-import type { PullRequestRow } from "@loom/protocol";
+import type { PullRequestRow, TaskInbox } from "@loom/protocol";
 import {
   approvalId,
   blobOid,
@@ -60,6 +60,7 @@ export interface Snapshot {
   now: IsoTime;
   repos: Repo[];
   tasks: Task[];
+  inbox: TaskInbox[];
   pullRequests: PullRequestRow[];
   worktrees: Worktree[];
   runs: Run[];
@@ -82,6 +83,7 @@ export const STAGES: Stage[] = [
   "planning",
   "plan_approval",
   "in_progress",
+  "ci",
   "in_review",
   "awaiting_approval",
   "merging",
@@ -95,6 +97,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
   planning: "Planning",
   plan_approval: "Plan approval",
   in_progress: "In progress",
+  ci: "CI",
   in_review: "In review",
   awaiting_approval: "Awaiting approval",
   merging: "Merging",
@@ -133,6 +136,8 @@ const SEEDS: [title: string, stage: Stage, repo: 0 | 1][] = [
   ["tmux pane host: ensure pane, attach, paste", "in_progress", 1],
   ["Retry headless runs with capped backoff", "in_progress", 0],
   ["Detect stalls without killing the run", "in_progress", 0],
+  ["Run lint, typecheck, and tests", "ci", 0],
+  ["Publish failing CI checks", "ci", 1],
   ["Review shell: file list, viewed state, jumps", "in_review", 0],
   ["Findings MCP tool with anchor validation", "in_review", 0],
   ["Idempotent PR reconcile", "in_review", 1],
@@ -175,6 +180,7 @@ const STAGE_ROLES: Partial<Record<Stage, Role[]>> = {
   planning: ["planner"],
   plan_approval: ["planner"],
   in_progress: ["planner", "implementer"],
+  ci: ["planner", "implementer"],
   in_review: ["planner", "implementer", "reviewer"],
   awaiting_approval: ["planner", "implementer", "reviewer"],
   merging: ["planner", "implementer", "reviewer"],
@@ -186,6 +192,7 @@ const HAS_WORKTREE: Stage[] = [
   "planning",
   "plan_approval",
   "in_progress",
+  "ci",
   "in_review",
   "awaiting_approval",
   "merging",
@@ -240,6 +247,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
   ];
 
   const tasks: Task[] = [];
+  const inbox: TaskInbox[] = [];
   const worktrees: Worktree[] = [];
   const runs: Run[] = [];
   const questions: Question[] = [];
@@ -350,6 +358,29 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
       attention: attentionFor(reasons, minutesBefore(between(random, 3, 200))),
     };
     tasks.push(task);
+    inbox.push({
+      taskId: id,
+      reasonRuns: {},
+      reviewedHead: null,
+      planVersion: stage === "backlog" || stage === "todo" ? null : 1,
+      ci:
+        stage === "ci"
+          ? {
+              headSha: sha(index * 13 + 5),
+              since: minutesBefore(stageMinutes),
+              conclusion: index % 2 === 0 ? "pending" : "failure",
+              checks: [
+                {
+                  name: index % 2 === 0 ? "lint-typecheck-test" : "test",
+                  status: index % 2 === 0 ? "in_progress" : "completed",
+                  conclusion: index % 2 === 0 ? null : "failure",
+                  url: `https://github.com/${repo.github}/actions/runs/${index + 1000}`,
+                },
+              ],
+              observedAt: minutesBefore(1),
+            }
+          : null,
+    });
 
     if (hasWorktree) {
       worktrees.push({
@@ -382,6 +413,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
       let blockedOn: Run["blockedOn"] = null;
       if (isLast && ["planning", "in_progress", "in_review"].includes(stage))
         status = "working";
+      if (isLast && stage === "ci") status = "idle";
       if (isLast && index === PERMISSION) {
         status = "blocked";
         blockedOn = "permission";
@@ -863,6 +895,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
     pullRequests: buildPullRequests(repos, tasks),
     repos,
     tasks,
+    inbox,
     worktrees,
     runs,
     questions,

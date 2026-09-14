@@ -6,6 +6,7 @@ export function emptySnapshot(): Snapshot {
     now: new Date().toISOString() as Snapshot["now"],
     repos: [],
     tasks: [],
+    inbox: [],
     pullRequests: [],
     worktrees: [],
     runs: [],

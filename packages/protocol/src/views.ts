@@ -280,6 +280,23 @@ export const taskInbox = z.strictObject({
   reasonRuns: z.partialRecord(attentionReason, z.array(run)),
   reviewedHead: sha.nullable(),
   planVersion: count.nullable(),
+  ci: z
+    .strictObject({
+      headSha: sha,
+      since: isoTime,
+      conclusion: z.enum(["pending", "success", "failure", "none"]).nullable(),
+      checks: z.array(
+        z.strictObject({
+          name: z.string(),
+          status: z.enum(["queued", "in_progress", "completed"]),
+          conclusion: z.string().nullable(),
+          url: z.string().nullable(),
+        }),
+      ),
+      observedAt: isoTime.nullable(),
+    })
+    .nullable()
+    .optional(),
 });
 export type TaskInbox = z.output<typeof taskInbox>;
 

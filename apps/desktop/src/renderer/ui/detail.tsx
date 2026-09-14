@@ -566,6 +566,9 @@ function Overview({ task }: { task: Task }) {
     shallowArray,
   );
   const now = useStore((state) => state.snapshot.now);
+  const ci = useStore(
+    (state) => state.inbox.find((row) => row.taskId === task.id)?.ci ?? null,
+  );
   const events = useTaskEvents(task);
   const [allActivity, setAllActivity] = useState(false);
   const store = useStoreApi();
@@ -602,6 +605,48 @@ function Overview({ task }: { task: Task }) {
         ) : (
           <div className="faint">No plan yet.</div>
         )}
+        {task.stage === "ci" ? (
+          <>
+            <div className="section-title">CI</div>
+            <div className="panel" data-testid="ci-status">
+              <div className="detail-meta">
+                <strong>Commit {ci?.headSha.slice(0, 7) ?? "unknown"}</strong>
+                <span className="chip">{ci?.conclusion ?? "waiting"}</span>
+                <span className="spacer" />
+                <span className="faint">
+                  {ci
+                    ? `${since(now, ci.since)} since submission`
+                    : "Submitted"}
+                </span>
+              </div>
+              {ci?.checks.length ? (
+                ci.checks.map((check) => (
+                  <div
+                    className="detail-meta"
+                    key={`${check.name}:${check.url ?? ""}`}
+                  >
+                    <span
+                      className={`chip ${check.conclusion === "failure" ? "danger" : ""}`}
+                    >
+                      {check.status === "in_progress"
+                        ? "running"
+                        : (check.conclusion ?? check.status)}
+                    </span>
+                    {check.url ? (
+                      <a href={check.url} target="_blank" rel="noreferrer">
+                        {check.name}
+                      </a>
+                    ) : (
+                      <span>{check.name}</span>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="faint">No checks reported yet</div>
+              )}
+            </div>
+          </>
+        ) : null}
         <div className="section-title">
           Findings
           {findings.length

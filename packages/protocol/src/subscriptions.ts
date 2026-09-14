@@ -68,7 +68,7 @@ export const subscription = z.union([
 
 export type Subscription = z.output<typeof subscription>;
 
-const IN_PROGRESS = ["planning", "in_progress", "in_review", "merging"];
+const IN_PROGRESS = ["planning", "in_progress", "ci", "in_review", "merging"];
 
 /** The one definition of each view. The shell's sidebar and the coordinator both use it. */
 export function taskInView(task: Task, view: ViewName): boolean {
