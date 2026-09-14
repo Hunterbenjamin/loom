@@ -31,10 +31,17 @@ repo="$(cd "$(dirname "$0")/.." && pwd -P)"
 serve_log="$root/$instance/serve.log"
 app_log="$root/$instance/desktop-dev.log"
 started_dir="$root/$instance/started"
+# A launcher started from Finder or launchd has a bare PATH and no .zshrc, so the places pnpm and
+# Homebrew normally live are added here, and the resulting PATH is handed to every pane explicitly.
+for dir in "${PNPM_HOME:-$HOME/Library/pnpm}" /opt/homebrew/bin /usr/local/bin; do
+  case ":$PATH:" in *":$dir:"*) ;; *) [ -d "$dir" ] && PATH="$dir:$PATH" ;; esac
+done
+export PATH
 tmux_bin="${LOOM_TMUX_BIN:-$(command -v tmux || true)}"
 
 die() { printf 'dev.sh: %s\n' "$*" >&2; exit 1; }
 [ -x "$tmux_bin" ] || die "tmux is required"
+command -v pnpm >/dev/null || die "pnpm is not on PATH (looked in \$PNPM_HOME, ~/Library/pnpm, /opt/homebrew/bin)"
 [ -f "$env_file" ] || die "no environment file at $env_file (export LOOM_INSTANCE, LOOM_DATA_ROOT, LOOM_TOKEN there)"
 tm() { "$tmux_bin" -L "$socket" "$@"; }
 
@@ -91,9 +98,12 @@ start_coordinator() {
   tm kill-session -t "=loom-coordinator" 2>/dev/null || true
   record_start coordinator
   tm new-session -d -s loom-coordinator -n serve -c "$repo" \
-    "set -a; . '$env_file'; set +a; exec pnpm loom serve 2>&1 | tee -a '$serve_log'"
+    "export PATH='$PATH'; set -a; . '$env_file'; set +a; exec pnpm loom serve 2>&1 | tee -a '$serve_log'"
   local i=0
-  until coordinator_running || [ $i -ge 40 ]; do sleep 1; i=$((i+1)); done
+  until coordinator_running || [ $i -ge 40 ]; do
+    tm has-session -t "=loom-coordinator" 2>/dev/null || die "coordinator exited at once; last lines of $serve_log:"$'\n'"$(tail -n 5 "$serve_log")"
+    sleep 1; i=$((i+1))
+  done
   coordinator_running && echo "coordinator: up after ${i}s (log: $serve_log)" || die "coordinator did not start; see $serve_log"
 }
 
@@ -114,9 +124,12 @@ start_app() {
   tm kill-session -t "=loom-desktop" 2>/dev/null || true
   record_start app
   tm new-session -d -s loom-desktop -n dev -c "$repo" \
-    "set -a; . '$env_file'; set +a; export LOOM_DEBUG_PORT='${LOOM_DEBUG_PORT:-}'; exec pnpm --filter @loom/desktop dev 2>&1 | tee -a '$app_log'"
+    "export PATH='$PATH'; set -a; . '$env_file'; set +a; export LOOM_DEBUG_PORT='${LOOM_DEBUG_PORT:-}'; exec pnpm --filter @loom/desktop dev 2>&1 | tee -a '$app_log'"
   local i=0
-  until pgrep -f 'Electron.app/Contents/MacOS/Electron' >/dev/null 2>&1 || [ $i -ge 60 ]; do sleep 1; i=$((i+1)); done
+  until pgrep -f 'Electron.app/Contents/MacOS/Electron' >/dev/null 2>&1 || [ $i -ge 60 ]; do
+    tm has-session -t "=loom-desktop" 2>/dev/null || die "app exited at once; last lines of $app_log:"$'\n'"$(tail -n 5 "$app_log")"
+    sleep 1; i=$((i+1))
+  done
   echo "app: up after ${i}s (log: $app_log)"
 }
 
@@ -146,9 +159,20 @@ status() {
   echo "windows: tmux -L $socket attach -t loom-coordinator | loom-desktop"
 }
 
-install_launcher() {  # a Dock app that runs this script through a login shell and shows the output
+launcher_run() {  # <cmd...>: run detached for the Dock app, log, then notify with the last line
+  local log="$root/$instance/launcher.log" outcome last
+  (
+    if "$0" "$@" > "$log" 2>&1; then outcome="done"; else outcome="FAILED"; fi
+    last="$(tail -n 1 "$log" | tr -d '"\\')"
+    osascript -e "display notification \"$last\" with title \"Loom Dev: $* $outcome\""
+  ) </dev/null >/dev/null 2>&1 &
+  echo "started: $*; log: $log"
+}
+
+install_launcher() {  # a Dock app: Status shows a dialog; everything else runs detached and notifies
   command -v osacompile >/dev/null || die "osacompile is required (macOS only)"
-  local app="$HOME/Applications/Loom Dev.app" src; src="$(mktemp -t loom-dev-launcher).applescript"
+  local app="$HOME/Applications/Loom Dev.app" src
+  src="$(mktemp -t loom-dev-launcher).applescript"
   mkdir -p "$HOME/Applications"
   cat > "$src" <<APPLESCRIPT
 set repo to "$repo"
@@ -160,16 +184,22 @@ set command to ""
 repeat with i from 1 to count of labels
   if item i of labels is item 1 of choice then set command to item i of commands
 end repeat
-set shell to "cd " & quoted form of repo & " && scripts/dev.sh " & command & " 2>&1"
-try
-  set output to do shell script "/bin/zsh -lc " & quoted form of shell
-on error message
-  set output to "Failed:" & return & message
-end try
-display dialog output with title ("Loom Dev: " & command) buttons {"OK"} default button "OK"
+set prefix to "cd " & quoted form of repo & " && scripts/dev.sh "
+if command is "status" then
+  try
+    set output to do shell script "/bin/zsh -lc " & quoted form of (prefix & "status 2>&1")
+  on error message
+    set output to "Failed:" & return & message
+  end try
+  display dialog output with title "Loom Dev: status" buttons {"OK"} default button "OK"
+else
+  -- Detached, so the launcher never beachballs during a restart; dev.sh notifies when done.
+  do shell script "/bin/zsh -lc " & quoted form of (prefix & "launcher-run " & command)
+  display notification "Started; another notification follows when it is done." with title "Loom Dev: " & command
+end if
 APPLESCRIPT
   rm -rf "$app"
-  osacompile -o "$app" "$src"
+  osacompile -o "$app" "$src" || die "osacompile failed; the script is at $src"
   rm -f "$src"
   echo "installed: $app (drag it to the Dock; every button runs scripts/dev.sh in $repo)"
 }
@@ -189,5 +219,6 @@ case "$cmd" in
   status) status ;;
   logs) case "$what" in app) tail -n 50 -f "$app_log" ;; *) tail -n 50 -f "$serve_log" ;; esac ;;
   install-launcher) install_launcher ;;
+  launcher-run) shift; launcher_run "$@" ;;
   *) die "usage: scripts/dev.sh up|sync|down|restart|status|logs|install-launcher [coordinator|app]" ;;
 esac

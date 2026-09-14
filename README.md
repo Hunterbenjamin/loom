@@ -35,7 +35,8 @@ pnpm dev:restart            # restart both, coordinator first
 scripts/dev.sh restart app  # just the app
 scripts/dev.sh status       # what is running, whether it is stale, and one app-server per task
 scripts/dev.sh logs         # follow the coordinator log
-scripts/dev.sh install-launcher   # "Loom Dev.app" in ~/Applications with the same buttons
+scripts/dev.sh install-launcher   # "Loom Dev.app" in ~/Applications with the same buttons;
+                                  # Status shows a dialog, the rest run detached and notify when done
 ```
 
 Each start records a fingerprint of the sources that process was built from: the coordinator and
