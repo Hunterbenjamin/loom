@@ -2302,7 +2302,7 @@ ul.plain {
   align-items: center;
   gap: 6px;
 }
-.issue-action-group button {
+.detail .issue-action-group button {
   padding: 5px 11px;
   border: 1px solid var(--line-strong);
   border-radius: 16px;
@@ -2323,7 +2323,7 @@ ul.plain {
   gap: 7px;
   min-width: 0;
 }
-.issue-toolbar-action > button {
+.detail .issue-toolbar-action > button {
   padding: 6px 14px;
   border-radius: 20px;
   background: #6264cd;
