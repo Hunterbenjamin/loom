@@ -10,7 +10,13 @@ const leadScope = {
   target: { kind: "lead", repoId: "repo-1" },
 } as Subscription;
 
-function leadDeps(readConversation: () => Promise<ConversationRead>) {
+function leadDeps(
+  readConversation: () => Promise<ConversationRead>,
+  options: {
+    status?: "idle" | "working" | "waiting";
+    pendingDialog?: object | null;
+  } = {},
+) {
   const published = new PublishedRows();
   const patches = vi.fn();
   const deps = {
@@ -21,7 +27,7 @@ function leadDeps(readConversation: () => Promise<ConversationRead>) {
       claude: {
         hookSummary: vi.fn(async () => ({
           transcriptPath: null,
-          pendingDialog: null,
+          pendingDialog: options.pendingDialog ?? null,
           promptSubmits: [],
         })),
         promptReceipt: vi.fn(async () => null),
@@ -32,7 +38,7 @@ function leadDeps(readConversation: () => Promise<ConversationRead>) {
       ({
         sessionId: "session-1",
         cwd: "/repo",
-        state: vi.fn(async () => ({ status: "idle" })),
+        state: vi.fn(async () => ({ status: options.status ?? "idle" })),
       }) as never,
     now: () => now,
     after: () => () => {},
@@ -45,6 +51,38 @@ function leadDeps(readConversation: () => Promise<ConversationRead>) {
   };
   return { deps, patches, published };
 }
+
+test("Main exposes a hook dialog only when its authoritative status is waiting", async () => {
+  const dialog = {
+    kind: "permission",
+    tool: "Bash",
+    at: now,
+  };
+  for (const [status, expected] of [
+    ["working", null],
+    [
+      "waiting",
+      expect.objectContaining({ source: "claude_dialog", tool: "Bash" }),
+    ],
+  ] as const) {
+    const { deps, published } = leadDeps(
+      vi.fn(async () => ({ items: [], truncated: false })),
+      { status, pendingDialog: dialog },
+    );
+    const views = new ConversationViews(deps);
+    views.subscriptions([leadScope]);
+    views.ensure([leadScope]);
+    await vi.waitFor(() =>
+      expect(
+        published.rows().find((row) => row.collection === "conversation"),
+      ).toBeDefined(),
+    );
+    expect(
+      published.rows().find((row) => row.collection === "conversation")?.value,
+    ).toMatchObject({ pendingPrompt: expected });
+    await views.stop();
+  }
+});
 
 test("subscription publishes initial rows and a hint publishes only the appended item", async () => {
   const items = [

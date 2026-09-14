@@ -205,7 +205,13 @@ describe("Codex app-server adapter", () => {
     await adapter.answerRequest(answer(2));
   });
   it("sends normalized turns, passes expectedTurnId to steer, and propagates a mismatch", async () => {
-    expect(await adapter.startTurn({ threadId, text: "A\tB\r\nC" })).toEqual({
+    expect(
+      await adapter.startTurn({
+        threadId,
+        text: "A\tB\r\nC",
+        images: ["/tmp/image.png"],
+      }),
+    ).toEqual({
       turnId,
     });
     expect(
@@ -223,7 +229,10 @@ describe("Codex app-server adapter", () => {
         method: "turn/start",
         params: {
           threadId,
-          input: [{ type: "text", text: "A    B\nC", text_elements: [] }],
+          input: [
+            { type: "text", text: "A    B\nC", text_elements: [] },
+            { type: "localImage", path: "/tmp/image.png" },
+          ],
         },
       }),
     );

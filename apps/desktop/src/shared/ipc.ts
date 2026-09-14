@@ -106,6 +106,7 @@ export interface HostBridge {
   interactive(): void;
   /** Electron's process metrics, used by the performance harness for idle CPU. */
   metrics(): Promise<{ type: string; cpu: { percentCPUUsage: number } }[]>;
+  startDictation(): Promise<void>;
   platform: string;
 }
 

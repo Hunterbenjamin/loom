@@ -82,5 +82,6 @@ contextBridge.exposeInMainWorld("loomHost", {
   connection: () => ipcRenderer.invoke("app:connection"),
   interactive: () => ipcRenderer.send("app:interactive"),
   metrics: () => ipcRenderer.invoke("app:metrics"),
+  startDictation: () => ipcRenderer.invoke("app:start-dictation"),
   platform: process.platform,
 });

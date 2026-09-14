@@ -240,7 +240,29 @@ export function human(
         )
       )
         return guard("The target run is waiting on a question");
-      c.message(run, "human", sequence, cmd.text);
+      c.message(run, "human", sequence, cmd.text, {
+        when: cmd.when,
+        images: cmd.attachmentIds,
+      });
+      return null;
+    }
+    case "interrupt_run": {
+      const run = state.runs.find(
+        (r) => r.id === cmd.runId && r.origin === "loom" && !r.endedAt,
+      );
+      if (!run) return guard("Choose a live Loom run");
+      if (
+        run.sessionEpoch !== cmd.expectedRun.sessionEpoch ||
+        run.attempts !== cmd.expectedRun.attempts
+      )
+        return guard("The target run attempt has changed");
+      if (run.status !== "working")
+        return guard("The target run is not working");
+      c.emit(`interrupt_run:${run.id}#${run.attempts}:human:${sequence}`, {
+        kind: "interrupt_run",
+        runId: run.id,
+        reason: "human requested stop",
+      });
       return null;
     }
     case "answer_provider_request": {

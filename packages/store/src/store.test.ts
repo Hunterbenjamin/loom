@@ -72,6 +72,7 @@ describe("task transactions", () => {
       repoId: "repo-a",
       text: "hello",
       textHash: "hash-a",
+      when: "now" as const,
       state: "queued" as const,
       reason: null,
       createdAt: now,

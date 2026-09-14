@@ -20,8 +20,8 @@ import {
   CHAT_COMPOSER_LINE_HEIGHT,
   CHAT_COMPOSER_MAX_HEIGHT,
   ChatWindow,
+  chatTimeline,
   resizeChatComposer,
-  unmatchedSends,
 } from "./chat-window.js";
 
 (
@@ -114,7 +114,7 @@ function enter(input: HTMLTextAreaElement | null, value: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-test("a delivered send disappears after its matching transcript item", () => {
+test("a transcript match replaces its send while an unmatched send stays in place", () => {
   const sends = [
     {
       id: "send-1",
@@ -131,7 +131,46 @@ test("a delivered send disappears after its matching transcript item", () => {
       reason: "not confirmed by Claude",
     },
   ];
-  expect(unmatchedSends(sends, [item()])).toEqual([sends[1]]);
+  expect(chatTimeline(sends, [item()])).toEqual([
+    { kind: "item", item: item() },
+    { kind: "send", send: sends[1] },
+  ]);
+});
+
+test("untimestamped sends stay before the next matching transcript turn", () => {
+  const first = item({ id: "first", at: null, text: "first", order: 0 });
+  const second = item({ id: "second", at: null, text: "second", order: 1 });
+  const sends: Conversation["sends"] = [
+    {
+      id: "one",
+      text: "first",
+      state: "delivered",
+      at: readAt,
+      reason: null,
+      when: "now",
+    },
+    {
+      id: "refused",
+      text: "between",
+      state: "refused",
+      at: readAt,
+      reason: "no",
+      when: "now",
+    },
+    {
+      id: "two",
+      text: "second",
+      state: "sent",
+      at: readAt,
+      reason: null,
+      when: "now",
+    },
+  ];
+  expect(chatTimeline(sends, [first, second])).toEqual([
+    { kind: "item", item: first },
+    { kind: "send", send: sends[1] },
+    { kind: "item", item: second },
+  ]);
 });
 
 test("scrolling away from the bottom offers an explicit jump", async () => {
@@ -150,6 +189,36 @@ test("scrolling away from the bottom offers an explicit jump", async () => {
     host.querySelector<HTMLButtonElement>(".chat-jump-latest")?.click(),
   );
   expect(host.querySelector(".chat-jump-latest")).toBeNull();
+});
+
+test("opening the chat focuses the composer", async () => {
+  const { host, store } = mount(header());
+  store.setChatView("minimized");
+  await act(async () => store.setChatView("open"));
+  await vi.waitFor(() =>
+    expect(document.activeElement).toBe(
+      host.querySelector<HTMLTextAreaElement>("textarea"),
+    ),
+  );
+});
+
+test("a working turn offers stop, steer, and send-after-turn", async () => {
+  const { host, send } = mount(header({ status: "working" }));
+  const input = host.querySelector<HTMLTextAreaElement>("textarea");
+  await act(async () => enter(input, "hold this"));
+  expect(host.querySelector('[aria-label="Stop turn"]')).not.toBeNull();
+  await act(async () =>
+    [...host.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "Send after turn")
+      ?.click(),
+  );
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({ kind: "send_lead_message", when: "after_turn" }),
+  );
+  await act(async () =>
+    host.querySelector<HTMLButtonElement>('[aria-label="Stop turn"]')?.click(),
+  );
+  expect(send).toHaveBeenLastCalledWith({ kind: "interrupt_lead", repoId });
 });
 
 test("the composer grows, caps at four lines, and shrinks after send", async () => {
@@ -230,6 +299,8 @@ test("lead send, prefix rejection, delivery state and prompt answer are wired", 
       repoId,
       text: "ship it",
       clientMessageId: expect.any(String),
+      when: "now",
+      attachmentIds: [],
     }),
   );
   expect(host.querySelector(".chat-send")?.textContent).toContain("delivered");
@@ -276,6 +347,8 @@ test("a run conversation sends through the existing human command", async () => 
       type: "send_message",
       runId: run.id,
       text: "continue",
+      when: "now",
+      attachmentIds: [],
       expectedRun: {
         sessionEpoch: run.sessionEpoch,
         attempts: run.attempts,

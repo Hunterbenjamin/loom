@@ -340,6 +340,8 @@ export const message = z.strictObject({
     "human",
   ]),
   text,
+  when: z.enum(["now", "after_turn"]).optional(),
+  images: z.array(z.string()).optional(),
   textHash: z.string().min(1),
   status: z.enum(["pending", "sent", "delivered", "failed"]),
   attempts: count,
@@ -648,12 +650,22 @@ export const humanCommand = z.union([
     type: z.literal("send_message"),
     runId,
     text,
+    when: z.enum(["now", "after_turn"]).optional(),
+    attachmentIds: z.array(z.string().uuid()).max(10).optional(),
     expectedRun: z
       .object({
         sessionEpoch: z.number().int().nonnegative(),
         attempts: z.number().int().nonnegative(),
       })
       .optional(),
+  }),
+  z.strictObject({
+    type: z.literal("interrupt_run"),
+    runId,
+    expectedRun: z.object({
+      sessionEpoch: z.number().int().nonnegative(),
+      attempts: z.number().int().nonnegative(),
+    }),
   }),
   z.strictObject({ type: z.literal("retry") }),
   z.strictObject({ type: z.literal("restart_run"), runId }),

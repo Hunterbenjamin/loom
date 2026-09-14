@@ -51,6 +51,7 @@ const fields = {
     messageId: id,
     via: sendVia,
     text,
+    images: z.array(text).default([]),
     expectedTurnId: text.nullable(),
   },
   interrupt_run: { runId: id, reason: text },

@@ -88,6 +88,7 @@ export type Action = ActionBase &
         messageId: MessageId;
         via: SendVia;
         text: string;
+        images: string[];
         /** Required for `codex_turn_steer`. */
         expectedTurnId: string | null;
       }

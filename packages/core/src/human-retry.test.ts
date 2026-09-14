@@ -3,6 +3,60 @@ import { actionInput, command, fixed, fixture, now } from "../test/fixtures.js";
 import type { Run, RunObservation } from "./index.js";
 import { reconcile } from "./index.js";
 
+test("human interrupt is attempt-scoped and only accepted while working", () => {
+  const f = fixture();
+  const run = f.state.runs.find((value) => value.provider === "codex") as Run;
+  const observation = f.observations.runs.find(
+    (value) => value.runId === run.id,
+  ) as RunObservation;
+  if (
+    !observation.provider.ok ||
+    observation.provider.value?.provider !== "codex"
+  )
+    throw new Error("Missing Codex observation");
+  observation.provider.value.status = "active";
+  observation.provider.value.turns = [
+    { id: "turn", status: "inProgress", error: null, userMessageHashes: [] },
+  ];
+  f.observations.inputs = [
+    command(
+      {
+        type: "interrupt_run",
+        runId: run.id,
+        expectedRun: { sessionEpoch: run.sessionEpoch, attempts: run.attempts },
+      },
+      "stop",
+    ),
+  ];
+  const stopped = fixed(f.state, f.observations);
+  expect(stopped.actions).toContainEqual(
+    expect.objectContaining({
+      kind: "interrupt_run",
+      reason: "human requested stop",
+    }),
+  );
+  f.observations.inputs = [
+    command(
+      {
+        type: "interrupt_run",
+        runId: run.id,
+        expectedRun: {
+          sessionEpoch: run.sessionEpoch,
+          attempts: run.attempts + 1,
+        },
+      },
+      "stale-stop",
+    ),
+  ];
+  expect(reconcile(stopped.next, f.observations).inputs[0]).toMatchObject({
+    accepted: false,
+    error: {
+      code: "guard_failed",
+      message: "The target run attempt has changed",
+    },
+  });
+});
+
 function setup(provider: "codex" | "claude" = "codex") {
   const f = fixture(provider === "codex" ? "in_progress" : "in_review");
   const role = provider === "codex" ? "implementer" : "reviewer";

@@ -55,6 +55,55 @@ function prepared(provider: "codex" | "claude" = "codex", working = false) {
   return { ...f, state: reconcile(f.state, f.observations).next };
 }
 describe("delivery requires provider evidence", () => {
+  it("holds an after-turn message while working and starts it once idle", () => {
+    const f = fixture();
+    const run = f.state.runs.find((value) => value.provider === "codex") as Run;
+    const observation = f.observations.runs.find(
+      (value) => value.runId === run.id,
+    ) as RunObservation;
+    if (
+      !observation.provider.ok ||
+      observation.provider.value?.provider !== "codex"
+    )
+      throw new Error("Missing Codex observation");
+    observation.provider.value.status = "active";
+    observation.provider.value.turns = [
+      {
+        id: "active-turn",
+        status: "inProgress",
+        error: null,
+        userMessageHashes: [],
+      },
+    ];
+    f.observations.inputs = [
+      command({
+        type: "send_message",
+        runId: run.id,
+        text: "Wait for me",
+        when: "after_turn",
+      }),
+    ];
+    const held = fixed(f.state, f.observations);
+    expect(held.actions.some((action) => action.kind === "send_message")).toBe(
+      false,
+    );
+    expect(held.next.messages[0]).toMatchObject({
+      status: "pending",
+      attempts: 0,
+      deliveryReason: "waiting for the current turn to finish",
+    });
+    observation.provider.value.status = "idle";
+    const turn = observation.provider.value.turns[0];
+    if (!turn) throw new Error("Missing active turn");
+    observation.provider.value.turns[0] = { ...turn, status: "completed" };
+    f.observations.inputs = [];
+    expect(fixed(held.next, f.observations).actions).toContainEqual(
+      expect.objectContaining({
+        kind: "send_message",
+        via: "codex_turn_start",
+      }),
+    );
+  });
   it("normalizes tabs and CRLF before hashing", () => {
     expect(normalizeText("A\tB\r\nC")).toBe("A    B\nC");
     const f = prepared();
