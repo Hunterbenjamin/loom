@@ -13,6 +13,7 @@ import {
 } from "../test/fixtures.js";
 import type { Run, RunObservation } from "./index.js";
 import { reconcile } from "./index.js";
+import { PLAN_WORD_LIMIT, planWords } from "./submissions.js";
 
 describe("input consumption and MCP dispositions", () => {
   it("consumes each ID once even when duplicated in the same batch or replayed", () => {
@@ -145,6 +146,20 @@ describe("input consumption and MCP dispositions", () => {
     expect(r.inputs[0]?.accepted).toBe(true);
     expect(r.next.task.stage).toBe("plan_approval");
     expect(r.actions.some((a) => a.kind === "start_run")).toBe(false);
+  });
+  it("a plan over the word limit is refused with the reason and the planner keeps planning", () => {
+    const f = fixture("planning");
+    const long = { ...plan, risks: ["word ".repeat(PLAN_WORD_LIMIT).trim()] };
+    f.observations.inputs = [
+      mcp({ tool: "submit_plan", input: { plan: long } }, "planner"),
+    ];
+    const r = fixed(f.state, f.observations);
+    const d = r.inputs[0];
+    if (!d || d.accepted) throw Error("Expected rejection");
+    expect(d.error.code).toBe("invalid_input");
+    expect(d.error.message).toContain(`keep it under ${PLAN_WORD_LIMIT}`);
+    expect(r.next.task.stage).toBe("planning");
+    expect(planWords(plan)).toBeLessThan(PLAN_WORD_LIMIT);
   });
   it("dirty-tree errors name the offending paths and ignore ignored output", () => {
     const f = fixture();

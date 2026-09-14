@@ -6,6 +6,18 @@ import type { Input } from "./observations.js";
 import type { McpReply } from "./reconcile.js";
 import { publishReview } from "./review-publication.js";
 
+/** Plans record decisions for a capable implementer; longer ones drift into instructions. */
+export const PLAN_WORD_LIMIT = 800;
+const wordsIn = (value: unknown): number =>
+  typeof value === "string"
+    ? value.split(/\s+/).filter(Boolean).length
+    : Array.isArray(value)
+      ? value.reduce((sum: number, item) => sum + wordsIn(item), 0)
+      : value && typeof value === "object"
+        ? wordsIn(Object.values(value))
+        : 0;
+export const planWords = (plan: object): number => wordsIn(plan);
+
 export function submission(
   c: Context,
   input: Extract<Input, { type: "mcp" }>,
@@ -78,6 +90,12 @@ export function submission(
         return error(
           "invalid_input",
           "Plan needs a goal, at least one named step, and an acceptance criterion",
+        );
+      const words = planWords(plan);
+      if (words > PLAN_WORD_LIMIT)
+        return error(
+          "invalid_input",
+          `Plan is ${words} words; keep it under ${PLAN_WORD_LIMIT}. Record decisions and acceptance criteria, not implementation instructions: the implementer reads the code itself.`,
         );
       if (!task.requirePlanApproval && !c.capacity("implementer", run))
         return guard(

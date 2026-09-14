@@ -58,7 +58,16 @@ const stage = z.enum([
 export const planSchema = z.strictObject({
   goal: nonempty,
   nonGoals: texts,
-  steps: z.array(z.strictObject({ title: nonempty, detail: text })).min(1),
+  // Agents submit one-line outcomes; the stored plan keeps its { title, detail } shape.
+  steps: z
+    .array(
+      text
+        .trim()
+        .min(1)
+        .max(200)
+        .transform((title) => ({ title, detail: "" })),
+    )
+    .min(1),
   areas: texts,
   acceptanceCriteria: z.array(nonempty).min(1),
   testPlan: texts,
