@@ -512,7 +512,11 @@ class AppServerAdapter implements CodexAdapter {
         const base = { id, at: null, clipped: false } as const;
         if (raw.type === "userMessage") {
           const text = (raw.content ?? [])
-            .flatMap((part) => (part.type === "text" ? [part.text] : []))
+            .flatMap((part) =>
+              typeof part !== "string" && part.type === "text"
+                ? [part.text]
+                : [],
+            )
             .join("\n");
           items.push({
             ...base,
@@ -533,9 +537,14 @@ class AppServerAdapter implements CodexAdapter {
             tool: null,
           });
         } else if (raw.type === "reasoning") {
-          const text = (raw.summary ?? [])
-            .map((part) => (typeof part === "string" ? part : part.text))
-            .join("\n");
+          const text = [
+            ...(raw.summary ?? []).map((part) =>
+              typeof part === "string" ? part : part.text,
+            ),
+            ...(raw.content ?? []).flatMap((part) =>
+              typeof part === "string" ? [part] : [],
+            ),
+          ].join("\n");
           items.push({
             ...base,
             role: "assistant",

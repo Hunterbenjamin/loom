@@ -35,7 +35,7 @@ const item = z.union([
 export const conversationItem = z.looseObject({
   id: identifier.optional(),
   type: identifier,
-  content: z.array(userContent).optional(),
+  content: z.union([z.array(userContent), z.array(z.string())]).optional(),
   text: z.string().optional(),
   summary: z
     .array(z.union([z.string(), z.object({ text: z.string() })]))

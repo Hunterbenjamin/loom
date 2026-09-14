@@ -310,6 +310,33 @@ describe("Codex app-server adapter", () => {
       expect(adapter.activityAt(threadId)).not.toBe(previous),
     );
   });
+  it("reads v2 reasoning content without resuming the thread", async () => {
+    thread.turns[0].items = [
+      {
+        type: "reasoning",
+        id: "reasoning-1",
+        summary: ["Summary"],
+        content: ["Detail"],
+      },
+    ];
+    const before = fake.messages.length;
+    expect(await adapter.readConversation(threadId)).toMatchObject({
+      items: [
+        {
+          id: `${turnId}:reasoning-1`,
+          kind: "thinking",
+          text: "Summary\nDetail",
+        },
+      ],
+    });
+    expect(
+      fake.messages
+        .slice(before)
+        .flatMap((entry) =>
+          "method" in entry.message ? [entry.message.method] : [],
+        ),
+    ).toEqual(["thread/read"]);
+  });
   it("checks resumability on a fresh read-only connection: notLoaded exists, gone does not", async () => {
     thread.status = { type: "notLoaded" };
     expect(await adapter.checkResumable(threadId)).toBe(true);
