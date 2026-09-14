@@ -65,7 +65,6 @@ export function reasonTab(reason: AttentionReason, run: Run | null): TabId {
     run?.mode === "interactive"
   )
     return "terminal";
-  if (reason === "observability_failure") return "activity";
   return "overview";
 }
 let cache:

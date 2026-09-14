@@ -81,7 +81,7 @@ export function Palette() {
                   onSelect={() =>
                     run(() => {
                       store.open(current);
-                      store.setTab("review");
+                      store.setTab("overview");
                     })
                   }
                 >

@@ -155,7 +155,9 @@ export function IssueDecisionPanel({
                         if (action.intent === "terminal")
                           store.setTab("terminal");
                         if (action.intent === "plan") store.setTab("plan");
-                        if (action.intent === "review") store.setTab("review");
+                        // Findings and activity live on the Overview tab.
+                        if (action.intent === "review")
+                          store.setTab("overview");
                         if (action.intent === "pull-request" && task.prNumber)
                           store.openPullRequest({
                             repoId: task.repoId,

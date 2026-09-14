@@ -104,7 +104,7 @@ const tabs: Record<AttentionReason, string> = {
   stalled: "overview",
   idle_without_submission: "overview",
   status_unknown: "overview",
-  observability_failure: "activity",
+  observability_failure: "overview",
   over_budget: "overview",
 };
 for (const [reason, tab] of Object.entries(tabs))

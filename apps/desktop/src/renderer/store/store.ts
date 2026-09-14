@@ -53,13 +53,7 @@ export type ViewId =
   | "pull-requests"
   | "settings";
 export type Pane = "list" | "board";
-export type TabId =
-  | "overview"
-  | "activity"
-  | "plan"
-  | "agents"
-  | "terminal"
-  | "review";
+export type TabId = "overview" | "plan" | "terminal";
 export type SortKey =
   | "stage"
   | "title"

@@ -13,15 +13,13 @@ import type { TabId } from "../store/store.js";
 import { AttentionChips } from "./bits.js";
 import { clock, RUN_STATUS_LABELS, since, stageLabel } from "./format.js";
 import { IssueDecisionPanel } from "./issue-decision-panel.js";
+import { PrMarkdown } from "./pull-request-overview.js";
 import {
   type HumanCommandOutcome,
   useHumanCommand,
 } from "./use-human-command.js";
 
-// Both pull in a large dependency (Pierre, xterm) that the first screen never needs.
-const DiffTab = lazy(() =>
-  import("./diff.js").then((m) => ({ default: m.DiffTab })),
-);
+// xterm is a large dependency that the first screen never needs.
 const TerminalTab = lazy(() =>
   import("./terminal.js").then((m) => ({ default: m.TerminalTab })),
 );
@@ -29,16 +27,18 @@ const TerminalTab = lazy(() =>
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "plan", label: "Plan" },
-  { id: "agents", label: "Agents" },
   { id: "terminal", label: "Terminal" },
-  { id: "review", label: "Review" },
-  { id: "activity", label: "Activity" },
 ];
 
 export function Detail({ task }: { task: Task }) {
   const store = useStoreApi();
-  const live = useStore((s) => s.live);
-  const tab = useStore((s) => s.ui.tab);
+  const selectedTab = useStore((s) => s.ui.tab);
+  // The Terminal tab exists only while the issue has a live terminal to show.
+  const hasTerminal = useStore((s) =>
+    s.panes.some((pane) => pane.taskId === task.id && !pane.dead),
+  );
+  const tab =
+    selectedTab === "terminal" && !hasTerminal ? "overview" : selectedTab;
   const theme = useStore((s) => s.ui.theme);
   const now = useStore((s) => s.snapshot.now);
   const repo = useStore((s) =>
@@ -113,18 +113,20 @@ export function Detail({ task }: { task: Task }) {
       </div>
       <div className="pr-toolbar">
         <div className="pr-segments" role="tablist">
-          {TABS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === item.id}
-              data-tab={item.id}
-              onClick={() => store.setTab(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
+          {TABS.filter((item) => item.id !== "terminal" || hasTerminal).map(
+            (item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.id}
+                data-tab={item.id}
+                onClick={() => store.setTab(item.id)}
+              >
+                {item.label}
+              </button>
+            ),
+          )}
         </div>
         <span className="spacer" />
         <ToolbarAction
@@ -144,19 +146,10 @@ export function Detail({ task }: { task: Task }) {
 
       <div className="tab-body pr-page-body" data-tab-body={tab}>
         {tab === "overview" ? <Overview task={task} /> : null}
-        {tab === "activity" ? <Activity task={task} /> : null}
         {tab === "plan" ? <PlanTab task={task} /> : null}
-        {tab === "agents" ? <Agents task={task} /> : null}
         <Suspense fallback={<div className="pad faint">Loading...</div>}>
           {tab === "terminal" ? (
             <TerminalTab task={task} theme={theme} />
-          ) : null}
-          {tab === "review" ? (
-            live ? (
-              <LiveReview task={task} />
-            ) : (
-              <DiffTab task={task} />
-            )
           ) : null}
         </Suspense>
       </div>
@@ -410,22 +403,33 @@ function Overview({ task }: { task: Task }) {
       ),
     shallowArray,
   );
-  const events = useStore(
-    (state) =>
-      state.snapshot.transitions
-        .filter((transition) => transition.taskId === task.id)
-        .slice(-5)
-        .reverse(),
+  const findings = useStore(
+    (state) => taskFindings(state.snapshot, task),
     shallowArray,
   );
+  const now = useStore((state) => state.snapshot.now);
+  const events = useTaskEvents(task);
+  const [allActivity, setAllActivity] = useState(false);
   const store = useStoreApi();
+  const settled = (status: string) =>
+    ["resolved", "fixed", "waived"].includes(status);
+  const sortedFindings = [...findings].sort(
+    (a, b) =>
+      Number(settled(a.status)) - Number(settled(b.status)) ||
+      Number(b.blocking) - Number(a.blocking),
+  );
+  const shownEvents = allActivity ? events : events.slice(0, 5);
   return (
     <div className="pr-overview issue-overview">
       <main className="pr-story">
         <h1>{displayName(task)}</h1>
-        <p className="task-description">
-          {task.description.trim() || "No description."}
-        </p>
+        <div className="task-description">
+          {task.description.trim() ? (
+            <PrMarkdown body={task.description} />
+          ) : (
+            <p className="faint">No description.</p>
+          )}
+        </div>
         <div className="section-title">Plan</div>
         {plan ? (
           <div className="panel">
@@ -440,33 +444,124 @@ function Overview({ task }: { task: Task }) {
         ) : (
           <div className="faint">No plan yet.</div>
         )}
-        <div className="section-title">Recent activity</div>
-        {events.map((event) => (
+        <div className="section-title">
+          Findings
+          {findings.length
+            ? ` · ${findings.filter((f) => f.blocking && !settled(f.status)).length} open and blocking`
+            : ""}
+        </div>
+        {sortedFindings.length ? (
+          sortedFindings.map((f) => (
+            <div
+              className={`panel issue-finding ${settled(f.status) ? "settled" : ""}`}
+              key={f.id}
+            >
+              <div className="detail-meta">
+                <strong>{f.title}</strong>
+                <span
+                  className={`chip ${f.severity === "blocker" || f.severity === "major" ? "danger" : ""}`}
+                >
+                  {f.severity}
+                </span>
+                <span className="chip">{f.status}</span>
+                {f.blocking && !settled(f.status) ? (
+                  <span className="chip danger">blocking</span>
+                ) : null}
+                <span className="spacer" />
+                <span className="faint">
+                  {f.source} · round {f.round}
+                </span>
+              </div>
+              {f.location?.path ? (
+                <div className="mono faint">
+                  {f.location.path}:{f.location.startLine ?? "?"}
+                </div>
+              ) : null}
+              <PrMarkdown body={f.body} />
+            </div>
+          ))
+        ) : (
+          <div className="faint">No findings.</div>
+        )}
+        <div className="section-title">Activity</div>
+        {shownEvents.map((event) => (
           <div className="event" key={event.id}>
-            <span className="dot" />
-            <span>{event.reason}</span>
+            <span className="faint mono">{clock(event.at)}</span>
+            <span
+              className={`dot ${event.kind === "flag" ? "blocked" : event.kind === "run" ? "working" : ""}`}
+            />
+            <span>
+              <div>{event.text}</div>
+              {event.detail ? (
+                <div className="faint">{event.detail}</div>
+              ) : null}
+            </span>
           </div>
         ))}
-        <button type="button" onClick={() => store.setTab("activity")}>
-          View all activity
-        </button>
+        {events.length > 5 ? (
+          <button type="button" onClick={() => setAllActivity((v) => !v)}>
+            {allActivity
+              ? "Show recent activity"
+              : `Show all activity (${events.length})`}
+          </button>
+        ) : null}
       </main>
       <aside className="pr-rail">
         <div className="section-title">Agents</div>
+        {runs.length === 0 ? <div className="faint">No runs yet.</div> : null}
         {runs.map((run) => (
           <div className="panel" key={run.id}>
-            <strong>{run.role}</strong> · {run.provider}
-            <div className="faint">
-              {RUN_STATUS_LABELS[run.status]} ·{" "}
-              {run.lastTurn?.outcome ??
-                (run.status === "working" ? "working" : "idle")}
+            <div className="detail-meta">
+              <span className={`dot ${run.status}`} />
+              <strong>{run.role}</strong>
+              <span className="faint">· {run.provider}</span>
+              <span className="spacer" />
+              <span className="chip">{RUN_STATUS_LABELS[run.status]}</span>
             </div>
+            <div className="faint mono">
+              {run.model}
+              {run.reasoningEffort ? ` · ${run.reasoningEffort}` : ""}
+            </div>
+            <div className="faint">
+              {run.lastTurn?.error ??
+                run.lastTurn?.outcome ??
+                (run.status === "working" ? "working" : "idle")}
+              {" · last activity "}
+              {run.lastActivityAt
+                ? `${since(now, run.lastActivityAt)} ago`
+                : "never"}
+            </div>
+            {run.blockedOn ? (
+              <span className="chip attention">{run.blockedOn}</span>
+            ) : null}
+            {run.pendingRequests.map((request) => (
+              <div className="faint" key={request.id}>
+                <span className="chip attention">{request.kind}</span>{" "}
+                {request.summary}
+              </div>
+            ))}
+            {run.pendingDialog ? (
+              <div className="faint">
+                <span className="chip attention">{run.pendingDialog.kind}</span>{" "}
+                {run.pendingDialog.command ?? "Waiting for terminal input"}
+              </div>
+            ) : null}
+            {run.origin === "loom" &&
+            run.endReason !== "superseded" &&
+            runs
+              .filter((r) => r.origin === "loom" && r.role === run.role)
+              .at(-1)?.id === run.id &&
+            ((task.stage === "planning" && run.role === "planner") ||
+              (task.stage === "in_progress" && run.role === "implementer") ||
+              (task.stage === "in_review" && run.role === "reviewer")) ? (
+              <RestartRun task={task} run={run} />
+            ) : null}
           </div>
         ))}
         <div className="section-title">Tests</div>
         {tests.length ? (
           tests.map((test) => (
-            <div key={`${test.command}:${test.ranAt}`}>
+            <div key={`${test.command}:${test.ranAt}`} title={test.summary}>
               <span
                 className={`chip ${test.outcome === "passed" ? "good" : "danger"}`}
               >
@@ -483,7 +578,7 @@ function Overview({ task }: { task: Task }) {
   );
 }
 
-function Activity({ task }: { task: Task }) {
+function useTaskEvents(task: Task) {
   const notes = useStore(
     (s) => s.notes.filter((n) => n.taskId === task.id),
     shallowArray,
@@ -560,26 +655,7 @@ function Activity({ task }: { task: Task }) {
     ),
   ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 
-  return (
-    <div className="pad timeline">
-      <section className="task-description">
-        <div className="section-title">Description</div>
-        <div>{task.description.trim() || "No description."}</div>
-      </section>
-      {events.map((event) => (
-        <div className="event" key={event.id}>
-          <span className="faint mono">{clock(event.at)}</span>
-          <span
-            className={`dot ${event.kind === "flag" ? "blocked" : event.kind === "run" ? "working" : ""}`}
-          />
-          <span>
-            <div>{event.text}</div>
-            <div className="faint">{event.detail}</div>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
+  return events;
 }
 
 function PlanTab({ task }: { task: Task }) {
@@ -659,193 +735,6 @@ function PlanTab({ task }: { task: Task }) {
           </ul>
         </>
       ) : null}
-    </div>
-  );
-}
-
-function Agents({ task }: { task: Task }) {
-  const runs = useStore((s) => taskRuns(s.snapshot, task), shallowArray);
-  const tests = useStore(
-    (s) =>
-      s.snapshot.testResults.filter((t) =>
-        s.snapshot.runs.some((r) => r.id === t.runId && r.taskId === task.id),
-      ),
-    shallowArray,
-  );
-  const findings = useStore(
-    (s) => taskFindings(s.snapshot, task),
-    shallowArray,
-  );
-  const now = useStore((s) => s.snapshot.now);
-
-  return (
-    <div className="pad">
-      <div className="section-title">Runs</div>
-      {runs.length === 0 ? <div className="faint">No runs yet.</div> : null}
-      {runs.map((run) => (
-        <div className="panel" key={run.id}>
-          <div className="detail-meta">
-            <span className={`dot ${run.status}`} />
-            <strong>{run.role}</strong>
-            <span className="chip">{RUN_STATUS_LABELS[run.status]}</span>
-            {run.blockedOn ? (
-              <span className="chip attention">{run.blockedOn}</span>
-            ) : null}
-            <span className="chip">{run.provider}</span>
-            <span className="chip">{run.mode}</span>
-            {run.origin === "external" ? (
-              <span className="chip">external</span>
-            ) : null}
-            <span className="spacer" />
-            <span className="faint">
-              round {run.round} · attempt {run.attempts}
-            </span>
-          </div>
-          {run.origin === "loom" &&
-          run.endReason !== "superseded" &&
-          runs.filter((r) => r.origin === "loom" && r.role === run.role).at(-1)
-            ?.id === run.id &&
-          ((task.stage === "planning" && run.role === "planner") ||
-            (task.stage === "in_progress" && run.role === "implementer") ||
-            (task.stage === "in_review" && run.role === "reviewer")) ? (
-            <RestartRun task={task} run={run} />
-          ) : null}
-          <dl className="kv" style={{ marginTop: 6 }}>
-            <dt>Model</dt>
-            <dd className="mono">
-              {run.model}
-              {run.reasoningEffort ? ` · ${run.reasoningEffort} reasoning` : ""}
-            </dd>
-            <dt>Session ID</dt>
-            <dd className="mono">{run.sessionId ?? "not recorded"}</dd>
-            <dt>Session epoch</dt>
-            <dd className="nums">{run.sessionEpoch}</dd>
-            {run.codexGeneration !== null ? (
-              <>
-                <dt>Codex generation</dt>
-                <dd className="nums">{run.codexGeneration}</dd>
-              </>
-            ) : null}
-            {run.pane ? (
-              <>
-                <dt>Pane</dt>
-                <dd className="mono">
-                  {run.pane.sessionName} · {run.pane.paneId}
-                </dd>
-              </>
-            ) : null}
-            <dt>Last activity</dt>
-            <dd>
-              {run.lastActivityAt
-                ? `${since(now, run.lastActivityAt)} ago`
-                : "never"}
-            </dd>
-            {run.lastTurn?.error ? (
-              <>
-                <dt>Last error</dt>
-                <dd className="mono">{run.lastTurn.error}</dd>
-              </>
-            ) : null}
-            <dt>Turn state</dt>
-            <dd>
-              {run.lastTurn?.error ??
-                run.lastTurn?.outcome ??
-                (run.status === "working" ? "working" : "idle")}
-            </dd>
-          </dl>
-          {run.pendingRequests.map((request) => (
-            <div className="panel" key={request.id} style={{ marginTop: 6 }}>
-              <span className="chip attention">{request.kind}</span>{" "}
-              {request.summary}
-              <div className="faint">
-                Only the human answers this. {since(now, request.receivedAt)}{" "}
-                ago
-              </div>
-            </div>
-          ))}
-          {run.pendingDialog ? (
-            <div className="panel" style={{ marginTop: 6 }}>
-              <span className="chip attention">{run.pendingDialog.kind}</span>{" "}
-              <span className="mono">{run.pendingDialog.tool}</span>
-              <div className="faint">
-                {run.pendingDialog.command ?? "Waiting for terminal input"}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      ))}
-
-      <div className="section-title">Tests</div>
-      {tests.map((test) => (
-        <div className="panel" key={`${test.command}:${test.ranAt}`}>
-          <span
-            className={`chip ${test.outcome === "passed" ? "good" : "danger"}`}
-          >
-            {test.outcome}
-          </span>{" "}
-          <span className="mono">{test.command}</span>
-          <div className="dim">{test.summary}</div>
-        </div>
-      ))}
-
-      <div className="section-title">Findings</div>
-      <div className="dim">
-        {findings.length} total ·{" "}
-        {
-          findings.filter(
-            (f) =>
-              f.blocking &&
-              f.status !== "resolved" &&
-              f.status !== "waived" &&
-              f.status !== "fixed",
-          ).length
-        }{" "}
-        open and blocking
-      </div>
-    </div>
-  );
-}
-
-function LiveReview({ task }: { task: Task }) {
-  const findings = useStore(
-    (s) => taskFindings(s.snapshot, task),
-    shallowArray,
-  );
-  return (
-    <div className="pad">
-      <div className="section-title">Review findings</div>
-      {findings.length ? (
-        [...findings]
-          .sort(
-            (a, b) =>
-              Number(["resolved", "fixed", "waived"].includes(a.status)) -
-              Number(["resolved", "fixed", "waived"].includes(b.status)),
-          )
-          .map((f) => (
-            <div className="panel" key={f.id}>
-              <div className="detail-meta">
-                <strong>{f.title}</strong>
-                <span
-                  className={`chip ${f.severity === "blocker" || f.severity === "major" ? "danger" : ""}`}
-                >
-                  {f.severity}
-                </span>
-                <span className="chip">{f.status}</span>
-                {f.blocking ? (
-                  <span className="chip danger">blocking</span>
-                ) : null}
-              </div>
-              {f.location?.path ? (
-                <div className="mono faint">
-                  {f.location.path}:{f.location.startLine ?? "?"}
-                </div>
-              ) : null}
-              <p style={{ whiteSpace: "pre-wrap" }}>{f.body}</p>
-            </div>
-          ))
-      ) : (
-        <div className="faint">No findings in the current snapshot.</div>
-      )}
     </div>
   );
 }
