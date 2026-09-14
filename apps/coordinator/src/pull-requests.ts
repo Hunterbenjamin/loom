@@ -173,37 +173,47 @@ export class PullRequestViews {
         }
         // Also refresh refusals and uncertain writes. Never automatically replay a command.
         this.deps.changed(repo);
-        const scopes = new Map<string, PrScope>();
+        // The acknowledgement waits only for the views the command acted on: the PR's own
+        // detail and the list it lives in. Every other live scope for the repo (the merged and
+        // closed lists take seconds each) refreshes afterwards and reaches windows as patches,
+        // so the human is not kept waiting on reads that cannot change the outcome.
+        const owned = new Map<string, PrScope>();
         const list: ListScope = {
           kind: "pull_requests",
           repoId: repo.id,
           state:
             command.kind === "refresh_pull_requests" ? command.state : "open",
         };
-        scopes.set(scopeKey(list), list);
-        for (const s of this.active.values())
-          if (s.repoId === repo.id) scopes.set(scopeKey(s), s);
+        owned.set(scopeKey(list), list);
         if (command.kind !== "refresh_pull_requests") {
           const detail: DetailScope = {
             kind: "pull_request",
             repoId: repo.id,
             number: command.number,
           };
-          scopes.set(scopeKey(detail), detail);
+          owned.set(scopeKey(detail), detail);
         }
+        const others = [...this.active.values()].filter(
+          (s) => s.repoId === repo.id && !owned.has(scopeKey(s)),
+        );
+        const confirm = async (scope: PrScope) => {
+          // A read started before the action cannot confirm that action's outcome.
+          await this.reads.get(scopeKey(scope))?.catch(() => {});
+          await this.refresh(scope, true);
+        };
         let refreshError: unknown;
         await Promise.all(
-          [...scopes.values()].map(async (scope) => {
+          [...owned.values()].map(async (scope) => {
             try {
-              // A read started before the action cannot confirm that action's outcome.
-              await this.reads.get(scopeKey(scope))?.catch(() => {});
-              await this.refresh(scope, true);
+              await confirm(scope);
             } catch (error) {
               refreshError = error;
               this.deps.onError(error);
             }
           }),
         );
+        for (const scope of others)
+          void confirm(scope).catch(this.deps.onError);
         if (actionError) throw actionError;
         if (refreshError) throw refreshError;
       })

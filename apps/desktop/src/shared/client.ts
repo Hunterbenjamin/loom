@@ -105,7 +105,7 @@ export class TrackerClient {
             "No acknowledgement; outcome unknown. Check issue activity before retrying.",
           ),
         );
-      }, 15_000);
+      }, 30_000);
       this.pending.set(requestId, { resolve, timer });
       this.send({ type: "command", requestId, command: parsed.data });
     });

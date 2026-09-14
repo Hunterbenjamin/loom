@@ -144,6 +144,10 @@ export function pullRequestReads(
           });
         }
         if (!page.pageInfo.hasNextPage) break;
+        // Open PRs are read in full. Merged and closed ones are a history view: one page of
+        // the 100 newest is enough, and each further page costs another second or two of
+        // GitHub time (the check rollup is the expensive field) on every poll.
+        if (state !== "open") break;
         if (!page.pageInfo.endCursor)
           throw new GitHubError(
             "retryable",

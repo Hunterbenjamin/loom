@@ -430,9 +430,11 @@ export class FakeGitHub implements GitHubAdapter {
       } = this.pullRequestDetail(pr.number);
       values.push(summary);
     }
-    return values.sort(
+    values.sort(
       (a, b) => b.createdAt.localeCompare(a.createdAt) || b.number - a.number,
     );
+    // Like the real adapter: merged and closed lists are the newest page only.
+    return state === "open" ? values : values.slice(0, 100);
   };
   /** The native GraphQL list response, used to exercise the real adapter without gh. */
   async graphql(input: string) {
