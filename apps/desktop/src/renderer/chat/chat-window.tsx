@@ -3,13 +3,28 @@ import {
   type ConversationItem,
   conversationKey,
 } from "@loom/protocol";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useStore, useStoreApi } from "../store/react.js";
 
 function comparableText(value: string) {
   return value.replace(/\r\n/g, "\n").trim();
+}
+
+export const CHAT_COMPOSER_MIN_HEIGHT = 24;
+export const CHAT_COMPOSER_LINE_HEIGHT = 20;
+export const CHAT_COMPOSER_MAX_HEIGHT = CHAT_COMPOSER_LINE_HEIGHT * 4 + 4;
+
+export function resizeChatComposer(textarea: HTMLTextAreaElement) {
+  textarea.style.height = "auto";
+  const contentHeight = textarea.scrollHeight;
+  textarea.style.height = `${Math.max(
+    CHAT_COMPOSER_MIN_HEIGHT,
+    Math.min(contentHeight, CHAT_COMPOSER_MAX_HEIGHT),
+  )}px`;
+  textarea.style.overflowY =
+    contentHeight > CHAT_COMPOSER_MAX_HEIGHT ? "auto" : "hidden";
 }
 
 export function unmatchedSends(
@@ -39,6 +54,7 @@ export function ChatWindow() {
   const [sending, setSending] = useState(false);
   const [showJump, setShowJump] = useState(false);
   const conversation = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const key = target ? conversationKey(target) : "";
@@ -63,6 +79,9 @@ export function ChatWindow() {
         : "Agent";
   const prefixError = /^[!/]/.test(text.trimStart());
   const contentVersion = `${items.length}:${header?.sends.length ?? 0}`;
+  useLayoutEffect(() => {
+    if (composer.current) resizeChatComposer(composer.current);
+  });
   useEffect(() => {
     void contentVersion;
     if (view !== "minimized" && following.current)
@@ -373,6 +392,7 @@ export function ChatWindow() {
         <div className="chat-future-slot" />
         {/* Future slash-command picker. */}
         <textarea
+          ref={composer}
           value={text}
           disabled={header?.status === "stopped"}
           placeholder={`Message ${title}…`}

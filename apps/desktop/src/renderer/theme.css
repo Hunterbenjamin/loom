@@ -2168,13 +2168,17 @@ ul.plain {
 .chat-composer textarea {
   flex: 1;
   min-height: 24px;
-  max-height: 120px;
+  max-height: 84px;
+  box-sizing: border-box;
+  padding: 2px 0;
   resize: none;
+  overflow-y: hidden;
   border: 0;
   outline: none;
   color: inherit;
   background: transparent;
   font: inherit;
+  line-height: 20px;
 }
 .chat-send-button {
   width: 28px;
