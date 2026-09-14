@@ -77,13 +77,26 @@ export interface GitAdapter {
     /** Request complete ancestry evidence for an inline review. */
     reviewBaseSha?: Sha,
   ): Promise<GitWorktreeObservation>;
+  /** Explicit network operation: fetch the configured remote base without moving a local branch. */
+  fetchBase(req: {
+    repoRoot: WorktreePath;
+    baseBranch: string;
+  }): Promise<{ baseSha: Sha }>;
   /** Idempotent: an existing worktree for the same branch is returned, not recreated. */
   createWorktree(req: {
     repoRoot: WorktreePath;
     path: string;
     branch: string;
-    baseBranch: string;
+    baseSha: Sha;
+    requiredCommits?: Sha[];
   }): Promise<ActionOutputs["create_worktree"]>;
+  /** Removes only a clean, registered linked worktree within allowedRoot; never its branch. */
+  removeWorktree(req: {
+    repoRoot: WorktreePath;
+    path: WorktreePath;
+    branch: string;
+    allowedRoot: string;
+  }): Promise<ActionOutputs["remove_worktree"]>;
   /**
    * Refuses unless the local branch head equals `expectedHeadSha`. Never forces blindly:
    * `expectedRemoteHeadSha` is the remote head Loom last observed, and the push replaces exactly

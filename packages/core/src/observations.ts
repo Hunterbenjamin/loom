@@ -276,6 +276,9 @@ export interface DependencyObservation {
   taskId: TaskId;
   stage: Stage;
   merged: boolean;
+  mergeCommitSha: Sha | null;
+  /** Coordinator-only lookup hint; core does not persist dependency branches. */
+  branch: string | null;
 }
 
 // ---------------------------------------------------------------- inputs

@@ -52,7 +52,13 @@ describe("flags derive and clear from authoritative evidence", () => {
     expect(blocked.next.task.blocked?.reason).toBe("dependencies");
     expect(blocked.next.task.attention.reasons).not.toContain("blocked");
     f.observations.dependencies = [
-      { taskId: "dependency" as never, stage: "done", merged: true },
+      {
+        taskId: "dependency" as never,
+        stage: "done",
+        merged: true,
+        mergeCommitSha: null,
+        branch: "feat/dependency",
+      },
     ];
     expect(fixed(blocked.next, f.observations).next.task.stage).toBe(
       "in_progress",

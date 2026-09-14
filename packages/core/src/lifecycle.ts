@@ -1,7 +1,7 @@
 import type { Context } from "./context.js";
 import type { Run } from "./entities.js";
 import { later, read, runId } from "./helpers.js";
-import type { RunId, WorktreePath } from "./ids.js";
+import type { RunId, Sha, WorktreePath } from "./ids.js";
 import type {
   ClaudeSessionObservation,
   CodexThreadObservation,
@@ -385,20 +385,34 @@ export function startDesired(c: Context): void {
     return;
   const desired = c.state.desiredRun;
   if (desired) {
-    if (!c.state.worktree) {
+    if (!c.state.worktree || c.state.worktree.removedAt !== null) {
+      const requiredCommits = c.task.blockedBy.map(
+        (taskId) =>
+          c.observations.dependencies.find(
+            (dependency) => dependency.taskId === taskId,
+          )?.mergeCommitSha ?? null,
+      );
+      if (requiredCommits.some((commit) => commit === null)) return;
       const slug =
         c.task.title
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, "") || "task";
       const branch = c.task.branch ?? `loom/${c.task.id}-${slug}`;
-      c.emit(`create_worktree:${c.task.id}`, {
-        kind: "create_worktree",
-        repoId: c.task.repoId,
-        path: `${c.state.config.worktreeRoot}/${c.task.id}`,
-        branch,
-        baseBranch: c.state.config.baseBranch,
-      });
+      const generation = c.state.worktree?.removedAt;
+      c.emit(
+        generation
+          ? `create_worktree:${c.task.id}:${generation}`
+          : `create_worktree:${c.task.id}`,
+        {
+          kind: "create_worktree",
+          repoId: c.task.repoId,
+          path: `${c.state.config.worktreeRoot}/${c.task.id}`,
+          branch,
+          baseBranch: c.state.config.baseBranch,
+          requiredCommits: requiredCommits as Sha[],
+        },
+      );
       return;
     }
     if (!c.state.worktree.paneWorkspaceId)
@@ -540,4 +554,20 @@ export function startDesired(c: Context): void {
     run.attempts++;
     launch(c, run, true);
   }
+}
+
+/** A finished generation is removed only after the pane-retirement actions emitted this pass. */
+export function removeFinishedWorktree(c: Context): void {
+  if (
+    !["done", "canceled"].includes(c.task.stage) ||
+    !c.state.worktree ||
+    c.state.worktree.removedAt !== null
+  )
+    return;
+  c.emit(`remove_worktree:${c.task.id}:${c.state.worktree.createdAt}`, {
+    kind: "remove_worktree",
+    repoId: c.task.repoId,
+    worktreePath: c.state.worktree.path,
+    branch: c.state.worktree.branch,
+  });
 }

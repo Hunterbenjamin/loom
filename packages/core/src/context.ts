@@ -32,6 +32,7 @@ import type { ReconcileResult, TaskState } from "./reconcile.js";
 /** Cleanup intents: never canceled with the work around them, and never held back by it. */
 export const CLEANUP_KINDS: readonly string[] = [
   "stop_run",
+  "remove_worktree",
   "interrupt_run",
   "disable_auto_merge",
   "notify",
