@@ -2340,6 +2340,37 @@ ul.plain {
   color: white;
   white-space: nowrap;
 }
+.detail .issue-toolbar-action > button.secondary {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text);
+}
+.detail .issue-toolbar-action > button.secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.detail .issue-toolbar-action > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.button-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: button-spin 0.7s linear infinite;
+}
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .button-spinner {
+    animation-duration: 2s;
+  }
+}
 .issue-toolbar-action .pr-outcome {
   max-width: 260px;
   overflow: hidden;

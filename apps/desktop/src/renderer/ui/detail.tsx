@@ -57,7 +57,7 @@ export function Detail({ task }: { task: Task }) {
   const prNumbers = [
     ...new Set([...(task.prNumber ? [task.prNumber] : []), ...linkedPrNumbers]),
   ];
-  const { send, outcome, submitting } = useHumanCommand(task.id);
+  const { send, outcome, submitting, pending } = useHumanCommand(task.id);
   const [confirmHead, setConfirmHead] = useState<Sha | null>(null);
   const [changePlan, setChangePlan] = useState<{ planVersion: number } | null>(
     null,
@@ -148,6 +148,7 @@ export function Detail({ task }: { task: Task }) {
           }}
           outcome={outcome}
           submitting={submitting}
+          pending={pending}
         />
       </div>
       <IssueDecisionPanel
@@ -213,12 +214,15 @@ function ToolbarAction({
   onChangePlan,
   outcome,
   submitting,
+  pending,
 }: {
   task: Task;
   onCommand: (command: HumanCommand) => void;
   onChangePlan: () => void;
   outcome: HumanCommandOutcome;
   submitting: boolean;
+  /** The command in flight: its button shows progress instead of status text. */
+  pending: HumanCommand["type"] | null;
 }) {
   const decision = useStore((state) => {
     const decisions = issueDecisions(state, task).decisions;
@@ -229,10 +233,17 @@ function ToolbarAction({
   });
   const store = useStoreApi();
   if (!decision) return null;
+  // Secondary actions sit left of the primary one, which is always last and rightmost.
   const actions =
     decision.kind === "plan_needs_approval"
-      ? decision.actions
+      ? [...decision.actions].sort(
+          (a, b) =>
+            Number(a.id === "approve-plan") - Number(b.id === "approve-plan"),
+        )
       : decision.actions.slice(0, 1);
+  const commandType = (action: (typeof actions)[number]) =>
+    action.id === "change-plan" ? "reject_plan" : action.command?.("").type;
+  const busy = pending !== null;
   const disabledReasons = [
     ...new Set(
       actions.flatMap((action) =>
@@ -242,28 +253,37 @@ function ToolbarAction({
   ];
   return (
     <div className="issue-toolbar-action">
-      {actions.map((action) => (
-        <button
-          key={action.id}
-          type="button"
-          disabled={submitting || !!action.disabledReason}
-          title={action.disabledReason ?? undefined}
-          onClick={() => {
-            if (action.id === "change-plan") onChangePlan();
-            else if (action.command) onCommand(action.command());
-            else if (action.intent === "terminal") store.setTab("terminal");
-          }}
-        >
-          {action.label}
-        </button>
-      ))}
+      {actions.map((action) => {
+        const loading = busy && commandType(action) === pending;
+        return (
+          <button
+            key={action.id}
+            type="button"
+            className={action.id === "change-plan" ? "secondary" : undefined}
+            disabled={submitting || busy || !!action.disabledReason}
+            aria-busy={loading || undefined}
+            title={action.disabledReason ?? undefined}
+            onClick={() => {
+              if (action.id === "change-plan") onChangePlan();
+              else if (action.command) onCommand(action.command());
+              else if (action.intent === "terminal") store.setTab("terminal");
+            }}
+          >
+            {loading ? (
+              <span className="button-spinner" aria-hidden="true" />
+            ) : null}
+            {action.label}
+          </button>
+        );
+      })}
       {disabledReasons.map((reason) => (
         <span className="disabled-reason" key={reason}>
           {reason}
         </span>
       ))}
-      {outcome.message ? (
-        <span className="pr-outcome" role="status">
+      {/* Progress shows on the button; only a refusal needs words. */}
+      {outcome.kind === "refused" ? (
+        <span className="pr-outcome danger" role="alert">
           {outcome.message}
         </span>
       ) : null}
