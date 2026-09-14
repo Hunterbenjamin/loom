@@ -60,7 +60,8 @@ function ListViewComponent() {
 
   // The cursor is an index into `rows`; find where that row landed among the headers.
   const cursorItem = items.findIndex(
-    (item) => item.kind === "row" && item.row === rows[cursor],
+    (item) =>
+      item.kind === "row" && cursor !== null && item.row === rows[cursor],
   );
 
   useEffect(() => {
@@ -99,7 +100,15 @@ function ListViewComponent() {
           {descending ? "↓" : "↑"}
         </button>
       </ListToolbar>
-      <div className="list issues-list" ref={scroller} data-testid="list">
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: mouse movement switches navigation modality and clears the keyboard cursor */}
+      <div
+        className="list issues-list"
+        ref={scroller}
+        data-testid="list"
+        onMouseMove={() => {
+          if (cursor !== null) store.setCursor(null);
+        }}
+      >
         <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
           {virtual.getVirtualItems().map((item) => {
             const entry = items[item.index] as ListItem;
@@ -150,7 +159,7 @@ function Row({
 }: {
   item: Extract<ListItem, { kind: "row" }>;
   index: number;
-  cursor: number;
+  cursor: number | null;
 }) {
   const store = useStoreApi();
   const { task } = item.row;

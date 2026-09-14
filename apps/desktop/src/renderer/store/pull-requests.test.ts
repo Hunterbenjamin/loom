@@ -50,7 +50,9 @@ test("live snapshots and PR patches update rows and retain the selected repo/num
     ),
   ).toBe(true);
   expect(
-    selectedPullRequests(store.getState())[store.getState().ui.prCursor],
+    selectedPullRequests(store.getState()).at(
+      store.getState().ui.prCursor ?? -1,
+    ),
   ).toEqual(selected);
   const removal = {
     ...patch,
@@ -73,7 +75,7 @@ test("live snapshots and PR patches update rows and retain the selected repo/num
     stateFromSnapshot(wire.meta, { ...wire.body, pullRequests: [] }),
   );
   expect(store.getState().snapshot.pullRequests).toEqual([]);
-  expect(store.getState().ui.prCursor).toBe(0);
+  expect(store.getState().ui.prCursor).toBeNull();
 });
 
 test("PR lists, counts and subscriptions follow exactly one selected repository", async () => {
@@ -85,7 +87,7 @@ test("PR lists, counts and subscriptions follow exactly one selected repository"
   for (const repo of store.getState().snapshot.repos) {
     store.setPrCursor(3);
     await store.setRepo(repo.id);
-    expect(store.getState().ui.prCursor).toBe(0);
+    expect(store.getState().ui.prCursor).toBeNull();
     const rows = selectedPullRequests(store.getState());
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((row) => row.repoId === repo.id)).toBe(true);

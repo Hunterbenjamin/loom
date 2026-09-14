@@ -65,7 +65,12 @@ export function PullRequestsView() {
   useEffect(() => {
     const changed = previousSections.current !== ui.prSections;
     previousSections.current = ui.prSections;
-    const bounded = Math.max(0, Math.min(ui.prCursor, cursor - 1));
+    const bounded =
+      ui.prCursor === null
+        ? null
+        : cursor === 0
+          ? null
+          : Math.max(0, Math.min(ui.prCursor, cursor - 1));
     if (bounded !== ui.prCursor) store.setPrCursor(bounded);
     if (!changed && cursorItem >= 0)
       virtual.scrollToIndex(cursorItem, { align: "auto" });
@@ -96,10 +101,14 @@ export function PullRequestsView() {
           </button>
         ))}
       </ListToolbar>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: mouse movement switches navigation modality and clears the keyboard cursor */}
       <div
         className="list reviews-list"
         ref={scroller}
         data-testid="pull-requests-list"
+        onMouseMove={() => {
+          if (ui.prCursor !== null) store.setPrCursor(null);
+        }}
       >
         {loading ? (
           <div className="pad faint" role="status">
@@ -165,7 +174,7 @@ function ReviewRow({
 }: {
   pr: PullRequestRow;
   index: number;
-  cursor: number;
+  cursor: number | null;
 }) {
   const store = useStoreApi();
   const now = useStore((s) => s.snapshot.now);

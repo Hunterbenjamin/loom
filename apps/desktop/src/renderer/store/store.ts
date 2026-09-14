@@ -88,13 +88,13 @@ export interface UiState {
   >;
   prCompletedCount: number;
   prQuery: string;
-  prCursor: number;
+  prCursor: number | null;
   openPr: { repoId: PullRequestRow["repoId"]; number: number } | null;
   view: ViewId;
   pane: Pane;
   /** Coordinator projection; empty only when no repository is registered. */
   repo: string;
-  cursor: number;
+  cursor: number | null;
   openTask: TaskId | null;
   tab: TabId;
   sort: SortKey;
@@ -191,12 +191,12 @@ const initialUi: UiState = {
   prSections: {},
   prCompletedCount: 20,
   prQuery: "",
-  prCursor: 0,
+  prCursor: null,
   openPr: null,
   view: "all",
   pane: "list",
   repo: "",
-  cursor: 0,
+  cursor: null,
   openTask: null,
   tab: "overview",
   sort: "stage",
@@ -394,11 +394,16 @@ export function createStore(
       emit();
     },
     applyProtocol(client: ClientState, patch?: PatchFrame) {
-      const selectedPr = selectedPullRequests(state)[state.ui.prCursor];
+      const selectedPr =
+        state.ui.prCursor === null
+          ? undefined
+          : selectedPullRequests(state)[state.ui.prCursor];
       const selectedTask =
         state.ui.view === "needs-you"
           ? undefined
-          : cursorRows(state)[state.ui.cursor]?.task.id;
+          : state.ui.cursor === null
+            ? undefined
+            : cursorRows(state)[state.ui.cursor]?.task.id;
       const selectedStage = state.snapshot.tasks.find(
         (task) => task.id === selectedTask,
       )?.stage;
@@ -426,8 +431,8 @@ export function createStore(
             : {
                 ...state.ui,
                 repo,
-                cursor: 0,
-                prCursor: 0,
+                cursor: null,
+                prCursor: null,
                 openTask: null,
                 openPr: null,
                 openRun: null,
@@ -473,7 +478,8 @@ export function createStore(
             ? [...client.collections.conversation_item.values()]
             : state.conversationItems,
       };
-      if (selectedPr) {
+      const repoChanged = state.ui.repo !== previous.ui.repo;
+      if (selectedPr && !repoChanged) {
         const rows = selectedPullRequests(state);
         const index = rows.findIndex(
           (pr) =>
@@ -486,12 +492,17 @@ export function createStore(
             prCursor:
               index >= 0
                 ? index
-                : Math.max(0, Math.min(state.ui.prCursor, rows.length - 1)),
+                : rows.length === 0
+                  ? null
+                  : Math.max(
+                      0,
+                      Math.min(state.ui.prCursor ?? 0, rows.length - 1),
+                    ),
           },
         };
       }
       // Preserve the selected issue when a stage patch changes its sorted position.
-      if (selectedTask) {
+      if (selectedTask && !repoChanged) {
         const stageChanged =
           state.snapshot.tasks.find((task) => task.id === selectedTask)
             ?.stage !== selectedStage;
@@ -603,32 +614,38 @@ export function createStore(
       setUi({ trackerVisible });
     },
     setPrTab(prTab: UiState["prTab"]) {
-      setUi({ prTab, prCursor: 0 });
+      setUi({ prTab, prCursor: null });
     },
     togglePrSection(section: import("./pull-requests.js").ReviewSection) {
       const collapsed = state.ui.prSections[section] ?? section === "completed";
       setUi({
         prSections: { ...state.ui.prSections, [section]: !collapsed },
-        prCursor: 0,
+        prCursor: null,
       });
     },
     loadMoreCompletedPrs() {
       setUi({ prCompletedCount: state.ui.prCompletedCount + 20 });
     },
     setPrQuery(prQuery: string) {
-      setUi({ prQuery, prCursor: 0 });
+      setUi({ prQuery, prCursor: null });
     },
     openPullRequest(openPr: UiState["openPr"]) {
       setUi({ openPr, openTask: null, openRun: null, openReason: null });
     },
-    setPrCursor(prCursor: number) {
+    setPrCursor(prCursor: number | null) {
       setUi({ prCursor });
     },
     setView(view: ViewId) {
-      setUi({ view, cursor: 0, openTask: null, openPr: null });
+      setUi({
+        view,
+        cursor: null,
+        prCursor: null,
+        openTask: null,
+        openPr: null,
+      });
     },
     setPane(pane: Pane) {
-      setUi({ pane, cursor: 0 });
+      setUi({ pane, cursor: null });
     },
     toggleListSection(stage: Stage) {
       const section = state.ui.listSections[stage];
@@ -640,7 +657,7 @@ export function createStore(
             collapsed: !sectionCollapsed(state.ui.listSections, stage),
           },
         },
-        cursor: 0,
+        cursor: null,
       });
     },
     loadMoreListSection(stage: "done" | "canceled") {
@@ -669,8 +686,8 @@ export function createStore(
       } else
         setUi({
           repo,
-          cursor: 0,
-          prCursor: 0,
+          cursor: null,
+          prCursor: null,
           openTask: null,
           openPr: null,
           openRun: null,
@@ -695,12 +712,15 @@ export function createStore(
           : { sort, descending: sort === "age" },
       );
     },
-    setCursor(cursor: number) {
+    setCursor(cursor: number | null) {
       setUi({ cursor });
     },
     moveCursor(delta: number, length: number) {
       if (length === 0) return;
-      const cursor = Math.max(0, Math.min(length - 1, state.ui.cursor + delta));
+      const cursor =
+        state.ui.cursor === null
+          ? 0
+          : Math.max(0, Math.min(length - 1, state.ui.cursor + delta));
       setUi({ cursor });
     },
     open(task: TaskId | null) {
@@ -716,10 +736,14 @@ export function createStore(
       setUi({ tab });
     },
     setQuery(query: string) {
-      setUi({ query, cursor: 0 });
+      setUi({ query, cursor: null });
     },
     setSearching(searching: boolean) {
-      setUi({ searching, query: searching ? state.ui.query : "", cursor: 0 });
+      setUi({
+        searching,
+        query: searching ? state.ui.query : "",
+        cursor: null,
+      });
     },
     setTheme(theme: Theme) {
       setUi({ theme });

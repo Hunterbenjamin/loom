@@ -28,6 +28,7 @@ type Item =
 
 /** A clock confined to inbox rows: waiting-time updates do not invalidate the task list. */
 export const InboxView = memo(function InboxView() {
+  const store = useStoreApi();
   const rows = useStore(inboxRows);
   const cursor = useStore((s) => s.ui.cursor);
   const connection = useStore((s) => s.connection);
@@ -74,6 +75,9 @@ export const InboxView = memo(function InboxView() {
       className="inbox reviews-list"
       ref={parent}
       aria-label="Needs you inbox"
+      onMouseMove={() => {
+        if (cursor !== null) store.setCursor(null);
+      }}
     >
       {rows.length === 0 ? (
         <div className="pad faint">
@@ -122,7 +126,7 @@ function InboxRow({
   repos,
 }: {
   item: Extract<Item, { kind: "row" }>;
-  cursor: number;
+  cursor: number | null;
   now: number;
   repos: Repo[];
 }) {

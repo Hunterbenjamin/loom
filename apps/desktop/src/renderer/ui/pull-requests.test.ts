@@ -134,7 +134,15 @@ test("renders the reference sections, compact glyph rows and viewer count", () =
 
 test("keyboard skips collapsed sections; Enter opens the PR and issue links open only the issue", () => {
   const h = setup();
+  expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
+  key("Enter");
+  expect(h.store.getState().ui.openPr).toBeNull();
   act(() => h.button("Needs attention1▾").click());
+  expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
+  key("j");
+  expect(h.host.querySelector('[data-cursor="true"]')).toBe(h.rows()[0]);
+  key("k");
+  expect(h.host.querySelector('[data-cursor="true"]')).toBe(h.rows()[0]);
   key("j");
   expect(h.rows()[1]?.textContent).toContain("Improve keyboard navigation");
   key("Enter");
@@ -164,6 +172,21 @@ test("keyboard skips collapsed sections; Enter opens the PR and issue links open
   expect(h.rows()).toHaveLength(23);
   expect(h.host.querySelectorAll(".pr-merged")).toHaveLength(10);
   expect(h.host.querySelectorAll(".pr-closed")).toHaveLength(10);
+});
+
+test("tab changes and mouse movement clear the keyboard cursor", () => {
+  const h = setup();
+  key("j");
+  expect(h.host.querySelector('[data-cursor="true"]')).not.toBeNull();
+  act(() =>
+    h.host
+      .querySelector('[data-testid="pull-requests-list"]')
+      ?.dispatchEvent(new MouseEvent("mousemove", { bubbles: true })),
+  );
+  expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
+  key("j");
+  act(() => h.button("Created").click());
+  expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
 });
 
 test("Completed starts collapsed, loads 20 at a time, newest completion first, and retains presentation state", () => {

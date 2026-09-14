@@ -238,7 +238,8 @@ test("defaults to the sidebar repo and sends the complete backlog payload with m
   body.projects = [{ id: "project", repoId: repo.id }];
   act(() => h.store.applyProtocol(stateFromSnapshot(meta, body)));
   expect(
-    cursorRows(h.store.getState())[h.store.getState().ui.cursor]?.task.id,
+    cursorRows(h.store.getState()).at(h.store.getState().ui.cursor ?? -1)?.task
+      .id,
   ).toBe(id);
   const newTask = body.tasks.find((task) => task.id === id);
   if (!newTask) throw new Error("Missing new task");
@@ -254,7 +255,8 @@ test("defaults to the sidebar repo and sends the complete backlog payload with m
     ),
   );
   expect(
-    cursorRows(h.store.getState())[h.store.getState().ui.cursor]?.task.id,
+    cursorRows(h.store.getState()).at(h.store.getState().ui.cursor ?? -1)?.task
+      .id,
   ).toBe(id);
 });
 
@@ -336,7 +338,7 @@ test("fixture mode creates with every field and selects the new Todo issue", asy
   expect(createTask).toHaveBeenCalledTimes(1);
   expect(h.send).not.toHaveBeenCalled();
   const state = h.store.getState();
-  expect(cursorRows(state)[state.ui.cursor]?.task).toMatchObject({
+  expect(cursorRows(state).at(state.ui.cursor ?? -1)?.task).toMatchObject({
     title: "Fixture issue",
     description: "Fixture description",
     stage: "todo",
@@ -392,7 +394,7 @@ test("C opens the dialog, ignores typing, and modal shortcuts do not change the 
   expect(h.store.getState().ui).toMatchObject({
     openTask: id,
     palette: false,
-    cursor: 0,
+    cursor: null,
   });
 });
 

@@ -189,14 +189,18 @@ test("loads successive pages independently and retains totals and loaded rows ac
 
 test("j/k and Enter use only expanded, loaded rows in displayed order", () => {
   const h = setup();
+  expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
+  key("Enter");
+  expect(h.store.getState().ui.openTask).toBeNull();
   act(() => h.button("Done · 46").click());
   act(() => h.button("Canceled · 46").click());
+  expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
   key("j");
   expect(
     h.host.querySelector('[data-cursor="true"]')?.getAttribute("data-task"),
-  ).toBe("canceled-0");
+  ).toBe("active");
   key("Enter");
-  expect(h.store.getState().ui.openTask).toBe("canceled-0");
+  expect(h.store.getState().ui.openTask).toBe("active");
   key("Escape");
   key("k");
   expect(
@@ -211,6 +215,21 @@ test("j/k and Enter use only expanded, loaded rows in displayed order", () => {
   key("j");
   key("Enter");
   expect(h.store.getState().ui.openTask).toBeNull();
+});
+
+test("view changes and mouse movement clear the keyboard cursor", () => {
+  const h = setup();
+  key("j");
+  expect(h.host.querySelector('[data-cursor="true"]')).not.toBeNull();
+  act(() =>
+    h.host
+      .querySelector('[data-testid="list"]')
+      ?.dispatchEvent(new MouseEvent("mousemove", { bubbles: true })),
+  );
+  expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
+  key("j");
+  act(() => h.store.setView("in-progress"));
+  expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
 });
 
 test("uses shared list primitives and the compact sort control", () => {

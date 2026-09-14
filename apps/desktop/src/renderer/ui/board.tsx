@@ -17,7 +17,14 @@ function BoardViewComponent() {
   for (const row of rows) byStage.get(row.task.stage)?.push(row);
 
   return (
-    <div className="board" data-testid="board">
+    // biome-ignore lint/a11y/noStaticElementInteractions: mouse movement switches navigation modality and clears the keyboard cursor
+    <div
+      className="board"
+      data-testid="board"
+      onMouseMove={() => {
+        if (store.getState().ui.cursor !== null) store.setCursor(null);
+      }}
+    >
       {STAGES.map((stage) => (
         // biome-ignore lint/a11y/noStaticElementInteractions: a mouse drop target; the keyboard path is `e`
         <section
