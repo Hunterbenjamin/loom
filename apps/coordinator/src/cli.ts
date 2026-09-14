@@ -158,6 +158,35 @@ const humanCommand = (
   command: HumanCommand,
 ) => send(config, { kind: "human", taskId, command });
 
+export function resolveCliTaskRef(
+  config: CoordinatorConfig,
+  reference: string,
+): TaskId | null {
+  const store = openReadOnlyStore({
+    dataRoot: config.dataRoot,
+    instance: config.instance,
+    config: reconcileConfig(config),
+  });
+  try {
+    const resolved = resolveTaskRef(reference, {
+      tasks: store.tasks(),
+      repos: store.repos(),
+    });
+    if (!resolved.ok) {
+      process.stderr.write(
+        resolved.code === "unknown"
+          ? `unknown_task: ${reference}\n`
+          : `invalid_input: ${resolved.message}\n`,
+      );
+      process.exitCode = 1;
+      return null;
+    }
+    return resolved.task.id;
+  } finally {
+    store.close();
+  }
+}
+
 async function status(
   config: CoordinatorConfig,
   view: string | null,
@@ -352,11 +381,13 @@ export async function main(argv: string[]): Promise<void> {
   if (group === "serve") return serve(config);
   if (group === "status") return status(config, flag(argv, "view"));
   if (group === "attach") {
-    const [taskId, role] = args;
-    if (!taskId) throw new Error("loom attach needs an issue");
+    const [reference, role] = args;
+    if (!reference) throw new Error("loom attach needs an issue");
+    const taskId = resolveCliTaskRef(config, reference);
+    if (!taskId) return;
     return attach(
       config,
-      taskId as TaskId,
+      taskId,
       role ?? "implementer",
       has(argv, "exec"),
     );
@@ -378,29 +409,9 @@ export async function main(argv: string[]): Promise<void> {
   const [action, ...values] = args;
   let taskId = values[0] as TaskId;
   if (taskId && !["create", "list"].includes(action ?? "")) {
-    const store = openReadOnlyStore({
-      dataRoot: config.dataRoot,
-      instance: config.instance,
-      config: reconcileConfig(config),
-    });
-    try {
-      const resolved = resolveTaskRef(taskId, {
-        tasks: store.tasks(),
-        repos: store.repos(),
-      });
-      if (!resolved.ok) {
-        process.stderr.write(
-          resolved.code === "unknown"
-            ? `unknown_task: ${taskId}\n`
-            : `invalid_input: ${resolved.message}\n`,
-        );
-        process.exitCode = 1;
-        return;
-      }
-      taskId = resolved.task.id;
-    } finally {
-      store.close();
-    }
+    const resolved = resolveCliTaskRef(config, taskId);
+    if (!resolved) return;
+    taskId = resolved;
   }
   switch (action) {
     case "create": {
