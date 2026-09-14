@@ -202,15 +202,17 @@ export function submission(
         run,
       );
       tests(call.input.testResults);
-      c.stage("in_review", "Implementation submitted for review");
-      c.review(call.input.headSha);
+      // CI before review: push, then wait for CI on exactly this commit (ci-gate.ts).
+      state.ciGate = { headSha: call.input.headSha, since: c.now };
+      c.stage("in_progress", "Implementation submitted; waiting for CI");
       c.emit(`push_branch:${task.id}:${call.input.headSha}`, {
         kind: "push_branch",
         worktreePath: state.worktree.path,
         branch: task.branch,
         expectedHeadSha: call.input.headSha,
       });
-      return { tool: call.tool, value: { round: task.reviewRound } };
+      // The review round this submission opens once CI passes.
+      return { tool: call.tool, value: { round: task.reviewRound + 1 } };
     }
     case "submit_review": {
       const review = call.input,
@@ -231,6 +233,22 @@ export function submission(
         );
       if (!state.worktree || !task.branch)
         failures.push("Record the task worktree and branch first");
+      // The reviewer is a checker: it reports, the implementer fixes, and CI checks every commit.
+      if (
+        review.reviewerCommits.length ||
+        review.reviewedSha !== state.review?.headSha
+      )
+        failures.push(
+          "Reviewers don't commit: review the round head as submitted and report findings; the implementer makes the fixes",
+        );
+      if (
+        [...review.findings, ...review.verdicts].some(
+          (item) => item.status === "fixed",
+        )
+      )
+        failures.push(
+          "Reviewers don't fix findings: report them (escalate blocks, open is a note) and the implementer fixes them",
+        );
       const range = git?.reviewCommits;
       const commits =
         review.reviewedSha === state.review?.headSha
@@ -269,7 +287,7 @@ export function submission(
           );
         if (item.status === "escalate" && !item.reason?.trim())
           failures.push(
-            "Each escalated finding needs a reason it cannot be fixed safely inline",
+            "Each escalated finding needs a reason it must be fixed before merge",
           );
         if (item.status !== "fixed" && item.commitSha)
           failures.push("Only fixed findings may name a fixing commit");

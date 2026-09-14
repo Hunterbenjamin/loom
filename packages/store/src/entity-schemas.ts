@@ -394,7 +394,7 @@ export const findingSchema = contract<Finding>()(
     location: locationSchema.nullable(),
     resolution: z
       .object({
-        by: z.enum(["implementer", "reviewer", "human"]),
+        by: z.enum(["implementer", "reviewer", "human", "ci"]),
         note: text,
         commitSha: sha.nullable(),
         at: time,
@@ -485,6 +485,7 @@ export type TaskContext = Pick<
   TaskState,
   | "plan"
   | "review"
+  | "ciGate"
   | "desiredRun"
   | "activeElapsedMs"
   | "budgetObservedAt"
@@ -505,6 +506,7 @@ export const contextSchema = contract<TaskContext>()(
         reviewerCommits: z.array(sha).optional(),
       })
       .nullable(),
+    ciGate: z.object({ headSha: sha, since: time }).nullable().optional(),
     desiredRun: z
       .object({
         role,

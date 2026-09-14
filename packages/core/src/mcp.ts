@@ -98,6 +98,9 @@ export interface GetTaskContextOutput {
     baseBranch: string;
     baseSha: Sha;
     headSha: Sha | null;
+    /** The head this review round reviews, and the one the previous round reviewed. */
+    roundHead?: Sha | null | undefined;
+    lastReviewedHead?: Sha | null | undefined;
   };
   brief: string;
   plan: (Plan & { version: number }) | null;

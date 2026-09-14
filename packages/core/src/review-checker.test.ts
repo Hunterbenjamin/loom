@@ -11,37 +11,28 @@ import {
 } from "../test/fixtures.js";
 import type { Sha } from "./ids.js";
 
-const fix = "c".repeat(40) as Sha;
-const laterFix = "d".repeat(40) as Sha;
-function inline() {
+const other = "c".repeat(40) as Sha;
+/** A checker's clean submission of the round head the CI gate already pushed. */
+function checked() {
   const f = fixture("in_review");
-  const call = reviewCall([finding()]);
+  const call = reviewCall();
   if (call.tool !== "submit_review" || !f.observations.git?.ok)
     throw new Error("fixture");
-  call.input.reviewedSha = fix;
-  call.input.reviewerCommits = [fix];
-  call.input.findings = [
-    {
-      severity: "major",
-      title: "Wrong value",
-      body: "Fixed wrong value",
-      status: "fixed",
-      commitSha: fix,
-      location: null,
-    },
-  ];
-  f.observations.git.value.headSha = fix;
-  f.observations.git.value.reviewCommits = {
-    baseSha: head,
-    headSha: fix,
-    commits: [fix],
-  };
   f.observations.inputs = [mcp(call, "reviewer")];
   return { ...f, call };
 }
+/** The first round: no PR exists until review converges. */
+function firstRound() {
+  const f = checked();
+  f.state.task.prNumber = null;
+  const pr = f.observations.github?.ok ? f.observations.github.value : null;
+  if (!pr) throw new Error("fixture");
+  f.observations.github = { ok: true, at: f.observations.now, value: null };
+  return { ...f, pr };
+}
 
-test("inline fixes persist attribution and wait for the pushed reviewed PR head across restart/replay", () => {
-  const f = inline();
+test("a clean review opens the PR and waits for it to be mergeable across restart/replay", () => {
+  const f = firstRound();
   const result = fixed(f.state, f.observations);
   expect(result.inputs[0]).toMatchObject({
     accepted: true,
@@ -49,55 +40,47 @@ test("inline fixes persist attribution and wait for the pushed reviewed PR head 
   });
   expect(result.next.review).toMatchObject({
     headSha: head,
-    lastReviewedHead: fix,
-    reviewerCommits: [fix],
+    lastReviewedHead: head,
+    reviewerCommits: [],
     publicationPending: true,
   });
-  expect(result.next.findings[0]).toMatchObject({
-    status: "fixed",
-    blocking: false,
-    resolution: { commitSha: fix, by: "reviewer" },
-  });
   expect(result.actions.filter((a) => a.kind === "push_branch")).toMatchObject([
-    { expectedHeadSha: fix },
+    { expectedHeadSha: head },
   ]);
+  expect(result.next.outbox.some((a) => a.kind === "open_pr")).toBe(true);
   expect(result.actions.some((a) => a.kind === "start_run")).toBe(false);
   expect(result.next.artifactContents.handoff).toMatchObject({
     reviewerSubmission: { input: f.call.input },
   });
-  if (
-    !f.observations.git?.ok ||
-    !f.observations.github?.ok ||
-    !f.observations.github.value
-  )
-    throw new Error("fixture");
-  const push = result.actions.find((a) => a.kind === "push_branch");
-  if (!push) throw new Error("Missing push");
-  f.observations.inputs = [actionInput(push, { remoteHeadSha: fix })];
-  const stale = fixed(result.next, f.observations);
-  expect(stale.next.task.stage).toBe("in_review");
-  expect(stale.next.task.reviewRound).toBe(1);
-  f.observations.github.value.headSha = fix;
-  f.observations.github.value.ci.headSha = fix;
-  f.observations.github.value.mergeable = "unknown";
-  expect(fixed(stale.next, f.observations).next.task.stage).toBe("in_review");
-  f.observations.github.value.mergeable = "mergeable";
-  const published = fixed(stale.next, f.observations);
+  f.observations.inputs = [];
+  const waiting = fixed(result.next, f.observations);
+  expect(waiting.next.task.stage).toBe("in_review");
+  expect(waiting.next.task.reviewRound).toBe(1);
+  f.observations.github = {
+    ok: true,
+    at: f.observations.now,
+    value: { ...f.pr, mergeable: "unknown" },
+  };
+  expect(fixed(waiting.next, f.observations).next.task.stage).toBe("in_review");
+  f.observations.github = {
+    ok: true,
+    at: f.observations.now,
+    value: { ...f.pr, mergeable: "mergeable" },
+  };
+  const published = fixed(waiting.next, f.observations);
   expect(published.next.task.stage).toBe("awaiting_approval");
   expect(published.next.review?.publicationPending).toBe(false);
 });
 
 test("a reviewed branch that conflicts with base goes back to the implementer to rebase", () => {
-  const f = inline();
+  const f = firstRound();
   const result = fixed(f.state, f.observations);
-  if (!f.observations.github?.ok || !f.observations.github.value)
-    throw new Error("fixture");
-  const push = result.actions.find((a) => a.kind === "push_branch");
-  if (!push) throw new Error("Missing push");
-  f.observations.inputs = [actionInput(push, { remoteHeadSha: fix })];
-  f.observations.github.value.headSha = fix;
-  f.observations.github.value.ci.headSha = fix;
-  f.observations.github.value.mergeable = "conflicting";
+  f.observations.inputs = [];
+  f.observations.github = {
+    ok: true,
+    at: f.observations.now,
+    value: { ...f.pr, mergeable: "conflicting" },
+  };
   const rebased = fixed(result.next, f.observations);
   expect(rebased.next.task.stage).toBe("in_progress");
   expect(rebased.next.review?.publicationPending).toBe(false);
@@ -112,21 +95,18 @@ test("a reviewed branch that conflicts with base goes back to the implementer to
   ).toHaveLength(1);
 });
 
-describe("inline review guards reject atomically", () => {
+describe("checker review guards reject atomically", () => {
   test.each([
     "dirty",
     "untracked",
     "unknown",
-    "unrelated",
-    "omitted",
-    "extra",
-    "duplicate",
-    "order",
-    "fix-outside-range",
     "branch",
     "head",
+    "reviewer-commit",
+    "fixed-finding",
+    "fixed-verdict",
   ])("%s", (kind) => {
-    const f = inline();
+    const f = checked();
     if (!f.observations.git?.ok) throw new Error("fixture");
     const git = f.observations.git.value;
     if (kind === "dirty") git.dirty = true;
@@ -137,30 +117,45 @@ describe("inline review guards reject atomically", () => {
         reason: "unavailable",
         at: f.observations.now,
       };
-    if (kind === "unrelated") git.reviewCommits = null;
-    if (kind === "omitted") f.call.input.reviewerCommits = [];
-    if (kind === "extra") f.call.input.reviewerCommits.push(base);
-    if (kind === "duplicate") f.call.input.reviewerCommits.push(fix);
-    if (kind === "order") {
-      git.headSha = laterFix;
-      git.reviewCommits = {
-        baseSha: head,
-        headSha: laterFix,
-        commits: [fix, laterFix],
-      };
-      f.call.input.reviewedSha = laterFix;
-      f.call.input.reviewerCommits = [laterFix, fix];
-    }
-    if (kind === "fix-outside-range")
-      Object.assign(f.call.input.findings[0] ?? {}, { commitSha: head });
     if (kind === "branch") git.branch = "feat/other";
-    if (kind === "head") git.headSha = head;
+    if (kind === "head") git.headSha = other;
+    if (kind === "reviewer-commit") {
+      git.headSha = other;
+      git.reviewCommits = { baseSha: head, headSha: other, commits: [other] };
+      f.call.input.reviewedSha = other;
+      f.call.input.reviewerCommits = [other];
+    }
+    if (kind === "fixed-finding") {
+      f.call.input.findings = [
+        {
+          severity: "major",
+          title: "Wrong value",
+          body: "Fixed wrong value",
+          status: "fixed",
+          commitSha: head,
+          location: null,
+        },
+      ];
+      f.call.drafts = [{ id: finding().id, anchor: null }];
+    }
+    if (kind === "fixed-verdict") {
+      f.state.findings = [finding("existing")];
+      f.call.input.verdicts = [
+        {
+          findingId: finding("existing").id,
+          status: "fixed",
+          commitSha: head,
+          note: "Fixed",
+        },
+      ];
+    }
+    const before = f.state.findings.map((x) => ({ ...x }));
     const result = fixed(f.state, f.observations);
     expect(result.inputs[0]).toMatchObject({
       accepted: false,
       error: { code: "guard_failed" },
     });
-    expect(result.next.findings).toEqual([]);
+    expect(result.next.findings).toEqual(before);
     expect(result.next.review?.lastReviewedHead).toBe(
       f.state.review?.lastReviewedHead,
     );
@@ -181,26 +176,6 @@ test("severity alone never sends an implementer fix round", () => {
     severity: "major",
     status: "open",
     blocking: false,
-  });
-});
-
-test("reviewer may fix an existing open blocker and records the fixing verdict", () => {
-  const f = inline();
-  f.state.findings = [finding("existing")];
-  f.call.input.verdicts = [
-    {
-      findingId: finding("existing").id,
-      status: "fixed",
-      commitSha: fix,
-      note: "Fixed",
-    },
-  ];
-  const result = fixed(f.state, f.observations);
-  expect(result.inputs[0]).toMatchObject({ accepted: true });
-  expect(result.next.findings[0]).toMatchObject({
-    status: "fixed",
-    blocking: false,
-    resolution: { commitSha: fix },
   });
 });
 
@@ -241,9 +216,7 @@ test("an existing open blocker may be escalated without inventing a reopened fix
 });
 
 test("publication dependencies follow replacement keys after canceled intents", () => {
-  const f = inline();
-  f.state.task.prNumber = null;
-  f.observations.github = { ok: true, at: f.observations.now, value: null };
+  const f = firstRound();
   const submitted = fixed(f.state, f.observations);
   for (const row of submitted.next.outbox) {
     if (row.kind === "push_branch" || row.kind === "open_pr")

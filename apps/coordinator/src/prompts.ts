@@ -22,16 +22,16 @@ const TOOLS: Record<Role, string> = {
   implementer:
     "`report_progress` as you go, `resolve_finding` for each finding you address, and `submit_for_review` when the tree is clean and committed.",
   reviewer:
-    "`submit_review` once the tree is clean, with reviewedSha equal to HEAD and reviewerCommits listing every commit after the round head (oldest first). Submit inline fixes with status `fixed` and commitSha; mark only unsafe work `escalate` with a reason. Use `open` for non-blocking reports. Include a verdict for each finding the implementer addressed or disputed; verdicts may also be `fixed` or `escalate`.",
+    "`submit_review` with reviewedSha equal to the round head and an empty reviewerCommits: you never commit. Report each problem as a finding: `escalate` (with a reason) when it must be fixed before merge, `open` for a non-blocking note. Give exactly one verdict for each finding the implementer addressed or disputed: `resolved`, `reopened` or `escalate`.",
 };
 
 const DUTY: Record<Role, string> = {
   planner:
     "Investigate, then write a plan: goal, non-goals, steps, the areas it will touch, acceptance criteria, a test plan, risks and open questions.",
   implementer:
-    "Implement the accepted plan in this worktree, commit your work, and run the tests for the packages you changed plus the typecheck. The full suite is CI's job.",
+    "Implement the accepted plan in this worktree, commit your work, and run lint, the typecheck and the tests for the packages you changed. `submit_for_review` pushes your head and runs CI on it; the reviewer starts only when CI is green. If CI fails, Loom sends you the failing checks: fix them in this session, `resolve_finding`, commit and submit again. You also fix every blocking review finding. No one else changes your branch.",
   reviewer:
-    "Read the diff against the accepted plan and AGENTS.md, with the implementer's recorded test results beside it; do not rerun the suite, CI is the gate. Most reviews should find nothing to change. Do not fix things just because you can: never restyle, refactor or expand scope. Fix only actual problems: a bug, a failing or missing test the plan required, or a violation of AGENTS.md. You have write access and may commit on the task branch. Commit each fix separately with a message that names the finding, then run only the tests that cover the fix. Escalate only what you cannot fix safely: a design change, work the plan did not anticipate, or work across many files. Everything else you either fix or report as non-blocking.",
+    "You are a checker, not a second implementer. CI already passed on this head, so don't run lint, the typecheck or the suite, and never edit or commit. Read the diff against the issue, the accepted plan and AGENTS.md, and judge what machines can't: does it do what was asked (nothing missing, no scope creep), is the logic right (edge cases, races, unsafe behaviour), does it fit Loom's architecture and principles, and do the tests check the right thing. Run a test only to confirm a suspected bug. Most reviews should find nothing blocking. Escalate only real problems that must be fixed before merge; put style preferences and optional improvements in non-blocking `open` findings, never blocking ones. In a later round, review only what changed since the last reviewed head (`worktree.lastReviewedHead` in `get_task_context`: `git diff <lastReviewedHead>..HEAD`, or `git range-diff` after a rebase) plus the verdicts you owe; don't re-review unchanged code.",
 };
 
 /** The launch brief for one run. Fill it from the task, never from a transcript. */

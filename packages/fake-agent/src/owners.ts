@@ -1,4 +1,5 @@
 import type {
+  CiState,
   GitHubAdapter,
   PaneHost,
   PaneObservation,
@@ -275,6 +276,12 @@ export class FakeGitHub implements GitHubAdapter {
   private readonly createdAt;
   private title = "Fake pull request";
   private body = "";
+  private readonly commitCi = new Map<Sha, CiState>();
+  /**
+   * CI a pushed commit reports until a test sets it with `ci(...)`. Green by default, so scripted
+   * scenarios pass the CI gate; gate tests start from "pending" and drive it explicitly.
+   */
+  commitCiDefault: "success" | "failure" | "pending" | "none" = "success";
 
   constructor(
     readonly clock: FakeClock,
@@ -584,7 +591,11 @@ export class FakeGitHub implements GitHubAdapter {
     this.branches.add(this.branch);
     if (this.pr) {
       this.pr.headSha = head;
-      this.ci("pending", true);
+      // A push starts CI on the new head; it reports the default until a test drives it.
+      this.ci(
+        this.commitCiDefault === "none" ? "pending" : this.commitCiDefault,
+        true,
+      );
     } else this.changed();
   }
   openPullRequest: GitHubAdapter["openPullRequest"] = async (req) => {
@@ -655,7 +666,59 @@ export class FakeGitHub implements GitHubAdapter {
       this.changed();
     }
   };
+  readCommitCi: GitHubAdapter["readCommitCi"] = async (repo, sha) => {
+    this.scope(repo);
+    return this.commitCiFor(sha);
+  };
+  /** The synchronous read behind `readCommitCi`, for scenario observations. */
+  commitCiFor(sha: Sha): CiState {
+    const recorded = this.commitCi.get(sha);
+    if (recorded) return structuredClone(recorded);
+    if (sha !== this.remoteHead || this.commitCiDefault === "none")
+      return {
+        headSha: sha,
+        conclusion: "none",
+        checks: [],
+        observedAt: this.clock.now(),
+      };
+    return this.ciState(sha, this.commitCiDefault, String(++this.checkId));
+  }
+  private ciState(
+    headSha: Sha,
+    conclusion: "success" | "failure" | "pending",
+    id: string,
+  ): CiState {
+    return {
+      headSha,
+      conclusion,
+      observedAt: this.clock.now(),
+      checks: [
+        {
+          id,
+          name: "test / unit-test",
+          status: conclusion === "pending" ? "in_progress" : "completed",
+          conclusion: conclusion === "pending" ? null : conclusion,
+          url: `https://example.test/check/${id}`,
+        },
+      ],
+    };
+  }
   ci(conclusion: "success" | "failure" | "pending", newRun = false) {
+    if (!this.pr) {
+      // Before a PR exists CI still runs on the pushed commit (the CI gate reads it by SHA).
+      if (!this.remoteHead) throw new Error("Push a head before setting CI");
+      const previous = this.commitCi.get(this.remoteHead)?.checks[0]?.id;
+      this.commitCi.set(
+        this.remoteHead,
+        this.ciState(
+          this.remoteHead,
+          conclusion,
+          newRun || !previous ? String(++this.checkId) : previous,
+        ),
+      );
+      this.changed();
+      return;
+    }
     const pr = this.requirePr();
     const id =
       newRun || !pr.ci.checks.length
@@ -675,6 +738,7 @@ export class FakeGitHub implements GitHubAdapter {
         },
       ],
     };
+    this.commitCi.set(pr.headSha, structuredClone(pr.ci));
     this.changed();
   }
   comment(

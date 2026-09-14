@@ -1,3 +1,4 @@
+import { ciFindings } from "./ci-gate.js";
 import type { Context } from "./context.js";
 import { openBlocking } from "./helpers.js";
 import type { FindingId } from "./ids.js";
@@ -85,28 +86,7 @@ export function reconcileStages(c: Context): void {
       c.rebase(state.worktree.baseBranch, pr.headSha);
     } else if (pr.ci.headSha === pr.headSha && pr.ci.conclusion === "failure") {
       c.voidApprovals("ci_failed");
-      for (const check of pr.ci.checks.filter(
-        (check) =>
-          check.status === "completed" &&
-          check.conclusion !== null &&
-          !["success", "neutral", "skipped"].includes(check.conclusion),
-      )) {
-        const externalId = check.id;
-        if (
-          !state.findings.some(
-            (f) => f.source === "ci" && f.externalId === externalId,
-          )
-        )
-          c.finding({
-            id: `${task.id}/ci/${externalId}` as FindingId,
-            source: "ci",
-            externalId,
-            severity: "major",
-            title: check.name,
-            body: `CI failed: ${check.conclusion}`,
-            anchor: null,
-          });
-      }
+      ciFindings(c, pr.ci);
       c.stage("in_progress", "CI failed on the reviewed head");
       c.fix(`ci:${pr.headSha}`);
     } else {

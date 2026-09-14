@@ -89,6 +89,7 @@ export function continueInterrupted(c: Context): void {
         run.role,
         c.task.blocked !== null,
         c.task.failed !== null,
+        !!c.state.ciGate,
       )
     ) {
       c.message(

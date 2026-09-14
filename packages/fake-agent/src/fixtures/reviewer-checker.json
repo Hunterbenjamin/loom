@@ -38,7 +38,7 @@
     ]
   },
   {
-    "name": "reviewer tries to fix a bug itself",
+    "name": "reviewer checks and reports a note",
     "agent": {
       "provider": "claude",
       "role": "reviewer",
@@ -49,38 +49,23 @@
         "expect": "message"
       },
       {
-        "git": "commit",
-        "files": {
-          "example.txt": "correct value\n"
-        },
-        "message": "Fix finding: wrong value"
-      },
-      {
         "tool": "submit_review",
         "input": {
           "reviewedSha": "$HEAD",
-          "reviewerCommits": ["$HEAD"],
-          "summary": "Fixed wrong value and tested",
+          "reviewerCommits": [],
+          "summary": "Matches the plan; one optional note",
           "findings": [
             {
-              "severity": "major",
-              "title": "Wrong value",
-              "body": "Corrected wrong value",
-              "status": "fixed",
-              "commitSha": "$HEAD",
+              "severity": "minor",
+              "title": "Name the value",
+              "body": "A named constant would read better; optional.",
+              "status": "open",
               "location": null
             }
           ],
           "verdicts": [],
-          "testResults": [
-            {
-              "command": "fixture assertion",
-              "outcome": "passed",
-              "summary": "Correct value"
-            }
-          ]
-        },
-        "expectError": "guard_failed"
+          "testResults": []
+        }
       }
     ]
   }

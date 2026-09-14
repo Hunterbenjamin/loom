@@ -127,7 +127,7 @@ test.each(["interactive", "headless"] as const)(
       planner,
       ...(await loadScenarios(
         new URL(
-          "../../../packages/fake-agent/src/fixtures/reviewer-inline.json",
+          "../../../packages/fake-agent/src/fixtures/reviewer-checker.json",
           import.meta.url,
         ),
       )),

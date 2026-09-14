@@ -1,0 +1,236 @@
+import { describe, expect, it } from "vitest";
+import {
+  finding,
+  fixed,
+  fixture,
+  head,
+  mcp,
+  now,
+  reviewCall,
+  submit,
+} from "../test/fixtures.js";
+import { CI_START_GRACE_MS } from "./ci-gate.js";
+import { roleOwesWork } from "./helpers.js";
+import type { CiState, IsoTime, Observations, Sha } from "./index.js";
+import { deriveAttention, reconcile } from "./index.js";
+
+const ci = (
+  conclusion: CiState["conclusion"],
+  sha: Sha = head,
+): Observations["ci"] => ({
+  ok: true,
+  at: now,
+  value: {
+    headSha: sha,
+    conclusion,
+    observedAt: now,
+    checks:
+      conclusion === "none"
+        ? []
+        : [
+            {
+              id: "9001",
+              name: "lint-typecheck-test",
+              status: conclusion === "pending" ? "in_progress" : "completed",
+              conclusion: conclusion === "pending" ? null : conclusion,
+              url: "https://example.test/check/9001",
+            },
+          ],
+  },
+});
+
+/** An implementer submission in progress, before any reviewer exists for the round. */
+function submitted() {
+  const f = fixture("in_progress");
+  f.state.task.reviewRound = 0;
+  f.state.task.prNumber = null;
+  f.state.review = null;
+  f.state.runs = f.state.runs.filter((r) => r.role !== "reviewer");
+  if (f.observations.github?.ok) f.observations.github.value = null;
+  f.observations.inputs = [mcp(submit())];
+  const r = fixed(f.state, f.observations);
+  return { f, next: r.next, result: r, obs: { ...f.observations, inputs: [] } };
+}
+
+describe("CI gate before review", () => {
+  it("a submission is pushed and waits for CI in progress, with no reviewer and no PR", () => {
+    const { result, next } = submitted();
+    expect(result.inputs[0]?.accepted).toBe(true);
+    expect(next.task.stage).toBe("in_progress");
+    expect(next.ciGate).toEqual({ headSha: head, since: now });
+    expect(result.actions.some((a) => a.kind === "push_branch")).toBe(true);
+    expect(next.outbox.some((a) => a.kind === "start_run")).toBe(false);
+    expect(next.outbox.some((a) => a.kind === "open_pr")).toBe(false);
+    expect(next.task.reviewRound).toBe(0);
+  });
+
+  it("pending CI keeps waiting", () => {
+    const { next, obs } = submitted();
+    const r = fixed(next, { ...obs, ci: ci("pending") });
+    expect(r.next.task.stage).toBe("in_progress");
+    expect(r.next.ciGate?.headSha).toBe(head);
+  });
+
+  it("red CI goes straight back to the same implementer with the failing checks, not to review", () => {
+    const { next, obs } = submitted();
+    const r = fixed(next, { ...obs, ci: ci("failure") });
+    expect(r.next.task.stage).toBe("in_progress");
+    expect(r.next.ciGate).toBeNull();
+    expect(r.next.task.reviewRound).toBe(0);
+    const failure = r.next.findings.find((f) => f.source === "ci");
+    expect(failure).toMatchObject({
+      blocking: true,
+      status: "open",
+      title: "lint-typecheck-test",
+    });
+    expect(failure?.body).toContain("https://example.test/check/9001");
+    expect(
+      r.next.messages.some(
+        (m) => m.purpose === "fix_round" && m.runId.includes("implementer"),
+      ),
+    ).toBe(true);
+    expect(r.next.outbox.some((a) => a.kind === "start_run")).toBe(false);
+  });
+
+  it("green CI settles earlier CI failures and starts a review round that owes them no verdict", () => {
+    const { next, obs } = submitted();
+    const red = fixed(next, { ...obs, ci: ci("failure") });
+    red.next.ciGate = { headSha: head, since: now };
+    const green = fixed(red.next, { ...obs, ci: ci("success") });
+    expect(green.next.task.stage).toBe("in_review");
+    expect(green.next.task.reviewRound).toBe(1);
+    expect(green.next.ciGate).toBeNull();
+    const failure = green.next.findings.find((f) => f.source === "ci");
+    expect(failure?.status).toBe("resolved");
+    expect(failure?.resolution?.by).toBe("ci");
+    expect(green.next.review?.verdictIds).not.toContain(failure?.id);
+    expect(green.next.outbox.some((a) => a.kind === "start_run")).toBe(true);
+  });
+
+  it("a repository with no CI reaches review only after the push has had time to start one", () => {
+    const settle = (finishedAt: IsoTime) => {
+      const { next, obs } = submitted();
+      const row = next.outbox.find(
+        (r) => r.key === `push_branch:${next.task.id}:${head}`,
+      );
+      if (!row) throw new Error("no push intent");
+      row.status = "succeeded";
+      row.finishedAt = finishedAt;
+      return reconcile(next, { ...obs, ci: ci("none") });
+    };
+    expect(settle(now).next.task.stage).toBe("in_progress");
+    const early = new Date(
+      Date.parse(now) - CI_START_GRACE_MS - 1,
+    ).toISOString() as IsoTime;
+    expect(settle(early).next.task.stage).toBe("in_review");
+  });
+
+  it("new commits after submitting withdraw the gate", () => {
+    const { next, obs } = submitted();
+    const git =
+      obs.git?.ok && obs.git.value
+        ? {
+            ...obs.git,
+            value: { ...obs.git.value, headSha: "c".repeat(40) as Sha },
+          }
+        : obs.git;
+    const r = fixed(next, { ...obs, git, ci: ci("success") });
+    expect(r.next.ciGate).toBeNull();
+    expect(r.next.task.stage).toBe("in_progress");
+  });
+
+  it("an idle implementer waiting on CI is not reported as idle without submission", () => {
+    const f = fixture("in_progress");
+    const run = f.state.runs.find((r) => r.role === "implementer");
+    if (!run) throw new Error("missing run");
+    run.status = "idle";
+    run.idleSince = "2026-09-11T00:00:00.000Z" as IsoTime;
+    const reasons = (waitingForCi: boolean) =>
+      deriveAttention({
+        now,
+        previous: f.state.task.attention,
+        stage: "in_progress",
+        blocked: null,
+        failed: null,
+        budgetMinutes: null,
+        activeElapsedMs: 0,
+        runs: [run],
+        questions: [],
+        messages: [],
+        stallAfterMs: f.state.config.stallAfterMs,
+        fixRoundStallAfterMs: f.state.config.fixRoundStallAfterMs,
+        unknownGraceMs: f.state.config.unknownGraceMs,
+        waitingForCi,
+      }).attention.reasons;
+    expect(reasons(false)).toContain("idle_without_submission");
+    expect(reasons(true)).not.toContain("idle_without_submission");
+  });
+});
+
+it("an implementer waiting on CI owes no work, so a restart sends it no continuation", () => {
+  expect(roleOwesWork("in_progress", "implementer", false, false)).toBe(true);
+  expect(roleOwesWork("in_progress", "implementer", false, false, true)).toBe(
+    false,
+  );
+  expect(roleOwesWork("in_review", "reviewer", false, false, true)).toBe(true);
+});
+
+describe("the reviewer is a checker", () => {
+  const review = () => {
+    const f = fixture("in_review");
+    f.state.review = {
+      headSha: head,
+      lastReviewedHead: null,
+      previousBlocking: null,
+      verdictIds: [],
+    };
+    return f;
+  };
+
+  it("refuses reviewer commits", () => {
+    const f = review();
+    const call = reviewCall();
+    if (call.tool !== "submit_review") throw new Error("unexpected call");
+    call.input.reviewerCommits = ["c".repeat(40) as Sha];
+    call.input.reviewedSha = "c".repeat(40) as Sha;
+    f.observations.inputs = [mcp(call, "reviewer")];
+    const r = reconcile(f.state, f.observations);
+    expect(r.inputs[0]?.accepted).toBe(false);
+    expect(JSON.stringify(r.inputs[0])).toContain("Reviewers don't commit");
+    expect(r.next.task.stage).toBe("in_review");
+  });
+
+  it("refuses findings the reviewer claims to have fixed", () => {
+    const f = review();
+    const call = reviewCall();
+    if (call.tool !== "submit_review") throw new Error("unexpected call");
+    call.input.findings = [
+      {
+        severity: "minor",
+        status: "fixed",
+        commitSha: head,
+        title: "Typo",
+        body: "Fixed a typo",
+        location: null,
+      },
+    ];
+    call.drafts = [{ id: "f9" as never, anchor: null }];
+    f.observations.inputs = [mcp(call, "reviewer")];
+    const r = reconcile(f.state, f.observations);
+    expect(r.inputs[0]?.accepted).toBe(false);
+    expect(JSON.stringify(r.inputs[0])).toContain("Reviewers don't fix");
+  });
+
+  it("a blocking finding sends a fix round to the implementer", () => {
+    const f = review();
+    f.observations.inputs = [mcp(reviewCall([finding("f1")]), "reviewer")];
+    const r = fixed(f.state, f.observations);
+    expect(r.inputs[0]?.accepted).toBe(true);
+    expect(r.next.task.stage).toBe("in_progress");
+    expect(
+      r.next.messages.some(
+        (m) => m.purpose === "fix_round" && m.runId.includes("implementer"),
+      ),
+    ).toBe(true);
+  });
+});

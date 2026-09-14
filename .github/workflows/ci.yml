@@ -1,10 +1,13 @@
 name: CI
 
+# Every branch push, so an issue's submitted commit has CI before any PR exists: Loom reads checks
+# by commit SHA and starts review only once they pass (docs/architecture.md, "CI gate before review").
+# Pull requests see the same commit's checks, so a PR event would only run the suite twice.
 on:
-  pull_request:
   push:
     branches:
-      - main
+      - "**"
+  workflow_dispatch:
 
 jobs:
   lint-typecheck-test:

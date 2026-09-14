@@ -144,9 +144,20 @@ describe("all 23 transition rows", () => {
       state.task.reviewRound = 0;
       state.runs = state.runs.filter((r) => r.role !== "reviewer");
       state.task.prNumber = null;
-      observations.inputs = [mcp(submit())];
+      // The implementer's submission was pushed and CI passed on exactly that commit.
+      state.ciGate = { headSha: head, since: now };
+      observations.ci = {
+        ok: true,
+        at: now,
+        value: {
+          headSha: head,
+          conclusion: "success",
+          checks: [],
+          observedAt: now,
+        },
+      };
     },
-    ["push_branch", "start_run"],
+    ["start_run"],
   );
   row(
     10,

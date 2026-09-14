@@ -132,7 +132,7 @@ test("ask_human assigns and returns the persisted question ID immediately", asyn
   });
   expect(host.state.task.blocked?.reason).toBe("question");
 });
-test("submit_for_review returns the round opened by core", async () => {
+test("submit_for_review returns the round it opens once CI passes", async () => {
   const { call, host } = await connect();
   expect(
     await call("submit_for_review", {
@@ -142,7 +142,9 @@ test("submit_for_review returns the round opened by core", async () => {
       handoff: { summary: "Ready", nextSteps: [] },
     }),
   ).toEqual({ ok: true, value: { round: 1 } });
-  expect(host.state.task.stage).toBe("in_review");
+  // CI runs on the pushed head before the review round opens.
+  expect(host.state.task.stage).toBe("in_progress");
+  expect(host.state.ciGate?.headSha).toBe(head);
 });
 test("submit_review without findings advances to human approval", async () => {
   const { call } = await connect(setup("in_review", "reviewer"));
