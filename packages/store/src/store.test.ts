@@ -342,6 +342,35 @@ describe("task transactions", () => {
       } as typeof first),
     ).toThrow();
   });
+  it("round-trips run composer delivery and interrupt commands through the inbox", async () => {
+    const store = await seeded();
+    const send = {
+      id: "send-after-turn" as InputId,
+      receivedAt: now,
+      type: "human" as const,
+      command: {
+        type: "send_message" as const,
+        runId: "run-1" as never,
+        text: "Inspect this image",
+        when: "after_turn" as const,
+        attachmentIds: ["/private/tmp/loom/attachments/image.png"],
+        expectedRun: { sessionEpoch: 2, attempts: 3 },
+      },
+    };
+    const interrupt = {
+      id: "interrupt-turn" as InputId,
+      receivedAt: now,
+      type: "human" as const,
+      command: {
+        type: "interrupt_run" as const,
+        runId: "run-1" as never,
+        expectedRun: { sessionEpoch: 2, attempts: 3 },
+      },
+    };
+    expect(store.enqueueInput(taskId, send)).toBe(true);
+    expect(store.enqueueInput(taskId, interrupt)).toBe(true);
+    expect(store.pendingInputs(taskId, 2)).toEqual([send, interrupt]);
+  });
   it("rejects unpersisted input dispositions and restores all earlier writes", async () => {
     const store = await seeded(),
       next = richState(),

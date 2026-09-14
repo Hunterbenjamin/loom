@@ -152,12 +152,24 @@ const commandSchema = z.discriminatedUnion("type", [
     type: z.literal("send_message"),
     runId: id,
     text,
+    when: z.enum(["now", "after_turn"]).optional(),
+    // The coordinator replaces protocol attachment IDs with resolved local image paths before
+    // persisting this command. Non-image attachment paths are already appended to text.
+    attachmentIds: z.array(text).optional(),
     expectedRun: z
       .object({
         sessionEpoch: z.number().int().nonnegative(),
         attempts: z.number().int().nonnegative(),
       })
       .optional(),
+  }),
+  z.object({
+    type: z.literal("interrupt_run"),
+    runId: id,
+    expectedRun: z.object({
+      sessionEpoch: z.number().int().nonnegative(),
+      attempts: z.number().int().nonnegative(),
+    }),
   }),
   z.object({ type: z.literal("retry") }),
   z.object({ type: z.literal("restart_run"), runId: id }),
