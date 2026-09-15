@@ -14,7 +14,7 @@ const created = vi.hoisted(() => vi.fn());
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     constructor() {
-      created();
+      created(this);
     }
     options = {};
     cols = 100;
@@ -22,8 +22,25 @@ vi.mock("@xterm/xterm", () => ({
     unicode = { activeVersion: "" };
     loadAddon() {}
     open() {}
-    attachCustomKeyEventHandler() {}
-    onData() {}
+    handler = (_event: KeyboardEvent) => true;
+    data = (_data: string) => {};
+    buffer = { active: { type: "normal", viewportY: 50, baseY: 100 } };
+    scrollLines = vi.fn();
+    scrollToTop = vi.fn();
+    scrollToBottom = vi.fn();
+    csi = new Map<string, (params: number[]) => boolean>();
+    parser = {
+      registerCsiHandler: (
+        key: { prefix?: string; final: string },
+        fn: (params: number[]) => boolean,
+      ) => this.csi.set((key.prefix ?? "") + key.final, fn),
+    };
+    attachCustomKeyEventHandler(fn: (event: KeyboardEvent) => boolean) {
+      this.handler = fn;
+    }
+    onData(fn: (data: string) => void) {
+      this.data = fn;
+    }
     onResize() {}
     write() {}
     focus() {}
@@ -251,4 +268,126 @@ test("empty and completed tasks automatically attach their resolved shell", asyn
       runId: null,
     }),
   );
+});
+
+function scrollHarness() {
+  const { snapshot, makeRun } = terminalFixture();
+  const rendered = renderTerminal({
+    ...snapshot,
+    runs: [makeRun("scroll", 1)],
+  });
+  const terminal = created.mock.calls.at(-1)?.[0] as {
+    handler: (event: KeyboardEvent) => boolean;
+    data: (data: string) => void;
+    scrollLines: ReturnType<typeof vi.fn>;
+    scrollToTop: ReturnType<typeof vi.fn>;
+    scrollToBottom: ReturnType<typeof vi.fn>;
+    csi: Map<string, (params: number[]) => boolean>;
+  };
+  const controller = Object.values(window.loom.terminalControllers ?? {})[0];
+  if (!controller) throw new Error("Missing terminal controller");
+  const press = (key: string, init: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent("keydown", {
+      key,
+      cancelable: true,
+      ...init,
+    });
+    act(() => {
+      if (terminal.handler(event)) terminal.data(key);
+    });
+    return event;
+  };
+  return { ...rendered, terminal, controller, press };
+}
+
+test("scroll mode consumes input, navigates history and exits to normal input", () => {
+  const { host, terminal, controller, press } = scrollHarness();
+  act(() => controller.enterScrollMode());
+  expect(host.textContent).toContain("SCROLL");
+  press("j");
+  press("k");
+  press("d", { ctrlKey: true });
+  press("u", { ctrlKey: true });
+  press("PageUp");
+  press("PageDown");
+  expect(terminal.scrollLines.mock.calls).toEqual([
+    [1],
+    [-1],
+    [12],
+    [-12],
+    [-24],
+    [24],
+  ]);
+  press("g");
+  press("x");
+  press("g");
+  expect(terminal.scrollToTop).not.toHaveBeenCalled();
+  press("g");
+  expect(terminal.scrollToTop).toHaveBeenCalledOnce();
+  press("G", { shiftKey: true });
+  expect(terminal.scrollToBottom).toHaveBeenCalledOnce();
+  press("Enter", { shiftKey: true });
+  terminal.data("paste");
+  expect(window.loomTerminal.write).not.toHaveBeenCalled();
+  expect(press("Escape").defaultPrevented).toBe(true);
+  expect(host.textContent).not.toContain("SCROLL");
+  expect(terminal.scrollToBottom).toHaveBeenCalledTimes(2);
+  for (const key of ["j", "k", "q", "Escape", "PageUp"]) {
+    press(key);
+    expect(window.loomTerminal.write).toHaveBeenLastCalledWith(
+      expect.any(String),
+      key,
+    );
+  }
+  act(() => controller.enterScrollMode());
+  press("q");
+  expect(host.textContent).not.toContain("SCROLL");
+  expect(terminal.scrollToBottom).toHaveBeenCalledTimes(3);
+});
+
+test("shift page keys and the wheel share viewer scrolling without entering scroll mode", () => {
+  const { host, terminal, press } = scrollHarness();
+  expect(press("PageUp", { shiftKey: true }).defaultPrevented).toBe(true);
+  press("PageDown", { shiftKey: true });
+  host
+    .querySelector(".terminal-viewport")
+    ?.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -48, bubbles: true, cancelable: true }),
+    );
+  expect(terminal.scrollLines.mock.calls).toEqual([[-24], [24], [-2]]);
+  expect(window.loomTerminal.write).not.toHaveBeenCalled();
+  expect(host.textContent).not.toContain("SCROLL");
+});
+
+test("alternate-screen keyboard scrolling sends wheel reports and ignores gg/G", async () => {
+  const { terminal, controller, press } = scrollHarness();
+  window.loomTerminal.paneFlags = vi.fn(async () => ({ alternate: true }));
+  terminal.csi.get("?h")?.([1000]);
+  await act(async () => controller.enterScrollMode());
+  press("k");
+  expect(window.loomTerminal.write).toHaveBeenLastCalledWith(
+    expect.any(String),
+    "\x1b[<64;51;13M",
+  );
+  press("PageDown", { shiftKey: true });
+  expect(window.loomTerminal.write).toHaveBeenCalledTimes(25);
+  expect(window.loomTerminal.write).toHaveBeenLastCalledWith(
+    expect.any(String),
+    "\x1b[<65;51;13M",
+  );
+  terminal.scrollToBottom.mockClear();
+  press("g");
+  press("g");
+  press("G", { shiftKey: true });
+  expect(terminal.scrollLines).not.toHaveBeenCalled();
+  expect(terminal.scrollToTop).not.toHaveBeenCalled();
+  expect(terminal.scrollToBottom).not.toHaveBeenCalled();
+});
+
+test("unmount removes terminal controllers", () => {
+  scrollHarness();
+  act(() => {
+    for (const cleanup of cleanups.splice(0)) cleanup();
+  });
+  expect(window.loom.terminalControllers).toEqual({});
 });

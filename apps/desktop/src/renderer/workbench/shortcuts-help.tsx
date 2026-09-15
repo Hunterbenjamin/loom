@@ -20,6 +20,11 @@ export const ShortcutsHelp = ({
         </p>
       ))}
       <p>
+        Terminal scroll mode: j/k line, Ctrl+d/Ctrl+u half page, PageUp/PageDown
+        page, gg/G top/bottom. Esc or q returns to the bottom and exits.
+        Shift+PageUp/PageDown scroll a page in any mode.
+      </p>
+      <p>
         Prefix expires after {bindings.config.prefixTimeoutMs / 1000} seconds.
         Escape cancels. Modifier keys preserve the prefix; unknown suffixes pass
         through.

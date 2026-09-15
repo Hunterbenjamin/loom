@@ -13,6 +13,7 @@ export const KEYBINDING_ACTIONS = [
   { id: "close-space", label: "Close space" },
   { id: "zoom", label: "Zoom panel" },
   { id: "jump", label: "Find agent" },
+  { id: "scroll-mode", label: "Scroll terminal history" },
   { id: "help", label: "Shortcut map" },
   { id: "commands", label: "Command palette" },
   {
@@ -165,6 +166,7 @@ export const DEFAULT_KEYBINDINGS: {
     "close-space": ["Cmd+Alt+W", "Prefix Shift+X"],
     zoom: ["Cmd+Shift+Enter", "Prefix z"],
     jump: ["Cmd+P", "Prefix g"],
+    "scroll-mode": ["Prefix ["],
     help: ["Prefix ?"],
     commands: ["Cmd+K"],
     literal: ["Prefix Ctrl+Space"],

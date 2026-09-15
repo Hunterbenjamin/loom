@@ -29,6 +29,8 @@ const THEMES = {
   dark: { background: "#0b0c0e", foreground: "#d8dbde", cursor: "#7aa2f7" },
   light: { background: "#ffffff", foreground: "#1b1e23", cursor: "#3563c7" },
 };
+export type TerminalController = { enterScrollMode: () => void };
+
 export const TerminalHistoryContext = createContext(10_000);
 
 export function TerminalTab({
@@ -226,6 +228,7 @@ export const TerminalSession = memo(function TerminalSession({
   }, [viewport]);
   const [status, setStatus] = useState("starting...");
   const [command, setCommand] = useState("");
+  const [scrollMode, setScrollMode] = useState(false);
 
   const settings = useRef({ label, theme, onKey });
   settings.current = { label, theme, onKey };
@@ -308,37 +311,47 @@ export const TerminalSession = memo(function TerminalSession({
         })
         .catch(() => {});
     };
-    // Taken in the capture phase: xterm's own viewport otherwise turns a wheel in the alternate
-    // screen (which tmux always draws in) into arrow keys before this listener runs.
-    const onWheel = (event: WheelEvent) => {
-      event.stopPropagation();
-      event.preventDefault();
+    const scrollBy = (lines: number, pointer?: WheelEvent) => {
       if (Date.now() - askedAt > 250) refreshFlags();
-      const steps = Math.max(
-        1,
-        Math.min(10, Math.round(Math.abs(event.deltaY) / 24)),
-      );
       const active = terminal.buffer?.active;
-      const up = event.deltaY < 0;
+      const up = lines < 0;
       if (!alternate || !hostWantsMouse) {
         if (!active || active.type === "alternate") return;
         const canScrollUp = active.viewportY > 0;
         const canScrollDown = active.viewportY < active.baseY;
         if ((up && canScrollUp) || (!up && canScrollDown))
-          terminal.scrollLines?.(up ? -steps : steps);
+          terminal.scrollLines(lines);
         return;
       }
-      terminal.scrollToBottom?.();
-      const screen = element.querySelector<HTMLElement>(".xterm-screen");
-      const box = screen?.getBoundingClientRect();
-      if (!box?.width || !box.height) return;
-      const cell = (fraction: number, count: number) =>
-        Math.min(count, Math.max(1, Math.floor(fraction * count) + 1));
-      const col = cell((event.clientX - box.left) / box.width, terminal.cols);
-      const row = cell((event.clientY - box.top) / box.height, terminal.rows);
-      const button = event.deltaY < 0 ? 64 : 65;
-      for (let i = 0; i < steps; i++)
+      terminal.scrollToBottom();
+      // Keyboard scrolls target the center of the focused pane in a cropped viewer.
+      const crop = viewportRef.current;
+      let col =
+        Math.floor((crop?.left ?? 0) + (crop?.width ?? terminal.cols) / 2) + 1;
+      let row =
+        Math.floor((crop?.top ?? 0) + (crop?.height ?? terminal.rows) / 2) + 1;
+      if (pointer) {
+        const screen = element.querySelector<HTMLElement>(".xterm-screen");
+        const box = screen?.getBoundingClientRect();
+        if (!box?.width || !box.height) return;
+        const cell = (fraction: number, count: number) =>
+          Math.min(count, Math.max(1, Math.floor(fraction * count) + 1));
+        col = cell((pointer.clientX - box.left) / box.width, terminal.cols);
+        row = cell((pointer.clientY - box.top) / box.height, terminal.rows);
+      }
+      const button = up ? 64 : 65;
+      for (let i = 0; i < Math.abs(lines); i++)
         window.loomTerminal.write(id, `\x1b[<${button};${col};${row}M`);
+    };
+    // Capture before xterm can translate the wheel into alternate-screen arrow keys.
+    const onWheel = (event: WheelEvent) => {
+      event.stopPropagation();
+      event.preventDefault();
+      const steps = Math.max(
+        1,
+        Math.min(10, Math.round(Math.abs(event.deltaY) / 24)),
+      );
+      scrollBy(event.deltaY < 0 ? -steps : steps, event);
     };
     element.addEventListener("wheel", onWheel, {
       capture: true,
@@ -483,10 +496,57 @@ export const TerminalSession = memo(function TerminalSession({
     window.loom.terms ??= {};
     window.loom.terms[panelId ?? id] = terminal;
 
+    let scrolling = false;
+    let pendingG = false;
+    setScrollMode(false);
+    window.loom.terminalControllers ??= {};
+    window.loom.terminalControllers[panelId ?? id] = {
+      enterScrollMode() {
+        scrolling = true;
+        pendingG = false;
+        setScrollMode(true);
+        refreshFlags();
+        terminal.focus();
+      },
+    };
+
     terminal.attachCustomKeyEventHandler((event) => {
       // Workbench's window capture listener owns bindings across every focus
       // surface. It consumes them before xterm/kitty; never run a second matcher.
       if (event.defaultPrevented) return false;
+      const pageKey = event.key === "PageUp" || event.key === "PageDown";
+      if (scrolling || (event.shiftKey && pageKey)) {
+        event.preventDefault();
+        if (event.type !== "keydown") return false;
+        const page = viewportRef.current?.height ?? terminal.rows;
+        const plain = !event.ctrlKey && !event.metaKey && !event.altKey;
+        const wasG = pendingG;
+        pendingG = false;
+        if (plain && (event.key === "Escape" || event.key === "q")) {
+          scrolling = false;
+          setScrollMode(false);
+          terminal.scrollToBottom();
+        } else if (plain && pageKey) {
+          scrollBy(event.key === "PageUp" ? -page : page);
+        } else if (plain && (event.key === "j" || event.key === "k")) {
+          scrollBy(event.key === "j" ? 1 : -1);
+        } else if (
+          event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          (event.key === "d" || event.key === "u")
+        ) {
+          scrollBy(
+            (event.key === "d" ? 1 : -1) * Math.max(1, Math.floor(page / 2)),
+          );
+        } else if (plain && event.key === "g") {
+          pendingG = !wasG;
+          if (wasG && !alternate) terminal.scrollToTop();
+        } else if (plain && event.key === "G" && !alternate) {
+          terminal.scrollToBottom();
+        }
+        return false;
+      }
       if (
         settings.current.onKey?.(event, () =>
           window.loomTerminal.write(id, "\x01"),
@@ -502,6 +562,7 @@ export const TerminalSession = memo(function TerminalSession({
 
     let enterTimer: number | undefined;
     terminal.onData((data) => {
+      if (scrolling) return;
       window.loomTerminal.write(id, data);
       if (data.includes("\r")) {
         window.clearTimeout(enterTimer);
@@ -604,6 +665,7 @@ export const TerminalSession = memo(function TerminalSession({
       document.removeEventListener("mouseup", onMouseUp);
       if (window.loom.term === terminal) window.loom.term = null;
       delete window.loom.terms?.[panelId ?? id];
+      delete window.loom.terminalControllers?.[panelId ?? id];
       instance.current = null;
       window.loomTerminal.off(id);
       void window.loomTerminal.kill(id);
@@ -617,6 +679,7 @@ export const TerminalSession = memo(function TerminalSession({
         <span className="mono terminal-command" title={command}>
           {command || "..."}
         </span>
+        {scrollMode && <span role="status">SCROLL</span>}
         <span>{status}</span>
       </div>
       <div className="terminal-host" data-testid="terminal">

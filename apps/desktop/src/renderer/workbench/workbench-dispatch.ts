@@ -59,6 +59,8 @@ export const workbenchDispatch = (options: DispatchOptions) =>
     } = options;
     const tab = tabs.find((candidate) => candidate.id === active);
     if (action === "commands") return setPalette((value) => !value);
+    if (action === "scroll-mode")
+      return window.loom.terminalControllers?.[focused]?.enterScrollMode();
     if (action === "literal") {
       // The prefix chord itself, as the byte a terminal would have received: Ctrl+Space is NUL,
       // Ctrl+<letter> is that control character.

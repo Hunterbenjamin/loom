@@ -169,6 +169,10 @@ declare global {
       /** The live xterm instance, so the harness can time keystroke to glyph. */
       term: unknown;
       terms?: Record<string, unknown>;
+      terminalControllers?: Record<
+        string,
+        import("./ui/terminal.js").TerminalController
+      >;
       terminalRenders?: Record<string, number>;
     };
   }

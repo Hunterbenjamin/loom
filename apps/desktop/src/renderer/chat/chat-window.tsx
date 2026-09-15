@@ -620,7 +620,16 @@ export function ChatWindow() {
             if (images.length) void stageFiles(images);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Escape") store.setChatView("minimized");
+            if (e.key === "PageUp" || e.key === "PageDown") {
+              e.preventDefault();
+              const element = conversation.current;
+              if (element)
+                element.scrollTop +=
+                  (e.key === "PageUp" ? -1 : 1) * element.clientHeight * 0.9;
+            } else if (e.metaKey && e.key === "ArrowDown") {
+              e.preventDefault();
+              jumpToLatest();
+            } else if (e.key === "Escape") store.setChatView("minimized");
             else if (
               e.key === "Enter" &&
               !e.shiftKey &&
