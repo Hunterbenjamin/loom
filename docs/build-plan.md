@@ -18,8 +18,8 @@ Build these:
 Keep this to one agent. Parallel agents working before these interfaces exist produce incompatible guesses.
 
 It runs in two steps:
-- **1a** is a design PR: `docs/design/core.md` plus the core types (brief:
-  `docs/briefs/phase-1a-core-design.md`). Nothing is implemented until it's approved.
+- **1a** is a design PR: `docs/design/core.md` plus the core types. Nothing is implemented until
+  it's approved.
 - **1b** implements the approved design.
 
 ## Phase 2: adapters (in parallel, 3–4 agents)
