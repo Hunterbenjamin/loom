@@ -10,13 +10,13 @@ export async function readCi(
   now: IsoTime,
 ) {
   const root = `repos/${repo}`;
-  const rawChecks = await api.all(
-    `${root}/commits/${headSha}/check-runs?per_page=100&filter=latest`,
-    s.checks.transform((v) => v.check_runs),
-  );
-  const combined = (
-    await api.get(`${root}/commits/${headSha}/status`, s.statuses)
-  ).value;
+  const [rawChecks, { value: combined }] = await Promise.all([
+    api.all(
+      `${root}/commits/${headSha}/check-runs?per_page=100&filter=latest`,
+      s.checks.transform((v) => v.check_runs),
+    ),
+    api.get(`${root}/commits/${headSha}/status`, s.statuses),
+  ]);
   if (
     combined.sha !== headSha ||
     rawChecks.some((check) => check.head_sha !== headSha)

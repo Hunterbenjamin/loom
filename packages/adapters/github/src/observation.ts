@@ -19,17 +19,23 @@ export async function observe(
 ): Promise<PullRequestObservation> {
   const root = `repos/${repo}`;
   const pr = `${root}/pulls/${initial.number}`;
-  const ci = await readCi(api, repo, initial.head.sha, now);
+  // Independent resources: each `gh` call is a process and a round trip, so read them together.
+  const [ci, reviewPages, issueComments, reviewComments] = await Promise.all([
+    readCi(api, repo, initial.head.sha, now),
+    api.all(`${pr}/reviews?per_page=100`, z.array(s.review)),
+    api.all(
+      `${root}/issues/${initial.number}/comments?per_page=100`,
+      z.array(s.issueComment),
+    ),
+    api.all(`${pr}/comments?per_page=100`, z.array(s.reviewComment)),
+  ]);
   const human = (user: { login: string; type: string } | null) =>
     user !== null &&
     user.type === "User" &&
     !excluded.has(user.login.toLowerCase());
   const comments: GitHubComment[] = [];
   const reviews: GitHubReview[] = [];
-  for (const review of await api.all(
-    `${pr}/reviews?per_page=100`,
-    z.array(s.review),
-  )) {
+  for (const review of reviewPages) {
     if (review.state === "PENDING") continue;
     if (!review.submitted_at)
       throw new GitHubError("fatal", "GitHub review has no submission time");
@@ -53,10 +59,7 @@ export async function observe(
       submittedAt: review.submitted_at,
     });
   }
-  for (const comment of await api.all(
-    `${root}/issues/${initial.number}/comments?per_page=100`,
-    z.array(s.issueComment),
-  )) {
+  for (const comment of issueComments) {
     if (!human(comment.user)) continue;
     comments.push({
       id: String(comment.id),
@@ -70,10 +73,7 @@ export async function observe(
       createdAt: comment.created_at,
     });
   }
-  for (const comment of await api.all(
-    `${pr}/comments?per_page=100`,
-    z.array(s.reviewComment),
-  )) {
+  for (const comment of reviewComments) {
     if (!human(comment.user)) continue;
     comments.push({
       id: String(comment.id),
