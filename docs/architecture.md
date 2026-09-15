@@ -673,8 +673,9 @@ Cache invalidation generations prevent pre-hint reads from restoring a stale con
 
 The coordinator owns one instance-wide daily research schedule (07:00 Asia/Makassar),
 run records and validated brief artifacts in SQLite metadata. It is independent of repositories,
-Main conversations and issue stages. The desktop's Daily brief page reads history and individual
-results over authenticated protocol commands, can pause the schedule, and can request a new run.
+Main conversations and issue stages. The desktop's Daily brief page lists history like Reviews and opens
+a brief in the Reviews detail layout (reading column and property rail), reading results over
+authenticated protocol commands; it can pause the schedule and request a new run.
 Renderer state is only a disposable read cache and current selection. History shows the latest
 30 runs; older records remain stored and addressable by ID.
 

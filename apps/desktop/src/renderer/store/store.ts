@@ -85,6 +85,8 @@ export interface UiState {
   prQuery: string;
   prCursor: number | null;
   openPr: { repoId: PullRequestRow["repoId"]; number: number } | null;
+  /** The brief open over the Daily brief list. */
+  openBrief: string | null;
   view: ViewId;
   pane: Pane;
   /** Coordinator projection; empty only when no repository is registered. */
@@ -163,6 +165,7 @@ const initialUi: UiState = {
   prQuery: "",
   prCursor: null,
   openPr: null,
+  openBrief: null,
   view: "all",
   pane: "list",
   repo: "",
@@ -633,7 +636,11 @@ export function createStore(
         prCursor: null,
         openTask: null,
         openPr: null,
+        openBrief: null,
       });
+    },
+    openBrief(openBrief: string | null) {
+      setUi({ openBrief });
     },
     setPane(pane: Pane) {
       setUi({ pane, cursor: null });

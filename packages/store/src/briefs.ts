@@ -67,7 +67,10 @@ export class BriefStore {
   state(): BriefState {
     return {
       schedule: this.schedule(),
-      runs: this.list().map(({ content: _content, ...run }) => run),
+      runs: this.list().map(({ content, ...run }) => ({
+        ...run,
+        headline: content?.headline ?? null,
+      })),
     };
   }
 }

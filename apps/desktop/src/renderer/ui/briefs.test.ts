@@ -50,9 +50,13 @@ const completed: BriefRun = {
 };
 async function mount(runs: BriefRun[] = []) {
   const store = createStore(buildSnapshot());
+  const summary = ({ content, ...run }: BriefRun) => ({
+    ...run,
+    headline: content?.headline ?? null,
+  });
   const state: BriefState = {
     schedule: { enabled: true, hour: 7, timeZone: "Asia/Makassar" },
-    runs,
+    runs: runs.map(summary),
   };
   const send = vi.fn(async (command: Command): Promise<AckOutcome> => {
     if (command.kind === "set_brief_schedule")
@@ -65,22 +69,14 @@ async function mount(runs: BriefRun[] = []) {
         content: null,
         finishedAt: null,
       };
-      state.runs = [run, ...state.runs];
+      state.runs = [summary(run), ...state.runs];
       return { ok: true, result: { kind: "brief", run } };
     }
-    if (command.kind === "get_brief")
-      return {
-        ok: true,
-        result: {
-          kind: "brief",
-          run: runs.find((run) => run.id === command.id) ?? {
-            ...completed,
-            id: command.id,
-            status: "running",
-            content: null,
-          },
-        },
-      };
+    if (command.kind === "get_brief") {
+      const run = runs.find((item) => item.id === command.id);
+      if (!run) throw new Error(`Unexpected brief ${command.id}`);
+      return { ok: true, result: { kind: "brief", run } };
+    }
     return {
       ok: true,
       result: { kind: "briefs", state: structuredClone(state) },
@@ -103,27 +99,61 @@ async function mount(runs: BriefRun[] = []) {
     await act(async () => root.unmount());
     host.remove();
   });
-  return { host, send };
+  const button = (text: string) => {
+    const found = [...host.querySelectorAll("button")].find(
+      (item) => item.textContent === text,
+    );
+    if (!found) throw new Error(`Missing button ${text}`);
+    return found;
+  };
+  const row = (id: string) => {
+    const found = host.querySelector<HTMLElement>(`[data-brief="${id}"]`);
+    if (!found) throw new Error(`Missing brief row ${id}`);
+    return found;
+  };
+  return { host, send, store, button, row };
 }
 
-test("manual run starts from the empty state and disables overlapping launches", async () => {
-  const { host, send } = await mount();
+test("manual run starts from the empty state, lists the running brief and disables overlapping launches", async () => {
+  const { host, send, button } = await mount();
   expect(host.textContent).toContain("7:00 a.m.");
-  const button = host.querySelector("button");
-  if (!button) throw new Error("Missing Run now");
-  await act(async () => button.click());
+  await act(async () => button("Run now").click());
   expect(send).toHaveBeenCalledWith({
     kind: "run_brief",
     id: expect.any(String),
   });
-  expect(button.disabled).toBe(true);
-  expect(host.textContent).toContain("Researching live sources");
+  expect(button("Researching…").disabled).toBe(true);
+  expect(
+    host.querySelector('[data-testid="briefs-list"]')?.textContent,
+  ).toContain("Researching live sources");
+  expect(host.querySelector('[data-testid="brief-detail"]')).toBeNull();
 });
-test("renders source links, implications and saved schedule control", async () => {
-  const { host, send } = await mount([completed]);
-  expect(host.textContent).toContain("Why it matters to you");
-  expect(host.textContent).toContain("Practitioner experience");
-  expect(host.querySelector("a")?.href).toBe("https://example.invalid/paper");
+
+test("the history lists each brief by headline, and a click opens it in the Reviews layout", async () => {
+  const { host, send, store, button, row } = await mount([completed]);
+  expect(row(completed.id).textContent).toContain(
+    "A useful workflow experiment",
+  );
+  expect(host.querySelector('[data-testid="brief-detail"]')).toBeNull();
+
+  await act(async () => row(completed.id).click());
+  const detail = host.querySelector('[data-testid="brief-detail"]');
+  expect(store.getState().ui.openBrief).toBe(completed.id);
+  expect(detail?.querySelector(".pr-story h1")?.textContent).toBe(
+    "A useful workflow experiment",
+  );
+  expect(detail?.querySelector(".pr-rail")?.textContent).toContain(
+    "Parallel development",
+  );
+  expect(detail?.textContent).toContain("Why it matters to you");
+  expect(detail?.textContent).toContain("Practitioner experience");
+  expect(detail?.querySelector("a")?.href).toBe(
+    "https://example.invalid/paper",
+  );
+
+  await act(async () => button("Daily brief").click());
+  expect(host.querySelector('[data-testid="brief-detail"]')).toBeNull();
+
   const toggle = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
   if (!toggle) throw new Error("Missing schedule control");
   await act(async () => toggle.click());
@@ -133,15 +163,19 @@ test("renders source links, implications and saved schedule control", async () =
   });
   expect(toggle.checked).toBe(false);
 });
-test("failed research remains readable and can be run again", async () => {
-  const { host } = await mount([
-    {
-      ...completed,
-      status: "failed",
-      error: "Search unavailable",
-      content: null,
-    },
-  ]);
-  expect(host.textContent).toContain("Search unavailable");
-  expect(host.querySelector("button")?.disabled).toBe(false);
+
+test("failed research stays readable and can be run again", async () => {
+  const failed: BriefRun = {
+    ...completed,
+    status: "failed",
+    error: "Search unavailable",
+    content: null,
+  };
+  const { host, button, row } = await mount([failed]);
+  expect(row(failed.id).textContent).toContain("Research failed");
+  await act(async () => row(failed.id).click());
+  expect(
+    host.querySelector('[data-testid="brief-detail"]')?.textContent,
+  ).toContain("Search unavailable");
+  expect(button("Run now").disabled).toBe(false);
 });

@@ -43,7 +43,7 @@ export const briefContent = z.strictObject({
   coverage: text,
 });
 export type BriefContent = z.infer<typeof briefContent>;
-export const briefRunSummary = z.strictObject({
+const briefRunFields = {
   id: z.string().uuid(),
   sessionId: z.string().uuid(),
   trigger: z.enum(["scheduled", "manual"]),
@@ -53,9 +53,15 @@ export const briefRunSummary = z.strictObject({
   finishedAt: z.string().datetime().nullable(),
   model: z.string().min(1),
   error: z.string().max(2000).nullable(),
+};
+/** A history row: the run without its content, but with the headline the list shows. */
+export const briefRunSummary = z.strictObject({
+  ...briefRunFields,
+  headline: briefContent.shape.headline.nullable(),
 });
 export type BriefRunSummary = z.infer<typeof briefRunSummary>;
-export const briefRun = briefRunSummary.extend({
+export const briefRun = z.strictObject({
+  ...briefRunFields,
   content: briefContent.nullable(),
 });
 export type BriefRun = z.infer<typeof briefRun>;

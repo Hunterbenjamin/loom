@@ -1,31 +1,89 @@
-import type { BriefRun, BriefState, Command } from "@loom/protocol";
+import type {
+  BriefContent,
+  BriefRun,
+  BriefRunSummary,
+  BriefState,
+  Command,
+} from "@loom/protocol";
 import { useEffect, useRef, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
+import { ListGroupHeader, ListRow } from "./list-rows.js";
 
-const evidenceLabels = {
+const TIME_ZONE = "Asia/Makassar";
+const evidenceLabels: Record<
+  BriefContent["items"][number]["evidence"],
+  string
+> = {
   independently_tested: "Independently tested",
   author_reported: "Author-reported",
   practitioner_experience: "Practitioner experience",
   opinion: "Opinion",
 };
-const dateLabel = (at: string) =>
+const categoryLabels: Record<
+  BriefContent["items"][number]["category"],
+  string
+> = {
+  workflow: "Workflow",
+  capability: "Capability",
+  business: "Business",
+  research: "Research",
+};
+const statusLabels: Record<BriefRunSummary["status"], string> = {
+  running: "Researching",
+  completed: "Completed",
+  failed: "Failed",
+  interrupted: "Interrupted",
+};
+const format = (at: string, options: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat(undefined, {
-    timeZone: "Asia/Makassar",
-    dateStyle: "medium",
-    timeStyle: "short",
+    timeZone: TIME_ZONE,
+    ...options,
   }).format(new Date(at));
+const dateLabel = (at: string) =>
+  format(at, { dateStyle: "medium", timeStyle: "short" });
 
+/** What a history row says when the run has no headline yet, or never will. */
+function rowText(run: BriefRunSummary): string {
+  if (run.headline) return run.headline;
+  if (run.status === "running") return "Researching live sources…";
+  if (run.status === "failed") return "Research failed";
+  if (run.status === "interrupted") return "Research interrupted";
+  return "Brief";
+}
+
+function BriefGlyph({ status }: { status: BriefRunSummary["status"] }) {
+  const [symbol, tone] =
+    status === "completed"
+      ? ["✓", "good"]
+      : status === "running"
+        ? ["●", "attention"]
+        : status === "failed"
+          ? ["×", "danger"]
+          : ["◌", ""];
+  return (
+    <span
+      className={`review-status ${tone}`}
+      role="img"
+      aria-label={statusLabels[status]}
+      title={statusLabels[status]}
+    >
+      {symbol}
+    </span>
+  );
+}
+
+/** The Daily brief page: its history as a list, and the open brief over it. */
 export function BriefsView() {
   const store = useStoreApi();
   const connection = useStore((s) => s.connection);
+  const open = useStore((s) => s.ui.openBrief);
   const [state, setState] = useState<BriefState | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [run, setRun] = useState<BriefRun | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
+  const connected = connection === "connected" || connection === "fixtures";
   useEffect(() => {
-    if (connection !== "connected" && connection !== "fixtures") {
+    if (!connected) {
       setError("Waiting for the coordinator…");
       return;
     }
@@ -57,36 +115,7 @@ export function BriefsView() {
       disposed = true;
       clearInterval(timer);
     };
-  }, [store, connection]);
-  const selectedId = selected ?? state?.runs[0]?.id;
-  const selectedStatus = state?.runs.find(
-    (item) => item.id === selectedId,
-  )?.status;
-  useEffect(() => {
-    let disposed = false;
-    setRun(null);
-    if (
-      selectedId &&
-      selectedStatus &&
-      (connection === "connected" || connection === "fixtures")
-    )
-      void store
-        .command({ kind: "get_brief", id: selectedId })
-        .then((result) => {
-          if (disposed) return;
-          if (!result.ok) setError(result.error.message);
-          else if (result.result.kind === "brief") setRun(result.result.run);
-        })
-        .catch((error: unknown) => {
-          if (!disposed)
-            setError(
-              error instanceof Error ? error.message : "Could not read brief",
-            );
-        });
-    return () => {
-      disposed = true;
-    };
-  }, [store, selectedId, selectedStatus, connection]);
+  }, [store, connected]);
   const act = async (command: Command) => {
     if (submitting.current) return;
     submitting.current = true;
@@ -95,10 +124,6 @@ export function BriefsView() {
     try {
       const result = await store.command(command);
       if (!result.ok) throw new Error(result.error.message);
-      if (result.result.kind === "brief") {
-        setSelected(result.result.run.id);
-        setRun(result.result.run);
-      }
       const refreshed = await store.command({ kind: "get_briefs" });
       if (!refreshed.ok) throw new Error(refreshed.error.message);
       if (refreshed.result.kind === "briefs") setState(refreshed.result.state);
@@ -110,15 +135,24 @@ export function BriefsView() {
     }
   };
   const running = state?.runs.some((item) => item.status === "running");
+  const openSummary = state?.runs.find((item) => item.id === open);
+
+  const months: { label: string; runs: BriefRunSummary[] }[] = [];
+  for (const run of state?.runs ?? []) {
+    const label = format(run.startedAt, { month: "long", year: "numeric" });
+    const last = months.at(-1);
+    if (last?.label === label) last.runs.push(run);
+    else months.push({ label, runs: [run] });
+  }
+
   return (
-    <section className="briefs-view" aria-label="Daily AI brief">
-      <div className="briefs-controls">
-        <div>
-          <strong>Your AI builder brief</strong>
-          <p className="faint">Daily at 7:00 a.m. · Asia/Makassar</p>
-        </div>
+    <>
+      <div className="list-toolbar briefs-toolbar">
+        <span className="faint">
+          Daily at 7:00 a.m. · {TIME_ZONE} · Claude Sonnet, $3 limit per run
+        </span>
         <span className="spacer" />
-        <label>
+        <label className="briefs-schedule">
           <input
             type="checkbox"
             checked={state?.schedule.enabled ?? false}
@@ -129,11 +163,12 @@ export function BriefsView() {
                 enabled: event.target.checked,
               })
             }
-          />{" "}
+          />
           Daily schedule
         </label>
         <button
           type="button"
+          className="briefs-run"
           disabled={busy || running || !state}
           onClick={() =>
             void act({ kind: "run_brief", id: crypto.randomUUID() })
@@ -142,87 +177,281 @@ export function BriefsView() {
           {running ? "Researching…" : "Run now"}
         </button>
       </div>
-      <p className="faint">
-        Agent workflows, new capabilities, research implications and business
-        opportunities. Uses Claude Sonnet with a $3 budget limit per run. Loom’s
-        coordinator must be running; after sleep, today’s missed brief runs when
-        it wakes.
-      </p>
-      {error ? <p role="alert">{error}</p> : null}
-      {state?.runs.length ? (
-        <label className="briefs-history">
-          History{" "}
-          <select
-            aria-label="Brief history"
-            value={selectedId}
-            onChange={(event) => setSelected(event.target.value)}
-          >
-            {state.runs.map((item) => (
-              <option key={item.id} value={item.id}>
-                {dateLabel(item.startedAt)} · {item.trigger} · {item.status}
-              </option>
+      <div className="list reviews-list briefs-list" data-testid="briefs-list">
+        {error ? (
+          <p className="pad" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {!state ? (
+          <div className="pad faint" role="status">
+            Loading briefs…
+          </div>
+        ) : !state.runs.length ? (
+          <div className="pad faint" role="status">
+            Your first brief will appear here. Run it now or wait for the
+            morning edition. Loom’s coordinator must be running; after sleep,
+            today’s missed brief runs when it wakes.
+          </div>
+        ) : null}
+        {months.map((month) => (
+          <div key={month.label}>
+            <ListGroupHeader
+              label={month.label}
+              count={month.runs.length}
+              collapsed={false}
+            />
+            {month.runs.map((run) => (
+              <ListRow
+                key={run.id}
+                cursor={run.id === open}
+                onOpen={() => store.openBrief(run.id)}
+                leading={<BriefGlyph status={run.status} />}
+                text={rowText(run)}
+                title={rowText(run)}
+                data-brief={run.id}
+                meta={
+                  <span>
+                    {run.trigger === "scheduled" ? "Daily" : "Manual"}
+                  </span>
+                }
+                age={format(run.startedAt, { month: "short", day: "numeric" })}
+              />
             ))}
-          </select>
-        </label>
-      ) : (
-        <p>
-          {state
-            ? "Your first brief will appear here. Run it now or wait for the morning edition."
-            : "Loading briefs…"}
-        </p>
-      )}
-      {run?.status === "running" ? (
-        <p role="status">
-          Researching live sources. You can leave this page; the brief will be
-          saved when it finishes.
-        </p>
+          </div>
+        ))}
+      </div>
+      {open ? (
+        <BriefDetail
+          key={open}
+          id={open}
+          summary={openSummary}
+          connected={connected}
+        />
       ) : null}
-      {run?.error ? <p role="alert">{run.error}</p> : null}
-      {run?.content ? (
-        <article className="briefs-content">
-          <h2>{run.content.headline}</h2>
-          <p className="faint">{dateLabel(run.startedAt)} · Asia/Makassar</p>
-          <p>{run.content.summary}</p>
-          {run.content.items.map((item) => (
-            <section className="briefs-item" key={item.title}>
-              <div className="faint">
-                {item.category} · {evidenceLabels[item.evidence]}
-                {item.publishedOn
-                  ? ` · Published ${item.publishedOn}`
-                  : " · Publication date unverified"}
+    </>
+  );
+}
+
+/** One brief, laid out like the Reviews detail: reading column and property rail. */
+function BriefDetail({
+  id,
+  summary,
+  connected,
+}: {
+  id: string;
+  summary: BriefRunSummary | undefined;
+  connected: boolean;
+}) {
+  const store = useStoreApi();
+  const [run, setRun] = useState<BriefRun | null>(null);
+  const [error, setError] = useState("");
+  // Reread when the history reports a new status, so a finishing run fills in.
+  const status = summary?.status;
+  useEffect(() => {
+    if (!connected || !status) return;
+    let disposed = false;
+    void store
+      .command({ kind: "get_brief", id })
+      .then((result) => {
+        if (disposed) return;
+        if (!result.ok) setError(result.error.message);
+        else if (result.result.kind === "brief") {
+          setRun(result.result.run);
+          setError("");
+        }
+      })
+      .catch((error: unknown) => {
+        if (!disposed)
+          setError(
+            error instanceof Error ? error.message : "Could not read brief",
+          );
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [store, id, status, connected]);
+  const current = run ?? summary;
+  const content = run?.content ?? null;
+  const title = content?.headline ?? (summary ? rowText(summary) : "Brief");
+  const close = () => store.openBrief(null);
+  const sources = content
+    ? new Set(content.items.flatMap((item) => item.sources.map((s) => s.url)))
+        .size
+    : 0;
+
+  return (
+    <div className="detail pr-detail brief-detail" data-testid="brief-detail">
+      <header className="pr-page-head">
+        <div className="pr-breadcrumb">
+          <button type="button" onClick={close}>
+            Daily brief
+          </button>
+          <span className="faint">›</span>
+          {current ? <BriefGlyph status={current.status} /> : null}
+          <span className="pr-header-title" title={title}>
+            {title}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="pr-icon-button"
+          aria-label="Close brief"
+          title="Close (Esc)"
+          onClick={close}
+        >
+          ×
+        </button>
+      </header>
+      <div className="tab-body pr-page-body">
+        {error ? (
+          <div className="pr-feedback" role="alert">
+            {error}
+          </div>
+        ) : null}
+        <div className="pr-overview">
+          <main className="pr-story">
+            <h1>{title}</h1>
+            {current ? (
+              <div className="pr-byline faint">
+                <span>{dateLabel(current.startedAt)}</span>
+                <span>·</span>
+                <span>
+                  {current.trigger === "scheduled"
+                    ? "Daily edition"
+                    : "Manual run"}
+                </span>
               </div>
-              <h3>{item.title}</h3>
-              <p>{item.whatChanged}</p>
-              <h4>Why it matters to you</h4>
-              <p>{item.implication}</p>
-              <h4>Evidence and limitations</h4>
-              <p>{item.caveat}</p>
-              <h4>What to do next</h4>
-              <p>{item.nextStep}</p>
-              <ul>
-                {item.sources.map((source) => (
-                  <li key={source.url}>
-                    <a href={source.url} target="_blank" rel="noreferrer">
-                      {source.title}
-                    </a>
-                  </li>
+            ) : null}
+            {current?.status === "running" ? (
+              <p className="pr-description" role="status">
+                Researching live sources. You can leave this page; the brief is
+                saved when it finishes.
+              </p>
+            ) : null}
+            {current?.error ? (
+              <p className="pr-description" role="alert">
+                {current.error}
+              </p>
+            ) : null}
+            {content ? (
+              <>
+                <section className="pr-description">
+                  <h3>Summary</h3>
+                  <p>{content.summary}</p>
+                </section>
+                {content.items.map((item, index) => (
+                  <section
+                    className="pr-description brief-item"
+                    id={`brief-item-${index}`}
+                    key={item.title}
+                  >
+                    <h3>
+                      {categoryLabels[item.category]} ·{" "}
+                      {evidenceLabels[item.evidence]}
+                      {item.publishedOn
+                        ? ` · Published ${item.publishedOn}`
+                        : " · Publication date unverified"}
+                    </h3>
+                    <h2>{item.title}</h2>
+                    <p>{item.whatChanged}</p>
+                    <h4>Why it matters to you</h4>
+                    <p>{item.implication}</p>
+                    <h4>Evidence and limitations</h4>
+                    <p>{item.caveat}</p>
+                    <h4>What to do next</h4>
+                    <p>{item.nextStep}</p>
+                    <ul className="brief-sources">
+                      {item.sources.map((source) => (
+                        <li key={source.url}>
+                          <a href={source.url} target="_blank" rel="noreferrer">
+                            {source.title}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 ))}
-              </ul>
+                <section className="pr-description brief-item">
+                  <h3>Try this</h3>
+                  <h2>A workflow experiment</h2>
+                  <p>{content.workflowExperiment}</p>
+                </section>
+                {content.opportunity ? (
+                  <section className="pr-description brief-item">
+                    <h3>Opportunity</h3>
+                    <h2>Business opportunity to investigate</h2>
+                    <p>{content.opportunity}</p>
+                  </section>
+                ) : null}
+              </>
+            ) : null}
+          </main>
+          <aside className="pr-rail" aria-label="Brief properties">
+            <section>
+              <h3>Status</h3>
+              {current ? (
+                <div className="pr-property">
+                  <BriefGlyph status={current.status} />
+                  {statusLabels[current.status]}
+                </div>
+              ) : (
+                <div className="pr-property faint">Loading…</div>
+              )}
             </section>
-          ))}
-          <section className="briefs-item">
-            <h3>A workflow experiment</h3>
-            <p>{run.content.workflowExperiment}</p>
-          </section>
-          {run.content.opportunity ? (
-            <section className="briefs-item">
-              <h3>Business opportunity to investigate</h3>
-              <p>{run.content.opportunity}</p>
-            </section>
-          ) : null}
-          <p className="faint">Coverage: {run.content.coverage}</p>
-        </article>
-      ) : null}
-    </section>
+            {current ? (
+              <section>
+                <h3>Edition</h3>
+                <div className="pr-property">
+                  {current.trigger === "scheduled"
+                    ? `Daily · ${current.scheduledDate ?? format(current.startedAt, { dateStyle: "medium" })}`
+                    : "Manual run"}
+                </div>
+                <div className="pr-property faint">
+                  Started {dateLabel(current.startedAt)}
+                </div>
+                {current.finishedAt ? (
+                  <div className="pr-property faint">
+                    Finished {dateLabel(current.finishedAt)}
+                  </div>
+                ) : null}
+                <div className="pr-property faint">{current.model}</div>
+              </section>
+            ) : null}
+            {content?.items.length ? (
+              <section className="brief-contents">
+                <h3>In this brief</h3>
+                {content.items.map((item, index) => (
+                  <button
+                    type="button"
+                    className="pr-property"
+                    key={item.title}
+                    onClick={() =>
+                      document
+                        .getElementById(`brief-item-${index}`)
+                        ?.scrollIntoView({ block: "start" })
+                    }
+                  >
+                    <span className="brief-contents-title">{item.title}</span>
+                    <span className="faint">
+                      {categoryLabels[item.category]}
+                    </span>
+                  </button>
+                ))}
+              </section>
+            ) : null}
+            {content ? (
+              <section>
+                <h3>Sources</h3>
+                <div className="pr-property">
+                  {sources} {sources === 1 ? "source" : "sources"}
+                </div>
+                <p className="faint brief-coverage">{content.coverage}</p>
+              </section>
+            ) : null}
+          </aside>
+        </div>
+      </div>
+    </div>
   );
 }
