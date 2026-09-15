@@ -1,11 +1,17 @@
+import {
+  implementationBody,
+  latestImplementation,
+  whatChanged,
+} from "@loom/core";
 import { loadScenarios } from "@loom/fake-agent";
 import { expect, test } from "vitest";
+import { LoomClient } from "./client.js";
 import { createHarness, ScenarioDriver } from "./test-support.js";
 
 test.each(["reviewer-checker", "reviewer-inline", "reviewer-dirty"])(
   "%s crosses coordinator observations, MCP, durable storage and the real Git push path",
   async (name) => {
-    let h = await createHarness();
+    let h = await createHarness({ serveProtocol: true });
     try {
       const task = h.coordinator.createTask({
         repoId: h.repo.id,
@@ -47,6 +53,31 @@ test.each(["reviewer-checker", "reviewer-inline", "reviewer-dirty"])(
         await h.git("rev-parse", `refs/remotes/origin/${state.task.branch}`),
       ).toBe(head);
       expect(h.github.snapshot()?.headSha).toBe(head);
+      const implementation = latestImplementation(state);
+      expect(implementation).toMatchObject({ headSha: head });
+      if (!implementation || !state.task.prNumber)
+        throw new Error("Missing publication");
+      const published = await h.github.readPullRequest(
+        h.repo.github,
+        state.task.prNumber,
+      );
+      expect(published.body).toBe(
+        implementationBody(state.task, implementation),
+      );
+      const client = await LoomClient.connect({
+        url: h.coordinator.protocol.url as string,
+        token: h.config.token,
+        clientId: "implementation-projection",
+        kind: "cli",
+        subscriptions: [{ kind: "task", taskId: state.task.id }],
+      });
+      try {
+        expect(
+          client.state?.collections.inbox.get(state.task.id)?.whatChanged,
+        ).toBe(whatChanged(implementation));
+      } finally {
+        client.close();
+      }
       expect(state.artifactContents.handoff).toMatchObject({
         reviewerSubmission: {
           input: { reviewedSha: head, reviewerCommits: [] },
@@ -60,6 +91,9 @@ test.each(["reviewer-checker", "reviewer-inline", "reviewer-dirty"])(
       expect(pushes.every((row) => row.status === "succeeded")).toBe(true);
       h = await h.restart();
       await h.coordinator.settle();
+      expect(
+        latestImplementation(h.store.loadTaskState(task.task.id)),
+      ).toEqual(implementation);
       expect(h.store.loadTaskState(task.task.id).review).toEqual(state.review);
       expect(
         h.store.outbox

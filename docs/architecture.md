@@ -713,3 +713,24 @@ The `edit_task` human command updates title, description, size and plan-approval
 Backlog, with an expected task version. It uses the existing input and reconciliation transaction.
 Direct repository PR merge commands reject issue-owned PRs, including explicit links; those require
 the issue's reviewed-head approval and normal CI/finding guards.
+
+### Issue description and implementation publication
+
+The human's issue description remains the request; agent submissions never rewrite it. A versioned
+`implementation` artifact owns the latest accepted implementer summary, its recorded decisions and
+its submitted test results at one head SHA. Every submission replaces it, including fix rounds;
+reviewer handoffs do not touch it. The issue Overview projects this artifact as “What changed” below
+the request and omits the duplicate GitHub body. PR-only Overview continues to render GitHub's body.
+
+Core builds the PR body from that same request and implementation content, the issue link and the
+submission's tests. Initial publication still waits for successful review. Each subsequent submission
+reconciles an `update_pr_body` outbox action once GitHub reports its head. The action is keyed by PR,
+artifact version and body hash. The executor checks current issue ownership and submission version;
+the GitHub adapter checks the open PR branch and head, skips an identical body, and writes literal
+JSON through stdin. Restart requeues uncertain updates through that same idempotent owner check.
+
+Issue links use `loom://issue/<task-id>` and open a Tracker window on macOS. The desktop registers
+the scheme; the development Electron bundle declares it during installation. The renderer waits
+for the coordinator snapshot before selecting the issue. This is navigation only, with no mutation
+or durable renderer state. These local app links require Loom to be installed; GitHub clients that
+filter custom URL schemes may require copying the link into the operating system's Open URL action.

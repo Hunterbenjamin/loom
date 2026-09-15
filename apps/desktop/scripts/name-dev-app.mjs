@@ -15,10 +15,18 @@ if (process.platform === "darwin") {
   const contents = join(executable, "..", "..");
   const plist = join(contents, "Info.plist");
   const before = readFileSync(plist, "utf8");
-  const after = before.replace(
+  let after = before.replace(
     /(<key>(?:CFBundleName|CFBundleDisplayName)<\/key>\s*<string>)Electron(<\/string>)/g,
     "$1Loom$2",
   );
+  if (!after.includes("<key>CFBundleURLTypes</key>"))
+    after = after.replace(
+      "</dict>\n</plist>",
+      `<key>CFBundleURLTypes</key>
+<array><dict><key>CFBundleURLName</key><string>Loom issue</string>
+<key>CFBundleURLSchemes</key><array><string>loom</string></array></dict></array>
+</dict>\n</plist>`,
+    );
   if (after !== before) {
     // Replace the file rather than editing it in place, so a hard link can never carry the change.
     unlinkSync(plist);

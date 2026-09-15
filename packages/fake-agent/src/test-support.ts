@@ -187,6 +187,15 @@ export async function setup(stage: Stage = "todo", withPr = true) {
             body: action.body,
           });
           break;
+        case "update_pr_body":
+          await adapters.github.updatePullRequestBody({
+            repo: action.repoId,
+            number: action.prNumber,
+            branch: action.branch,
+            expectedHeadSha: action.expectedHeadSha,
+            body: action.body,
+          });
+          break;
         case "merge_pr":
           output = await adapters.github.mergePullRequest({
             repo: action.repoId,

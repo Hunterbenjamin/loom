@@ -76,6 +76,14 @@ const fields = {
     title: text,
     body: text,
   },
+  update_pr_body: {
+    repoId: id,
+    prNumber: positive,
+    branch: text,
+    expectedHeadSha: sha,
+    implementationVersion: positive,
+    body: text,
+  },
   merge_pr: {
     repoId: id,
     prNumber: positive,
@@ -185,6 +193,12 @@ export const actionSchema = contract<Action>()(
     z.object({
       key: id,
       taskId: id,
+      kind: z.literal("update_pr_body"),
+      ...fields.update_pr_body,
+    }),
+    z.object({
+      key: id,
+      taskId: id,
       kind: z.literal("merge_pr"),
       ...fields.merge_pr,
     }),
@@ -246,6 +260,7 @@ const outputs = {
   stop_run: empty,
   push_branch: z.object({ remoteHeadSha: sha }),
   open_pr: z.object({ number: positive, url: text }),
+  update_pr_body: empty,
   merge_pr: z.object({ state: z.enum(["merged", "auto_merge_enabled"]) }),
   map_findings: z.object({
     locations: z.array(z.object({ findingId: id, location: locationSchema })),
@@ -312,6 +327,11 @@ export const actionResultSchema = contract<ActionResult>()(
       kind: z.literal("open_pr"),
       ok: z.literal(true),
       output: outputs.open_pr,
+    }),
+    z.object({
+      kind: z.literal("update_pr_body"),
+      ok: z.literal(true),
+      output: outputs.update_pr_body,
     }),
     z.object({
       kind: z.literal("merge_pr"),

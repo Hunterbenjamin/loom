@@ -788,3 +788,59 @@ describe("GitHub boundary failures", () => {
     ).toEqual({ notModified: true });
   });
 });
+
+describe("PR body replacement", () => {
+  const update = {
+    repo: request.repo,
+    number: original.number,
+    branch: request.branch,
+    expectedHeadSha: original.head.sha,
+    body: "New request\n\nWhat changed `literal` $(literal)",
+  };
+  it("writes literal content through stdin and skips an already applied body", async () => {
+    const fake = setup();
+    const current = {
+      ...original,
+      state: "open",
+      merged: false,
+      body: "Old body",
+    };
+    fake.set(pr, current);
+    fake.mutate(async (args, input) => {
+      expect(args).toEqual([
+        "api",
+        "--method",
+        "PATCH",
+        pr,
+        "--input",
+        "-",
+      ]);
+      expect(JSON.parse(input ?? "{}")).toEqual({ body: update.body });
+      fake.set(pr, { ...current, body: update.body });
+      return ok();
+    });
+    await fake.adapter.updatePullRequestBody(update);
+    fake.run.mockClear();
+    await fake.adapter.updatePullRequestBody(update);
+    expect(fake.run).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    { state: "closed" },
+    { merged: true },
+    { head: { ...original.head, ref: "other" } },
+    { head: { ...original.head, sha: "b".repeat(40) } },
+  ])("refuses changed owner state %j", async (change) => {
+    const fake = setup();
+    fake.set(pr, {
+      ...original,
+      state: "open",
+      merged: false,
+      body: "Old",
+      ...change,
+    });
+    await expect(
+      fake.adapter.updatePullRequestBody(update),
+    ).rejects.toMatchObject({ code: "precondition" });
+    expect(fake.run).toHaveBeenCalledTimes(1);
+  });
+});

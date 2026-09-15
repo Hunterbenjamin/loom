@@ -3,7 +3,7 @@
 // it cannot validate. Nothing here is durable state: it is rebuilt from the store on demand.
 
 import type { Sha, Task, TaskId, TaskState } from "@loom/core";
-import { deriveAttention } from "@loom/core";
+import { deriveAttention, latestImplementation, whatChanged } from "@loom/core";
 import type { Change, CollectionName, Entities } from "@loom/protocol";
 import { changesKey, collections, keyOf } from "@loom/protocol";
 import type { Store } from "@loom/store";
@@ -122,10 +122,12 @@ export async function taskRows(
   const now = deps.now();
   const derived = attentionFor(state, now);
   const notes = deps.store.mainMessages.notes(taskId);
+  const implementation = latestImplementation(state);
   const rows: Row[] = [
     row("task", { ...state.task, attention: derived.attention }),
     row("inbox", {
       taskId,
+      whatChanged: implementation ? whatChanged(implementation) : null,
       linkedPrNumbers: deps.store.linkedPullRequests(state.task.repoId, taskId),
       forHuman: null,
       reasonRuns: Object.fromEntries(

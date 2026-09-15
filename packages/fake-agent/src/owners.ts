@@ -628,6 +628,16 @@ export class FakeGitHub implements GitHubAdapter {
     }
     return { number: this.pr.number, url: this.pr.url };
   };
+  updatePullRequestBody: GitHubAdapter["updatePullRequestBody"] = async (req) => {
+    this.scope(req.repo, req.branch);
+    const pr = this.requirePr(req.number);
+    if (pr.state !== "open" || pr.headSha !== req.expectedHeadSha)
+      throw new Error("PR body update precondition failed");
+    this.body = req.body;
+    const detail = this.details.get(req.number);
+    if (detail) detail.body = req.body;
+    this.changed();
+  };
   mergePullRequest: GitHubAdapter["mergePullRequest"] = async (req) => {
     this.scope(req.repo);
     const pr = this.requirePr(req.number);

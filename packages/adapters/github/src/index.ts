@@ -242,6 +242,51 @@ export function createGitHubAdapter(options: GitHubOptions): GitHubAdapter {
       );
     },
 
+    async updatePullRequestBody(req) {
+      s.repo.parse(req.repo);
+      s.id.parse(req.number);
+      s.branch.parse(req.branch);
+      s.sha.parse(req.expectedHeadSha);
+      z.string().parse(req.body);
+      const bodySchema = s.pull.extend({ body: z.string().nullable() });
+      const readBody = async () =>
+        (
+          await new Api(run).get(
+            `repos/${req.repo}/pulls/${req.number}`,
+            bodySchema,
+          )
+        ).value;
+      const before = await readBody();
+      if (
+        before.state !== "open" ||
+        before.merged ||
+        before.head.ref !== req.branch ||
+        before.head.sha !== req.expectedHeadSha
+      )
+        throw new GitHubError(
+          "precondition",
+          "PR branch, head or state changed before body update",
+        );
+      if (before.body === req.body) return;
+      await command(
+        [
+          "api",
+          "--method",
+          "PATCH",
+          `repos/${req.repo}/pulls/${req.number}`,
+          "--input",
+          "-",
+        ],
+        JSON.stringify({ body: req.body }),
+      );
+      const after = await readBody();
+      if (after.body !== req.body)
+        throw new GitHubError(
+          "retryable",
+          "Updated PR body is not yet observable",
+        );
+    },
+
     async mergePullRequest(req) {
       s.repo.parse(req.repo);
       s.id.parse(req.number);

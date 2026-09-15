@@ -219,6 +219,18 @@ export function submission(
         },
         run,
       );
+      c.artifact(
+        "implementation",
+        {
+          headSha: call.input.headSha,
+          summary: call.input.summary,
+          decisions: [
+            ...((state.artifactContents.decisions as string[]) ?? []),
+          ],
+          testResults: call.input.testResults,
+        },
+        run,
+      );
       tests(call.input.testResults);
       // CI before review: push, then wait for CI on exactly this commit (ci-gate.ts).
       state.ciGate = { headSha: call.input.headSha, since: c.now };
@@ -483,7 +495,7 @@ export function submission(
       let next: "in_review" | "awaiting_approval" | "in_progress" | "blocked";
       if (count === 0) {
         if (state.review) state.review.publicationPending = true;
-        publishReview(c, review.summary);
+        publishReview(c);
         next =
           task.stage === "awaiting_approval"
             ? "awaiting_approval"

@@ -96,6 +96,17 @@ const store =
         true,
         config.mode === "live" ? config.instance : "unconfigured",
       );
+let pendingIssue = new URLSearchParams(location.search).get("issue");
+const openLinkedIssue = () => {
+  const task = store
+    .getState()
+    .snapshot.tasks.find((task) => task.id === pendingIssue);
+  if (!task) return;
+  pendingIssue = null;
+  store.open(task.id);
+};
+store.subscribe(openLinkedIssue);
+openLinkedIssue();
 const requestNativeSynchronization = () => {
   void synchronizeNativeSettings().catch(() => {
     // Coordinator data remains authoritative; reconnect or the next patch retries the mirror.

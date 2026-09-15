@@ -5,6 +5,7 @@ import { delivery } from "./delivery.js";
 import { attention, budget, reconcileFlags } from "./flags.js";
 import { structurallyEqual } from "./helpers.js";
 import { human } from "./human.js";
+import { publishImplementation } from "./implementation.js";
 import {
   observeRuns,
   removeFinishedWorktree,
@@ -89,6 +90,7 @@ export const reconcile: Reconcile = (state, observations) => {
   removeFinishedWorktree(c);
   delivery(c);
   automate(c);
+  publishImplementation(c);
   // Last among emitters: voided approvals and cancellations earlier in the pass count.
   releaseDeadDependencies(c);
   attention(c);

@@ -728,7 +728,43 @@ test("linking a PR opens the issue Plan and overview, without direct merge", asy
   expect(h.host.querySelectorAll(".pr-story")).toHaveLength(1);
   expect(h.host.querySelectorAll(".pr-rail")).toHaveLength(1);
   expect(h.host.textContent).toContain(issue.description);
-  expect(h.host.textContent).toContain("Keeps GitHub as the owner.");
+  expect(h.host.textContent).not.toContain("Keeps GitHub as the owner.");
+  expect(h.host.textContent).toContain("What changed");
+  const descriptions = [...h.host.querySelectorAll(".pr-story h3")].filter(
+    (heading) => heading.textContent === "Description",
+  );
+  expect(descriptions).toHaveLength(1);
+  const updateImplementation = (whatChanged: string) => {
+    const wire = toSnapshot(h.fixture);
+    act(() =>
+      h.store.applyProtocol(
+        stateFromSnapshot(wire.meta, {
+          ...wire.body,
+          pullRequestDetails: [structuredClone(h.row)],
+          inbox: [
+            {
+              taskId: issue.id,
+              whatChanged,
+              reasonRuns: {},
+              reviewedHead: null,
+              planVersion: null,
+            },
+          ],
+        }),
+      ),
+    );
+  };
+  updateImplementation(
+    "Initial implementation.\n\n### Deviations\n\nKept the shared layout.",
+  );
+  expect(h.host.textContent).toContain("Initial implementation.");
+  expect(h.host.textContent).toContain("Kept the shared layout.");
+  updateImplementation("Complete implementation including the fix.");
+  expect(h.host.textContent).not.toContain("Initial implementation.");
+  expect(h.host.textContent).toContain(
+    "Complete implementation including the fix.",
+  );
+  expect(h.host.textContent).toContain(issue.description);
   expect(h.host.textContent).not.toContain("Squash & merge");
   await h.click("Plan");
   expect(h.host.textContent).toContain(h.fixture.plans[issue.id]?.goal);
