@@ -77,12 +77,13 @@ function BriefGlyph({ status }: { status: BriefRunSummary["status"] }) {
 export function BriefsView() {
   const store = useStoreApi();
   const connection = useStore((s) => s.connection);
+  const cursor = useStore((s) => s.ui.cursor);
   const open = useStore((s) => s.ui.openBrief);
   const [state, setState] = useState<BriefState | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
-  const connected = connection === "connected" || connection === "fixtures";
+  const connected = connection === "connected";
   useEffect(() => {
     if (!connected) {
       setError("Waiting for the coordinator…");
@@ -205,7 +206,7 @@ export function BriefsView() {
             {month.runs.map((run) => (
               <ListRow
                 key={run.id}
-                cursor={run.id === open}
+                cursor={state?.runs[cursor ?? -1]?.id === run.id}
                 onOpen={() => store.openBrief(run.id)}
                 leading={<BriefGlyph status={run.status} />}
                 text={rowText(run)}

@@ -45,10 +45,7 @@ ipcMain.handle("app:choose-repository", async (event) => {
   return repositoryFolder(result.filePaths[0]);
 });
 
-const connection = connectionFromEnvironment(
-  process.env,
-  process.argv.includes("--fixtures"),
-);
+const connection = connectionFromEnvironment(process.env);
 
 // node-pty is a native CommonJS addon; electron-vite externalizes it, so require it directly.
 const require = createRequire(import.meta.url);
@@ -127,42 +124,6 @@ function owned(sender: Electron.WebContents) {
   return entry;
 }
 
-/**
- * A plain login shell by default. `LOOM_ATTACH_PANE=<session>:<window-id>` attaches to a pane on
- * the pane host instead, which is how the performance harness measures a real agent. Loom never
- * starts or controls the agent itself; attach is a viewer, and other clients keep their own view.
- */
-function command(): { file: string; args: string[] } {
-  const target = process.env.LOOM_ATTACH_PANE;
-  if (target) {
-    const [session = "", windowId = ""] = target.split(":");
-    const view = `${session}-v${windowId.replace("@", "")}`;
-    return {
-      file: process.env.LOOM_TMUX_BIN ?? "tmux",
-      args: [
-        "-L",
-        `loom-${process.env.LOOM_INSTANCE ?? "dev"}`,
-        "new-session",
-        "-A",
-        "-d",
-        "-s",
-        view,
-        "-t",
-        session,
-        ";",
-        "select-window",
-        "-t",
-        `${view}:${windowId}`,
-        ";",
-        "attach-session",
-        "-t",
-        view,
-      ],
-    };
-  }
-  return { file: process.env.SHELL ?? "/bin/zsh", args: ["-l"] };
-}
-
 function flush(window: BrowserWindow, id: string): void {
   const session = sessions.get(window.webContents.id, id);
   if (!session || session.holding || session.chunks.length === 0) return;
@@ -239,34 +200,30 @@ function wire(): void {
       const { window } = owned(event.sender);
       const request = ptySpawnRequest.parse(raw);
       const token = sessions.begin(event.sender.id, request.id);
-      const target =
-        connection.mode === "fixtures"
-          ? null
-          : request.shellKey
-            ? await resolveAttach(connection, {
-                shellKey: request.shellKey,
-                shellName: request.shellName,
-              })
-            : request.pane
-              ? await resolveAttach(connection, request.pane)
-              : request.lead
-                ? await resolveAttach(connection, { lead: request.lead })
-                : request.runId
-                  ? await resolveAttach(connection, request.runId)
-                  : null;
-      if (connection.mode !== "fixtures" && !target?.attach)
+      const target = request.shellKey
+        ? await resolveAttach(connection, {
+            shellKey: request.shellKey,
+            shellName: request.shellName,
+          })
+        : request.pane
+          ? await resolveAttach(connection, request.pane)
+          : request.lead
+            ? await resolveAttach(connection, { lead: request.lead })
+            : request.runId
+              ? await resolveAttach(connection, request.runId)
+              : null;
+      if (!target?.attach)
         throw new Error("Select a run with a live terminal pane");
       if (window.isDestroyed()) throw new Error("Window closed");
       owned(event.sender);
-      const resolved = target?.attach;
-      const { file, args } = resolved
-        ? { file: resolved.argv[0] as string, args: resolved.argv.slice(1) }
-        : command();
+      const resolved = target.attach;
+      const file = resolved.argv[0] as string;
+      const args = resolved.argv.slice(1);
       const proc = pty.spawn(file, args, {
         name: "xterm-256color",
         cols: request.cols,
         rows: request.rows,
-        cwd: resolved?.cwd ?? process.env.HOME,
+        cwd: resolved.cwd,
         env: {
           PATH: process.env.PATH ?? "/usr/bin:/bin",
           HOME: process.env.HOME ?? "",
@@ -279,9 +236,7 @@ function wire(): void {
           COLORTERM: "truecolor",
         },
       });
-      const pane = resolved
-        ? paneHostOf(resolved.argv, target?.pane?.paneId)
-        : null;
+      const pane = paneHostOf(resolved.argv, target.pane?.paneId);
       const history = request.history;
       const replay = pane !== null && (history?.lines ?? 0) > 0;
       const session: Session = {
@@ -464,17 +419,10 @@ async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
     }
   });
 
-  // The performance harness asks for a longer list; nothing else sets this.
-  const search = process.env.LOOM_TASKS
-    ? `tasks=${process.env.LOOM_TASKS}`
-    : "";
   const devServer = process.env.ELECTRON_RENDERER_URL;
-  if (devServer)
-    await window.loadURL(search ? `${devServer}?${search}` : devServer);
+  if (devServer) await window.loadURL(devServer);
   else
-    await window.loadFile(join(import.meta.dirname, "../renderer/index.html"), {
-      search,
-    });
+    await window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
   return window;
 }
 

@@ -23,9 +23,7 @@ export function commandActions(ctx: StoreContext) {
               ok: false,
               error: {
                 code: "unavailable",
-                message: ctx.live
-                  ? "Disconnected; command was not sent"
-                  : "Fixture mode: commands are not sent",
+                message: "Disconnected; command was not sent",
                 details: [],
               },
             };

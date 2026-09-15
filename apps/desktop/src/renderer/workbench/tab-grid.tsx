@@ -77,7 +77,6 @@ export const TabGrid = memo(function TabGrid({
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<GridviewApi | null>(null);
   const [rects, setRects] = useState<Record<string, Rect>>({});
-  const live = useStore((state) => state.live);
   const theme = useStore((state) => state.ui.theme);
 
   const measure = useCallback(() => {
@@ -229,7 +228,6 @@ export const TabGrid = memo(function TabGrid({
             panelId={panel.id}
             pane={panel.target}
             viewport={panel.target ? viewports[panel.target.paneId] : undefined}
-            live={live}
             theme={theme}
             label="Workbench"
           />

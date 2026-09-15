@@ -44,7 +44,7 @@ export function PullRequestPaletteCommands({ close }: { close(): void }) {
     ),
   );
   const task = useStore(selectedDetailTask);
-  const disconnected = useStore((s) => s.live && s.connection !== "connected");
+  const disconnected = useStore((s) => s.connection !== "connected");
   if (!selection) return null;
   return (
     <Command.Group heading={`Pull request #${selection.number}`}>

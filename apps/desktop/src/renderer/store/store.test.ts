@@ -1,8 +1,7 @@
-import type { TaskId } from "@loom/core";
 import { describe, expect, it } from "vitest";
 import { buildSnapshot } from "../fixtures/index.js";
+import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { groupRows, rowsFor, sortRows, viewCounts } from "./selectors.js";
-import { createStore } from "./store.js";
 
 function store() {
   return createStore(buildSnapshot());
@@ -69,22 +68,6 @@ describe("the list", () => {
 });
 
 describe("actions", () => {
-  it("moves a task and writes the transition the coordinator would have written", () => {
-    const api = store();
-    const task = must(api.getState().snapshot.tasks[0]);
-    const before = api.getState().snapshot.transitions.length;
-    api.moveTask(task.id, "in_review");
-    const after = api.getState().snapshot;
-    expect(
-      after.tasks.find((candidate) => candidate.id === task.id)?.stage,
-    ).toBe("in_review");
-    expect(after.transitions).toHaveLength(before + 1);
-    const last = must(after.transitions.at(-1));
-    expect(last.from).toBe(task.stage);
-    expect(last.to).toBe("in_review");
-    expect(last.trigger.kind).toBe("human");
-  });
-
   it("ignores a move to the stage a task is already in", () => {
     const api = store();
     const task = must(api.getState().snapshot.tasks[0]);
@@ -106,43 +89,12 @@ describe("actions", () => {
     expect(calls).toBe(2);
   });
 
-  it("toggles viewed state per task and file", () => {
-    const api = store();
-    const task = must(api.getState().snapshot.tasks[0]);
-    const path = must(api.getState().snapshot.patch.files[0]).path;
-    api.toggleViewed(task.id, path);
-    expect(api.getState().snapshot.viewedFiles[task.id]).toContain(path);
-    api.toggleViewed(task.id, path);
-    expect(api.getState().snapshot.viewedFiles[task.id]).not.toContain(path);
-  });
-
-  it("adds a comment to a finding and refuses an empty one", () => {
-    const api = store();
-    const finding = must(api.getState().snapshot.findings[0]);
-    const before = api.getState().snapshot.comments.length;
-    api.addComment(finding.id, "   ");
-    expect(api.getState().snapshot.comments).toHaveLength(before);
-    api.addComment(finding.id, " looks right ");
-    const added = must(api.getState().snapshot.comments.at(-1));
-    expect(added.body).toBe("looks right");
-    expect(added.findingId).toBe(finding.id);
-  });
-
   it("keeps the cursor inside the list", () => {
     const api = store();
     api.moveCursor(-5, 10);
     expect(api.getState().ui.cursor).toBe(0);
     api.moveCursor(50, 10);
     expect(api.getState().ui.cursor).toBe(9);
-  });
-
-  it("creates a task in the backlog and opens it", () => {
-    const api = store();
-    api.createTask("Try a thing", "all");
-    const state = api.getState();
-    expect(must(state.snapshot.tasks[0]).title).toBe("Try a thing");
-    expect(must(state.snapshot.tasks[0]).stage).toBe("backlog");
-    expect(state.ui.openTask).toBe(must(state.snapshot.tasks[0]).id as TaskId);
   });
 });
 
@@ -151,9 +103,14 @@ it("all selectors, counts, inbox and board stay within the selected project", as
   const { selectedRows, cursorRows } = await import("./selectors.js");
   const api = store();
   const snapshot = api.getState().snapshot;
+  api.getState().ui.repo = "";
   for (const repo of snapshot.repos) {
     api.open(must(snapshot.tasks[0]).id);
-    await api.setRepo(repo.id);
+    const { stateFromSnapshot } = await import("@loom/protocol");
+    const { toSnapshot } = await import("../fixtures/protocol.js");
+    const { body, meta } = toSnapshot(snapshot);
+    body.projects = [{ id: "project", repoId: repo.id }];
+    api.applyProtocol(stateFromSnapshot(meta, body));
     expect(api.getState().ui.openTask).toBeNull();
     for (const view of [
       "all",
@@ -198,7 +155,7 @@ it("live selection changes only when the coordinator publishes it", async () => 
   const { toSnapshot } = await import("../fixtures/protocol.js");
   const fixture = buildSnapshot(20);
   const { body, meta } = toSnapshot(fixture);
-  const api = createStore(fixture, true);
+  const api = createStore(fixture);
   api.applyProtocol(stateFromSnapshot(meta, body));
   const next = must(fixture.repos[1]);
   const commands: unknown[] = [];
@@ -216,7 +173,7 @@ it("live selection changes only when the coordinator publishes it", async () => 
   api.applyProtocol(stateFromSnapshot(meta, body));
   expect(api.getState().ui.repo).toBe(next.id);
   expect(api.getState().ui.openPr).toBeNull();
-  const secondWindow = createStore(fixture, true);
+  const secondWindow = createStore(fixture);
   secondWindow.applyProtocol(stateFromSnapshot(meta, body));
   expect(secondWindow.getState().ui.repo).toBe(next.id);
 });
@@ -226,7 +183,7 @@ it("a dropped card moves before the coordinator answers, and a refusal puts it b
   const { toSnapshot } = await import("../fixtures/protocol.js");
   const fixture = buildSnapshot(20);
   const { body, meta } = toSnapshot(fixture);
-  const api = createStore(fixture, true);
+  const api = createStore(fixture);
   api.applyProtocol(stateFromSnapshot(meta, body));
   const task = must(
     api.getState().snapshot.tasks.find((t) => t.stage === "backlog"),
@@ -264,4 +221,22 @@ it("a dropped card moves before the coordinator answers, and a refusal puts it b
   );
   api.applyProtocol(stateFromSnapshot(meta, body));
   expect(stageOf()).toBe("planning");
+});
+
+it("starts empty and refuses simulated stage transitions", async () => {
+  const { createStore } = await import("./store.js");
+  expect(createStore().getState().snapshot.tasks).toEqual([]);
+  const api = createStore(buildSnapshot());
+  const before = api.getState().snapshot;
+  const task = must(before.tasks[0]);
+  api.moveTask(task.id, "in_review");
+  expect(api.getState().snapshot).toBe(before);
+  expect(api.getState().ui.toast).toBe("The coordinator controls this stage.");
+  const result = await api.command({
+    kind: "human",
+    taskId: task.id,
+    command: { type: "retry" },
+  });
+  expect(result).toMatchObject({ ok: false, error: { code: "unavailable" } });
+  expect(api.getState().snapshot).toBe(before);
 });

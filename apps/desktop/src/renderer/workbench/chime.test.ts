@@ -17,7 +17,7 @@ import { Sidebar } from "./sidebar.js";
 afterEach(() => vi.restoreAllMocks());
 
 test("audio obeys window/pane focus and mute; flash is once per transition with reduced motion respected", async () => {
-  const store = createStore(undefined, true);
+  const store = createStore(undefined);
   const publish = (value: Partial<PaneView>) =>
     store.applyProtocol(
       stateFromSnapshot(meta, {

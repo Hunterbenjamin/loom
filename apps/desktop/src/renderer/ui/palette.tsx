@@ -1,22 +1,31 @@
 import { displayName } from "@loom/core";
 import { Command } from "cmdk";
 import { useEffect, useState } from "react";
+import { selectedDetailTask } from "../store/detail-selection.js";
+import { inboxRows } from "../store/inbox.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { cursorRows, issueKeyFor, selectedRows } from "../store/selectors.js";
+import type { State } from "../store/store.js";
 import { VIEWS } from "../store/ui-state.js";
 import { ChimeMuteCommand } from "../workbench/chime.js";
 import { STAGES, stageLabel } from "./format.js";
 import { PullRequestPaletteCommands } from "./pull-request-commands.js";
 
+/** Issue commands always target the active detail or the visible issue cursor. */
+export function paletteIssueTarget(state: State) {
+  const { ui } = state;
+  if (ui.openTask || ui.openPr) return selectedDetailTask(state)?.id ?? null;
+  if (ui.openBrief || ["briefs", "settings", "pull-requests"].includes(ui.view))
+    return null;
+  const rows = ui.view === "needs-you" ? inboxRows(state) : cursorRows(state);
+  return rows[ui.cursor ?? -1]?.task.id ?? null;
+}
+
 export function Palette() {
   const store = useStoreApi();
   const open = useStore((s) => s.ui.palette);
   const rows = useStore(selectedRows);
-  const visibleRows = useStore(cursorRows);
-  const cursor = useStore((s) => s.ui.cursor);
-  const openTask = useStore((s) => s.ui.openTask);
-  const openPr = useStore((s) => s.ui.openPr);
-  const view = useStore((s) => s.ui.view);
+  const current = useStore(paletteIssueTarget);
   const pane = useStore((s) => s.ui.pane);
   const repos = useStore((s) => s.snapshot.repos);
   const [value, setValue] = useState("");
@@ -26,14 +35,6 @@ export function Palette() {
   }, [open]);
 
   if (!open) return null;
-  const current = openPr
-    ? null
-    : (openTask ??
-      (view === "pull-requests"
-        ? null
-        : cursor === null
-          ? null
-          : (visibleRows[cursor]?.task.id ?? null)));
   const close = () => store.setPalette(false);
   const run = (action: () => void) => {
     close();
@@ -67,6 +68,15 @@ export function Palette() {
               }
             >
               Switch to {pane === "list" ? "board" : "list"}
+            </Command.Item>
+          </Command.Group>
+
+          <Command.Group heading="More sections">
+            <Command.Item onSelect={() => run(() => store.setView("briefs"))}>
+              Daily brief
+            </Command.Item>
+            <Command.Item onSelect={() => run(() => store.setView("settings"))}>
+              Settings
             </Command.Item>
           </Command.Group>
 
@@ -153,12 +163,8 @@ export function Palette() {
 export function StagePicker() {
   const store = useStoreApi();
   const open = useStore((s) => s.ui.stagePicker);
-  const rows = useStore(cursorRows);
-  const cursor = useStore((s) => s.ui.cursor);
-  const openTask = useStore((s) => s.ui.openTask);
+  const target = useStore(paletteIssueTarget);
   if (!open) return null;
-  const target =
-    openTask ?? (cursor === null ? null : (rows[cursor]?.task.id ?? null));
   const close = () => store.setStagePicker(false);
 
   return (
@@ -170,14 +176,16 @@ export function StagePicker() {
         />
         <Command.List>
           <Command.Empty>No such stage.</Command.Empty>
-          {STAGES.map((stage) => (
+          {STAGES.filter(
+            (stage) => stage === "backlog" || stage === "todo",
+          ).map((stage) => (
             <Command.Item
               key={stage}
+              disabled={!target}
               onSelect={() => {
                 close();
                 if (target) {
                   store.moveTask(target, stage);
-                  store.toast(`${target} → ${stageLabel(stage)}`);
                 }
               }}
             >

@@ -88,14 +88,10 @@ async function synchronizeNativeSettings() {
 }
 const initialMode = await window.loomHost.mode();
 const config = connectionConfig.parse(await window.loomHost.connection());
-const store =
-  config.mode === "fixtures"
-    ? createStore()
-    : createStore(
-        emptySnapshot(),
-        true,
-        config.mode === "live" ? config.instance : "unconfigured",
-      );
+const store = createStore(
+  emptySnapshot(),
+  config.mode === "live" ? config.instance : "unconfigured",
+);
 const requestNativeSynchronization = () => {
   void synchronizeNativeSettings().catch(() => {
     // Coordinator data remains authoritative; reconnect or the next patch retries the mirror.

@@ -68,6 +68,7 @@ export function IssueToolbarAction({
         return (
           <button
             key={action.id}
+            data-issue-action={action.id}
             type="button"
             className={secondary.has(action.id) ? "secondary" : undefined}
             disabled={

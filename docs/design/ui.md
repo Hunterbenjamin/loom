@@ -49,7 +49,7 @@ The live window sends `create_task` and waits for its assigned key. Todo then se
 human move; its acknowledgement means queued. Errors remain inline with the draft; a failed move
 can be retried without recreating the issue. Success closes the modal, reveals and selects the new
 issue in the list, and toasts its key. Escape and Cancel confirm before discarding edited drafts.
-Only fixture mode edits the local snapshot.
+The coordinator owns issue mutations; the renderer keeps only presentation state and pending moves.
 
 ## Tracker list
 
@@ -225,7 +225,7 @@ Only the viewer detaches; the other repository's session continues. Attach targe
 The header shows working, idle or waiting from the coordinator's `claude agents --json` observation.
 An absent or unavailable provider observation is unknown, never inferred from terminal output.
 Restart stops the session, revokes its token and opens a fresh session through the same attach flow.
-Fixture mode previews the bar and terminal without contacting a coordinator or launching an agent.
+Automated previews use a disposable coordinator with fake providers and owned shell panes.
 
 Main is one interactive Claude session per repository, not an issue run. The coordinator persists its
 session ID, private token, launch recipe and per-session settings under `<instance data>/lead/<repoId>/`

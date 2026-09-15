@@ -47,7 +47,7 @@ async function harness(
   leadInventoryAfterAck = false,
   repoSelected = true,
 ) {
-  const store = createStore(undefined, true, "test");
+  const store = createStore(undefined, "test");
   const fixture = snapshot();
   const firstRepo = fixture.repos[0];
   if (!firstRepo) throw new Error("Missing fixture repository");

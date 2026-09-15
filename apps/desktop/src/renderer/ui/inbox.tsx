@@ -81,7 +81,7 @@ export const InboxView = memo(function InboxView() {
     >
       {rows.length === 0 ? (
         <div className="pad faint">
-          {connection === "connected" || connection === "fixtures"
+          {connection === "connected"
             ? "Nothing needs you right now."
             : "Waiting for the coordinator. Issues will appear after connection."}
         </div>

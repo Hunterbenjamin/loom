@@ -44,16 +44,11 @@ const rejected: AckOutcome = {
   },
 };
 
-function setup({
-  live = true,
-  open = true,
-  repo = "repo-loom",
-  emptyRepos = false,
-} = {}) {
+function setup({ open = true, repo = "repo-loom", emptyRepos = false } = {}) {
   let snapshot = buildSnapshot();
   if (emptyRepos) snapshot.repos = [];
-  const store = createStore(snapshot, live, "dev");
-  if (live && !emptyRepos) {
+  const store = createStore(snapshot, "dev");
+  if (!emptyRepos) {
     const { body, meta } = toSnapshot(snapshot);
     body.projects = [
       {
@@ -62,7 +57,7 @@ function setup({
       },
     ];
     store.applyProtocol(stateFromSnapshot(meta, body));
-  } else if (!emptyRepos) void store.setRepo(repo);
+  }
   snapshot = store.getState().snapshot;
   store.setCreateIssue(open);
   const send = vi
@@ -322,27 +317,6 @@ test("retries only the move after creation succeeded but Todo was rejected", asy
     { kind: "human", taskId: id, command: { type: "move", to: "todo" } },
   ]);
   expect(h.host.querySelector("dialog")).toBeNull();
-});
-
-test("fixture mode creates with every field and selects the new Todo issue", async () => {
-  const h = setup({ live: false });
-  h.change("#issue-title", "Fixture issue");
-  h.change("#issue-description", "Fixture description");
-  h.change("#issue-status", "todo");
-  h.change("#issue-size", "small");
-  act(() => h.get<HTMLInputElement>("#issue-plan-approval").click());
-  const createTask = vi.spyOn(h.store, "createTask");
-  await h.submit();
-  expect(createTask).toHaveBeenCalledTimes(1);
-  expect(h.send).not.toHaveBeenCalled();
-  const state = h.store.getState();
-  expect(cursorRows(state).at(state.ui.cursor ?? -1)?.task).toMatchObject({
-    title: "Fixture issue",
-    description: "Fixture description",
-    stage: "todo",
-    size: "small",
-    requirePlanApproval: false,
-  });
 });
 
 test("Escape cancels empty drafts; edited drafts require discard and keep editing preserves text", () => {

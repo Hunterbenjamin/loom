@@ -1,5 +1,5 @@
 import type { ClientState, CollectionName, PatchFrame } from "@loom/protocol";
-import type { Snapshot } from "../fixtures/index.js";
+import type { Snapshot } from "../store/snapshot.js";
 
 export function emptySnapshot(): Snapshot {
   return {
