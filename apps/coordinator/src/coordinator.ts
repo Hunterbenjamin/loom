@@ -1204,6 +1204,7 @@ export class Coordinator {
     inputs: Input[],
   ): Promise<Observations> {
     const started = performance.now();
+    let times: Record<string, number> = {};
     const observations = await observeOwners(
       {
         adapters: this.adapters,
@@ -1231,6 +1232,9 @@ export class Coordinator {
         now: () => this.now(),
         reportAdapterFailure: (operation, error) =>
           this.reportAdapterFailure(operation, error),
+        onReadTimes: (value) => {
+          times = value;
+        },
       },
       state,
     );
@@ -1251,7 +1255,11 @@ export class Coordinator {
     const elapsed = performance.now() - started;
     if (elapsed >= SLOW_READ_MS)
       this.log(
-        `Reading the owners of ${state.task.id} took ${Math.round(elapsed)} ms`,
+        `Reading the owners of ${state.task.id} took ${Math.round(elapsed)} ms (${Object.entries(
+          times,
+        )
+          .map(([owner, ms]) => `${owner} ${ms}`)
+          .join(", ")})`,
       );
     return observations;
   }

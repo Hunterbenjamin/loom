@@ -291,6 +291,8 @@ interface ObserveDeps {
   repoOf(state: TaskState): { github: string; baseBranch: string } | null;
   now(): string;
   reportAdapterFailure?: ReportAdapterFailure;
+  /** Milliseconds each owner read of this pass took, by owner. */
+  onReadTimes?(times: Record<string, number>): void;
 }
 
 /** Blockers' stages, and each merged blocker's merge commit while this task has no worktree. */
@@ -407,21 +409,34 @@ export async function observe(
         (retryable && latestByRole.get(r.role) === r && r.sessionId)),
   );
   // Every owner read below is independent of the others, so they run together.
+  const started = performance.now();
+  const times: Record<string, number> = {};
+  const timed = <T>(owner: string, read: Promise<T>): Promise<T> =>
+    read.finally(() => {
+      times[owner] = Math.round(performance.now() - started);
+    });
   const [git, github, ci, runs, externalResult, dependencies] =
     await Promise.all([
-      gitRead,
-      githubRead,
-      ciRead,
-      Promise.all(live.map((run) => observeRun(deps.adapters, now, run))),
-      observeExternal(
-        deps.adapters,
-        state,
-        deps.launchedSessions(),
-        now,
-        state.config.stallAfterMs,
+      timed("git", Promise.resolve(gitRead)),
+      timed("github", Promise.resolve(githubRead)),
+      timed("ci", Promise.resolve(ciRead)),
+      timed(
+        "runs",
+        Promise.all(live.map((run) => observeRun(deps.adapters, now, run))),
       ),
-      observeDependencies(deps, state, repo),
+      timed(
+        "external sessions",
+        observeExternal(
+          deps.adapters,
+          state,
+          deps.launchedSessions(),
+          now,
+          state.config.stallAfterMs,
+        ),
+      ),
+      timed("dependencies", observeDependencies(deps, state, repo)),
     ]);
+  deps.onReadTimes?.(times);
   for (const run of runs) {
     if (run.readFailures.resumable)
       deps.reportAdapterFailure?.(
