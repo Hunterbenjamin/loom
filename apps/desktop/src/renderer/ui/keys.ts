@@ -152,7 +152,8 @@ export function createShortcutHandler(
         f: ".overview-findings > summary",
         F: "[data-detail-fullscreen]",
       };
-      if (actions[event.key]) return click(actions[event.key]);
+      const selector = actions[event.key];
+      if (selector) return click(selector);
       if (["j", "k", "J", "K", "G"].includes(event.key)) {
         event.preventDefault();
         const body = detail?.querySelector<HTMLElement>(".pr-page-body");
