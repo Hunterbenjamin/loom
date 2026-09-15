@@ -15,18 +15,6 @@ export function publishReview(c: Context, summary?: string): void {
     openBlocking(state.findings)
   )
     return;
-  // The branch conflicts with base (docs/architecture.md, "Overlapping changes"): the
-  // implementer rebases and re-runs tests, and the rebased head is reviewed again. Without
-  // this the task would wait here for a mergeable PR that never comes.
-  if (pr?.mergeable === "conflicting" || git?.conflictsWithBase === true) {
-    state.review.publicationPending = false;
-    c.stage(
-      "in_progress",
-      `Branch conflicts with ${state.worktree.baseBranch}`,
-    );
-    c.rebase(state.worktree.baseBranch, head);
-    return;
-  }
   const pushKey = c.emit(`push_branch:${task.id}:${head}`, {
     kind: "push_branch",
     worktreePath: state.worktree.path,

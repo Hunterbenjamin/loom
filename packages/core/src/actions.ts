@@ -122,7 +122,16 @@ export type Action = ActionBase &
         retire?: boolean;
       }
     | {
+        kind: "merge_base";
+        worktreePath: WorktreePath;
+        branch: string;
+        baseBranch: string;
+        expectedHeadSha: Sha;
+        baseSha: Sha;
+      }
+    | {
         kind: "push_branch";
+        nonForce?: boolean;
         worktreePath: WorktreePath;
         branch: string;
         /** Refuse to push anything else. */
@@ -204,6 +213,7 @@ export interface ActionOutputs {
   answer_pane_prompt: Empty;
   answer_provider_request: Empty;
   stop_run: Empty;
+  merge_base: { headSha: Sha; conflicting: boolean };
   push_branch: { remoteHeadSha: Sha };
   /** An existing PR for the branch counts as success. */
   open_pr: { number: number; url: string };

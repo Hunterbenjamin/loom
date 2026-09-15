@@ -62,6 +62,8 @@ export interface GitWorktreeObservation {
   dirty: boolean;
   aheadOfBase: number;
   behindBase: number;
+  /** Exact base used by the ancestry and conflict observation. */
+  currentBaseSha?: Sha;
   /** From `git merge-tree --write-tree` against the current base. Null if not computed. */
   conflictsWithBase: boolean | null;
   /** The branch's head on the remote, from the last fetch. */

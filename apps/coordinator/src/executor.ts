@@ -1,7 +1,10 @@
 import { resolve, sep } from "node:path";
 import { isStaleEntry } from "@loom/adapter-claude";
 import { StaleCodexRequestError } from "@loom/adapter-codex";
-import { UnsafeWorktreePathError } from "@loom/adapter-git";
+import {
+  BaseMergePreconditionError,
+  UnsafeWorktreePathError,
+} from "@loom/adapter-git";
 import { GitHubError } from "@loom/adapter-github";
 import { type PullRequestCommand, pullRequestDetail } from "@loom/protocol";
 import { observeRun } from "./observe.js";
@@ -69,6 +72,7 @@ export const classify = (error: unknown): ActionError => {
   const message = error instanceof Error ? error.message : String(error);
   if (
     error instanceof PreconditionFailed ||
+    error instanceof BaseMergePreconditionError ||
     error instanceof StaleCodexRequestError
   )
     return { code: "precondition", message };
@@ -277,6 +281,15 @@ export class Executor {
         ]);
       this.wake = null;
     }
+  }
+
+  async refreshBase(
+    repoRoot: import("@loom/core").WorktreePath,
+    baseBranch: string,
+  ): Promise<void> {
+    await this.exclusive(repoRoot, () =>
+      this.deps.adapters.git.fetchBase({ repoRoot, baseBranch }),
+    );
   }
 
   /** Runs `work` after every earlier holder of `key` has finished. */
@@ -590,6 +603,36 @@ export class Executor {
         }
         return {};
       }
+      case "merge_base": {
+        const worktree = state.worktree;
+        if (
+          !worktree ||
+          worktree.path !== action.worktreePath ||
+          worktree.branch !== action.branch ||
+          state.task.branch !== action.branch ||
+          worktree.baseBranch !== action.baseBranch ||
+          action.branch === action.baseBranch ||
+          !["ci", "in_review", "awaiting_approval", "merging"].includes(
+            state.task.stage,
+          ) ||
+          state.runs.some((run) => !run.endedAt)
+        )
+          throw new PreconditionFailed("Base merge owner state changed");
+        return this.exclusive(this.deps.repo(action.taskId).root, async () => {
+          const observed = await adapters.git.readWorktree(
+            action.worktreePath,
+            action.baseBranch,
+          );
+          if (
+            !observed.exists ||
+            observed.branch !== action.branch ||
+            observed.dirty ||
+            observed.dirtyPaths.length
+          )
+            throw new PreconditionFailed("Base merge worktree changed");
+          return adapters.git.mergeBase(action);
+        });
+      }
       case "push_branch": {
         const baseBranch =
           state.worktree?.baseBranch ??
@@ -609,6 +652,7 @@ export class Executor {
             branch: action.branch,
             expectedHeadSha: action.expectedHeadSha,
             expectedRemoteHeadSha: observation.remoteHeadSha,
+            nonForce: action.nonForce,
           }),
         );
       }

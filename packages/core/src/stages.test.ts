@@ -564,34 +564,40 @@ describe("transition guards fail independently", () => {
     }
     if (mutation === "drafts")
       call.drafts = [{ id: finding().id, anchor: null }];
-    reject(`#10/11/12 ${mutation}`, "in_review", mcp(call, "reviewer"), (f) => {
-      if (mutation === "round-head" && f.state.review)
-        f.state.review.headSha = base;
-      if (mutation === "github-unknown")
-        f.observations.github = { ok: false, at: now, reason: "offline" };
-      if (mutation.includes("verdict")) {
-        f.state.findings = [finding("f1", { status: "addressed" })];
-        if (f.state.review) f.state.review.verdictIds = [finding().id];
-        if (mutation === "duplicate-verdict")
-          call.input.verdicts = [
-            { findingId: finding().id, status: "resolved", note: "" },
-            { findingId: finding().id, status: "resolved", note: "" },
-          ];
-        if (mutation === "unexpected-verdict")
-          call.input.verdicts = [
-            { findingId: finding().id, status: "resolved", note: "" },
-            { findingId: finding("other").id, status: "resolved", note: "" },
-          ];
-      }
-      if (f.observations.github?.ok && f.observations.github.value) {
-        const pr = f.observations.github.value;
-        if (mutation === "pr-head") pr.headSha = base;
-        if (mutation === "ci-failure") pr.ci.conclusion = "failure";
-        if (mutation === "ci-head") pr.ci.headSha = base;
-        if (mutation === "conflict") pr.mergeable = "conflicting";
-        if (mutation === "mergeability-unknown") pr.mergeable = "unknown";
-      }
-    });
+    reject(
+      `#10/11/12 ${mutation}`,
+      "in_review",
+      mcp(call, "reviewer"),
+      (f) => {
+        if (mutation === "round-head" && f.state.review)
+          f.state.review.headSha = base;
+        if (mutation === "github-unknown")
+          f.observations.github = { ok: false, at: now, reason: "offline" };
+        if (mutation.includes("verdict")) {
+          f.state.findings = [finding("f1", { status: "addressed" })];
+          if (f.state.review) f.state.review.verdictIds = [finding().id];
+          if (mutation === "duplicate-verdict")
+            call.input.verdicts = [
+              { findingId: finding().id, status: "resolved", note: "" },
+              { findingId: finding().id, status: "resolved", note: "" },
+            ];
+          if (mutation === "unexpected-verdict")
+            call.input.verdicts = [
+              { findingId: finding().id, status: "resolved", note: "" },
+              { findingId: finding("other").id, status: "resolved", note: "" },
+            ];
+        }
+        if (f.observations.github?.ok && f.observations.github.value) {
+          const pr = f.observations.github.value;
+          if (mutation === "pr-head") pr.headSha = base;
+          if (mutation === "ci-failure") pr.ci.conclusion = "failure";
+          if (mutation === "ci-head") pr.ci.headSha = base;
+          if (mutation === "conflict") pr.mergeable = "conflicting";
+          if (mutation === "mergeability-unknown") pr.mergeable = "unknown";
+        }
+      },
+      mutation === "conflict" ? "stale_run" : undefined,
+    );
   }
   reject(
     "#13 requires review escalation",

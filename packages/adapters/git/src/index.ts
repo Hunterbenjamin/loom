@@ -30,6 +30,7 @@ export type { FileChange, GitAdapter } from "@loom/core";
 export { GitError } from "./git.js";
 
 export class UnsafeWorktreePathError extends Error {}
+export class BaseMergePreconditionError extends Error {}
 
 const fileName = z
   .string()
@@ -43,6 +44,7 @@ const observation = z.object({
   dirty: z.boolean(),
   aheadOfBase: count,
   behindBase: count,
+  currentBaseSha: sha.optional(),
   conflictsWithBase: z.boolean().nullable(),
   remoteHeadSha: sha.nullable(),
   dirtyPaths: z.array(z.string().min(1)),
@@ -196,7 +198,14 @@ export function createGitAdapter(
                 }
               : null;
         }
-        const baseSha = await commit(canonical, baseBranch);
+        // Remote repositories compare against the fetched base; local-only repositories use
+        // their local base branch because they have no remote tracking ref.
+        const baseSha =
+          (await optionalRef(
+            canonical,
+            `refs/remotes/${remote}/${baseBranch}`,
+          )) ?? (await commit(canonical, baseBranch));
+        result.currentBaseSha = baseSha;
         const counts = z
           .tuple([count, count])
           .parse(
@@ -381,6 +390,76 @@ export function createGitAdapter(
       await git(repoRoot, ["worktree", "prune"]);
       return { removed: true };
     },
+    async mergeBase(req) {
+      const path = await rootPath(req.worktreePath);
+      await validateBranch(path, req.branch);
+      if (req.branch === req.baseBranch)
+        throw new Error("Refusing to merge into the base branch");
+      const expected = sha.parse(req.expectedHeadSha);
+      const base = sha.parse(req.baseSha);
+      const observed = await adapter.readWorktree(path, req.baseBranch);
+      if (
+        observed.branch !== req.branch ||
+        observed.dirty ||
+        observed.dirtyPaths.length
+      )
+        throw new BaseMergePreconditionError(
+          "Refusing base merge: branch changed or worktree is dirty",
+        );
+      const head = await commit(path, "HEAD");
+      if (head !== expected) {
+        // A crash after the checkout update must adopt only this intent's exact merge parents.
+        const parents = (
+          await textGit(path, ["rev-list", "--parents", "-n", "1", head])
+        )
+          .trim()
+          .split(/\s+/);
+        if (
+          parents.length === 3 &&
+          parents[1] === expected &&
+          parents[2] === base
+        )
+          return { headSha: head, conflicting: false };
+        throw new BaseMergePreconditionError(
+          "Refusing base merge: HEAD changed",
+        );
+      }
+      const merged = await git(
+        path,
+        ["merge-tree", "--write-tree", "--name-only", "-z", head, base],
+        [0, 1],
+      );
+      const tree = sha.parse(nulFields(merged.output)[0]);
+      if (merged.code === 1) return { headSha: head, conflicting: true };
+      if (
+        (await git(path, ["merge-base", "--is-ancestor", base, head], [0, 1]))
+          .code === 0
+      )
+        return { headSha: head, conflicting: false };
+      // Construct the clean merge without leaving MERGE_HEAD or an unmerged index on a crash.
+      const mergedHead = sha.parse(
+        (
+          await textGit(path, [
+            "-c",
+            "user.name=Loom",
+            "-c",
+            "user.email=",
+            "commit-tree",
+            tree,
+            "-p",
+            head,
+            "-p",
+            base,
+            "-m",
+            `Merge ${req.baseBranch} into ${req.branch}`,
+          ])
+        ).trim(),
+      );
+      // Git's fast-forward update locks/checks the ref and refuses concurrent non-descendant
+      // commits or overwritten local edits; reset could discard a commit made after our read.
+      await git(path, ["merge", "--ff-only", "--no-edit", mergedHead]);
+      return { headSha: mergedHead, conflicting: false };
+    },
     async push(req) {
       const path = await rootPath(req.worktreePath);
       await validateBranch(path, req.branch);
@@ -401,7 +480,11 @@ export function createGitAdapter(
         "push.followTags=false",
         "push",
         "--porcelain",
-        `--force-with-lease=refs/heads/${req.branch}:${req.expectedRemoteHeadSha ?? ""}`,
+        ...(req.nonForce
+          ? []
+          : [
+              `--force-with-lease=refs/heads/${req.branch}:${req.expectedRemoteHeadSha ?? ""}`,
+            ]),
         "--recurse-submodules=no",
         remote,
         `${expected}:refs/heads/${req.branch}`,

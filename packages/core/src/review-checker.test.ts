@@ -70,7 +70,7 @@ test("a clean review opens the PR and waits for it to be mergeable across restar
   expect(published.next.review?.publicationPending).toBe(false);
 });
 
-test("a reviewed branch that conflicts with base goes back to the implementer to rebase", () => {
+test("a reviewed branch that conflicts with base retires the reviewer and sends the implementer to merge base", () => {
   const f = firstRound();
   const result = fixed(f.state, f.observations);
   f.observations.inputs = [];
@@ -95,7 +95,7 @@ test("a reviewed branch that conflicts with base goes back to the implementer to
     again.next.outbox.filter(
       (row) => row.action?.kind === "stop_run" && row.action.terminate,
     ),
-  ).toHaveLength(1);
+  ).toHaveLength(2);
 });
 
 describe("checker review guards reject atomically", () => {
