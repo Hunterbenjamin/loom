@@ -34,6 +34,10 @@ two places answer the same question, make one the owner and delete the other.
 
 ## Checks
 
+Tests describe current behavior, not requirements. When a change deliberately alters behavior a
+test pins, update the test and explain why in the PR; don't preserve an old design just to keep
+tests green. In review, a test that defends a workaround or an outdated design is a finding.
+
 `pnpm test`, `pnpm lint` and `pnpm typecheck` must pass before a PR. `packages/core` stays free of
 I/O. Validate external input with zod at the boundary. Automated tests never start real agents: use
 `packages/fake-agent`; real-provider tests are opt-in with `LOOM_REAL_PROVIDERS=1` and use the cheapest model.
