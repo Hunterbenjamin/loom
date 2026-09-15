@@ -895,8 +895,8 @@ validated with zod when loaded, and a scenario with steps left over when its run
 
 ## 10. Restart recovery
 
-Verified in [spike 05](../../spikes/05-restart-matrix/FINDINGS.md) and re-measured on tmux in
-[spike 06](../../spikes/06-tmux-pane-host/FINDINGS.md), with spikes 01 and 02 for the provider sides.
+Verified in spike 05 and re-measured on tmux in
+spike 06, with spikes 01 and 02 for the provider sides.
 
 | Fault | What happens | Reconcile |
 |---|---|---|

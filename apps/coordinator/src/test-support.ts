@@ -251,6 +251,7 @@ async function open(
         github.findPullRequest(await scope(request)),
       openPullRequest: async (request) =>
         github.openPullRequest(await scope(request)),
+      updatePullRequestBody: github.updatePullRequestBody,
       mergePullRequest: (request) => github.mergePullRequest(request),
       disableAutoMerge: (request) => github.disableAutoMerge(request),
     },

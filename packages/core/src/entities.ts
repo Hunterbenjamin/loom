@@ -460,7 +460,8 @@ export type ArtifactKind =
   | "decisions"
   | "findings"
   | "test_results"
-  | "handoff";
+  | "handoff"
+  | "implementation";
 
 /** Metadata. The content is a file in the coordinator's data directory, mirrored to `.task/`. */
 export interface Artifact {

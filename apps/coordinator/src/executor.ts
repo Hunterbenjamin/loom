@@ -178,6 +178,7 @@ export class Executor {
         return this.runs.perform(action, state);
       case "push_branch":
       case "open_pr":
+      case "update_pr_body":
       case "merge_pr":
       case "disable_auto_merge":
       case "map_findings":

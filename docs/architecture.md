@@ -2,7 +2,7 @@
 
 Terminology: an “issue” in the UI is a “task” in the code; internal identifiers and MCP tool names retain `task`.
 
-This is the baseline design from 2026-09-11. Anything marked *(spike NN)* is an assumption that spike has to confirm.
+This is the baseline design from 2026-09-11. References to *(spike NN)* identify the original experiments, retained in Git history.
 
 ## Goal
 
@@ -179,7 +179,7 @@ Each provider has four channels:
 |---|---|---|
 | **Control** | App-server over a unix socket: `thread/start`, `turn/start`, `turn/steer`, `turn/interrupt`; the coordinator answers approval requests. | Headless roles: Agent SDK or `claude -p --output-format stream-json`. Interactive: the pane host's `pasteText` (refusing text that starts with `/` or `!`), and `sendKey Escape` to interrupt. |
 | **Observe** | App-server notifications plus `readConversation` through `thread/read {includeTurns:true}`. `thread/tokenUsage/updated` owns cumulative token usage. | `claude agents --json` owns live status (`busy`, `waiting`, `idle`). Per-session hooks add detail; the provider-given transcript and `<session-id>/subagents/*.jsonl` beside it own token usage, while `readConversation` incrementally reads the main transcript. The pane host supplies no status at all. See [Claude Code](#claude-code). |
-| **Attach** | A tmux pane running `codex resume <thread> --remote unix://…` against the coordinator's server. Concurrent attach verified on 0.154.0; see [spike 01 findings](../spikes/01-codex-shared-thread/FINDINGS.md). | A tmux pane; "take over" a headless run with `claude --resume <id>`. For the in-app view, see [Embedded terminals](#embedded-terminals). |
+| **Attach** | A tmux pane running `codex resume <thread> --remote unix://…` against the coordinator's server. Concurrent attach verified on 0.154.0 (spike 01). | A tmux pane; "take over" a headless run with `claude --resume <id>`. For the in-app view, see [Embedded terminals](#embedded-terminals). |
 | **Signal** (agent → Loom) | Loom MCP tools | Loom MCP tools |
 
 The Loom MCP tools are `get_task_context`, `submit_plan`, `report_progress`, `ask_human`,
@@ -281,7 +281,7 @@ pane/provider request paths with stale-occurrence guards.
 
 ### Claude Code
 
-Verified in [spike 02](../spikes/02-claude-hooks/FINDINGS.md) (Claude Code 2.1.268):
+Verified in spike 02 (Claude Code 2.1.268):
 
 - **Status comes from `claude agents --json`; hooks are hints.** Poll it on every hook, and every
   1–2 s while a Loom-launched session is busy or waiting. Hooks carry the detail: session and prompt
@@ -320,9 +320,9 @@ Verified in [spike 02](../spikes/02-claude-hooks/FINDINGS.md) (Claude Code 2.1.2
 ### The pane host
 
 tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen in
-[spike 06](../spikes/06-tmux-pane-host/FINDINGS.md) (tmux 3.7c) and built in
+spike 06 (tmux 3.7c) and built in
 `packages/adapters/tmux`. Terminal behaviour was verified in
-[spike 03](../spikes/03-embedded-terminal/FINDINGS.md) and re-measured in spike 06:
+spike 03 and re-measured in spike 06:
 
 - The in-app view is node-pty in the Electron main process running the host's `attachArgs`,
   rendered with xterm.js. Keystroke to glyph was 5–6 ms p95.
@@ -527,7 +527,7 @@ input tokens so a small expensive tail cannot hide behind the median.
   starts a spurious review round. Agents never push to the base branch or merge.
 - The diff view uses `@pierre/diffs` with `CodeView` and a bounded worker pool. Findings, human comments
   and CI annotations render in its annotation slots. It can show the whole branch or only the changes
-  since the last review round. From [spike 04](../spikes/04-pierre-diffs/FINDINGS.md):
+  since the last review round. From spike 04:
   - Feed it Git patches, or compute content diffs off the renderer thread. The workers only offload
     syntax highlighting.
   - Give each file a stable ID, and bump its version whenever its content or annotations change.
@@ -581,7 +581,7 @@ Codex 0.154.0 observations from spike 01: a running turn survived the last subsc
 history with the unfinished turn marked interrupted, but a pending command visible in live events
 was absent from disk history. `turn/interrupt` also left a running shell command alive. Before retrying
 side effects, reconcile the actual worktree and tool state; neither interruption nor crash recovery
-guarantees that a command did not run. The broader restart matrix remains spike 05.
+guarantees that a command did not run. The broader restart matrix was measured in spike 05.
 
 ## Stack
 
@@ -610,19 +610,18 @@ guarantees that a command did not run. The broader restart matrix remains spike 
 - **Pierre Diffs:** `@pierre/diffs` 1.4.2 (Apache-2.0), with annotations and a worker pool.
 - **ghostty-web:** 0.4.0 (MIT), with the xterm.js API.
 
-**To be confirmed** (see `spikes/`):
-- **01 completed:** concurrent Codex attach and approval fan-out on 0.154.0. See the findings for
-  bounded recovery results and remaining race/timeout questions; transport remains experimental.
+**Completed experiments** (retained in Git history):
+- **01 completed:** concurrent Codex attach and approval fan-out on 0.154.0. Recovery results are bounded,
+  race/timeout questions remain, and the transport remains experimental.
 - **02 completed:** `claude agents --json` for status, per-session hooks for detail; pasting a prompt
-  delivers reliably, but text starting with `/` or `!` must be refused. See the findings.
+  delivers reliably, but text starting with `/` or `!` must be refused.
 - **03 completed:** an embedded attach client with xterm.js works; "Open in Ghostty" via AppleScript.
-  See the findings.
 - **06 completed:** tmux meets the pane-host budgets and allows concurrent clients, so it replaces
-  Herdr; provider-gated sends and per-generation pane refs are required. See the findings.
+  Herdr; provider-gated sends and per-generation pane refs are required.
 - **04 completed:** Pierre with `CodeView` and workers handles large diffs; anchoring findings across
-  commits is Loom's job. See the findings.
+  commits is Loom's job.
 - **05 completed:** nothing in a pane survives a host restart; Loom relaunches from stored state, and
-  the Codex app-server lives outside the pane host. See the findings.
+  the Codex app-server lives outside the pane host.
 
 ### Coordinator automation
 
@@ -729,3 +728,23 @@ The `edit_task` human command updates title, description, size and plan-approval
 Backlog, with an expected task version. It uses the existing input and reconciliation transaction.
 Direct repository PR merge commands reject issue-owned PRs, including explicit links; those require
 the issue's reviewed-head approval and normal CI/finding guards.
+
+### Issue description and implementation publication
+
+The human's issue description remains the request; agent submissions never rewrite it. A versioned
+`implementation` artifact owns the latest accepted implementer summary, its recorded decisions and
+its submitted test results at one head SHA. Every submission replaces it, including fix rounds;
+reviewer handoffs do not touch it. The issue Overview projects this artifact as “What changed” below
+the request and omits the duplicate GitHub body. PR-only Overview continues to render GitHub's body.
+
+Core builds the PR body from that same request and implementation content, the human-readable issue
+reference and the submission's tests. Initial publication still waits for successful review. Each subsequent submission
+reconciles an `update_pr_body` outbox action once GitHub reports its head. The action is keyed by PR,
+artifact version and body hash. The executor checks current issue ownership and submission version;
+the GitHub adapter checks the open PR branch and head, skips an identical body, and writes literal
+JSON through stdin. Restart requeues uncertain updates through that same idempotent owner check.
+
+PR bodies identify local issues by the same repository key and issue number used in the UI
+(for example `Issue: LOOM-216`). The store derives this key from the registered repository when
+loading task state. Local issues have no GitHub-accessible URL, so the reference is plain text;
+Loom does not register an operating-system URL protocol for this feature.

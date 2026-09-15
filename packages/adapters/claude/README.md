@@ -1,7 +1,7 @@
 # Claude Code adapter
 
 Implements `ClaudeAdapter` from [`packages/core/src/adapters.ts`](../../core/src/adapters.ts)
-against Claude Code 2.1.269, following [spike 02](../../../spikes/02-claude-hooks/FINDINGS.md).
+against Claude Code 2.1.269, following spike 02.
 
 ```ts
 const adapter = await createClaudeAdapter({

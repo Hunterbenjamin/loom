@@ -292,6 +292,14 @@ export interface GitHubAdapter {
     title: string;
     body: string;
   }): Promise<ActionOutputs["open_pr"]>;
+  /** Idempotent body replacement after checking the open PR branch and head. */
+  updatePullRequestBody(req: {
+    repo: string;
+    number: number;
+    branch: string;
+    expectedHeadSha: Sha;
+    body: string;
+  }): Promise<void>;
   /** Always squash, always `--match-head-commit`. */
   mergePullRequest(req: {
     repo: string;

@@ -12,6 +12,7 @@ export { deriveAttention } from "./flags.js";
 export { messageId, normalizeText, runId } from "./helpers.js";
 export { decidableFromLastReadings } from "./human.js";
 export type * from "./ids.js";
+export * from "./implementation.js";
 export * from "./issue-ref.js";
 export * from "./keybindings.js";
 export { inFlightTurnId } from "./lifecycle.js";

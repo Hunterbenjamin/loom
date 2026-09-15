@@ -12,6 +12,7 @@ const FILE_NAMES: Record<ArtifactKind, string> = {
   findings: "findings.json",
   test_results: "test_results.json",
   handoff: "handoff.json",
+  implementation: "implementation.json",
 };
 
 export class WorktreeActions {

@@ -7,11 +7,9 @@ Backlog → Todo → In progress → In review → Awaiting approval → Done, a
 Claude Code agents at each stage. It sits on top of GitHub, tmux, the Codex app-server and
 Claude Code, and every one of those keeps working on its own.
 
-**Status:** pre-alpha. Phase 2 (adapters) is complete; the coordinator is next (see `docs/build-plan.md`).
+**Status:** pre-alpha.
 
 - `docs/architecture.md`: the design and the principles behind it
-- `docs/build-plan.md`: the build phases, and how Loom starts building itself
-- `spikes/`: throwaway experiments that answer open integration questions
 - `apps/desktop/`: the window (Phase 1 shell, rendered from fixtures)
 - `AGENTS.md`: instructions for agents working in this repo
 
