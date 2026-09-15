@@ -1,7 +1,4 @@
-import {
-  KEYBINDING_ACTIONS,
-  matchesChord,
-} from "@loom/core";
+import { KEYBINDING_ACTIONS, matchesChord } from "@loom/core";
 import { expect, test } from "vitest";
 import {
   defaultKeybindings,
@@ -23,9 +20,9 @@ test("the editable defaults include every action, direct Mac chords and legacy s
     "Cmd+D / Ctrl+Space then |",
   );
   expect(
-    KEYBINDING_ACTIONS
-      .filter((action) => action.id.startsWith("agent-"))
-      .map(({ label }) => label),
+    KEYBINDING_ACTIONS.filter((action) => action.id.startsWith("agent-")).map(
+      ({ label }) => label,
+    ),
   ).toEqual([
     "Main",
     "Agent 1",

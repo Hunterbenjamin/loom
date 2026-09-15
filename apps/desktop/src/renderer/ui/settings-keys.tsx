@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   bindingChord,
   isPrefixBinding,
@@ -7,6 +6,7 @@ import {
   matchesChord,
   parseChord,
 } from "@loom/core";
+import { useEffect, useState } from "react";
 import {
   defaultKeybindings,
   keybindingsConfig,
@@ -204,8 +204,8 @@ export function KeyboardSettings({ context }: { context: FieldContext }) {
   const add = (action: KeybindingAction, binding: string) => {
     const taken = (
       Object.entries(bindings) as [KeybindingAction, string[]][]
-    ).find(
-      ([, list]) => list.some((item) => identity(item) === identity(binding)),
+    ).find(([, list]) =>
+      list.some((item) => identity(item) === identity(binding)),
     );
     if (taken) {
       setProblem({
