@@ -1,4 +1,10 @@
-import { CI_CONCLUSION_VALUES, PROVIDER_VALUES } from "@loom/core";
+import {
+  CI_CHECK_STATUS_VALUES,
+  CI_CONCLUSION_VALUES,
+  DIALOG_KIND_VALUES,
+  MESSAGE_WHEN_VALUES,
+  PROVIDER_VALUES,
+} from "@loom/core";
 // Views the coordinator derives for its windows. Everything here is coordinator-owned and
 // survives a window closing (architecture principle 5); the store persists it, the UI only
 // renders it. Each one answers a gap the fixture shell found (PR #18, gaps 3-6).
@@ -291,11 +297,11 @@ export const taskInbox = z.strictObject({
     .strictObject({
       headSha: sha,
       since: isoTime,
-      conclusion: z.enum([...CI_CONCLUSION_VALUES]).nullable(),
+      conclusion: z.enum(CI_CONCLUSION_VALUES).nullable(),
       checks: z.array(
         z.strictObject({
           name: z.string(),
-          status: z.enum(["queued", "in_progress", "completed"]),
+          status: z.enum(CI_CHECK_STATUS_VALUES),
           conclusion: z.string().nullable(),
           url: z.string().nullable(),
         }),
@@ -333,7 +339,7 @@ export const conversationKey = (target: ConversationTarget): string =>
 export const conversationPrompt = z.union([
   z.strictObject({
     source: z.literal("claude_dialog"),
-    kind: z.enum(["permission", "input"]),
+    kind: z.enum(DIALOG_KIND_VALUES),
     tool: z.string(),
     command: z.string().optional(),
     requestId: z.string().optional(),
@@ -355,13 +361,13 @@ export const conversationSend = z.strictObject({
   state: z.enum(["queued", "sent", "delivered", "failed", "refused"]),
   at: isoTime,
   reason: z.string().nullable(),
-  when: z.enum(["now", "after_turn"]).optional(),
+  when: z.enum(MESSAGE_WHEN_VALUES).optional(),
 });
 
 export const conversation = z
   .strictObject({
     target: conversationTarget,
-    provider: z.enum([...PROVIDER_VALUES]),
+    provider: z.enum(PROVIDER_VALUES),
     status: z.enum(["working", "idle", "waiting", "stopped", "unknown"]),
     pendingPrompt: conversationPrompt.nullable(),
     sends: z.array(conversationSend).max(20),
@@ -411,7 +417,7 @@ export const paneView = paneIdentity
     paneTitle: z.string().nullable(),
     command: z.string(),
     /** The agent CLI in the pane's process tree, when the host found one. */
-    agent: z.enum([...PROVIDER_VALUES]).nullable().optional(),
+    agent: z.enum(PROVIDER_VALUES).nullable().optional(),
     startCwd: worktreePath,
     branch: z.string().min(1).nullable(),
     dead: z.boolean(),

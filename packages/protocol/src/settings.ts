@@ -1,4 +1,9 @@
-import { PROVIDER_VALUES, ROLE_VALUES, RUN_MODE_VALUES } from "@loom/core";
+import {
+  PROVIDER_VALUES,
+  ROLE_VALUES,
+  RUN_MODE_VALUES,
+  TASK_SIZE_VALUES,
+} from "@loom/core";
 import { z } from "zod";
 import { isoTime, repoId } from "./ids.js";
 
@@ -18,10 +23,10 @@ export const reasoningEffort = z.enum([
   "ultra",
 ]);
 export const roleProfile = z.strictObject({
-  provider: z.enum([...PROVIDER_VALUES]),
+  provider: z.enum(PROVIDER_VALUES),
   model: z.string().min(1),
   reasoningEffort: reasoningEffort.nullable(),
-  runMode: z.enum([...RUN_MODE_VALUES]),
+  runMode: z.enum(RUN_MODE_VALUES),
   access: z.enum(["full", "approval-gated"]),
 });
 export const settingsValues = z.strictObject({
@@ -32,7 +37,7 @@ export const settingsValues = z.strictObject({
   }),
   workflow: z.strictObject({
     requirePlanApproval: z.boolean(),
-    size: z.enum(["small", "normal"]),
+    size: z.enum(TASK_SIZE_VALUES),
     budgetMinutes: z.number().int().positive().nullable(),
     reviewRoundCap: z.number().int().positive(),
     mergePolicy: z.enum(["require-human", "auto-small", "auto-all"]),
@@ -74,12 +79,7 @@ export const settingsValues = z.strictObject({
 });
 
 export const settingsPatch = z.strictObject({
-  roles: z
-    .partialRecord(
-      z.enum([...ROLE_VALUES]),
-      roleProfile.partial(),
-    )
-    .optional(),
+  roles: z.partialRecord(z.enum(ROLE_VALUES), roleProfile.partial()).optional(),
   workflow: settingsValues.shape.workflow.partial().optional(),
   repository: settingsValues.shape.repository.partial().optional(),
   main: settingsValues.shape.main.partial().optional(),
