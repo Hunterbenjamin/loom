@@ -327,7 +327,7 @@ test("adapter preconditions use the merge_pr classification, and uncertain write
   });
 });
 
-test("an app merge reaches Done only through the existing task observation path", async () => {
+test("an issue-owned PR rejects direct merge and follows exact-head issue approval", async () => {
   const h = await setup();
   const task = h.coordinator.createTask({
     repoId: h.repo.id,
@@ -357,10 +357,24 @@ test("an app merge reaches Done only through the existing task observation path"
       matchHeadSha: pr.headSha,
       deleteBranch: true,
     }),
-  ).toMatchObject({ ok: true });
+  ).toMatchObject({
+    ok: false,
+    error: { message: expect.stringContaining("belongs to an issue") },
+  });
   expect(h.store.loadTaskState(task.task.id).task.stage).toBe(
     "awaiting_approval",
   );
+  expect(
+    await client.command({
+      kind: "human",
+      taskId: task.task.id,
+      command: { type: "approve", headSha: pr.headSha },
+    }),
+  ).toMatchObject({ ok: true });
+  await h.coordinator.settle();
+  expect(h.store.loadTaskState(task.task.id).task.stage).toBe("merging");
+  h.github.merge();
+  h.coordinator.loop.enqueue(task.task.id);
   await h.coordinator.settle();
   expect(h.store.loadTaskState(task.task.id).task.stage).toBe("done");
   // A later PR command must not wake the finished task's Codex app-server (2026-09-13: every
@@ -980,3 +994,26 @@ test.each(["list", "detail"] as const)(
     expect(h.clock.now()).toBe(clockBefore);
   },
 );
+
+test("an explicitly linked off-branch PR also rejects direct GitHub merge", async () => {
+  const h = await setup();
+  const { task } = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Linked",
+    description: "",
+  });
+  h.github.setPullRequest(detail());
+  h.store.setPullRequestPreferences(h.repo.id, 1, { taskId: task.id });
+  const merge = vi.spyOn(h.adapters.github, "mergePullRequest");
+  const client = await connect(h, [listScope(h), detailScope(h)]);
+  expect(
+    await client.command({
+      kind: "merge_pull_request",
+      repoId: h.repo.id,
+      number: 1,
+      matchHeadSha: head,
+      deleteBranch: false,
+    }),
+  ).toMatchObject({ ok: false });
+  expect(merge).not.toHaveBeenCalled();
+});

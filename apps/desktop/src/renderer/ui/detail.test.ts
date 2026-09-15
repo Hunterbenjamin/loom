@@ -8,6 +8,7 @@ import { pane } from "../../../../../packages/protocol/src/pane-fixture.js";
 import { inputId, questionId, transitionId } from "../fixtures/ids.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
+import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
 import { Detail } from "./detail.js";
@@ -718,6 +719,8 @@ test("tabs are Overview and Plan, with Terminal only while the issue has a live 
   expect(
     h.host.querySelector("[data-tab-body]")?.getAttribute("data-tab-body"),
   ).toBe("overview");
+  // This test checks tab availability; terminal rendering has its own tests.
+  act(() => h.store.setTab("overview"));
   h.store.getState().panes = [{ ...pane, taskId: h.task.id }];
   h.render();
   expect(tabs()).toEqual(["Overview", "Plan", "Terminal"]);
@@ -726,7 +729,7 @@ test("tabs are Overview and Plan, with Terminal only while the issue has a live 
   expect(tabs()).toEqual(["Overview", "Plan"]);
 });
 
-test("the overview renders the description and findings as Markdown and lists activity with its time", () => {
+test("the overview is one reading column and one rail: Markdown, PR-style activity, combined status, collapsible agents and tests", () => {
   const h = setup("plan");
   h.task.description = "Fix the **inbox** row.\n\n- first\n- second";
   h.snapshot.findings.push({
@@ -760,17 +763,222 @@ test("the overview renders the description and findings as Markdown and lists ac
   });
   h.store.open(h.task.id);
   h.render();
-  const overview = h.host.querySelector(".issue-overview");
-  expect(overview?.querySelector(".task-description strong")?.textContent).toBe(
-    "inbox",
-  );
-  expect(overview?.querySelectorAll(".task-description li")).toHaveLength(2);
-  expect(overview?.textContent).not.toContain("**inbox**");
-  const finding = overview?.querySelector(".issue-finding");
+  const story = h.host.querySelector(".pr-overview .pr-story");
+  const description = story?.querySelector(".pr-description");
+  expect(description?.querySelector("strong")?.textContent).toBe("inbox");
+  expect(description?.querySelectorAll("li")).toHaveLength(2);
+  expect(story?.textContent).not.toContain("**inbox**");
+  const finding = story?.querySelector(".issue-finding");
   expect(finding?.textContent).toContain("Missing version");
   expect(finding?.querySelector("code")?.textContent).toBe("planVersion");
-  // Each activity row keeps its time column, so its text isn't squeezed into the dot column.
-  expect(overview?.querySelectorAll(".event").length).toBeGreaterThan(0);
-  for (const row of overview?.querySelectorAll(".event") ?? [])
-    expect(row.children).toHaveLength(3);
+  // The plan has its own tab; the overview doesn't repeat it.
+  expect(story?.textContent).not.toContain("Open plan");
+  // Issue activity uses the pull request activity rows, each with its time.
+  const move = [...(story?.querySelectorAll(".pr-activity li") ?? [])].find(
+    (item) => item.textContent?.includes("Planning → Plan approval"),
+  );
+  expect(move?.querySelector("time")).not.toBeNull();
+  // No metadata line or working-status line above the tabs.
+  expect(h.host.querySelector(".issue-meta-line")).toBeNull();
+  expect(h.host.querySelector(".issue-status")).toBeNull();
+  if (h.task.branch) expect(h.host.textContent).not.toContain(h.task.branch);
+  // The rail's Status row carries the stage; agents and tests collapse like checks.
+  const rail = h.host.querySelector(".pr-overview .pr-rail");
+  expect(rail?.querySelector(".overview-status")?.textContent).toContain(
+    "Plan approval",
+  );
+  expect(
+    rail?.querySelector('[data-testid="overview-agents"] details summary'),
+  ).not.toBeNull();
+  expect(
+    rail?.querySelector('[data-testid="overview-tests"] details summary'),
+  ).not.toBeNull();
+});
+
+test("activity shows the latest three entries until expanded, and settled findings start collapsed", () => {
+  const h = setup("plan");
+  h.snapshot.transitions = h.snapshot.transitions.filter(
+    (transition) => transition.taskId !== h.task.id,
+  );
+  const source = h.snapshot.transitions[0] ?? {
+    id: transitionId("seed"),
+    taskId: h.task.id,
+    at: h.snapshot.now,
+    from: "backlog",
+    to: "todo",
+    flags: {},
+    trigger: { kind: "human", command: "move", inputId: inputId("seed") },
+    reason: "seed",
+    taskVersion: 1,
+  };
+  const stages = [
+    "backlog",
+    "todo",
+    "planning",
+    "plan_approval",
+    "in_progress",
+  ] as const;
+  for (const [index, to] of stages.slice(1).entries())
+    h.snapshot.transitions.push({
+      ...source,
+      id: transitionId(`activity-${index}`),
+      taskId: h.task.id,
+      at: new Date(
+        Date.parse(h.snapshot.now) - (10 - index) * 60_000,
+      ).toISOString() as never,
+      from: stages[index] as never,
+      to: to as never,
+      trigger: { kind: "reconcile", fact: "test" },
+      reason: `move ${index}`,
+    });
+  const finding = (id: string, status: "resolved" | "escalate") => ({
+    id: id as never,
+    taskId: h.task.id,
+    round: 1,
+    source: "reviewer" as const,
+    externalId: null,
+    createdByRunId: null,
+    severity: "minor" as const,
+    blocking: true,
+    title: `Finding ${id}`,
+    body: "Body",
+    status,
+    reopenCount: 0,
+    anchor: null,
+    location: null,
+    resolution: null,
+    createdAt: h.snapshot.now,
+    updatedAt: h.snapshot.now,
+  });
+  h.snapshot.findings = h.snapshot.findings.filter(
+    (f) => f.taskId !== h.task.id,
+  );
+  h.snapshot.findings.push(finding("settled", "resolved"));
+  h.store.open(h.task.id);
+  h.render();
+  const activity = h.host.querySelector(".pr-story .pr-activity");
+  const entries = () =>
+    [...(activity?.querySelectorAll("li[data-activity='stage']") ?? [])].map(
+      (item) => item.textContent ?? "",
+    );
+  expect(entries()).toHaveLength(3);
+  expect(entries().at(-1)).toContain("Plan approval → In progress");
+  const more = [...(activity?.querySelectorAll("button") ?? [])].find(
+    (button) => button.textContent?.startsWith("Show "),
+  );
+  expect(more?.textContent).toMatch(/^Show \d+ earlier/);
+  act(() => more?.click());
+  expect(entries()).toHaveLength(4);
+
+  // Nothing blocking: the findings section and its finding start collapsed.
+  const findings =
+    h.host.querySelector<HTMLDetailsElement>(".overview-findings");
+  expect(findings?.open).toBe(false);
+  expect(findings?.querySelector("summary")?.textContent).toContain(
+    "all settled",
+  );
+  h.snapshot.findings.push(finding("blocking", "escalate"));
+  h.store.open(null);
+  h.store.open(h.task.id);
+  h.render();
+  const reopened =
+    h.host.querySelector<HTMLDetailsElement>(".overview-findings");
+  expect(reopened?.open).toBe(true);
+  const blocking = [
+    ...(reopened?.querySelectorAll<HTMLDetailsElement>(".issue-finding") ?? []),
+  ];
+  expect(
+    blocking.find((item) => item.textContent?.includes("Finding blocking"))
+      ?.open,
+  ).toBe(true);
+  expect(
+    blocking.find((item) => item.textContent?.includes("Finding settled"))
+      ?.open,
+  ).toBe(false);
+});
+
+test("backlog exposes editing and Move to Todo; absent plan and branch omit their tabs", async () => {
+  const h = setup();
+  h.task.stage = "backlog";
+  h.task.attention = { reasons: [], reasonSince: {}, since: null };
+  h.task.branch = null;
+  h.task.prNumber = null;
+  delete h.snapshot.plans[h.task.id];
+  h.snapshot.pullRequests = [];
+  const sender = vi.fn(async () => ({
+    ok: true as const,
+    result: { kind: "human" as const, inputId: inputId("backlog-move") },
+  }));
+  h.store.setSender(sender);
+  h.render();
+  expect(
+    [...h.host.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent),
+  ).toEqual(["Overview"]);
+  await act(async () =>
+    [...h.host.querySelectorAll("button")]
+      .find((b) => b.textContent === "Edit issue")
+      ?.click(),
+  );
+  const title = h.host.querySelector<HTMLInputElement>('[aria-label="Title"]');
+  if (!title) throw new Error("Missing title field");
+  expect(title.value).toBe(h.task.title);
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set?.call(title, "New backlog title");
+    title.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () =>
+    [...h.host.querySelectorAll("button")]
+      .find((b) => b.textContent === "Save changes")
+      ?.click(),
+  );
+  expect(sender).toHaveBeenLastCalledWith({
+    kind: "human",
+    taskId: h.task.id,
+    command: {
+      type: "edit_task",
+      expectedVersion: h.task.version,
+      title: "New backlog title",
+      description: h.task.description,
+      size: h.task.size,
+      requirePlanApproval: h.task.requirePlanApproval,
+    },
+  });
+  await act(async () =>
+    [...h.host.querySelectorAll("button")]
+      .find((b) => b.textContent === "Move to Todo")
+      ?.click(),
+  );
+  expect(sender).toHaveBeenLastCalledWith({
+    kind: "human",
+    taskId: h.task.id,
+    command: { type: "move", to: "todo" },
+  });
+});
+
+test("a PR head change disables issue approval and invalidates its open confirmation", async () => {
+  const h = setup("merge");
+  const row = buildPullRequestDetails(h.snapshot.pullRequests)[0];
+  if (!row) throw new Error("Missing PR");
+  row.repoId = h.task.repoId;
+  row.taskId = h.task.id;
+  h.task.prNumber = row.number;
+  row.detail.headSha = "b".repeat(40) as typeof row.detail.headSha;
+  h.store.getState().pullRequestDetails = [row];
+  h.render();
+  const button = (label: string) =>
+    [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(
+      (b) => b.textContent === label,
+    );
+  expect(button("Approve merge")?.disabled).toBe(false);
+  await act(async () => button("Approve merge")?.click());
+  expect(button("Confirm approval")?.disabled).toBe(false);
+  act(() => {
+    row.detail.headSha = "c".repeat(40) as typeof row.detail.headSha;
+    h.render();
+  });
+  expect(button("Confirm approval")?.disabled).toBe(true);
+  expect(button("Approve merge")?.disabled).toBe(true);
 });

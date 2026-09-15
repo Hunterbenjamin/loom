@@ -252,7 +252,7 @@ test("Workbench reserves a draggable title area and keeps tab controls interacti
   // happy-dom drops Electron's vendor property; retain its selectors for this
   // markup check. Native hit testing must also be verified in the running app.
   style.textContent = [
-    readFileSync(join(import.meta.dirname, "../theme.css"), "utf8"),
+    readFileSync(join(import.meta.dirname, "../styles/theme.css"), "utf8"),
     readFileSync(join(import.meta.dirname, "workbench.css"), "utf8"),
   ]
     .join("\n")

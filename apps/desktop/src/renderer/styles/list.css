@@ -1,0 +1,291 @@
+.list {
+  flex: 1;
+  overflow: auto;
+  contain: strict;
+}
+
+.list-head {
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.list-head button {
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  font-size: 11px;
+}
+
+.list-head button:hover {
+  color: var(--text);
+  background: none;
+}
+.issues-list {
+  padding: 0 12px 12px;
+  container-type: inline-size;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  gap: 8px;
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--bg-hover);
+}
+
+.row[data-cursor="true"] {
+  background: var(--bg-active);
+}
+
+.list-load-more {
+  width: 100%;
+  text-align: left;
+  border-radius: 0;
+}
+
+.list-load-more {
+  height: var(--row);
+  padding: 0 12px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--line);
+}
+
+.task-copy {
+  display: block;
+}
+
+.task-copy .task-summary {
+  color: var(--text-dim);
+}
+.list-segments,
+.reviews-tabs {
+  display: flex;
+  gap: 6px;
+}
+.list-segments > button,
+.reviews-tabs button {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 6px 12px;
+  color: var(--text-dim);
+}
+.list-segments > button[aria-pressed="true"],
+.reviews-tabs button[aria-pressed="true"] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.list-search,
+.reviews-search {
+  display: flex;
+  align-items: center;
+}
+.list-search input,
+.reviews-search input {
+  width: 0;
+  padding: 0;
+  opacity: 0;
+  border: 0;
+}
+.list-search:focus-within input,
+.list-search[data-active="true"] input,
+.reviews-search[data-active="true"] input {
+  width: 200px;
+  padding: 5px 8px;
+  opacity: 1;
+}
+.list-search button,
+.reviews-search button {
+  display: flex;
+  padding: 5px;
+  color: var(--text-dim);
+}
+.list-row,
+.review-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 5px;
+}
+.list-row:hover,
+.list-row[data-cursor="true"],
+.review-row:hover,
+.review-row[data-cursor="true"] {
+  background: var(--bg-hover);
+}
+.list-row-open,
+.review-row-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  text-align: left;
+}
+.list-row .pr-task-link,
+.review-row .pr-task-link {
+  opacity: 0;
+  pointer-events: none;
+}
+.list-row:hover .pr-task-link,
+.list-row:focus-within .pr-task-link,
+.review-row:hover .pr-task-link,
+.review-row:focus-within .pr-task-link {
+  opacity: 1;
+  pointer-events: auto;
+}
+.list-row-age {
+  width: 38px;
+  text-align: right;
+}
+
+.list-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.issues-list {
+  --issue-cols: minmax(0, 1fr) 110px 190px 150px 52px 38px;
+}
+.issues-list .list-row {
+  display: grid;
+  grid-template-columns: var(--issue-cols);
+}
+.issues-list .list-row-meta {
+  display: contents;
+}
+.issues-list .list-row-meta > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.issues-list-head {
+  grid-template-columns: var(--issue-cols);
+  gap: 12px;
+  margin: 0 -12px;
+  padding: 0 22px;
+}
+.issues-list .list-row-open {
+  overflow: hidden;
+}
+.issues-list .list-row-open > .text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.issue-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.issue-line .id {
+  flex: none;
+  color: var(--text-dim);
+}
+.issue-line .task-copy {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container (max-width: 850px) {
+  .issues-list {
+    --issue-cols: minmax(0, 1fr) 110px 190px 38px;
+  }
+  .issues-list .issues-col-provider,
+  .issues-list .issues-col-round {
+    display: none !important;
+  }
+}
+@container (max-width: 620px) {
+  .issues-list {
+    --issue-cols: minmax(0, 1fr) 190px 38px;
+  }
+  .issues-list .issues-col-stage,
+  .issues-list .task-summary {
+    display: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .list-row-meta > span:not(.pr-task-link):nth-last-child(n + 2) {
+    display: none;
+  }
+  .issues-list .list-row-meta > span:not(.pr-task-link):nth-last-child(n + 2) {
+    display: flex;
+  }
+}
+
+.list-toolbar,
+.reviews-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  gap: 12px;
+}
+.reviews-list {
+  padding: 0 12px 12px;
+}
+.list-group,
+.reviews-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  margin: 5px 0;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--text-dim);
+  text-align: left;
+}
+.review-status {
+  width: 18px;
+  text-align: center;
+  font-size: 17px;
+}
+.review-status.good {
+  color: var(--good);
+}
+.review-status.danger {
+  color: var(--danger);
+}
+.review-status.attention {
+  color: var(--warn);
+  font-size: 9px;
+}
+.review-status.working {
+  color: var(--text);
+  font-size: 22px;
+}

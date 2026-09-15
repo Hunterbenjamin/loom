@@ -1,18 +1,22 @@
 import type { PullRequestCommand, PullRequestDetailRow } from "@loom/protocol";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { selectedDetailTask } from "../store/detail-selection.js";
 import {
   deleteDisabledReason,
   mergeDisabledReason,
 } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
-import { issueKeyFor, terminalsForTask } from "../store/selectors.js";
 import type { UiState } from "../store/ui-state.js";
+import { Detail as IssueDetail } from "./detail.js";
+import { DetailLayout } from "./detail-layout.js";
+import { Overview } from "./overview.js";
 import {
   PULL_REQUEST_ACTION_EVENT,
   type PullRequestActionRequest,
 } from "./pull-request-commands.js";
 import { PullRequestGlyph as PrGlyph } from "./pull-request-glyph.js";
-import { ChangeCounts, PullRequestOverview } from "./pull-request-overview.js";
+import { ChangeCounts } from "./pull-request-overview.js";
+import { usePullRequestCommand } from "./use-pull-request-command.js";
 
 const Files = lazy(() =>
   import("./pull-request-diff.js").then((m) => ({
@@ -24,22 +28,6 @@ type Confirmation =
   | { kind: "merge"; headSha: Detail["headSha"]; base: string }
   | { kind: "close" };
 const TABS = ["Overview", "Diff"] as const;
-
-/** What the human sees while the coordinator carries a command out and confirms it on GitHub. */
-function busyLabel(kind: PullRequestCommand["kind"]): string {
-  switch (kind) {
-    case "merge_pull_request":
-      return "Merging on GitHub…";
-    case "close_pull_request":
-      return "Closing on GitHub…";
-    case "delete_branch":
-      return "Deleting branch on GitHub…";
-    case "refresh_pull_requests":
-      return "Refreshing from GitHub…";
-    default:
-      return "Working…";
-  }
-}
 
 export function PullRequestDetail({
   selection,
@@ -58,29 +46,16 @@ export function PullRequestDetail({
     ),
   );
   const connection = useStore((s) => s.live && s.connection !== "connected");
-  const task = useStore((s) =>
-    s.snapshot.tasks.find((t) => t.id === (row?.taskId ?? summary?.taskId)),
-  );
-  const repos = useStore((s) => s.snapshot.repos);
-  const branchTask = useStore((s) => {
-    const tasks = s.snapshot.tasks.filter(
-      (t) =>
-        t.repoId === selection.repoId &&
-        t.branch === (row?.detail.head ?? summary?.head),
-    );
-    return tasks.length === 1 ? tasks[0] : undefined;
-  });
-  const agent = useStore((s) =>
-    branchTask ? terminalsForTask(s.snapshot, branchTask)[0] : undefined,
-  );
-  const [fullscreen, setFullscreen] = useState(false);
+  const task = useStore((s) => selectedDetailTask(s, selection));
   const [file, setFile] = useState<string | null>(null);
   const [deleteAfterMerge, setDeleteAfterMerge] = useState(true);
   const [tab, setTab] = useState<(typeof TABS)[number]>("Overview");
   const [confirm, setConfirm] = useState<Confirmation | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const submitting = useRef(false);
-  const [outcome, setOutcome] = useState("");
+  const { run: sendPr, busy, submitting, outcome } = usePullRequestCommand();
+  const run = (command: PullRequestCommand) => {
+    setConfirm(null);
+    return sendPr(command);
+  };
   const pr = row?.detail;
   const header = pr ?? summary;
   const showMergeAction = header?.state !== "merged";
@@ -114,295 +89,229 @@ export function PullRequestDetail({
     window.addEventListener(PULL_REQUEST_ACTION_EVENT, activate);
     return () =>
       window.removeEventListener(PULL_REQUEST_ACTION_EVENT, activate);
-  }, [selection.repoId, selection.number]);
+  }, [selection.repoId, selection.number, submitting]);
 
-  async function run(command: PullRequestCommand) {
-    if (submitting.current) return false;
-    submitting.current = true;
-    setBusy(busyLabel(command.kind));
-    setOutcome("");
-    setConfirm(null);
-    try {
-      const ack = await store.command(command);
-      setOutcome(
-        !ack.ok
-          ? `${ack.error.code}: ${ack.error.message}${ack.error.details.length ? `\n${ack.error.details.join("\n")}` : ""}`
-          : command.kind === "refresh_pull_requests"
-            ? "Refreshed from GitHub."
-            : command.kind === "pin_pull_request"
-              ? command.pinned
-                ? "Pull request pinned."
-                : "Pull request unpinned."
-              : command.kind === "link_pull_request"
-                ? "Issue linked."
-                : "Action completed; GitHub state is shown below.",
-      );
-      return ack.ok;
-    } catch (error) {
-      setOutcome(
-        error instanceof Error
-          ? error.message
-          : "Command failed; refresh to check GitHub state.",
-      );
-      return false;
-    } finally {
-      submitting.current = false;
-      setBusy(null);
-    }
-  }
+  if (task)
+    return <IssueDetail key={task.id} task={task} selection={selection} />;
 
   return (
-    <div
-      className="detail pr-detail"
-      data-fullscreen={fullscreen}
-      data-testid="pull-request-detail"
-      ref={actionBar}
-    >
-      <header className="pr-page-head">
-        <div className="pr-breadcrumb">
-          {task ? (
-            <button type="button" onClick={() => store.open(task.id)}>
-              {issueKeyFor(task, repos)}
-            </button>
-          ) : (
-            <span className="faint">No issue</span>
-          )}
+    <DetailLayout
+      testId="pull-request-detail"
+      actionRef={actionBar}
+      onClose={() => store.openPullRequest(null)}
+      tab={tab}
+      breadcrumb={
+        <>
+          <span className="faint">No issue</span>
           <span className="faint">›</span>
           {header ? <PrGlyph state={header.state} /> : null}
           <span className="pr-header-title" title={header?.title}>
             {header?.title ?? `Pull request #${selection.number}`}
           </span>
-        </div>
-        {pr ? <ChangeCounts {...pr} /> : null}
-        <button
-          type="button"
-          className="pr-icon-button"
-          aria-label={row?.pinned ? "Unpin pull request" : "Pin pull request"}
-          aria-pressed={row?.pinned ?? false}
-          disabled={!!busy || connection || !pr}
-          onClick={() =>
-            void run({
-              kind: "pin_pull_request",
-              ...selection,
-              pinned: !row?.pinned,
-            })
-          }
-        >
-          {row?.pinned ? "★" : "☆"}
-        </button>
-        <details className="pr-menu">
-          <summary aria-label="More pull request actions">•••</summary>
-          <div className="pr-menu-items">
-            <button
-              type="button"
-              data-pr-action="delete"
-              aria-keyshortcuts="d"
-              disabled={!!busy || connection || !!deleteReason}
-              title={deleteReason ?? undefined}
-              onClick={() => void run({ kind: "delete_branch", ...selection })}
-            >
-              Delete branch
-            </button>
-            <button
-              type="button"
-              disabled={!!busy || connection || pr?.state !== "open"}
-              onClick={() => setConfirm({ kind: "close" })}
-            >
-              Close
-            </button>
-            <button
-              type="button"
-              data-pr-action="refresh"
-              aria-keyshortcuts="r"
-              disabled={!!busy || connection}
-              onClick={() =>
-                void run({
-                  kind: "refresh_pull_requests",
-                  repoId: selection.repoId,
-                  state: pr?.state ?? "open",
-                })
-              }
-            >
-              Refresh
-            </button>
-            <button type="button" onClick={() => store.openPullRequest(null)}>
-              Close detail
-            </button>
-          </div>
-        </details>
-        {header ? (
-          <a
-            className="pr-github-chip mono"
-            data-pr-action="open"
-            aria-keyshortcuts="o"
-            aria-label="Open on GitHub"
-            href={header.url}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <PrGlyph state={header.state} />
-            loom#{selection.number}
-          </a>
-        ) : null}
-        <button
-          type="button"
-          className="pr-icon-button"
-          aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-          aria-pressed={fullscreen}
-          onClick={() => setFullscreen(!fullscreen)}
-        >
-          {fullscreen ? "↙" : "⛶"}
-        </button>
-      </header>
-      <div className="pr-toolbar">
-        <div
-          className="pr-segments"
-          role="tablist"
-          aria-label="Pull request detail"
-        >
-          {TABS.map((label) => (
-            <button
-              key={label}
-              type="button"
-              role="tab"
-              id={`pr-tab-${label}`}
-              aria-controls="pr-panel"
-              aria-selected={tab === label}
-              onClick={() => setTab(label)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <span className="spacer" />
-        {showMergeAction ? (
-          <div className="pr-merge-split">
-            <button
-              type="button"
-              data-pr-action="merge"
-              aria-keyshortcuts="m Meta+Enter"
-              disabled={!!busy || !!reason}
-              title={reason ?? undefined}
-              onClick={() =>
-                pr &&
-                setConfirm({
-                  kind: "merge",
-                  headSha: pr.headSha,
-                  base: pr.base,
-                })
-              }
-            >
-              Squash &amp; merge
-            </button>
-            <details className="pr-menu">
-              <summary aria-label="Merge options">⌄</summary>
-              <div className="pr-menu-items">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={deleteAfterMerge}
-                    onChange={(event) =>
-                      setDeleteAfterMerge(event.target.checked)
-                    }
-                  />
-                  Delete branch after merge
-                </label>
-              </div>
-            </details>
-          </div>
-        ) : null}
-        <button
-          type="button"
-          className="pr-run-agent"
-          aria-label="Open branch agent"
-          title={agent ? "Open branch agent" : "No Loom agent on this branch"}
-          disabled={!agent || !branchTask}
-          onClick={() => {
-            if (branchTask && agent) {
-              store.open(branchTask.id);
-              store.setRun(agent.id);
-              store.setTab("terminal");
+        </>
+      }
+      actions={
+        <>
+          {pr ? <ChangeCounts {...pr} /> : null}
+          <button
+            type="button"
+            className="pr-icon-button"
+            aria-label={row?.pinned ? "Unpin pull request" : "Pin pull request"}
+            aria-pressed={row?.pinned ?? false}
+            disabled={!!busy || connection || !pr}
+            onClick={() =>
+              void run({
+                kind: "pin_pull_request",
+                ...selection,
+                pinned: !row?.pinned,
+              })
             }
-          }}
-        >
-          ⚑
-        </button>
-      </div>
-      <div
-        className="tab-body pr-page-body"
-        role="tabpanel"
-        id="pr-panel"
-        aria-labelledby={`pr-tab-${tab}`}
-        data-tab-body={tab}
-      >
-        {displayedReason || outcome || busy ? (
-          <div className="pr-feedback">
-            <span className="faint">{displayedReason}</span>
-            <div role="status" className="pr-outcome">
-              {busy ?? outcome}
+          >
+            {row?.pinned ? "★" : "☆"}
+          </button>
+          <details className="pr-menu">
+            <summary aria-label="More pull request actions">•••</summary>
+            <div className="pr-menu-items">
+              <button
+                type="button"
+                data-pr-action="delete"
+                aria-keyshortcuts="d"
+                disabled={!!busy || connection || !!deleteReason}
+                title={deleteReason ?? undefined}
+                onClick={() =>
+                  void run({ kind: "delete_branch", ...selection })
+                }
+              >
+                Delete branch
+              </button>
+              <button
+                type="button"
+                disabled={!!busy || connection || pr?.state !== "open"}
+                onClick={() => setConfirm({ kind: "close" })}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                data-pr-action="refresh"
+                aria-keyshortcuts="r"
+                disabled={!!busy || connection}
+                onClick={() =>
+                  void run({
+                    kind: "refresh_pull_requests",
+                    repoId: selection.repoId,
+                    state: pr?.state ?? "open",
+                  })
+                }
+              >
+                Refresh
+              </button>
             </div>
-          </div>
-        ) : null}
-        {pr?.branchExists === false ? (
-          <div className="pr-observed faint">Branch deleted.</div>
-        ) : null}
-        {pr && row ? (
-          tab === "Overview" ? (
-            <PullRequestOverview
-              row={row}
-              disabled={!!busy || connection}
-              run={run}
-              onFile={(path) => {
-                setFile(path);
-                setTab("Diff");
-              }}
-            />
-          ) : (
-            <Suspense
-              fallback={<div className="pad faint">Loading files…</div>}
+          </details>
+          {header ? (
+            <a
+              className="pr-github-chip mono"
+              data-pr-action="open"
+              aria-keyshortcuts="o"
+              aria-label="Open on GitHub"
+              href={header.url}
+              target="_blank"
+              rel="noreferrer"
             >
-              <Files row={row} selectedFile={file} />
-            </Suspense>
-          )
-        ) : (
-          <div className="pad faint">
-            Waiting for detail. Use Refresh to retry if it does not arrive.
+              <PrGlyph state={header.state} />
+              loom#{selection.number}
+            </a>
+          ) : null}
+        </>
+      }
+      toolbar={
+        <>
+          <div
+            className="pr-segments"
+            role="tablist"
+            aria-label="Pull request detail"
+          >
+            {TABS.map((label) => (
+              <button
+                key={label}
+                type="button"
+                role="tab"
+                id={`pr-tab-${label}`}
+                aria-controls="detail-panel"
+                aria-selected={tab === label}
+                onClick={() => setTab(label)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
-      {confirm ? (
-        <ConfirmAction
-          initialDeleteBranch={deleteAfterMerge}
-          confirmation={confirm}
-          title={header?.title ?? `#${selection.number}`}
-          disabled={
-            !!busy ||
-            (confirm.kind === "merge"
-              ? !!reason ||
-                confirm.headSha !== pr?.headSha ||
-                confirm.base !== pr?.base
-              : connection || pr?.state !== "open")
-          }
-          changed={
-            confirm.kind === "merge" &&
-            (confirm.headSha !== pr?.headSha || confirm.base !== pr?.base)
-          }
-          onCancel={() => setConfirm(null)}
-          onConfirm={(deleteBranch) =>
-            void run(
-              confirm.kind === "merge"
-                ? {
-                    kind: "merge_pull_request",
-                    ...selection,
-                    matchHeadSha: confirm.headSha,
-                    deleteBranch,
-                  }
-                : { kind: "close_pull_request", ...selection },
-            )
-          }
-        />
+          <span className="spacer" />
+          {showMergeAction ? (
+            <div className="pr-merge-split">
+              <button
+                type="button"
+                data-pr-action="merge"
+                aria-keyshortcuts="m Meta+Enter"
+                disabled={!!busy || !!reason}
+                title={reason ?? undefined}
+                onClick={() =>
+                  pr &&
+                  setConfirm({
+                    kind: "merge",
+                    headSha: pr.headSha,
+                    base: pr.base,
+                  })
+                }
+              >
+                Squash &amp; merge
+              </button>
+              <details className="pr-menu">
+                <summary aria-label="Merge options">⌄</summary>
+                <div className="pr-menu-items">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={deleteAfterMerge}
+                      onChange={(event) =>
+                        setDeleteAfterMerge(event.target.checked)
+                      }
+                    />
+                    Delete branch after merge
+                  </label>
+                </div>
+              </details>
+            </div>
+          ) : null}
+        </>
+      }
+      dialogs={
+        confirm ? (
+          <ConfirmAction
+            initialDeleteBranch={deleteAfterMerge}
+            confirmation={confirm}
+            title={header?.title ?? `#${selection.number}`}
+            disabled={
+              !!busy ||
+              (confirm.kind === "merge"
+                ? !!reason ||
+                  confirm.headSha !== pr?.headSha ||
+                  confirm.base !== pr?.base
+                : connection || pr?.state !== "open")
+            }
+            changed={
+              confirm.kind === "merge" &&
+              (confirm.headSha !== pr?.headSha || confirm.base !== pr?.base)
+            }
+            onCancel={() => setConfirm(null)}
+            onConfirm={(deleteBranch) =>
+              void run(
+                confirm.kind === "merge"
+                  ? {
+                      kind: "merge_pull_request",
+                      ...selection,
+                      matchHeadSha: confirm.headSha,
+                      deleteBranch,
+                    }
+                  : { kind: "close_pull_request", ...selection },
+              )
+            }
+          />
+        ) : null
+      }
+    >
+      {displayedReason || outcome || busy ? (
+        <div className="pr-feedback">
+          <span className="faint">{displayedReason}</span>
+          <div role="status" className="pr-outcome">
+            {busy ?? outcome}
+          </div>
+        </div>
       ) : null}
-    </div>
+      {pr?.branchExists === false ? (
+        <div className="pr-observed faint">Branch deleted.</div>
+      ) : null}
+      {pr && row ? (
+        tab === "Overview" ? (
+          <Overview
+            row={row}
+            disabled={!!busy || connection}
+            run={run}
+            onFile={(path) => {
+              setFile(path);
+              setTab("Diff");
+            }}
+          />
+        ) : (
+          <Suspense fallback={<div className="pad faint">Loading files…</div>}>
+            <Files row={row} selectedFile={file} />
+          </Suspense>
+        )
+      ) : (
+        <div className="pad faint">
+          Waiting for detail. Use Refresh to retry if it does not arrive.
+        </div>
+      )}
+    </DetailLayout>
   );
 }
 

@@ -112,13 +112,17 @@ test("task detail automatically resolves its own terminal, displays the actual b
 test("two panel clients are independent; label/theme updates and parent paints preserve xterms; late spawn detaches", async () => {
   created.mockClear();
   const pending: (() => void)[] = [];
+  const attached = new Set<string>();
   const spawn = vi.fn(
-    () =>
+    ({ id }: { id: string }) =>
       new Promise<{ pid: number; command: string }>((resolve) =>
-        pending.push(() => resolve({ pid: 1, command: "attach" })),
+        pending.push(() => {
+          attached.add(id);
+          resolve({ pid: 1, command: "attach" });
+        }),
       ),
   );
-  const kill = vi.fn(async (_id: string) => true);
+  const kill = vi.fn(async (id: string) => attached.delete(id));
   window.loomTerminal = {
     spawn,
     kill,
@@ -178,7 +182,7 @@ test("two panel clients are independent; label/theme updates and parent paints p
     await act(async () => {
       for (const resolve of pending) resolve();
     });
-    expect(kill.mock.calls.filter((c) => c[0] === ids[1])).toHaveLength(2);
+    expect(attached).toEqual(new Set([ids[0]]));
   } finally {
     await act(async () => root.unmount());
     element.remove();

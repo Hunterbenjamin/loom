@@ -1,0 +1,110 @@
+.terminal-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terminal-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terminal-panes,
+.terminal-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.terminal-panes {
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-pane {
+  display: flex;
+}
+
+.terminal-pane[hidden] {
+  display: none;
+}
+
+.terminal-pane > .terminal-wrap {
+  height: auto;
+}
+
+.terminal-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.terminal-tabs button {
+  flex: none;
+  padding: 4px 8px;
+  border-bottom: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.terminal-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.terminal-host {
+  min-width: 0;
+  min-height: 0;
+  padding: 6px 8px;
+  overflow: hidden;
+  background: #0b0c0e;
+}
+.terminal-crop {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  contain: strict;
+}
+
+.terminal-viewport {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  contain: strict;
+}
+
+.terminal-viewport > .xterm {
+  height: 100%;
+  overflow: hidden;
+}
+
+.terminal-command {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,0 +1,184 @@
+.detail.pr-detail {
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+}
+.detail.pr-detail > .tab-body {
+  grid-row: 5;
+}
+.issue-decision-panel {
+  display: grid;
+  gap: 8px;
+  padding: 8px 20px;
+  border-block: 1px solid var(--line);
+  background: var(--bg-raised);
+  max-height: 38vh;
+  overflow: auto;
+}
+.issue-decision-panel.compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding-block: 3px;
+}
+.issue-collapse {
+  justify-self: end;
+  color: var(--text-dim);
+}
+.issue-decision {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.4fr);
+  gap: 8px 18px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.issue-decision[data-highlighted="true"] {
+  border-color: var(--accent);
+}
+.issue-decision-copy {
+  display: grid;
+  gap: 3px;
+}
+.issue-decision textarea,
+.issue-decision select {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px 8px;
+}
+.issue-decision-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.issue-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.detail .issue-action-group button {
+  padding: 5px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+}
+.disabled-reason {
+  max-width: 220px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.overview-status {
+  flex-wrap: wrap;
+}
+.overview-status-pr {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pr-rail .pr-checks .mono {
+  overflow-wrap: anywhere;
+}
+.issue-toolbar-action {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.detail .issue-toolbar-action > button {
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: #6264cd;
+  color: white;
+  white-space: nowrap;
+}
+.detail .issue-toolbar-action > button.secondary {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text);
+}
+.detail .issue-toolbar-action > button.secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.detail .issue-toolbar-action > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.issue-toolbar-action .pr-outcome {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .issue-decision {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .issue-decision-actions {
+    grid-column: 1;
+  }
+  .issue-toolbar-action .disabled-reason {
+    max-width: none;
+  }
+  .issue-toolbar-action {
+    width: 100%;
+  }
+}
+
+.overview-findings {
+  margin-top: 34px;
+}
+.overview-findings > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+  cursor: pointer;
+}
+.overview-findings > summary > h3 {
+  margin: 0;
+}
+.issue-finding > summary {
+  cursor: pointer;
+}
+/* A flex summary drops the native disclosure marker, so draw one. */
+.overview-findings > summary::before,
+.issue-finding > summary::before {
+  content: "▸";
+  color: var(--text-faint);
+}
+.overview-findings[open] > summary::before,
+.issue-finding[open] > summary::before {
+  content: "▾";
+}
+.issue-finding[open] > summary {
+  margin-bottom: 8px;
+}
+.issue-finding.settled {
+  opacity: 0.6;
+}
+.issue-finding .pr-markdown {
+  white-space: normal;
+}
+.issue-finding .pr-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.backlog-editor form {
+  display: grid;
+  gap: 16px;
+}
+.backlog-editor label:not(.issue-toggle) {
+  display: grid;
+  gap: 6px;
+}
+.backlog-editor input:not([type="checkbox"]),
+.backlog-editor textarea,
+.backlog-editor select {
+  width: 100%;
+}
