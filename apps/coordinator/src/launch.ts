@@ -58,7 +58,7 @@ export async function writeCodexHomeConfig(
 ): Promise<void> {
   const home = join(dataDirectory, "codex", action.taskId, "codex-home");
   await mkdir(home, { recursive: true, mode: 0o700 });
-  const access = action.access ?? "full";
+  const access = action.access;
   const sandbox = READ_ONLY.includes(action.role)
     ? "read-only"
     : access === "approval-gated"
@@ -162,7 +162,7 @@ export async function startRun(
   state: TaskState,
 ): Promise<ActionOutputs["start_run"]> {
   const { adapters, config, recipes } = deps;
-  const access = action.access ?? "full";
+  const access = action.access;
   const previous = recipes.get(action.runId);
   const token =
     previous && previous.sessionEpoch === action.sessionEpoch

@@ -31,37 +31,33 @@ async function serve() {
   return { h, env };
 }
 
-test.each(["issue", "task"])(
-  "pnpm loom task create stores a long quoted description without alteration",
-  async (group) => {
-    const { h, env } = await serve();
-    const description = `${"  Preserve `printf fixture`, \"double quotes\", 'single quotes' (parentheses) and --flags. ".padEnd(
-      1455,
-      "x",
-    )}  `;
-    expect(description).toHaveLength(1457);
-    // Pass an argv array: shell quoting is already resolved before the CLI receives it.
-    const { stdout, stderr } = await promisify(execFile)(
-      "pnpm",
-      ["loom", group, "create", h.repo.id, "Long description", description],
-      { env: { ...process.env, ...env }, timeout: 20_000 },
-    );
-    expect(stderr).toBe("");
-    const created = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
-      taskId: TaskId;
-    };
-    expect(h.store.loadTaskState(created.taskId).task.description).toBe(
-      description,
-    );
-  },
-  30_000,
-);
+test("pnpm loom issue create stores a long quoted description without alteration", async () => {
+  const { h, env } = await serve();
+  const description = `${"  Preserve `printf fixture`, \"double quotes\", 'single quotes' (parentheses) and --flags. ".padEnd(
+    1455,
+    "x",
+  )}  `;
+  expect(description).toHaveLength(1457);
+  // Pass an argv array: shell quoting is already resolved before the CLI receives it.
+  const { stdout, stderr } = await promisify(execFile)(
+    "pnpm",
+    ["loom", "issue", "create", h.repo.id, "Long description", description],
+    { env: { ...process.env, ...env }, timeout: 20_000 },
+  );
+  expect(stderr).toBe("");
+  const created = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
+    taskId: TaskId;
+  };
+  expect(h.store.loadTaskState(created.taskId).task.description).toBe(
+    description,
+  );
+}, 30_000);
 
 test("task create honors -- through the CLI entry point", async () => {
   const { h } = await serve();
   vi.spyOn(process.stdout, "write").mockImplementation(() => true);
   await main([
-    "task",
+    "issue",
     "create",
     h.repo.id,
     "--",
@@ -97,7 +93,7 @@ test("CLI command and attach rejections print every detail", async () => {
   const stderr = vi
     .spyOn(process.stderr, "write")
     .mockImplementation(() => true);
-  await main(["task", "create", h.repo.id, "Rejected"]);
+  await main(["issue", "create", h.repo.id, "Rejected"]);
   expect(stderr).toHaveBeenLastCalledWith(
     "guard_failed: Cannot proceed\n  first guard\n  second guard\n",
   );
@@ -115,7 +111,7 @@ test("CLI prints frame validator paths for rejected input and creates no task", 
     .spyOn(process.stderr, "write")
     .mockImplementation(() => true);
   await main([
-    "task",
+    "issue",
     "create",
     h.repo.id,
     "x".repeat(201),

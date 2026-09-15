@@ -335,6 +335,7 @@ export function createTmuxPaneHost(input: TmuxPaneHostOptions): PaneHost {
   }
 
   // Keep stored workspace keys usable for sessions renamed before titles existed.
+  // Only tmux owns the current name; a SQLite migration cannot reconstruct this mapping.
   async function workspaceSession(workspaceId: string): Promise<string> {
     const key = sessionName.parse(workspaceId);
     const matches = (await rows()).filter((row) => row.workspaceId === key);

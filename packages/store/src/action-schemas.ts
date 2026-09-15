@@ -40,7 +40,7 @@ const fields = {
     worktreePath: text,
     model: text,
     reasoningEffort: text.min(1).optional(),
-    access: z.enum(["full", "approval-gated"]).optional(),
+    access: z.enum(["full", "approval-gated"]),
     attempt: positive,
     sessionEpoch: count,
     sessionId: id.nullable(),

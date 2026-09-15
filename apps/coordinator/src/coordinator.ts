@@ -49,7 +49,6 @@ import { type RecoveryReport, recover } from "./recovery.js";
 import { repoHandlers } from "./repos.js";
 import { ProtocolServer } from "./server.js";
 import { CoordinatorSettings } from "./settings.js";
-import { migrateSettings } from "./settings-migration.js";
 import { runShell, type Shell } from "./shell.js";
 import { type CreateTaskInput, taskHandlers } from "./task-commands.js";
 import { TaskInputs } from "./task-inputs.js";
@@ -283,7 +282,6 @@ export class Coordinator {
   }
 
   async start(): Promise<RecoveryReport> {
-    migrateSettings(this.store, this.baselineConfig, this.now());
     this.applyStoredRuntime(true);
     await this.recipes.load();
     for (const repo of this.store.repos()) await this.leadFor(repo.id).load();

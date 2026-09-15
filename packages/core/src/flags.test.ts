@@ -30,6 +30,8 @@ describe("flags derive and clear from authoritative evidence", () => {
         purpose: "initial",
         text: "Review this change",
         textHash: "sha256:review",
+        when: "now",
+        pendingSince: now,
         status: "failed",
         attempts: 0,
         transportRef: null,
@@ -378,9 +380,11 @@ describe("idle runs awaiting submission", () => {
     expect(r.next.task.attention.reasons).not.toContain(reason);
   });
 
-  it("supports legacy idle runs with only a launch timestamp", () => {
+  it("uses the migrated idle interval independently of activity timestamps", () => {
     const f = idleFixture();
     f.run.lastActivityAt = null;
+    f.run.launchedAt = null;
+    f.run.idleSince = now;
     f.observations.now = at(f.state.config.stallAfterMs);
     expect(derive(f).attention.reasons).toContain(reason);
   });
@@ -460,6 +464,8 @@ describe("idle runs awaiting submission", () => {
               purpose: "human",
               text: "Continue",
               textHash: "hash",
+              when: "now",
+              pendingSince: now,
               status,
               attempts: 1,
               transportRef: null,

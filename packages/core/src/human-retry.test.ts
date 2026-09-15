@@ -297,6 +297,7 @@ test.each(["in_review", "ci"] as const)(
         purpose: "initial",
         text: "Review this change",
         textHash: "sha256:review",
+        when: "now",
         status: "pending",
         pendingSince: "2026-09-11T23:00:00.000Z" as typeof now,
         attempts: 0,
@@ -385,4 +386,46 @@ test("a Main message pinned to an earlier run attempt cannot reach its replaceme
   expect(result.next.messages.some((m) => m.text === "Stale Main note")).toBe(
     false,
   );
+});
+
+test("retrying a failed run retires attempted delivery while preserving queued follow-ups", () => {
+  const f = setup();
+  f.run.status = "failed";
+  // A snapshot from before launch cannot change this failed attempt before the retry input.
+  f.observation.provider.at = "2026-09-11T00:00:00.000Z" as typeof now;
+  f.observations.capacity.caps.total = 0;
+  for (const [status, attempts] of [
+    ["sent", 1],
+    ["pending", 1],
+    ["pending", 0],
+  ] as const)
+    f.state.messages.push({
+      id: `${status}-${attempts}` as never,
+      runId: f.run.id,
+      purpose: "human",
+      text: "Continue",
+      textHash: "hash",
+      when: "now",
+      pendingSince: now,
+      status,
+      attempts,
+      transportRef: null,
+      sentAt: null,
+      delivered: null,
+      deliveryAttention: true,
+    });
+  const retried = reconcile(f.state, f.observations);
+  expect(retried.inputs[0]?.accepted).toBe(true);
+  expect(retried.next.runs[0]?.endedAt).toBe(now);
+  expect(
+    retried.next.messages.map(({ status, attempts, deliveryAttention }) => ({
+      status,
+      attempts,
+      deliveryAttention,
+    })),
+  ).toEqual([
+    { status: "failed", attempts: 1, deliveryAttention: false },
+    { status: "failed", attempts: 1, deliveryAttention: false },
+    { status: "pending", attempts: 0, deliveryAttention: true },
+  ]);
 });

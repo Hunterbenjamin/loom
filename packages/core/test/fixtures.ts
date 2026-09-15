@@ -78,6 +78,8 @@ export function run(
     round,
     attempts: 1,
     model: "fake",
+    access: "full",
+    idleSince: now,
     sessionId: `session:${id}` as ProviderSessionId,
     sessionEpoch: 0,
     codexGeneration: 1,

@@ -327,7 +327,8 @@ export function configFromEnvironment(
   return { ...parsed, settingsEnvironment, providerEnvironment };
 }
 
-/** Build the compatibility defaults represented by a parsed startup configuration. */
+/** Build defaults from the startup configuration, including paths and injected runtime values.
+ * These are process inputs, not missing database fields a migration can fill. */
 export function settingsDefaultsForConfig(
   config: CoordinatorConfig,
 ): SettingsValues {

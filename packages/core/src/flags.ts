@@ -187,8 +187,7 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
         ) &&
         !input.questions.some((q) => q.runId === run.id && q.answer === null)
       ) {
-        // Legacy idle runs have no interval yet; use their last native activity.
-        const since = run.idleSince ?? run.lastActivityAt ?? run.launchedAt;
+        const since = run.idleSince;
         // A fresh implementer fix run already has a bounded handoff and owes a quick turnaround.
         const window =
           run.role === "implementer" && run.round > 0
@@ -223,12 +222,8 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
   const reasonSince: Partial<Record<AttentionReason, IsoTime>> = {};
   let since: IsoTime | null = null;
   for (const reason of ordered) {
-    // A reason that already held keeps its time; `previous.since` covers rows written before
-    // `reasonSince` existed, so an additive store migration needs no backfill.
-    const held =
-      input.previous.reasonSince[reason] ??
-      (input.previous.reasons.includes(reason) ? input.previous.since : null) ??
-      input.now;
+    // A reason that already held keeps its time.
+    const held = input.previous.reasonSince[reason] ?? input.now;
     reasonSince[reason] = held;
     if (!since || held < since) since = held;
   }
