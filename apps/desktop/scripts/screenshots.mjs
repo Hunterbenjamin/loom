@@ -1,4 +1,4 @@
-// Captures the four screens in both themes into docs/screenshots, for the PR and for
+// Captures the three screens in both themes into docs/screenshots, for the PR and for
 // eyeballing a change. Same launch method as the performance harness.
 
 import { mkdirSync } from "node:fs";
@@ -51,19 +51,6 @@ const screens = {
       window.loom.store.setTab("activity");
     });
   },
-  review: async () => {
-    await page.evaluate(async () => {
-      const counts = new Map();
-      for (const finding of window.loom.store.getState().snapshot.findings) {
-        counts.set(finding.taskId, (counts.get(finding.taskId) ?? 0) + 1);
-      }
-      let worst = null;
-      for (const [taskId, count] of counts)
-        if (!worst || count > worst[1]) worst = [taskId, count];
-      window.loom.store.open(worst[0]);
-      window.loom.store.setTab("review");
-    });
-  },
 };
 
 for (const theme of ["dark", "light"]) {
@@ -71,10 +58,7 @@ for (const theme of ["dark", "light"]) {
   for (const [name, setup] of Object.entries(screens)) {
     await setup();
     await page.evaluate(frame);
-    // Give the diff renderer and its workers a moment to highlight.
-    await new Promise((resolve) =>
-      setTimeout(resolve, name === "review" ? 2500 : 400),
-    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
     const file = join(out, `${name}-${theme}.png`);
     // `scale: "css"` captures at CSS pixel size, so a Retina run does not commit 4x the bytes.
     await page.screenshot({ path: file, scale: "css" });

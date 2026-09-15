@@ -74,7 +74,7 @@ test("task detail automatically resolves its own terminal, displays the actual b
     onExit: vi.fn(),
     off: vi.fn(),
   };
-  window.loom = { store, ready: true, diffPaintedAt: null, term: null };
+  window.loom = { store, ready: true, term: null };
   const element = document.createElement("div");
   document.body.append(element);
   const root = createRoot(element);
@@ -131,7 +131,6 @@ test("two panel clients are independent; label/theme updates and parent paints p
   window.loom = {
     store: createStore(),
     ready: true,
-    diffPaintedAt: null,
     term: null,
   };
   const element = document.createElement("div");
@@ -199,7 +198,7 @@ test("pane crops attach at the full native window size and layout patches preser
     off: vi.fn(),
   };
   const store = createStore(undefined, true, "test");
-  window.loom = { store, ready: true, diffPaintedAt: null, term: null };
+  window.loom = { store, ready: true, term: null };
   const element = document.createElement("div");
   document.body.append(element);
   const root = createRoot(element);

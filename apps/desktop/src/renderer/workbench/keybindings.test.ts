@@ -104,7 +104,7 @@ async function harness() {
     onExit: vi.fn(),
     off: vi.fn(),
   };
-  window.loom = { store, ready: true, diffPaintedAt: null, term: null };
+  window.loom = { store, ready: true, term: null };
   const element = document.createElement("div");
   document.body.append(element);
   const root = createRoot(element);
