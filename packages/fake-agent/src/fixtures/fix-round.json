@@ -1,6 +1,6 @@
 [
   {
-    "name": "implementer with one fix round",
+    "name": "initial implementer",
     "agent": {
       "provider": "codex",
       "role": "implementer",
@@ -34,10 +34,20 @@
       },
       {
         "status": "idle"
-      },
+      }
+    ]
+  },
+  {
+    "name": "fresh implementer fix round",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "headless"
+    },
+    "steps": [
       {
         "expect": "message",
-        "match": "findings"
+        "match": "fresh implementer fix-round session"
       },
       {
         "git": "commit",
