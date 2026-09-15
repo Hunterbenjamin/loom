@@ -135,11 +135,14 @@ export function terminalAgents(
 }
 
 /**
- * Main's indicator, wherever Main appears (the Workbench sidebar and the bottom bar): the working
- * spinner, a finished dot while its last reply is unread, a waiting dot when it needs an answer,
- * and idle otherwise.
+ * The indicator for a conversation's status (Main or an agent chat), wherever it appears: the
+ * Workbench sidebar, the bottom bar and the chat header. The working spinner, a finished dot while
+ * the last reply is unread, a waiting dot when it needs an answer, and idle otherwise.
  */
-export function mainIndicator(status: string, unread = false): Indicator {
+export function conversationIndicator(
+  status: string,
+  unread = false,
+): Indicator {
   const tone =
     unread && status === "idle"
       ? "finished"

@@ -4,7 +4,7 @@ import { ChatWindow } from "../chat/chat-window.js";
 import { readyToMergeCount } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { useWindowMode } from "../window-mode.js";
-import { mainIndicator } from "../workbench/agents.js";
+import { conversationIndicator } from "../workbench/agents.js";
 import { ChimeMuteButton } from "../workbench/chime.js";
 import { attentionPanes } from "../workbench/selectors.js";
 import { Status } from "../workbench/status.js";
@@ -101,11 +101,11 @@ export function LeadBar({
           ref={toggle}
           type="button"
           className="lead-toggle"
-          title={statusReason ?? mainIndicator(status, unread).label}
+          title={statusReason ?? conversationIndicator(status, unread).label}
           aria-expanded={active && mainOpen}
           onClick={() => store.toggleMainChat()}
         >
-          <Status state={mainIndicator(status, unread)} /> Main
+          <Status state={conversationIndicator(status, unread)} /> Main
           <kbd>⌘J</kbd>
         </button>
       </footer>

@@ -56,23 +56,6 @@
   text-align: left;
   font-size: 12px;
 }
-.chat-status {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--muted);
-}
-.chat-status.working {
-  background: #f2b84b;
-  box-shadow: 0 0 0 3px rgb(242 184 75 / 15%);
-}
-.chat-status.idle {
-  background: #55b685;
-}
-.chat-status.waiting {
-  background: #ef7b67;
-}
 .chat-conversation {
   position: relative;
   flex: 1;

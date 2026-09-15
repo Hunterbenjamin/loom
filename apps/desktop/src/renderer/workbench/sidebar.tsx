@@ -2,7 +2,7 @@ import type { PaneIdentity, PaneView } from "@loom/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { paneKey } from "../store/pane-transitions.js";
 import { useStore, useStoreApi } from "../store/react.js";
-import { mainIndicator } from "./agents.js";
+import { conversationIndicator } from "./agents.js";
 import { devControlActions, useDevControlAvailable } from "./dev-controls.js";
 import { RenameRow } from "./rename-row.js";
 import { RowMenu } from "./row-menu.js";
@@ -329,7 +329,9 @@ export function Sidebar({
               onClick={() => openPinned("main")}
               title={lead.reason ?? "Open Main terminal"}
             >
-              <Status state={mainIndicator(lead.status, mainFinished)} />
+              <Status
+                state={conversationIndicator(lead.status, mainFinished)}
+              />
               <span className="wb-row-copy">
                 <strong>Main</strong>
                 <small>{lead.status}</small>
