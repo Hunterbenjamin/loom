@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { BriefResearch } from "@loom/adapter-claude";
 import { type BriefRun, briefContent } from "@loom/protocol";
 import type { Store } from "@loom/store";
+import type { Handlers } from "./commands.js";
 
 export function briefLocalDay(now: string): { date: string; hour: number } {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -168,4 +169,41 @@ export class DailyBriefs {
     this.active?.controller.abort();
     await this.active?.promise;
   }
+}
+
+type BriefCommandKind =
+  | "get_briefs"
+  | "get_brief"
+  | "run_brief"
+  | "set_brief_schedule";
+
+export function briefHandlers(deps: {
+  store: Store;
+  briefs: DailyBriefs;
+}): Handlers<BriefCommandKind> {
+  return {
+    get_briefs: () => ({
+      ok: true,
+      result: { kind: "briefs", state: deps.store.briefs.state() },
+    }),
+    get_brief: (command) => {
+      const run = deps.store.briefs.get(command.id);
+      if (!run) throw new Error("Unknown daily brief");
+      return { ok: true, result: { kind: "brief", run } };
+    },
+    run_brief: (command) => ({
+      ok: true,
+      result: {
+        kind: "brief",
+        run: deps.briefs.run("manual", command.id),
+      },
+    }),
+    set_brief_schedule: (command) => {
+      deps.store.briefs.setEnabled(command.enabled);
+      return {
+        ok: true,
+        result: { kind: "briefs", state: deps.store.briefs.state() },
+      };
+    },
+  };
 }

@@ -51,6 +51,13 @@ export interface Row {
   openBlocking: number;
   ageMinutes: number;
   stageMinutes: number;
+  /**
+   * Minutes from first entering In progress to ready to merge, or so far while the work is
+   * still going; null when the work hasn't started or stopped short of ready.
+   */
+  workMinutes: number | null;
+  /** Whether `workMinutes` is still counting. */
+  working: boolean;
   ci: TaskInbox["ci"] | null;
 }
 
@@ -139,6 +146,7 @@ const computeRows = memo1(
           (now - Date.parse(task.stageEnteredAt)) / 60_000,
         ),
         ci: inboxByTask.get(task.id)?.ci ?? null,
+        ...workMinutes(inboxByTask.get(task.id)?.workTime, task.stage, now),
       });
     }
     return rows;
@@ -176,6 +184,27 @@ export function rowsFor(
   return rows;
 }
 
+/** Stages in which an issue's work time keeps counting. */
+const WORKING: Stage[] = ["in_progress", "ci", "in_review"];
+
+function workMinutes(
+  time: TaskInbox["workTime"] | undefined,
+  stage: Stage,
+  now: number,
+): Pick<Row, "workMinutes" | "working"> {
+  const minutes = (from: string, to: number) =>
+    Math.max(0, Math.round((to - Date.parse(from)) / 60_000));
+  if (!time?.startedAt) return { workMinutes: null, working: false };
+  if (time.readyAt)
+    return {
+      workMinutes: minutes(time.startedAt, Date.parse(time.readyAt)),
+      working: false,
+    };
+  return WORKING.includes(stage)
+    ? { workMinutes: minutes(time.startedAt, now), working: true }
+    : { workMinutes: null, working: false };
+}
+
 export const sortRows = memo1(
   (rows: Row[], sort: SortKey, descending: boolean): Row[] => {
     const direction = descending ? -1 : 1;
@@ -206,8 +235,13 @@ export const sortRows = memo1(
             (b.task.reviewRound - a.task.reviewRound ||
               a.ageMinutes - b.ageMinutes) * direction
           );
-        case "age":
-          return (b.ageMinutes - a.ageMinutes) * direction;
+        case "time":
+          // Issues without a work time stay at the bottom either way.
+          if (a.workMinutes === null || b.workMinutes === null)
+            return (
+              Number(a.workMinutes === null) - Number(b.workMinutes === null)
+            );
+          return (a.workMinutes - b.workMinutes) * direction;
         default:
           return 0;
       }

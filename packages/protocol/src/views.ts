@@ -281,6 +281,11 @@ export const taskInbox = z.strictObject({
   reasonRuns: z.partialRecord(attentionReason, z.array(run)),
   reviewedHead: sha.nullable(),
   planVersion: count.nullable(),
+  /** Core's `workTime`, from the issue's transitions: first In progress to ready to merge. */
+  workTime: z.strictObject({
+    startedAt: isoTime.nullable(),
+    readyAt: isoTime.nullable(),
+  }),
   ci: z
     .strictObject({
       headSha: sha,

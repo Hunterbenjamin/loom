@@ -11,17 +11,20 @@ import {
   type PullRequestCommand,
   type PullRequestDetailRow,
   type PullRequestRow,
+  pullRequestCommand,
   pullRequestCommitDiff,
   pullRequestDetailRow,
-  type pullRequestDiffRead,
+  pullRequestDiffRead,
   pullRequestFileContents,
   pullRequestKey,
   pullRequestListKey,
-  type pullRequestReviewChange,
+  pullRequestReviewChange,
   pullRequestRow,
   type Subscription,
 } from "@loom/protocol";
 import type { z } from "zod";
+import type { CommandResult } from "./commands.js";
+import { classify } from "./executor.js";
 import { pullRequestOwner } from "./pull-request-owner.js";
 import type { Row } from "./views.js";
 
@@ -561,5 +564,74 @@ export class PullRequestViews {
       ...this.commands.values(),
       ...this.reads.values(),
     ]);
+  }
+}
+
+export async function handlePullRequestCommand(
+  value: unknown,
+  views: PullRequestViews,
+  hasRepo: (repoId: RepoId) => boolean,
+): Promise<CommandResult | null> {
+  const review = pullRequestReviewChange.safeParse(value);
+  const diffRead = pullRequestDiffRead.safeParse(value);
+  if (review.success || diffRead.success) {
+    try {
+      if (review.success) {
+        await views.saveReview(review.data);
+        return { ok: true, result: { kind: "pull_request_review_state" } };
+      }
+      if (diffRead.success)
+        return { ok: true, result: await views.readDiff(diffRead.data) };
+    } catch (error) {
+      return {
+        ok: false,
+        error: {
+          code: "guard_failed",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Could not read review state",
+          details: [],
+        },
+      };
+    }
+  }
+  const command = pullRequestCommand.safeParse(value);
+  if (!command.success) return null;
+  if (!hasRepo(command.data.repoId))
+    return {
+      ok: false,
+      error: {
+        code: "invalid_input",
+        message: "Unknown registered repository",
+        details: [],
+      },
+    };
+  try {
+    await views.command(command.data);
+    return {
+      ok: true,
+      result: {
+        kind: "pull_request_action",
+        command: command.data.kind,
+        repoId: command.data.repoId,
+        number: "number" in command.data ? command.data.number : null,
+      },
+    };
+  } catch (error) {
+    const classified = classify(error);
+    return {
+      ok: false,
+      error: {
+        code:
+          classified.code === "precondition"
+            ? "guard_failed"
+            : classified.code === "retryable"
+              ? "unavailable"
+              : "internal",
+        message: classified.message,
+        details: [],
+      },
+    };
   }
 }

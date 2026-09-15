@@ -1,7 +1,7 @@
 // The protocol server (brief §8). A fake client connects, gets a snapshot, sends a command,
 // receives the ack and the resulting patches, and detects a forced sequence gap.
 
-import type { PaneObservation, TaskId } from "@loom/core";
+import type { PaneObservation, TaskId, WorktreePath } from "@loom/core";
 import { loadScenarios } from "@loom/fake-agent";
 import { PROTOCOL_VERSION } from "@loom/protocol";
 import { afterEach, expect, test, vi } from "vitest";
@@ -511,6 +511,7 @@ test("list clients receive plan version and core-derived inbox metadata without 
     reasonRuns: {},
     reviewedHead: null,
     planVersion: null,
+    workTime: { startedAt: null, readyAt: null },
     ci: null,
   });
   expect(client.state?.collections.run.size).toBe(0);
@@ -536,9 +537,16 @@ test("inbox carries the reviewed SHA and plan version from the completed fake re
   expect(state.task.stage).toBe("awaiting_approval");
   expect(state.review?.lastReviewedHead).toBeTruthy();
   const client = await connect(h, "review-inbox-window");
-  expect(client.state?.collections.inbox.get(created.task.id)).toMatchObject({
+  const inbox = client.state?.collections.inbox.get(created.task.id);
+  expect(inbox).toMatchObject({
     reviewedHead: state.review?.lastReviewedHead,
     planVersion: state.plan?.version,
+  });
+  // Work time runs from In progress to Awaiting approval, from the issue's own transitions.
+  const transitions = h.store.transitions(created.task.id);
+  expect(inbox?.workTime).toEqual({
+    startedAt: transitions.find((t) => t.to === "in_progress")?.at,
+    readyAt: transitions.findLast((t) => t.to === "awaiting_approval")?.at,
   });
 }, 30_000);
 
@@ -874,6 +882,7 @@ test("set_title maps to the pane host and publishes authoritative titles to ever
 
 test("Workbench creation passes selected space and split identity through scratch and publishes native metadata", async () => {
   const h = await served();
+  const selectedStartCwd = "/selected/space" as WorktreePath;
   const ref = {
     hostGeneration: `loom-${h.config.instance}#1`,
     sessionName: "Selected space",
@@ -890,8 +899,9 @@ test("Workbench creation passes selected space and split identity through scratc
     exitCode: null,
     pid: 12345,
     command: "sh",
-    startCwd: h.repo.root,
-    cwd: h.repo.root,
+    workspaceId: "selected-space",
+    startCwd: selectedStartCwd,
+    cwd: selectedStartCwd,
   };
   const created = {
     ...original,
@@ -927,6 +937,7 @@ test("Workbench creation passes selected space and split identity through scratc
       kind: "open_workbench_terminal",
       key: crypto.randomUUID(),
       target: ref,
+      workspace: "ignored-new-space",
       split: "below",
       label: "Shell",
     }),
@@ -935,7 +946,12 @@ test("Workbench creation passes selected space and split identity through scratc
     result: { kind: "attach_session", target: { target: created.ref } },
   });
   expect(scratch).toHaveBeenCalledExactlyOnceWith(
-    expect.objectContaining({ target: ref, split: "below", cwd: h.repo.root }),
+    expect.objectContaining({
+      workspaceId: "selected-space",
+      target: ref,
+      split: "below",
+      cwd: selectedStartCwd,
+    }),
   );
   await vi.waitFor(() =>
     expect([...(client.state?.collections.pane.values() ?? [])]).toEqual(

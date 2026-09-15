@@ -51,6 +51,7 @@ describe("issueDecisions", () => {
           reasonRuns: {},
           reviewedHead: "a".repeat(40) as never,
           planVersion: null,
+          workTime: { startedAt: null, readyAt: null },
         },
       ];
     }

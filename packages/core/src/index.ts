@@ -22,3 +22,4 @@ export type * from "./reconcile.js";
 export * from "./settings.js";
 export { deriveStatus } from "./status.js";
 export * from "./task-context.js";
+export { workTime } from "./work-time.js";

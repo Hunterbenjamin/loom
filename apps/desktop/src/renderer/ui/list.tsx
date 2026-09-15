@@ -16,7 +16,7 @@ import {
   ProviderLabel,
   RunDot,
 } from "./bits.js";
-import { age, since, stageLabel } from "./format.js";
+import { age, duration, since, stageLabel } from "./format.js";
 import { ListGroupHeader, ListRow, LoadMore } from "./list-rows.js";
 
 const HEADINGS: { key: SortKey; label: string }[] = [
@@ -25,7 +25,7 @@ const HEADINGS: { key: SortKey; label: string }[] = [
   { key: "attention", label: "Attention" },
   { key: "provider", label: "Agent" },
   { key: "round", label: "Round" },
-  { key: "age", label: "Age" },
+  { key: "time", label: "Time" },
 ];
 
 function ListViewComponent() {
@@ -219,7 +219,22 @@ function Row({
           </span>
         </>
       }
-      age={age(item.row.ageMinutes)}
+      age={
+        item.row.workMinutes === null ? (
+          <span title="Not started">—</span>
+        ) : (
+          <span
+            className={item.row.working ? "work-running" : undefined}
+            title={
+              item.row.working
+                ? `In progress for ${duration(item.row.workMinutes)}`
+                : `${duration(item.row.workMinutes)} from In progress to ready to merge`
+            }
+          >
+            {duration(item.row.workMinutes)}
+          </span>
+        )
+      }
     />
   );
 }
