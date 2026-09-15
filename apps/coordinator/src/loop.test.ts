@@ -16,6 +16,7 @@ test("provider hints cannot starve queued executor actions", async () => {
   const loop = new Loop({
     store: {} as Store,
     observe: vi.fn(),
+    rebase: vi.fn(),
     drainExecutor,
     onCommit: vi.fn(),
     onError: vi.fn(),

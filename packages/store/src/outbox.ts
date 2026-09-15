@@ -17,6 +17,7 @@ import { decode, encode, text, time } from "./schema-helpers.js";
 export interface ClaimedAction extends OutboxEntry {
   /** Executor lease identity, independent of core retry attempts. */
   claimVersion: number;
+  taskId: TaskId;
 }
 export interface RunningAction {
   taskId: TaskId;
@@ -203,7 +204,15 @@ export class Outbox {
       taskId,
     );
   }
-  claim(now: IsoTime, taskId?: TaskId): ClaimedAction | null {
+  /**
+   * Claims the oldest runnable row, optionally for one task, and skipping rows of tasks for which
+   * `eligible` answers false (the executor's busy or not yet confirmed tasks).
+   */
+  claim(
+    now: IsoTime,
+    taskId?: TaskId,
+    eligible: (taskId: TaskId) => boolean = () => true,
+  ): ClaimedAction | null {
     time.parse(now);
     return this.db
       .transaction(() => {
@@ -214,6 +223,7 @@ export class Outbox {
           .all(taskId ?? null, taskId ?? null);
         for (const raw of rows) {
           const row = rowSchema.parse(raw);
+          if (!eligible(row.task_id as TaskId)) continue;
           const entry = decode(outboxSchema, row.data);
           if (entry.retryAt && Date.parse(entry.retryAt) > Date.parse(now))
             continue;
@@ -240,7 +250,11 @@ export class Outbox {
             )
             .run(encodedUpdate(outboxSchema, row.data, claimed), now, row.key);
           this.touchTask(row.task_id);
-          return { ...claimed, claimVersion: row.claim_version + 1 };
+          return {
+            ...claimed,
+            claimVersion: row.claim_version + 1,
+            taskId: row.task_id as TaskId,
+          };
         }
         return null;
       })
@@ -311,6 +325,7 @@ export class Outbox {
           entry: {
             ...decode(outboxSchema, row.data),
             claimVersion: row.claim_version,
+            taskId: row.task_id as TaskId,
           },
           startedAt: time.parse(row.started_at) as IsoTime,
         };

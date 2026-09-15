@@ -219,3 +219,48 @@ it("live selection changes only when the coordinator publishes it", async () => 
   secondWindow.applyProtocol(stateFromSnapshot(meta, body));
   expect(secondWindow.getState().ui.repo).toBe(next.id);
 });
+
+it("a dropped card moves before the coordinator answers, and a refusal puts it back", async () => {
+  const { stateFromSnapshot } = await import("@loom/protocol");
+  const { toSnapshot } = await import("../fixtures/protocol.js");
+  const fixture = buildSnapshot(20);
+  const { body, meta } = toSnapshot(fixture);
+  const api = createStore(fixture, true);
+  api.applyProtocol(stateFromSnapshot(meta, body));
+  const task = must(
+    api.getState().snapshot.tasks.find((t) => t.stage === "backlog"),
+  );
+  const stageOf = () =>
+    api.getState().snapshot.tasks.find((t) => t.id === task.id)?.stage;
+
+  let answer: (
+    outcome: Awaited<ReturnType<Parameters<typeof api.setSender>[0]>>,
+  ) => void = () => {};
+  api.setSender(() => new Promise((resolve) => (answer = resolve)));
+  api.moveTask(task.id, "todo");
+  expect(stageOf()).toBe("todo");
+  // An unrelated patch of the same task version keeps the move on screen.
+  api.applyProtocol(stateFromSnapshot(meta, body));
+  expect(stageOf()).toBe("todo");
+  answer({
+    ok: false,
+    error: { code: "wrong_stage", message: "move is not allowed", details: [] },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(stageOf()).toBe("backlog");
+  expect(api.getState().ui.toast).toContain("move is not allowed");
+
+  // Accepted: the card stays moved until the coordinator's newer version replaces it.
+  api.setSender(async () => ({
+    ok: true,
+    result: { kind: "human", inputId: "input-move" as never },
+  }));
+  api.moveTask(task.id, "todo");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(stageOf()).toBe("todo");
+  body.tasks = body.tasks.map((t) =>
+    t.id === task.id ? { ...t, stage: "planning", version: t.version + 1 } : t,
+  );
+  api.applyProtocol(stateFromSnapshot(meta, body));
+  expect(stageOf()).toBe("planning");
+});

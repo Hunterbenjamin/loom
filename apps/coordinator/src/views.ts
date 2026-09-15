@@ -68,18 +68,16 @@ export async function runTargetRow(
   let pane: unknown = null;
   let attach: unknown = null;
   if (run.pane) {
-    const observation = await deps.adapters.paneHost
-      .getPane(run.pane)
-      .catch((error) => {
+    const [observation, clients] = await Promise.all([
+      deps.adapters.paneHost.getPane(run.pane).catch((error) => {
         deps.reportAdapterFailure?.(`Pane read for ${run.id}`, error);
         return null;
-      });
-    const clients = await deps.adapters.paneHost
-      .listClients(run.pane)
-      .catch((error) => {
+      }),
+      deps.adapters.paneHost.listClients(run.pane).catch((error) => {
         deps.reportAdapterFailure?.(`Pane clients read for ${run.id}`, error);
         return [];
-      });
+      }),
+    ]);
     if (observation)
       pane = {
         hostGeneration: run.pane.hostGeneration,
@@ -151,11 +149,14 @@ export async function taskRows(
   ];
   for (const note of notes) rows.push(row("note", note));
   if (state.worktree) rows.push(row("worktree", state.worktree));
-  for (const run of state.runs) {
+  const targets = await Promise.all(
+    state.runs.map((run) => runTargetRow(deps, state, run.id)),
+  );
+  state.runs.forEach((run, index) => {
     rows.push(row("run", run));
-    const target = await runTargetRow(deps, state, run.id);
+    const target = targets[index];
     if (target) rows.push(target);
-  }
+  });
   for (const message of state.messages)
     rows.push(row("message", { ...message, taskId }));
   for (const question of state.questions) rows.push(row("question", question));
