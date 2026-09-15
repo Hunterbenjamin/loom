@@ -1,10 +1,21 @@
 import { type Run, sumTokenUsage, type Task } from "@loom/core";
 import { shallowArray, useStore } from "../store/react.js";
 import { taskRuns } from "../store/selectors.js";
-import { formatTokenUsage, RUN_STATUS_LABELS, since } from "./format.js";
+import {
+  formatTokenUsage,
+  RUN_STATUS_LABELS,
+  since,
+  stageLabel,
+} from "./format.js";
 import { useHumanCommand } from "./use-human-command.js";
 
-export function IssueAgentsRail({ task }: { task: Task }) {
+export function IssueAgentsRail({
+  task,
+  embedded = false,
+}: {
+  task: Task;
+  embedded?: boolean;
+}) {
   const runs = useStore(
     (state) => taskRuns(state.snapshot, task),
     shallowArray,
@@ -19,8 +30,12 @@ export function IssueAgentsRail({ task }: { task: Task }) {
   const now = useStore((state) => state.snapshot.now);
   const totalTokenUsage = sumTokenUsage(runs);
   const hasTokenUsage = runs.some((run) => run.tokenUsage?.length);
-  return (
-    <aside className="pr-rail">
+  const content = (
+    <>
+      <section>
+        <h3>Stage</h3>
+        <div className="pr-property">{stageLabel(task.stage)}</div>
+      </section>
       <div className="section-title">Agents</div>
       {hasTokenUsage ? (
         <div className="faint" data-testid="issue-token-usage">
@@ -96,8 +111,9 @@ export function IssueAgentsRail({ task }: { task: Task }) {
       ) : (
         <div className="faint">No test results yet.</div>
       )}
-    </aside>
+    </>
   );
+  return embedded ? content : <aside className="pr-rail">{content}</aside>;
 }
 
 function RestartRun({ task, run }: { task: Task; run: Run }) {

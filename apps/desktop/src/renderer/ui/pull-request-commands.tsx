@@ -1,4 +1,5 @@
 import { Command } from "cmdk";
+import { selectedDetailTask } from "../store/detail-selection.js";
 import {
   deleteDisabledReason,
   mergeDisabledReason,
@@ -42,25 +43,34 @@ export function PullRequestPaletteCommands({ close }: { close(): void }) {
         row.repoId === selection?.repoId && row.number === selection?.number,
     ),
   );
+  const task = useStore(selectedDetailTask);
   const disconnected = useStore((s) => s.live && s.connection !== "connected");
   if (!selection) return null;
   return (
     <Command.Group heading={`Pull request #${selection.number}`}>
-      {ACTIONS.map(({ action, label, key }) => {
+      {ACTIONS.filter(
+        ({ action }) =>
+          !task ||
+          action === "merge" ||
+          action === "open" ||
+          action === "refresh",
+      ).map(({ action, label, key }) => {
         const reason =
-          action === "open"
-            ? pr || summary
-              ? null
-              : "Waiting for pull request detail."
-            : disconnected
-              ? "Disconnected from the coordinator."
-              : action === "refresh"
+          task && action === "merge"
+            ? "Use Approve merge on the issue’s reviewed head."
+            : action === "open"
+              ? pr || summary
                 ? null
-                : !pr
-                  ? "Waiting for pull request detail."
-                  : action === "merge"
-                    ? mergeDisabledReason(pr)
-                    : deleteDisabledReason(pr);
+                : "Waiting for pull request detail."
+              : disconnected
+                ? "Disconnected from the coordinator."
+                : action === "refresh"
+                  ? null
+                  : !pr
+                    ? "Waiting for pull request detail."
+                    : action === "merge"
+                      ? mergeDisabledReason(pr)
+                      : deleteDisabledReason(pr);
         return (
           <Command.Item
             key={action}
@@ -72,7 +82,8 @@ export function PullRequestPaletteCommands({ close }: { close(): void }) {
               requestPullRequestAction({ ...selection, action });
             }}
           >
-            {label} <kbd>{key}</kbd>
+            {task && action === "merge" ? "Approve merge on issue" : label}{" "}
+            <kbd>{key}</kbd>
           </Command.Item>
         );
       })}

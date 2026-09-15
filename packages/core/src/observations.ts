@@ -295,6 +295,14 @@ export interface DependencyObservation {
 // ---------------------------------------------------------------- inputs
 
 export type HumanCommand =
+  | {
+      type: "edit_task";
+      expectedVersion: number;
+      title: string;
+      description: string;
+      size: "small" | "normal";
+      requirePlanApproval: boolean;
+    }
   | { type: "push_branch"; headSha: Sha }
   | { type: "open_pr"; headSha: Sha }
   | { type: "move"; to: "backlog" | "todo" }

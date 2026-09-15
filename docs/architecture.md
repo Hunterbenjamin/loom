@@ -703,3 +703,13 @@ research implications and business opportunities for a software builder. Each it
 sources, publication date when known, evidence strength, limitations and a next step. Opportunity
 analysis distinguishes technical feasibility from customer demand. Previous successful coverage is
 provided to reduce repetition. Thin news days produce fewer items rather than filler.
+
+## Detail pages and backlog edits
+
+Issues, Inbox and linked Review rows share the issue detail. A Review selection subscribes to both
+its PR and its linked issue; an issue selection subscribes to its primary PR. PR details and patches
+remain disposable GitHub projections. PR-only details and Daily brief reuse the same detail layout.
+The `edit_task` human command updates title, description, size and plan-approval policy only in
+Backlog, with an expected task version. It uses the existing input and reconciliation transaction.
+Direct repository PR merge commands reject issue-owned PRs, including explicit links; those require
+the issue's reviewed-head approval and normal CI/finding guards.

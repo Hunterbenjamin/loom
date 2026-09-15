@@ -3,6 +3,7 @@ import type {
   PullRequestRow,
   Subscription,
 } from "@loom/protocol";
+import { issuePrNumbers } from "./detail-selection.js";
 import type { State, StoreContext } from "./store.js";
 import type { UiState } from "./ui-state.js";
 
@@ -151,9 +152,16 @@ export function reviewAgentWorking(state: State, pr: PullRequestRow): boolean {
 
 /** The selected repository stays subscribed for the bottom bar in either window mode. */
 export function pullRequestSubscriptions(state: State): Subscription[] {
+  const task = state.snapshot.tasks.find(
+    (item) => item.id === state.ui.openTask,
+  );
+  const number = task ? issuePrNumbers(state, task)[0] : undefined;
+  const selection =
+    state.ui.openPr ??
+    (task && number ? { repoId: task.repoId, number } : null);
   const detail: Subscription[] =
-    state.ui.trackerVisible && state.ui.openPr
-      ? [{ kind: "pull_request", ...state.ui.openPr }]
+    state.ui.trackerVisible && selection
+      ? [{ kind: "pull_request", ...selection }]
       : [];
   return [
     ...detail,
@@ -192,7 +200,13 @@ export function pullRequestActions(ctx: StoreContext) {
       ctx.setUi({ prQuery, prCursor: null });
     },
     openPullRequest(openPr: UiState["openPr"]) {
-      ctx.setUi({ openPr, openTask: null, openRun: null, openReason: null });
+      ctx.setUi({
+        openPr,
+        openTask: null,
+        openRun: null,
+        openReason: null,
+        tab: "overview",
+      });
     },
     setPrCursor(prCursor: number | null) {
       ctx.setUi({ prCursor });

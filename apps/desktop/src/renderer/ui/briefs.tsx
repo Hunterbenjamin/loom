@@ -7,6 +7,7 @@ import type {
 } from "@loom/protocol";
 import { useEffect, useRef, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
+import { DetailLayout } from "./detail-layout.js";
 import { ListGroupHeader, ListRow } from "./list-rows.js";
 
 const TIME_ZONE = "Asia/Makassar";
@@ -281,9 +282,12 @@ function BriefDetail({
     : 0;
 
   return (
-    <div className="detail pr-detail brief-detail" data-testid="brief-detail">
-      <header className="pr-page-head">
-        <div className="pr-breadcrumb">
+    <DetailLayout
+      className="brief-detail"
+      testId="brief-detail"
+      onClose={close}
+      breadcrumb={
+        <>
           <button type="button" onClick={close}>
             Daily brief
           </button>
@@ -292,166 +296,154 @@ function BriefDetail({
           <span className="pr-header-title" title={title}>
             {title}
           </span>
+        </>
+      }
+    >
+      {error ? (
+        <div className="pr-feedback" role="alert">
+          {error}
         </div>
-        <button
-          type="button"
-          className="pr-icon-button"
-          aria-label="Close brief"
-          title="Close (Esc)"
-          onClick={close}
-        >
-          ×
-        </button>
-      </header>
-      <div className="tab-body pr-page-body">
-        {error ? (
-          <div className="pr-feedback" role="alert">
-            {error}
-          </div>
-        ) : null}
-        <div className="pr-overview">
-          <main className="pr-story">
-            <h1>{title}</h1>
-            {current ? (
-              <div className="pr-byline faint">
-                <span>{dateLabel(current.startedAt)}</span>
-                <span>·</span>
-                <span>
-                  {current.trigger === "scheduled"
-                    ? "Daily edition"
-                    : "Manual run"}
-                </span>
-              </div>
-            ) : null}
-            {current?.status === "running" ? (
-              <p className="pr-description" role="status">
-                Researching live sources. You can leave this page; the brief is
-                saved when it finishes.
-              </p>
-            ) : null}
-            {current?.error ? (
-              <p className="pr-description" role="alert">
-                {current.error}
-              </p>
-            ) : null}
-            {content ? (
-              <>
-                <section className="pr-description">
-                  <h3>Summary</h3>
-                  <p>{content.summary}</p>
+      ) : null}
+      <div className="pr-overview">
+        <main className="pr-story">
+          <h1>{title}</h1>
+          {current ? (
+            <div className="pr-byline faint">
+              <span>{dateLabel(current.startedAt)}</span>
+              <span>·</span>
+              <span>
+                {current.trigger === "scheduled"
+                  ? "Daily edition"
+                  : "Manual run"}
+              </span>
+            </div>
+          ) : null}
+          {current?.status === "running" ? (
+            <p className="pr-description" role="status">
+              Researching live sources. You can leave this page; the brief is
+              saved when it finishes.
+            </p>
+          ) : null}
+          {current?.error ? (
+            <p className="pr-description" role="alert">
+              {current.error}
+            </p>
+          ) : null}
+          {content ? (
+            <>
+              <section className="pr-description">
+                <h3>Summary</h3>
+                <p>{content.summary}</p>
+              </section>
+              {content.items.map((item, index) => (
+                <section
+                  className="pr-description brief-item"
+                  id={`brief-item-${index}`}
+                  key={item.title}
+                >
+                  <h3>
+                    {categoryLabels[item.category]} ·{" "}
+                    {evidenceLabels[item.evidence]}
+                    {item.publishedOn
+                      ? ` · Published ${item.publishedOn}`
+                      : " · Publication date unverified"}
+                  </h3>
+                  <h2>{item.title}</h2>
+                  <p>{item.whatChanged}</p>
+                  <h4>Why it matters to you</h4>
+                  <p>{item.implication}</p>
+                  <h4>Evidence and limitations</h4>
+                  <p>{item.caveat}</p>
+                  <h4>What to do next</h4>
+                  <p>{item.nextStep}</p>
+                  <ul className="brief-sources">
+                    {item.sources.map((source) => (
+                      <li key={source.url}>
+                        <a href={source.url} target="_blank" rel="noreferrer">
+                          {source.title}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
                 </section>
-                {content.items.map((item, index) => (
-                  <section
-                    className="pr-description brief-item"
-                    id={`brief-item-${index}`}
-                    key={item.title}
-                  >
-                    <h3>
-                      {categoryLabels[item.category]} ·{" "}
-                      {evidenceLabels[item.evidence]}
-                      {item.publishedOn
-                        ? ` · Published ${item.publishedOn}`
-                        : " · Publication date unverified"}
-                    </h3>
-                    <h2>{item.title}</h2>
-                    <p>{item.whatChanged}</p>
-                    <h4>Why it matters to you</h4>
-                    <p>{item.implication}</p>
-                    <h4>Evidence and limitations</h4>
-                    <p>{item.caveat}</p>
-                    <h4>What to do next</h4>
-                    <p>{item.nextStep}</p>
-                    <ul className="brief-sources">
-                      {item.sources.map((source) => (
-                        <li key={source.url}>
-                          <a href={source.url} target="_blank" rel="noreferrer">
-                            {source.title}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                ))}
+              ))}
+              <section className="pr-description brief-item">
+                <h3>Try this</h3>
+                <h2>A workflow experiment</h2>
+                <p>{content.workflowExperiment}</p>
+              </section>
+              {content.opportunity ? (
                 <section className="pr-description brief-item">
-                  <h3>Try this</h3>
-                  <h2>A workflow experiment</h2>
-                  <p>{content.workflowExperiment}</p>
+                  <h3>Opportunity</h3>
+                  <h2>Business opportunity to investigate</h2>
+                  <p>{content.opportunity}</p>
                 </section>
-                {content.opportunity ? (
-                  <section className="pr-description brief-item">
-                    <h3>Opportunity</h3>
-                    <h2>Business opportunity to investigate</h2>
-                    <p>{content.opportunity}</p>
-                  </section>
-                ) : null}
-              </>
-            ) : null}
-          </main>
-          <aside className="pr-rail" aria-label="Brief properties">
-            <section>
-              <h3>Status</h3>
-              {current ? (
-                <div className="pr-property">
-                  <BriefGlyph status={current.status} />
-                  {statusLabels[current.status]}
-                </div>
-              ) : (
-                <div className="pr-property faint">Loading…</div>
-              )}
-            </section>
+              ) : null}
+            </>
+          ) : null}
+        </main>
+        <aside className="pr-rail" aria-label="Brief properties">
+          <section>
+            <h3>Status</h3>
             {current ? (
-              <section>
-                <h3>Edition</h3>
-                <div className="pr-property">
-                  {current.trigger === "scheduled"
-                    ? `Daily · ${current.scheduledDate ?? format(current.startedAt, { dateStyle: "medium" })}`
-                    : "Manual run"}
-                </div>
+              <div className="pr-property">
+                <BriefGlyph status={current.status} />
+                {statusLabels[current.status]}
+              </div>
+            ) : (
+              <div className="pr-property faint">Loading…</div>
+            )}
+          </section>
+          {current ? (
+            <section>
+              <h3>Edition</h3>
+              <div className="pr-property">
+                {current.trigger === "scheduled"
+                  ? `Daily · ${current.scheduledDate ?? format(current.startedAt, { dateStyle: "medium" })}`
+                  : "Manual run"}
+              </div>
+              <div className="pr-property faint">
+                Started {dateLabel(current.startedAt)}
+              </div>
+              {current.finishedAt ? (
                 <div className="pr-property faint">
-                  Started {dateLabel(current.startedAt)}
+                  Finished {dateLabel(current.finishedAt)}
                 </div>
-                {current.finishedAt ? (
-                  <div className="pr-property faint">
-                    Finished {dateLabel(current.finishedAt)}
-                  </div>
-                ) : null}
-                <div className="pr-property faint">{current.model}</div>
-              </section>
-            ) : null}
-            {content?.items.length ? (
-              <section className="brief-contents">
-                <h3>In this brief</h3>
-                {content.items.map((item, index) => (
-                  <button
-                    type="button"
-                    className="pr-property"
-                    key={item.title}
-                    onClick={() =>
-                      document
-                        .getElementById(`brief-item-${index}`)
-                        ?.scrollIntoView({ block: "start" })
-                    }
-                  >
-                    <span className="brief-contents-title">{item.title}</span>
-                    <span className="faint">
-                      {categoryLabels[item.category]}
-                    </span>
-                  </button>
-                ))}
-              </section>
-            ) : null}
-            {content ? (
-              <section>
-                <h3>Sources</h3>
-                <div className="pr-property">
-                  {sources} {sources === 1 ? "source" : "sources"}
-                </div>
-                <p className="faint brief-coverage">{content.coverage}</p>
-              </section>
-            ) : null}
-          </aside>
-        </div>
+              ) : null}
+              <div className="pr-property faint">{current.model}</div>
+            </section>
+          ) : null}
+          {content?.items.length ? (
+            <section className="brief-contents">
+              <h3>In this brief</h3>
+              {content.items.map((item, index) => (
+                <button
+                  type="button"
+                  className="pr-property"
+                  key={item.title}
+                  onClick={() =>
+                    document
+                      .getElementById(`brief-item-${index}`)
+                      ?.scrollIntoView({ block: "start" })
+                  }
+                >
+                  <span className="brief-contents-title">{item.title}</span>
+                  <span className="faint">{categoryLabels[item.category]}</span>
+                </button>
+              ))}
+            </section>
+          ) : null}
+          {content ? (
+            <section>
+              <h3>Sources</h3>
+              <div className="pr-property">
+                {sources} {sources === 1 ? "source" : "sources"}
+              </div>
+              <p className="faint brief-coverage">{content.coverage}</p>
+            </section>
+          ) : null}
+        </aside>
       </div>
-    </div>
+    </DetailLayout>
   );
 }

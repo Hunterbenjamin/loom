@@ -963,3 +963,44 @@ test("Workbench creation passes selected space and split identity through scratc
   }
   expect(scratch).toHaveBeenCalledTimes(1);
 });
+
+test("backlog edits persist through the human command and reject stale editors", async () => {
+  const h = await served();
+  const { task } = h.coordinator.createTask({
+    repoId: h.repo.id,
+    title: "Original",
+    description: "Original description",
+  });
+  await h.coordinator.settle();
+  const client = await connect(h, "backlog-editor");
+  const current = h.store.loadTaskState(task.id).task;
+  const command = {
+    type: "edit_task" as const,
+    expectedVersion: current.version,
+    title: "Edited",
+    description: "Edited description",
+    size: "small" as const,
+    requirePlanApproval: false,
+  };
+  const edited = await client.command({
+    kind: "human",
+    taskId: task.id,
+    command,
+  });
+  expect(edited.ok, JSON.stringify(edited)).toBe(true);
+  expect(h.store.loadTaskState(task.id).task).toMatchObject({
+    title: "Edited",
+    description: "Edited description",
+    size: "small",
+    requirePlanApproval: false,
+    stage: "backlog",
+  });
+  expect(
+    await client.command({
+      kind: "human",
+      taskId: task.id,
+      command: { ...command, title: "Stale" },
+    }),
+  ).toMatchObject({ ok: false, error: { code: "guard_failed" } });
+  expect(h.store.loadTaskState(task.id).task.title).toBe("Edited");
+}, 30_000);

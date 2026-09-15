@@ -18,6 +18,7 @@ export const error = (
  */
 export function decidableFromLastReadings(cmd: HumanCommand): boolean {
   return (
+    cmd.type === "edit_task" ||
     cmd.type === "move" ||
     cmd.type === "cancel" ||
     cmd.type === "approve_plan" ||
@@ -36,6 +37,25 @@ export function human(
     error("wrong_stage", `${cmd.type} is not allowed in ${task.stage}`);
   const guard = (...details: string[]) => error("guard_failed", ...details);
   switch (cmd.type) {
+    case "edit_task":
+      if (task.stage !== "backlog") return wrong();
+      if (task.version !== cmd.expectedVersion)
+        return guard("The issue changed; reopen the editor before saving");
+      if (
+        !cmd.title.trim() ||
+        cmd.title.trim().length > 200 ||
+        cmd.description.length > 20000
+      )
+        return guard(
+          "Provide a title up to 200 characters and description up to 20000 characters",
+        );
+      c.change("Human edited backlog issue", () => {
+        task.title = cmd.title.trim();
+        task.description = cmd.description;
+        task.size = cmd.size;
+        task.requirePlanApproval = cmd.requirePlanApproval;
+      });
+      return null;
     case "push_branch":
     case "open_pr": {
       if (task.stage !== "in_progress") return wrong();
