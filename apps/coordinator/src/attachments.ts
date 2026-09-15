@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { basename, join, resolve, sep } from "node:path";
+import type { HumanCommand, TaskId } from "@loom/core";
+import type { Store } from "@loom/store";
 import { z } from "zod";
+import { PreconditionFailed } from "./executor.js";
 
 /** Base64 plus the command envelope must remain below protocol MAX_FRAME_BYTES (64 MiB). */
 export const ATTACHMENT_MAX_BYTES = 40 * 1024 * 1024;
@@ -87,4 +90,28 @@ export function withAttachedFiles(
 ): string {
   if (!attachments.length) return text;
   return `${text}\n\nAttached files:\n${attachments.map((a) => a.path).join("\n")}`;
+}
+
+export async function withHumanAttachments(
+  command: HumanCommand,
+  taskId: TaskId,
+  attachments: Attachments,
+  store: Store,
+): Promise<HumanCommand> {
+  if (command.type !== "send_message" || !command.attachmentIds?.length)
+    return command;
+  const staged = await attachments.resolve(command.attachmentIds);
+  const run = store.runs(taskId).find((value) => value.id === command.runId);
+  if (!run) throw new PreconditionFailed("Choose a live Loom run");
+  const images = staged.filter((value) => value.mediaType.startsWith("image/"));
+  const paths =
+    run.provider === "codex"
+      ? staged.filter((value) => !value.mediaType.startsWith("image/"))
+      : staged;
+  return {
+    ...command,
+    text: withAttachedFiles(command.text, paths),
+    attachmentIds:
+      run.provider === "codex" ? images.map((value) => value.path) : [],
+  };
 }
