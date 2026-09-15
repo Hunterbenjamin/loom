@@ -7,7 +7,8 @@ import {
   type Task,
 } from "@loom/core";
 import { type TaskInbox, taskInView, type ViewName } from "@loom/protocol";
-import { type Snapshot, STAGES } from "../fixtures/index.js";
+import type { Snapshot } from "../fixtures/index.js";
+import { STAGES } from "../ui/format.js";
 
 export const issueKeyFor = (task: Task, repos: Snapshot["repos"]): string => {
   const repo = repos.find((repo) => repo.id === task.repoId);
@@ -213,11 +214,6 @@ export const sortRows = memo1(
     return sorted;
   },
 );
-
-export interface Group {
-  stage: Stage;
-  rows: Row[];
-}
 
 /** List rows are grouped by stage and then flattened, so one virtualizer covers headers too. */
 export type ListItem =

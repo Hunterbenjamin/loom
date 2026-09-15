@@ -33,7 +33,7 @@ function run(host: PaneHost, args: string[]): Promise<string> {
   });
 }
 
-export interface HistoryRequest {
+interface HistoryRequest {
   lines: number;
   /** Join wrapped lines, so they wrap again at the viewer's width. */
   join: boolean;

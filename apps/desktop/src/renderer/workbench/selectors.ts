@@ -9,17 +9,6 @@ export const sameTerminal = (a: PaneIdentity, b: PaneIdentity) =>
   a.windowId === b.windowId &&
   a.paneId === b.paneId;
 
-export const terminalName = (pane: PaneView) =>
-  pane.role
-    ? `${pane.role} ${pane.provider ?? ""}`.trim()
-    : pane.windowName?.startsWith("scratch-")
-      ? `Terminal ${pane.paneId.slice(1)}`
-      : pane.paneTitle ||
-        pane.tabTitle ||
-        pane.windowName ||
-        pane.command ||
-        `Terminal ${pane.paneId.slice(1)}`;
-
 /** Only published provider status and coordinator attention determine the indicator. */
 export function paneIndicator(pane: PaneView, run?: Run): Indicator {
   const recorded =
@@ -52,7 +41,7 @@ export function paneIndicator(pane: PaneView, run?: Run): Indicator {
   return agentIndicator("unknown");
 }
 
-export const paneName = (pane: PaneView) =>
+const paneName = (pane: PaneView) =>
   pane.role
     ? [pane.role, pane.provider].filter(Boolean).join(" · ")
     : (pane.agent ?? pane.command ?? "Unknown process");
@@ -88,15 +77,15 @@ const fuzzyMatch = (text: string, words: string[]) =>
     return true;
   });
 
-export type TreePane = { pane: PaneView; name: string; indicator: Indicator };
-export type TreeTab = {
+type TreePane = { pane: PaneView; name: string; indicator: Indicator };
+type TreeTab = {
   key: string;
   name: string;
   windowName: string;
   panes: TreePane[];
   indicator: Indicator;
 };
-export type TreeSpace = {
+type TreeSpace = {
   key: string;
   name: string;
   label: string;

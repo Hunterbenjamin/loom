@@ -107,7 +107,7 @@ export function useSettingsWriter() {
     },
   };
 }
-export type Writer = ReturnType<typeof useSettingsWriter>;
+type Writer = ReturnType<typeof useSettingsWriter>;
 
 export interface FieldContext {
   document: SettingsDocument;
@@ -156,7 +156,7 @@ export function useField(context: FieldContext, key: string) {
     reset: (keys: string[] = [key]) => context.writer.reset(document, keys),
   };
 }
-export type Field = ReturnType<typeof useField>;
+type Field = ReturnType<typeof useField>;
 
 export function Row({
   field,

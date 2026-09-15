@@ -20,7 +20,7 @@ const INVALIDATING = [
   "%layout-change",
 ];
 
-export interface MonitorOptions {
+interface MonitorOptions {
   executable: string;
   socketName: string;
   env: Record<string, string>;

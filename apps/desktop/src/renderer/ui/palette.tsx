@@ -1,12 +1,11 @@
 import { displayName } from "@loom/core";
 import { Command } from "cmdk";
 import { useEffect, useState } from "react";
-import { STAGES } from "../fixtures/index.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { cursorRows, issueKeyFor, selectedRows } from "../store/selectors.js";
 import { VIEWS } from "../store/store.js";
 import { ChimeMuteCommand } from "../workbench/chime.js";
-import { stageLabel } from "./format.js";
+import { STAGES, stageLabel } from "./format.js";
 import { PullRequestPaletteCommands } from "./pull-request-commands.js";
 
 export function Palette() {

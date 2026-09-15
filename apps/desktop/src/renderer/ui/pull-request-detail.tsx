@@ -26,7 +26,7 @@ type Confirmation =
 const TABS = ["Overview", "Diff"] as const;
 
 /** What the human sees while the coordinator carries a command out and confirms it on GitHub. */
-export function busyLabel(kind: PullRequestCommand["kind"]): string {
+function busyLabel(kind: PullRequestCommand["kind"]): string {
   switch (kind) {
     case "merge_pull_request":
       return "Merging on GitHub…";

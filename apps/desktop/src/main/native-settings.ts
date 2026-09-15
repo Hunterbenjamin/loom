@@ -4,13 +4,13 @@ import { z } from "zod";
 import { windowMode } from "../shared/ipc.js";
 import { keybindingsConfig } from "../shared/keybindings.js";
 
-export const nativeSettings = z.strictObject({
+const nativeSettings = z.strictObject({
   version: z.literal(1),
   windowMode,
   terminalHistoryLimit: z.number().int().positive(),
   keybindings: keybindingsConfig,
 });
-export type NativeSettings = z.output<typeof nativeSettings>;
+type NativeSettings = z.output<typeof nativeSettings>;
 
 function location(env: Record<string, string | undefined>): string | null {
   const parsed = z

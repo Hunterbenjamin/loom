@@ -4,7 +4,7 @@
 import { execFile } from "node:child_process";
 import { basename } from "node:path";
 
-export type AgentKind = "codex" | "claude";
+type AgentKind = "codex" | "claude";
 export interface ProcessRow {
   pid: number;
   ppid: number;

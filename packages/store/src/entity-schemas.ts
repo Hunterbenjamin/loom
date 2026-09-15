@@ -421,7 +421,7 @@ export const findingSchema = contract<Finding>()(
     updatedAt: time,
   }),
 );
-export const ciSchema = z.object({
+const ciSchema = z.object({
   headSha: sha,
   conclusion: z.enum(["success", "pending", "failure", "none"]),
   checks: z.array(
@@ -498,7 +498,7 @@ export const transitionSchema = contract<Transition>()(
     taskVersion: count,
   }),
 );
-export type TaskContext = Pick<
+type TaskContext = Pick<
   TaskState,
   | "plan"
   | "review"

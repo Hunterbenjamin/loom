@@ -5,7 +5,7 @@
 
 import type { Role, Task } from "@loom/core";
 
-export interface BriefInput {
+interface BriefInput {
   task: Pick<
     Task,
     "id" | "title" | "description" | "reviewRound" | "reviewRoundCap"
