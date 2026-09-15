@@ -2,7 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { buildSnapshot } from "../fixtures/index.js";
 import { selectedRows } from "../store/selectors.js";
-import { createStore } from "../store/store.js";
+import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { boardCursor, createShortcutHandler } from "./keys.js";
 
 const cleanups: (() => void)[] = [];
