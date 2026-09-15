@@ -36,8 +36,8 @@ export function IssueDecisionPanel({
       decision.kind !== "plan_needs_approval" &&
       decision.kind !== "needs_approval",
   );
-  const hasHeaderDecision = decisions.length !== data.decisions.length;
-  if (hasHeaderDecision && decisions.length === 0) return null;
+  // With nothing to decide, the panel shows only a command's outcome; run status lives in the rail.
+  if (decisions.length === 0 && !outcome.message) return null;
   if (compact && !expanded)
     return (
       <div className="issue-decision-panel compact">
@@ -58,129 +58,119 @@ export function IssueDecisionPanel({
           Collapse actions
         </button>
       ) : null}
-      {decisions.length ? (
-        decisions.map((decision) => {
-          const highlighted =
-            decision.kind === openReason &&
-            (!openRun || decision.runs.some((run) => run.id === openRun));
-          const note = notes[decision.key] ?? "";
-          const selectedQuestion =
-            decision.questions?.find(
-              (question) => question.id === questions[decision.key],
-            ) ?? decision.questions?.[0];
-          return (
-            <article
-              className="issue-decision"
-              data-highlighted={highlighted}
-              key={decision.key}
-            >
-              <div className="issue-decision-copy">
-                <strong>{decision.label}</strong>
-                <DecisionEvidence
-                  decision={decision}
-                  now={now}
-                  question={selectedQuestion?.question}
-                />
-              </div>
-              {decision.questions && decision.questions.length > 1 ? (
-                <select
-                  aria-label="Question"
-                  value={selectedQuestion?.id ?? ""}
-                  onChange={(event) =>
-                    setQuestions((value) => ({
-                      ...value,
-                      [decision.key]: event.target.value,
-                    }))
-                  }
-                >
-                  {decision.questions.map((question) => (
-                    <option key={question.id} value={question.id}>
-                      {question.question}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-              {needsNote(decision) ? (
-                <textarea
-                  aria-label={
-                    decision.kind === "question"
-                      ? "Your answer"
-                      : "Feedback for the agent"
-                  }
-                  placeholder={
-                    decision.kind === "question"
-                      ? "Your answer"
-                      : "Feedback for the agent"
-                  }
-                  value={note}
-                  onChange={(event) =>
-                    setNotes((value) => ({
-                      ...value,
-                      [decision.key]: event.target.value,
-                    }))
-                  }
-                  onKeyDown={(event) => event.stopPropagation()}
-                />
-              ) : null}
-              <div className="issue-decision-actions">
-                {decision.actions.map((action) => {
-                  const noteAction = [
-                    "request-changes",
-                    "answer-question",
-                  ].includes(action.id);
-                  const reason =
-                    noteAction &&
-                    note.trim() &&
-                    action.disabledReason === noteRequiredReason(action.id)
-                      ? null
-                      : action.disabledReason;
-                  return (
-                    <ActionButton
-                      key={action.id}
-                      action={action}
-                      disabledReason={reason}
-                      disabled={submitting}
-                      onSend={() => {
-                        const command = action.command?.(note.trim());
-                        if (!command) return;
-                        onCommand(
-                          command.type === "answer_question" && selectedQuestion
-                            ? { ...command, questionId: selectedQuestion.id }
-                            : command,
-                        );
-                      }}
-                      onIntent={() => {
-                        if (action.intent === "terminal")
-                          store.setTab("terminal");
-                        if (action.intent === "plan") store.setTab("plan");
-                        // Findings and activity live on the Overview tab.
-                        if (action.intent === "review")
-                          store.setTab("overview");
-                        if (action.intent === "pull-request" && task.prNumber)
-                          store.openPullRequest({
-                            repoId: task.repoId,
-                            number: task.prNumber,
-                          });
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            </article>
-          );
-        })
-      ) : (
-        <div className="issue-status">
-          <span className="dot working" />
-          <span>{data.status.summary}</span>
-          <span className="faint">
-            last activity{" "}
-            {data.status.lastActivityAt
-              ? `${since(now, data.status.lastActivityAt)} ago`
-              : "unknown"}
-          </span>
-        </div>
-      )}
+      {decisions.length
+        ? decisions.map((decision) => {
+            const highlighted =
+              decision.kind === openReason &&
+              (!openRun || decision.runs.some((run) => run.id === openRun));
+            const note = notes[decision.key] ?? "";
+            const selectedQuestion =
+              decision.questions?.find(
+                (question) => question.id === questions[decision.key],
+              ) ?? decision.questions?.[0];
+            return (
+              <article
+                className="issue-decision"
+                data-highlighted={highlighted}
+                key={decision.key}
+              >
+                <div className="issue-decision-copy">
+                  <strong>{decision.label}</strong>
+                  <DecisionEvidence
+                    decision={decision}
+                    now={now}
+                    question={selectedQuestion?.question}
+                  />
+                </div>
+                {decision.questions && decision.questions.length > 1 ? (
+                  <select
+                    aria-label="Question"
+                    value={selectedQuestion?.id ?? ""}
+                    onChange={(event) =>
+                      setQuestions((value) => ({
+                        ...value,
+                        [decision.key]: event.target.value,
+                      }))
+                    }
+                  >
+                    {decision.questions.map((question) => (
+                      <option key={question.id} value={question.id}>
+                        {question.question}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                {needsNote(decision) ? (
+                  <textarea
+                    aria-label={
+                      decision.kind === "question"
+                        ? "Your answer"
+                        : "Feedback for the agent"
+                    }
+                    placeholder={
+                      decision.kind === "question"
+                        ? "Your answer"
+                        : "Feedback for the agent"
+                    }
+                    value={note}
+                    onChange={(event) =>
+                      setNotes((value) => ({
+                        ...value,
+                        [decision.key]: event.target.value,
+                      }))
+                    }
+                    onKeyDown={(event) => event.stopPropagation()}
+                  />
+                ) : null}
+                <div className="issue-decision-actions">
+                  {decision.actions.map((action) => {
+                    const noteAction = [
+                      "request-changes",
+                      "answer-question",
+                    ].includes(action.id);
+                    const reason =
+                      noteAction &&
+                      note.trim() &&
+                      action.disabledReason === noteRequiredReason(action.id)
+                        ? null
+                        : action.disabledReason;
+                    return (
+                      <ActionButton
+                        key={action.id}
+                        action={action}
+                        disabledReason={reason}
+                        disabled={submitting}
+                        onSend={() => {
+                          const command = action.command?.(note.trim());
+                          if (!command) return;
+                          onCommand(
+                            command.type === "answer_question" &&
+                              selectedQuestion
+                              ? { ...command, questionId: selectedQuestion.id }
+                              : command,
+                          );
+                        }}
+                        onIntent={() => {
+                          if (action.intent === "terminal")
+                            store.setTab("terminal");
+                          if (action.intent === "plan") store.setTab("plan");
+                          // Findings and activity live on the Overview tab.
+                          if (action.intent === "review")
+                            store.setTab("overview");
+                          if (action.intent === "pull-request" && task.prNumber)
+                            store.openPullRequest({
+                              repoId: task.repoId,
+                              number: task.prNumber,
+                            });
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </article>
+            );
+          })
+        : null}
       {outcome.message ? (
         <div className={`pr-feedback pr-outcome ${outcome.kind}`} role="status">
           {outcome.message}

@@ -4,14 +4,6 @@
 .detail.pr-detail > .tab-body {
   grid-row: 5;
 }
-.issue-meta-line {
-  display: flex;
-  gap: 12px;
-  padding: 4px 20px 7px;
-  border-bottom: 1px solid var(--line);
-  min-width: 0;
-  overflow: hidden;
-}
 .issue-decision-panel {
   display: grid;
   gap: 8px;
@@ -79,10 +71,16 @@
   color: var(--text-faint);
   font-size: 11px;
 }
-.issue-status {
-  display: flex;
+.overview-status {
+  flex-wrap: wrap;
+}
+.overview-status-pr {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+}
+.pr-rail .pr-checks .mono {
+  overflow-wrap: anywhere;
 }
 .issue-toolbar-action {
   display: flex;
@@ -116,9 +114,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.issue-overview .task-description {
-  line-height: 1.6;
-}
 
 @media (max-width: 760px) {
   .issue-decision {
@@ -133,20 +128,15 @@
   .issue-toolbar-action {
     width: 100%;
   }
-  .issue-meta-line {
-    white-space: nowrap;
-  }
 }
 
 .issue-finding.settled {
   opacity: 0.6;
 }
-.task-description .pr-markdown,
 .issue-finding .pr-markdown {
   white-space: normal;
 }
-.issue-finding .pr-markdown > :last-child,
-.issue-overview .task-description .pr-markdown > :last-child {
+.issue-finding .pr-markdown > :last-child {
   margin-bottom: 0;
 }
 

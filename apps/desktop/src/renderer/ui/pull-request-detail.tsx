@@ -9,12 +9,13 @@ import { useStore, useStoreApi } from "../store/react.js";
 import type { UiState } from "../store/ui-state.js";
 import { Detail as IssueDetail } from "./detail.js";
 import { DetailLayout } from "./detail-layout.js";
+import { Overview } from "./overview.js";
 import {
   PULL_REQUEST_ACTION_EVENT,
   type PullRequestActionRequest,
 } from "./pull-request-commands.js";
 import { PullRequestGlyph as PrGlyph } from "./pull-request-glyph.js";
-import { ChangeCounts, PullRequestOverview } from "./pull-request-overview.js";
+import { ChangeCounts } from "./pull-request-overview.js";
 import { usePullRequestCommand } from "./use-pull-request-command.js";
 
 const Files = lazy(() =>
@@ -291,7 +292,7 @@ export function PullRequestDetail({
       ) : null}
       {pr && row ? (
         tab === "Overview" ? (
-          <PullRequestOverview
+          <Overview
             row={row}
             disabled={!!busy || connection}
             run={run}
