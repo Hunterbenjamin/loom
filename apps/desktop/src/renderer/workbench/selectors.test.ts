@@ -71,6 +71,7 @@ test("rolls up needs-you > failed > unknown > working > done > idle at both leve
     const panes = statuses.slice(i).map((status, n) => ({
       ...pane,
       status,
+      attention: status === "blocked",
       paneId: `%${n}`,
       windowId: `@${n}`,
     }));
@@ -110,6 +111,20 @@ test("finished turns use only an exactly linked recorded run", () => {
     paneIndicator({ ...linked, hostGeneration: "different" }, run).icon,
   ).toBe("○");
   expect(paneIndicator({ ...linked, status: null }).icon).toBe("?");
+});
+
+test("linked runs preserve specific blocked labels", () => {
+  const run = {
+    ...buildSnapshot().runs[0],
+    pane,
+    status: "blocked" as const,
+    blockedOn: "permission" as const,
+  } as Run;
+  const linked = { ...pane, runId: run.id, status: "blocked", attention: true };
+  expect(paneIndicator(linked, run).label).toBe("Awaiting permission");
+  expect(paneIndicator(linked, { ...run, blockedOn: "rate_limit" }).label).toBe(
+    "Rate limited",
+  );
 });
 
 test("fuzzy filter retains ancestors, matches task and native names, and keeps full rollups", () => {
@@ -285,12 +300,12 @@ test("tree row projection contains only spaces and native tabs with full rollups
       {
         "kind": "space",
         "name": "research",
-        "status": "Blocked / needs you",
+        "status": "Blocked",
       },
       {
         "kind": "tab",
         "name": "Build",
-        "status": "Blocked / needs you",
+        "status": "Blocked",
       },
       {
         "kind": "tab",
