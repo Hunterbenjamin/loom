@@ -4,7 +4,7 @@
 // the viewer before the host's first redraw (docs/design/ui.md, "Terminals").
 import { execFile } from "node:child_process";
 
-interface PaneHost {
+export interface PaneHost {
   tmux: string;
   socket: string;
   paneId: string;
