@@ -20,7 +20,7 @@ import type { InputStore } from "./inputs.js";
 import type { Outbox } from "./outbox.js";
 import { assertSame, dataRow, encodedUpdate, upsertEntity } from "./records.js";
 import { count, decode, encode } from "./schema-helpers.js";
-import { type TaskStateStore, saveDependencies } from "./task-state.js";
+import { saveDependencies, type TaskStateStore } from "./task-state.js";
 
 export type Conflict = {
   ok: false;
