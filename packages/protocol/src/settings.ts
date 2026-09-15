@@ -1,5 +1,8 @@
 import {
+  ACCESS_PRESET_VALUES,
+  MERGE_POLICY_VALUES,
   PROVIDER_VALUES,
+  REASONING_EFFORT_VALUES,
   ROLE_VALUES,
   RUN_MODE_VALUES,
   TASK_SIZE_VALUES,
@@ -12,22 +15,13 @@ export const settingsScope = z.union([
   z.strictObject({ kind: z.literal("repository"), repoId }),
 ]);
 
-export const reasoningEffort = z.enum([
-  "none",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-  "ultra",
-]);
+export const reasoningEffort = z.enum(REASONING_EFFORT_VALUES);
 export const roleProfile = z.strictObject({
   provider: z.enum(PROVIDER_VALUES),
   model: z.string().min(1),
   reasoningEffort: reasoningEffort.nullable(),
   runMode: z.enum(RUN_MODE_VALUES),
-  access: z.enum(["full", "approval-gated"]),
+  access: z.enum(ACCESS_PRESET_VALUES),
 });
 export const settingsValues = z.strictObject({
   roles: z.strictObject({
@@ -40,7 +34,7 @@ export const settingsValues = z.strictObject({
     size: z.enum(TASK_SIZE_VALUES),
     budgetMinutes: z.number().int().positive().nullable(),
     reviewRoundCap: z.number().int().positive(),
-    mergePolicy: z.enum(["require-human", "auto-small", "auto-all"]),
+    mergePolicy: z.enum(MERGE_POLICY_VALUES),
   }),
   repository: z.strictObject({
     baseBranch: z.string().min(1),

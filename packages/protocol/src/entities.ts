@@ -1,4 +1,5 @@
 import {
+  ACCESS_PRESET_VALUES,
   APPROVAL_AUTHOR_VALUES,
   APPROVAL_VOID_REASON_VALUES,
   ARTIFACT_KIND_VALUES,
@@ -12,6 +13,7 @@ import {
   FINDING_SOURCE_VALUES,
   FINDING_STATUS_VALUES,
   MAPPING_STATUS_VALUES,
+  MERGE_POLICY_VALUES,
   MESSAGE_PURPOSE_VALUES,
   MESSAGE_STATUS_VALUES,
   MESSAGE_WHEN_VALUES,
@@ -32,6 +34,7 @@ import {
   TEST_OUTCOME_VALUES,
   TURN_OUTCOME_VALUES,
 } from "@loom/core";
+import { roleProfile } from "./settings.js";
 // Entity fields are defined once here. Wire and storage policies retain their existing
 // validation contracts; type-level tests keep the results equal to core.
 
@@ -200,30 +203,8 @@ function entitySchemas(storage: boolean) {
     blocked: blockedFlag.nullable(),
     failed: failedFlag.nullable(),
     requirePlanApproval: z.boolean(),
-    mergePolicy: z.enum(["require-human", "auto-small", "auto-all"]).optional(),
-    roleProfiles: z
-      .partialRecord(
-        z.enum(ROLE_VALUES),
-        z.object({
-          provider: z.enum(PROVIDER_VALUES),
-          model: z.string().min(1),
-          reasoningEffort: z
-            .enum([
-              "none",
-              "minimal",
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max",
-              "ultra",
-            ])
-            .nullable(),
-          runMode: z.enum(RUN_MODE_VALUES),
-          access: z.enum(["full", "approval-gated"]),
-        }),
-      )
-      .optional(),
+    mergePolicy: z.enum(MERGE_POLICY_VALUES).optional(),
+    roleProfiles: z.partialRecord(role, roleProfile.strip()).optional(),
     reviewRound: count,
     reviewRoundCap: storage ? line : count,
     providers: providerRules,
@@ -293,7 +274,7 @@ function entitySchemas(storage: boolean) {
     // from every client, CLI included, at the moment it needed attention (2026-09-12).
     model: z.string(),
     reasoningEffort: z.string().min(1).optional(),
-    access: z.enum(["full", "approval-gated"]),
+    access: z.enum(ACCESS_PRESET_VALUES),
     fixReason: z.string().min(1).optional(),
     sessionId: providerSessionId.nullable(),
     sessionEpoch: count,
@@ -617,7 +598,7 @@ function entitySchemas(storage: boolean) {
         model: text,
         reasoningEffort: text.optional(),
         mode: z.enum(RUN_MODE_VALUES).optional(),
-        access: z.enum(["full", "approval-gated"]).optional(),
+        access: z.enum(ACCESS_PRESET_VALUES).optional(),
       }).optional(),
     }).nullable(),
     activeElapsedMs: z.number().nonnegative(),

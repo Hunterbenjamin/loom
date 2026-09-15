@@ -1,5 +1,7 @@
 import type { Provider } from "@loom/core";
 import {
+  ACCESS_PRESET_VALUES,
+  MERGE_POLICY_VALUES,
   PROVIDER_VALUES,
   ROLE_VALUES,
   RUN_MODE_VALUES,
@@ -313,7 +315,7 @@ function AccessRow({ context, role }: { context: FieldContext; role: Role }) {
     >
       <Select
         field={field}
-        options={["full", "approval-gated"]}
+        options={[...ACCESS_PRESET_VALUES]}
         labels={ACCESS_LABELS}
       />
     </Row>
@@ -376,7 +378,7 @@ function Workflow({ context }: { context: FieldContext }) {
         >
           <Select
             field={merge}
-            options={["require-human", "auto-small", "auto-all"]}
+            options={[...MERGE_POLICY_VALUES]}
             labels={MERGE_LABELS}
           />
         </Row>

@@ -1,4 +1,10 @@
-import { PROVIDER_VALUES, ROLE_VALUES, RUN_MODE_VALUES } from "@loom/core";
+import {
+  ACCESS_PRESET_VALUES,
+  PROVIDER_VALUES,
+  REASONING_EFFORT_VALUES,
+  ROLE_VALUES,
+  RUN_MODE_VALUES,
+} from "@loom/core";
 // One instance's settings. `LOOM_INSTANCE` and `LOOM_DATA_ROOT` have no implicit production
 // default: a development coordinator must never open the stable instance's database.
 
@@ -120,23 +126,12 @@ export const configSchema = z
     models: z.object({ codex: z.string().min(1), claude: z.string().min(1) }),
     providerOverrides: z
       .object({
-        planner: z.enum([...PROVIDER_VALUES]).optional(),
-        implementer: z.enum([...PROVIDER_VALUES]).optional(),
-        reviewer: z.enum([...PROVIDER_VALUES]).optional(),
+        planner: z.enum(PROVIDER_VALUES).optional(),
+        implementer: z.enum(PROVIDER_VALUES).optional(),
+        reviewer: z.enum(PROVIDER_VALUES).optional(),
       })
       .default({}),
-    codexReasoningEffort: z
-      .enum([
-        "none",
-        "minimal",
-        "low",
-        "medium",
-        "high",
-        "xhigh",
-        "max",
-        "ultra",
-      ])
-      .optional(),
+    codexReasoningEffort: z.enum([...REASONING_EFFORT_VALUES]).optional(),
     /** GitHub logins Loom and its agents push as; their comments are not findings. */
     excludedAuthors: z.array(z.string().min(1)).default([]),
     caps: z
@@ -168,7 +163,7 @@ export const configSchema = z
       .string()
       .optional()
       .transform((value) => parseRunModes(value)),
-    agentAccess: z.enum(["full", "approval-gated"]).default("full"),
+    agentAccess: z.enum(ACCESS_PRESET_VALUES).default("full"),
     settingsEnvironment: z.custom<SettingsPatch>().default({}),
     providerEnvironment: z.custom<ProviderEnvironmentSettings>().default({}),
   })

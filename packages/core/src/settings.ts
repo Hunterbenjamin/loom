@@ -19,17 +19,25 @@ export type ApplyTiming =
   | "next-task"
   | "next-run"
   | "restart-required";
-export type MergePolicy = "require-human" | "auto-small" | "auto-all";
-export type AccessPreset = "full" | "approval-gated";
-export type ReasoningEffort =
-  | "none"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh"
-  | "max"
-  | "ultra";
+export const MERGE_POLICY_VALUES = [
+  "require-human",
+  "auto-small",
+  "auto-all",
+] as const;
+export type MergePolicy = (typeof MERGE_POLICY_VALUES)[number];
+export const ACCESS_PRESET_VALUES = ["full", "approval-gated"] as const;
+export type AccessPreset = (typeof ACCESS_PRESET_VALUES)[number];
+export const REASONING_EFFORT_VALUES = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORT_VALUES)[number];
 
 export interface RoleProfile {
   provider: Provider;

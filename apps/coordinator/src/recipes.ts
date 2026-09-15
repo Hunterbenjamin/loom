@@ -1,4 +1,9 @@
-import { PROVIDER_VALUES, ROLE_VALUES, RUN_MODE_VALUES } from "@loom/core";
+import {
+  ACCESS_PRESET_VALUES,
+  PROVIDER_VALUES,
+  ROLE_VALUES,
+  RUN_MODE_VALUES,
+} from "@loom/core";
 // Principle 7 and design §5.3: everything needed to launch — or relaunch — a run is written down
 // before anything starts. A recipe lives outside the repository, in the instance's data directory,
 // with mode 0600, because it carries the run's MCP token. Its directory also holds the run's
@@ -37,12 +42,12 @@ export const ENVIRONMENT_ALLOWLIST = [
 const recipeSchema = z.object({
   runId: z.string().min(1),
   taskId: z.string().min(1),
-  role: z.enum([...ROLE_VALUES]),
-  provider: z.enum([...PROVIDER_VALUES]),
-  mode: z.enum([...RUN_MODE_VALUES]),
+  role: z.enum(ROLE_VALUES),
+  provider: z.enum(PROVIDER_VALUES),
+  mode: z.enum(RUN_MODE_VALUES),
   model: z.string().min(1),
   reasoningEffort: z.string().min(1).optional(),
-  access: z.enum(["full", "approval-gated"]).optional(),
+  access: z.enum(ACCESS_PRESET_VALUES).optional(),
   attempt: z.number().int().positive(),
   sessionEpoch: z.number().int().nonnegative(),
   /** Recorded before launch. Null only until a Codex `thread/start` assigns one. */
