@@ -1,3 +1,12 @@
+import {
+  ACCESS_PRESET_VALUES,
+  MERGE_POLICY_VALUES,
+  PROVIDER_VALUES,
+  REASONING_EFFORT_VALUES,
+  ROLE_VALUES,
+  RUN_MODE_VALUES,
+  TASK_SIZE_VALUES,
+} from "@loom/core";
 import { z } from "zod";
 import { isoTime, repoId } from "./ids.js";
 
@@ -6,22 +15,13 @@ export const settingsScope = z.union([
   z.strictObject({ kind: z.literal("repository"), repoId }),
 ]);
 
-export const reasoningEffort = z.enum([
-  "none",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-  "ultra",
-]);
+export const reasoningEffort = z.enum(REASONING_EFFORT_VALUES);
 export const roleProfile = z.strictObject({
-  provider: z.enum(["codex", "claude"]),
+  provider: z.enum(PROVIDER_VALUES),
   model: z.string().min(1),
   reasoningEffort: reasoningEffort.nullable(),
-  runMode: z.enum(["interactive", "headless"]),
-  access: z.enum(["full", "approval-gated"]),
+  runMode: z.enum(RUN_MODE_VALUES),
+  access: z.enum(ACCESS_PRESET_VALUES),
 });
 export const settingsValues = z.strictObject({
   roles: z.strictObject({
@@ -31,10 +31,10 @@ export const settingsValues = z.strictObject({
   }),
   workflow: z.strictObject({
     requirePlanApproval: z.boolean(),
-    size: z.enum(["small", "normal"]),
+    size: z.enum(TASK_SIZE_VALUES),
     budgetMinutes: z.number().int().positive().nullable(),
     reviewRoundCap: z.number().int().positive(),
-    mergePolicy: z.enum(["require-human", "auto-small", "auto-all"]),
+    mergePolicy: z.enum(MERGE_POLICY_VALUES),
   }),
   repository: z.strictObject({
     baseBranch: z.string().min(1),
@@ -73,12 +73,7 @@ export const settingsValues = z.strictObject({
 });
 
 export const settingsPatch = z.strictObject({
-  roles: z
-    .partialRecord(
-      z.enum(["planner", "implementer", "reviewer"]),
-      roleProfile.partial(),
-    )
-    .optional(),
+  roles: z.partialRecord(z.enum(ROLE_VALUES), roleProfile.partial()).optional(),
   workflow: settingsValues.shape.workflow.partial().optional(),
   repository: settingsValues.shape.repository.partial().optional(),
   main: settingsValues.shape.main.partial().optional(),

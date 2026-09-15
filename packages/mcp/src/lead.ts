@@ -1,3 +1,4 @@
+import { ROLE_VALUES } from "@loom/core";
 // Main retains the internal `lead` identity for persisted sessions and clients.
 // Tools reuse the protocol boundary and human command path. No stage rules live here.
 
@@ -41,7 +42,7 @@ export const messageAgentSchema = z.strictObject({
     z.strictObject({
       kind: z.literal("task"),
       taskId: issueRef,
-      role: z.enum(["planner", "implementer", "reviewer"]),
+      role: z.enum([...ROLE_VALUES]),
     }),
   ]),
   text: z.string().min(1).max(4000),

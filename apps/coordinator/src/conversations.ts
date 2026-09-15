@@ -1,6 +1,7 @@
 import type {
   ConversationItem as CoreItem,
   IsoTime,
+  Provider,
   ProviderSessionId,
   Run,
   TaskId,
@@ -263,7 +264,7 @@ export class ConversationViews {
   }
   private publish(
     target: ConversationTarget,
-    provider: "claude" | "codex",
+    provider: Provider,
     status: "working" | "idle" | "waiting" | "stopped" | "unknown",
     items: CoreItem[],
     truncated: boolean,

@@ -1,4 +1,5 @@
-import type { Provider, Role, RunMode } from "./entities.js";
+import type { Provider, Role, RunMode, TaskSize } from "./entities.js";
+import { ROLE_VALUES } from "./entities.js";
 import {
   DEFAULT_KEYBINDINGS,
   KEYBINDING_ACTIONS,
@@ -18,17 +19,25 @@ export type ApplyTiming =
   | "next-task"
   | "next-run"
   | "restart-required";
-export type MergePolicy = "require-human" | "auto-small" | "auto-all";
-export type AccessPreset = "full" | "approval-gated";
-export type ReasoningEffort =
-  | "none"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh"
-  | "max"
-  | "ultra";
+export const MERGE_POLICY_VALUES = [
+  "require-human",
+  "auto-small",
+  "auto-all",
+] as const;
+export type MergePolicy = (typeof MERGE_POLICY_VALUES)[number];
+export const ACCESS_PRESET_VALUES = ["full", "approval-gated"] as const;
+export type AccessPreset = (typeof ACCESS_PRESET_VALUES)[number];
+export const REASONING_EFFORT_VALUES = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORT_VALUES)[number];
 
 export interface RoleProfile {
   provider: Provider;
@@ -42,7 +51,7 @@ export interface SettingsValues {
   roles: Record<Role, RoleProfile>;
   workflow: {
     requirePlanApproval: boolean;
-    size: "small" | "normal";
+    size: TaskSize;
     budgetMinutes: number | null;
     reviewRoundCap: number;
     mergePolicy: MergePolicy;
@@ -217,7 +226,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
 const BOTH = ["global", "repository"] as const;
 const GLOBAL = ["global"] as const;
 export const SETTINGS_CATALOG: SettingDefinition[] = [
-  ...(["planner", "implementer", "reviewer"] as Role[]).flatMap((name) => [
+  ...([...ROLE_VALUES] as Role[]).flatMap((name) => [
     {
       key: `roles.${name}.provider`,
       section: "Agents & models" as const,
@@ -560,7 +569,7 @@ export function resolveSettings(
           ? "global"
           : "default";
   }
-  for (const role of ["planner", "implementer", "reviewer"] as const) {
+  for (const role of [...ROLE_VALUES]) {
     const profile = effective.roles[role];
     const model = providerEnvironment?.models?.[profile.provider];
     if (model !== undefined) {

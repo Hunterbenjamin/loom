@@ -1,3 +1,4 @@
+import { storedEntities } from "@loom/protocol";
 import { z } from "zod";
 
 // Core brands are compile-time only. Check the complete unbranded shape before branding it.
@@ -17,90 +18,17 @@ export const id = text.min(1);
 export const count = z.number().int().nonnegative();
 export const positive = z.number().int().positive();
 export const time = z.iso.datetime();
-export const transportAttempt = z
-  .object({
-    startedAt: time,
-    completedAt: time,
-    sessionId: id,
-    sessionEpoch: count,
-    runAttempt: positive,
-  })
-  .refine((attempt) => attempt.completedAt >= attempt.startedAt, {
-    message: "Transport completion precedes its start",
-  });
 export const sha = text.regex(/^[0-9a-f]{40}$/);
-export const hash = text.regex(/^[0-9a-f]{64}$/);
-export const provider = z.enum(["codex", "claude"]);
-export const role = z.enum(["planner", "implementer", "reviewer"]);
-export const stage = z.enum([
-  "backlog",
-  "todo",
-  "planning",
-  "plan_approval",
-  "in_progress",
-  "ci",
-  "in_review",
-  "awaiting_approval",
-  "merging",
-  "done",
-  "canceled",
-]);
-export const artifactKind = z.enum([
-  "brief",
-  "plan",
-  "decisions",
-  "findings",
-  "test_results",
-  "handoff",
-  "implementation",
-]);
-export const side = z.enum(["old", "new"]);
-export const severity = z.enum(["blocker", "major", "minor", "nit"]);
-export const findingStatus = z.enum([
-  "open",
-  "addressed",
-  "disputed",
-  "resolved",
-  "fixed",
-  "escalate",
-  "waived",
-]);
-export const requestKind = z.enum([
-  "command_approval",
-  "file_approval",
-  "permission",
-  "question",
-]);
-export const sendVia = z.enum([
-  "codex_turn_start",
-  "codex_turn_steer",
-  "pane_paste",
-  "claude_sdk",
-]);
-export const blockedReason = z.enum([
-  "dependencies",
-  "question",
-  "review_round_cap",
-  "review_not_converging",
-  "provider_cooling_down",
-  "pr_closed",
-]);
-export const failedReason = z.enum([
-  "retries_exhausted",
-  "non_retryable_error",
-  "action_failed",
-]);
-export const providerRules = z.object({
-  planner: provider,
-  implementer: provider,
-  reviewer: provider,
-});
-export const paneRef = z.object({
-  hostGeneration: text,
-  sessionName: text,
-  windowId: text,
-  paneId: text,
-});
+export {
+  artifactKind,
+  findingStatus,
+  provider,
+  role,
+  sendVia,
+  severity,
+  side,
+} from "@loom/protocol";
+export const { paneRef, transportAttempt } = storedEntities;
 export const errorSchema = z.object({
   code: z.enum(["retryable", "precondition", "fatal"]),
   message: text,

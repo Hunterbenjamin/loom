@@ -13,6 +13,7 @@ import type {
   TaskId,
   TaskState,
 } from "@loom/core";
+import { ROLE_VALUES } from "@loom/core";
 import type { Store } from "@loom/store";
 import type { CoordinatorConfig } from "./config.js";
 import type { Loop } from "./loop.js";
@@ -61,7 +62,7 @@ export class TaskInputs {
       reviewRound: 0,
       reviewRoundCap: settings.workflow.reviewRoundCap,
       roleProfiles: Object.fromEntries(
-        (["planner", "implementer", "reviewer"] as const).map((role) => {
+        [...ROLE_VALUES].map((role) => {
           const profile = settings.roles[role];
           const provider = input.providers?.[role] ?? profile.provider;
           return [

@@ -1,5 +1,6 @@
 import type {
   Approval,
+  Artifact,
   Attention,
   BlockedFlag,
   CiState,
@@ -15,6 +16,7 @@ import type {
   Repo,
   Run,
   Task,
+  TaskState,
   TestResult,
   Transition,
   Worktree,
@@ -23,6 +25,7 @@ import { describe, expect, expectTypeOf, it, test } from "vitest";
 import type { z } from "zod";
 import {
   approval,
+  type artifact,
   attention,
   type blockedFlag,
   type ciState,
@@ -40,6 +43,7 @@ import {
   run,
   stage,
   task,
+  type taskContext,
   type testResult,
   transition,
   worktree,
@@ -55,7 +59,21 @@ import {
   taskInbox,
 } from "./views.js";
 
-test("every mirror equals the core type it mirrors", () => {
+test("every entity schema equals its core type", () => {
+  expectTypeOf<z.output<typeof artifact>>().toEqualTypeOf<Artifact>();
+  type Context = Pick<
+    TaskState,
+    | "plan"
+    | "review"
+    | "ciGate"
+    | "desiredRun"
+    | "activeElapsedMs"
+    | "budgetObservedAt"
+    | "progress"
+  >;
+  // Core represents versioned plans as an intersection; zod flattens their fields.
+  expectTypeOf<z.output<typeof taskContext>>().toExtend<Context>();
+  expectTypeOf<Context>().toExtend<z.output<typeof taskContext>>();
   expectTypeOf<z.output<typeof repo>>().toEqualTypeOf<Repo>();
   expectTypeOf<z.output<typeof task>>().toEqualTypeOf<Task>();
   expectTypeOf<z.output<typeof attention>>().toEqualTypeOf<Attention>();

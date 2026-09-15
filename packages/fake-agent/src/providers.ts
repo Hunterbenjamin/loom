@@ -11,6 +11,7 @@ import type {
   Run,
   RunObservation,
   TokenCounts,
+  TurnOutcome,
   WorktreePath,
 } from "@loom/core";
 import type { FakeClock } from "./clock.js";
@@ -217,7 +218,7 @@ export class FakeProviders {
   }
   finish(
     id: ProviderSessionId,
-    outcome: "completed" | "interrupted" | "failed",
+    outcome: TurnOutcome,
     error?: { kind: string; willRetry: boolean },
   ) {
     const s = this.get(id);

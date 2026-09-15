@@ -1,3 +1,4 @@
+import { MESSAGE_WHEN_VALUES, TASK_SIZE_VALUES } from "@loom/core";
 import { briefRun, briefState } from "./briefs.js";
 import {
   pullRequestCommand,
@@ -189,7 +190,7 @@ export const command = z.union([
     repoId,
     text: leadMessageText,
     clientMessageId: z.string().uuid(),
-    when: z.enum(["now", "after_turn"]).optional(),
+    when: z.enum(MESSAGE_WHEN_VALUES).optional(),
     attachmentIds: z.array(z.string().uuid()).max(10).optional(),
   }),
   z.strictObject({
@@ -237,7 +238,7 @@ export const command = z.union([
     requirePlanApproval: z.boolean().nullable(),
     blockedBy: z.array(taskId),
     budgetMinutes: z.number().int().positive().nullable(),
-    size: z.enum(["small", "normal"]).nullable().default(null),
+    size: z.enum(TASK_SIZE_VALUES).nullable().default(null),
   }),
   /**
    * Where to attach a terminal to this run. Returns the argv and the pane state; it starts no

@@ -5,6 +5,7 @@ import type {
   InputDisposition,
   TaskId,
 } from "@loom/core";
+import { PROVIDER_VALUES } from "@loom/core";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { taskSchema } from "./entity-schemas.js";
@@ -65,7 +66,7 @@ export class InputStore {
         )
         .all()) {
         const row = z
-          .object({ provider: z.enum(["codex", "claude"]), count })
+          .object({ provider: z.enum([...PROVIDER_VALUES]), count })
           .parse(raw);
         active[row.provider] = row.count;
       }
