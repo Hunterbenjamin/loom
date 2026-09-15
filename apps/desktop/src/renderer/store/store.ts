@@ -149,34 +149,6 @@ export const VIEWS: { id: ViewId; label: string; hint: string }[] = [
   },
 ];
 
-const IN_PROGRESS: Stage[] = [
-  "planning",
-  "in_progress",
-  "ci",
-  "in_review",
-  "merging",
-];
-
-export function matchesView(task: Task, view: ViewId): boolean {
-  switch (view) {
-    case "settings":
-    case "pull-requests":
-      return false;
-    case "all":
-      return true;
-    case "needs-you":
-      return task.attention.reasons.length > 0;
-    case "in-progress":
-      return IN_PROGRESS.includes(task.stage);
-    case "awaiting-approval":
-      return (
-        task.stage === "plan_approval" || task.stage === "awaiting_approval"
-      );
-    case "done":
-      return task.stage === "done" || task.stage === "canceled";
-  }
-}
-
 const initialUi: UiState = {
   listSections: {},
   trackerVisible: false,

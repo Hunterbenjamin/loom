@@ -6,7 +6,7 @@ import {
   summarizeTask,
   type Task,
 } from "@loom/core";
-import type { TaskInbox } from "@loom/protocol";
+import { type TaskInbox, taskInView, type ViewName } from "@loom/protocol";
 import { type Snapshot, STAGES } from "../fixtures/index.js";
 
 export const issueKeyFor = (task: Task, repos: Snapshot["repos"]): string => {
@@ -17,12 +17,26 @@ export const issueKeyFor = (task: Task, repos: Snapshot["repos"]): string => {
 import {
   LIST_PAGE_SIZE,
   type ListSections,
-  matchesView,
   type SortKey,
   type State,
   sectionCollapsed,
   type ViewId,
 } from "./store.js";
+
+type TaskViewId = Exclude<ViewId, "pull-requests" | "settings">;
+
+const taskViewNames = {
+  all: "all",
+  "needs-you": "needs_you",
+  "in-progress": "in_progress",
+  "awaiting-approval": "awaiting_approval",
+  done: "done",
+} as const satisfies Record<TaskViewId, ViewName>;
+
+function taskViewName(view: ViewId): ViewName | null {
+  if (view === "pull-requests" || view === "settings") return null;
+  return taskViewNames[view];
+}
 
 /** One row of the list: the task plus the few facts the columns need, computed once. */
 export interface Row {
@@ -73,6 +87,8 @@ const computeRows = memo1(
     repo: string,
     inbox: TaskInbox[],
   ): Row[] => {
+    const protocolView = taskViewName(view);
+    if (protocolView === null) return [];
     const byTask = new Map<string, Run[]>();
     for (const run of snapshot.runs) {
       const list = byTask.get(run.taskId);
@@ -94,7 +110,7 @@ const computeRows = memo1(
     const rows: Row[] = [];
     for (const task of snapshot.tasks) {
       if (task.repoId !== repo) continue;
-      if (!matchesView(task, view)) continue;
+      if (!taskInView(task, protocolView)) continue;
       const runs = byTask.get(task.id) ?? [];
       // Select the most recent live run, or fall back to the last run
       let live: Run | undefined;
@@ -282,17 +298,11 @@ export const viewCounts = memo1(
     };
     // Every task view keeps a count, not only the three the sidebar lists: the palette and the
     // keyboard still reach the others.
-    const taskViews = [
-      "all",
-      "needs-you",
-      "in-progress",
-      "awaiting-approval",
-      "done",
-    ] as const;
+    const taskViews = Object.entries(taskViewNames) as [TaskViewId, ViewName][];
     for (const task of snapshot.tasks) {
       if (task.repoId !== repo) continue;
-      for (const view of taskViews)
-        if (matchesView(task, view)) counts[view] += 1;
+      for (const [view, protocolView] of taskViews)
+        if (taskInView(task, protocolView)) counts[view] += 1;
     }
     return counts;
   },

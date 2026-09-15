@@ -28,6 +28,22 @@ describe("views", () => {
     expect(taskInView(done, "all")).toBe(true);
   });
 
+  it("does not ask for attention when an issue is blocked without needing the human", () => {
+    const dependencyBlocked = {
+      ...needsYou,
+      attention: { reasons: [], reasonSince: {}, since: null },
+      blocked: {
+        reason: "dependencies",
+        since: needsYou.createdAt,
+        detail: "Waiting for another issue to merge",
+        until: null,
+        questionId: null,
+      },
+    } satisfies Task;
+
+    expect(taskInView(dependencyBlocked, "needs_you")).toBe(false);
+  });
+
   it("filters the task list by view and repo", () => {
     const scope = scopeOf([
       { kind: "views", views: ["needs_you"], repoIds: null },
