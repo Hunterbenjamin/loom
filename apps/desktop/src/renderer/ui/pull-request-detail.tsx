@@ -6,7 +6,7 @@ import {
 } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, terminalsForTask } from "../store/selectors.js";
-import type { UiState } from "../store/store.js";
+import type { UiState } from "../store/ui-state.js";
 import {
   PULL_REQUEST_ACTION_EVENT,
   type PullRequestActionRequest,

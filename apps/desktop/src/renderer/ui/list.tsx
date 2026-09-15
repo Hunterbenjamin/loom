@@ -8,7 +8,7 @@ import {
   type ListItem,
   selectedListItems,
 } from "../store/selectors.js";
-import type { SortKey } from "../store/store.js";
+import type { SortKey } from "../store/ui-state.js";
 import {
   AttentionChips,
   CiChip,

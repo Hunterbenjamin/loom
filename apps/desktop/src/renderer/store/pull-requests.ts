@@ -3,7 +3,8 @@ import type {
   PullRequestRow,
   Subscription,
 } from "@loom/protocol";
-import type { State } from "./store.js";
+import type { State, StoreContext } from "./store.js";
+import type { UiState } from "./ui-state.js";
 
 /** Shared by the action bar, palette and repository readiness count. */
 export function mergeDisabledReason(
@@ -169,4 +170,32 @@ export function pullRequestSubscriptions(state: State): Subscription[] {
         })),
       ),
   ];
+}
+
+export function pullRequestActions(ctx: StoreContext) {
+  return {
+    setPrTab(prTab: UiState["prTab"]) {
+      ctx.setUi({ prTab, prCursor: null });
+    },
+    togglePrSection(section: ReviewSection) {
+      const { ui } = ctx.get();
+      const collapsed = ui.prSections[section] ?? section === "completed";
+      ctx.setUi({
+        prSections: { ...ui.prSections, [section]: !collapsed },
+        prCursor: null,
+      });
+    },
+    loadMoreCompletedPrs() {
+      ctx.setUi({ prCompletedCount: ctx.get().ui.prCompletedCount + 20 });
+    },
+    setPrQuery(prQuery: string) {
+      ctx.setUi({ prQuery, prCursor: null });
+    },
+    openPullRequest(openPr: UiState["openPr"]) {
+      ctx.setUi({ openPr, openTask: null, openRun: null, openReason: null });
+    },
+    setPrCursor(prCursor: number | null) {
+      ctx.setUi({ prCursor });
+    },
+  };
 }

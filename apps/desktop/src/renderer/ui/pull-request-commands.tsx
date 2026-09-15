@@ -4,7 +4,7 @@ import {
   mergeDisabledReason,
 } from "../store/pull-requests.js";
 import { useStore } from "../store/react.js";
-import type { UiState } from "../store/store.js";
+import type { UiState } from "../store/ui-state.js";
 
 const ACTIONS = [
   { action: "merge", label: "Squash and merge", key: "m" },

@@ -10,7 +10,8 @@ import {
   terminalsForTask,
 } from "./selectors.js";
 
-import { createStore, LIST_PAGE_SIZE } from "./store.js";
+import { createStore } from "./store.js";
+import { LIST_PAGE_SIZE } from "./ui-state.js";
 
 describe("rowsFor", () => {
   test("selects an explicit summary and falls back to the description's first sentence", () => {
