@@ -8,23 +8,22 @@ import type { TabId, UiState } from "../store/ui-state.js";
 import { AttentionChips } from "./bits.js";
 import { DetailLayout } from "./detail-layout.js";
 import { EditBacklogIssue } from "./edit-backlog-issue.js";
-import { since, stageLabel } from "./format.js";
-import { IssueAgentsRail } from "./issue-agents-rail.js";
+import { stageLabel } from "./format.js";
 import { IssueDecisionPanel } from "./issue-decision-panel.js";
 import {
   ChangePlanDialog,
   ConfirmIssueApproval,
   RequestChangesDialog,
 } from "./issue-dialogs.js";
-import { IssueOverview } from "./issue-overview.js";
 import { IssuePlanTab } from "./issue-plan-tab.js";
 import { IssueSecondaryMenu } from "./issue-secondary-menu.js";
 import { IssueToolbarAction } from "./issue-toolbar-action.js";
+import { Overview } from "./overview.js";
 import {
   PULL_REQUEST_ACTION_EVENT,
   type PullRequestActionRequest,
 } from "./pull-request-commands.js";
-import { ChangeCounts, PullRequestOverview } from "./pull-request-overview.js";
+import { ChangeCounts } from "./pull-request-overview.js";
 import { useHumanCommand } from "./use-human-command.js";
 import { usePullRequestCommand } from "./use-pull-request-command.js";
 
@@ -68,7 +67,6 @@ export function Detail({
   const { run, busy, outcome: prOutcome } = usePullRequestCommand();
   const disconnected = useStore((s) => s.live && s.connection !== "connected");
   const theme = useStore((s) => s.ui.theme);
-  const now = useStore((s) => s.snapshot.now);
   const repo = useStore((s) =>
     s.snapshot.repos.find((item) => item.id === task.repoId),
   );
@@ -236,20 +234,13 @@ export function Detail({
         </>
       }
       banner={
-        <>
-          <div className="issue-meta-line faint">
-            <span>{repo?.github}</span>
-            {task.branch ? <span className="mono">{task.branch}</span> : null}
-            <span>in stage for {since(now, task.stageEnteredAt)}</span>
-          </div>
-          <IssueDecisionPanel
-            task={task}
-            compact={tab === "terminal"}
-            onCommand={requestCommand}
-            outcome={outcome}
-            submitting={submitting}
-          />
-        </>
+        <IssueDecisionPanel
+          task={task}
+          compact={tab === "terminal"}
+          onCommand={requestCommand}
+          outcome={outcome}
+          submitting={submitting}
+        />
       }
       toolbar={
         <>
@@ -389,26 +380,21 @@ export function Detail({
         </div>
       ) : null}
       {tab === "overview" ? (
-        row ? (
-          <PullRequestOverview
+        <>
+          {prNumber && !row ? (
+            <div className="pad faint">Loading pull request #{prNumber}…</div>
+          ) : null}
+          <Overview
+            task={task}
             row={row}
             disabled={!!busy || disconnected}
             run={run}
-            issueStory={<IssueOverview task={task} storyOnly />}
-            issueRail={<IssueAgentsRail task={task} embedded />}
             onFile={(path) => {
               setFile(path);
               store.setTab("diff");
             }}
           />
-        ) : (
-          <>
-            <IssueOverview task={task} />
-            {prNumber ? (
-              <div className="pad faint">Loading pull request #{prNumber}…</div>
-            ) : null}
-          </>
-        )
+        </>
       ) : null}
       {tab === "plan" ? <IssuePlanTab task={task} /> : null}
       <Suspense fallback={<div className="pad faint">Loading…</div>}>

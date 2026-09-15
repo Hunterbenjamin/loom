@@ -729,7 +729,7 @@ test("tabs are Overview and Plan, with Terminal only while the issue has a live 
   expect(tabs()).toEqual(["Overview", "Plan"]);
 });
 
-test("the overview renders the description and findings as Markdown and lists activity with its time", () => {
+test("the overview is one reading column and one rail: Markdown, PR-style activity, combined status, collapsible agents and tests", () => {
   const h = setup("plan");
   h.task.description = "Fix the **inbox** row.\n\n- first\n- second";
   h.snapshot.findings.push({
@@ -763,19 +763,36 @@ test("the overview renders the description and findings as Markdown and lists ac
   });
   h.store.open(h.task.id);
   h.render();
-  const overview = h.host.querySelector(".issue-overview");
-  expect(overview?.querySelector(".task-description strong")?.textContent).toBe(
-    "inbox",
-  );
-  expect(overview?.querySelectorAll(".task-description li")).toHaveLength(2);
-  expect(overview?.textContent).not.toContain("**inbox**");
-  const finding = overview?.querySelector(".issue-finding");
+  const story = h.host.querySelector(".pr-overview .pr-story");
+  const description = story?.querySelector(".pr-description");
+  expect(description?.querySelector("strong")?.textContent).toBe("inbox");
+  expect(description?.querySelectorAll("li")).toHaveLength(2);
+  expect(story?.textContent).not.toContain("**inbox**");
+  const finding = story?.querySelector(".issue-finding");
   expect(finding?.textContent).toContain("Missing version");
   expect(finding?.querySelector("code")?.textContent).toBe("planVersion");
-  // Each activity row keeps its time column, so its text isn't squeezed into the dot column.
-  expect(overview?.querySelectorAll(".event").length).toBeGreaterThan(0);
-  for (const row of overview?.querySelectorAll(".event") ?? [])
-    expect(row.children).toHaveLength(3);
+  // The plan has its own tab; the overview doesn't repeat it.
+  expect(story?.textContent).not.toContain("Open plan");
+  // Issue activity uses the pull request activity rows, each with its time.
+  const move = [...(story?.querySelectorAll(".pr-activity li") ?? [])].find(
+    (item) => item.textContent?.includes("Planning → Plan approval"),
+  );
+  expect(move?.querySelector("time")).not.toBeNull();
+  // No metadata line or working-status line above the tabs.
+  expect(h.host.querySelector(".issue-meta-line")).toBeNull();
+  expect(h.host.querySelector(".issue-status")).toBeNull();
+  if (h.task.branch) expect(h.host.textContent).not.toContain(h.task.branch);
+  // The rail's Status row carries the stage; agents and tests collapse like checks.
+  const rail = h.host.querySelector(".pr-overview .pr-rail");
+  expect(rail?.querySelector(".overview-status")?.textContent).toContain(
+    "Plan approval",
+  );
+  expect(
+    rail?.querySelector('[data-testid="overview-agents"] details summary'),
+  ).not.toBeNull();
+  expect(
+    rail?.querySelector('[data-testid="overview-tests"] details summary'),
+  ).not.toBeNull();
 });
 
 test("backlog exposes editing and Move to Todo; absent plan and branch omit their tabs", async () => {
