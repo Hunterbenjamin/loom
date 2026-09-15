@@ -40,7 +40,10 @@ const stageOf = (h: Harness, id: TaskId) =>
 
 test("a task runs Todo to Done through plan, review, a fix round and a merge", async () => {
   const h = await harness();
-  Object.assign(h.adapters, codexPerTask(h.dataRoot, () => h.providers.codex));
+  Object.assign(
+    h.adapters,
+    codexPerTask(h.dataRoot, () => h.providers.codex),
+  );
   const taskId = start(h);
   const driver = new ScenarioDriver(h, await scenarios("walking-skeleton"));
   await driver.run();
