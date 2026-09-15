@@ -130,7 +130,9 @@ test.each([false, true])(
         expect(after.task.stage).toBe("awaiting_approval");
         expect(after.task.reviewRound).toBe(before.task.reviewRound);
         expect(after.review).toEqual(before.review);
-        expect(after.runs.map((r) => r.id)).toEqual(before.runs.map((r) => r.id));
+        expect(after.runs.map((r) => r.id)).toEqual(
+          before.runs.map((r) => r.id),
+        );
         expect(
           h.store.outbox.list(task.id).filter((r) => r.kind === "merge_base"),
         ).toHaveLength(0);

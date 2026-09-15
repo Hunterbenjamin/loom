@@ -196,32 +196,35 @@ test.each(["in_review", "awaiting_approval"] as const)(
   },
 );
 
-test.each(["external", "missing", "different_branch", "dirty_behind", "unknown"])(
-  "%s does not suppress head-change or CI reconciliation",
-  (condition) => {
-    for (const stage of ["ci", "awaiting_approval"] as const) {
-      const f = setup(stage);
-      if (condition === "external") f.state.runs[0]!.origin = "external";
-      if (condition === "missing") f.git.exists = false;
-      if (condition === "different_branch") f.git.branch = "main";
-      if (condition === "dirty_behind") {
-        f.git.dirty = true;
-        f.git.dirtyPaths = ["edited.txt"];
-        f.git.currentBaseSha = base;
-        f.git.behindBase = 1;
-      }
-      if (condition === "unknown") {
-        f.pr.mergeable = "unknown";
-        f.git.conflictsWithBase = null;
-      }
-      if (stage === "awaiting_approval") f.pr.headSha = base;
-      const r = fixed(f.state, f.observations);
-      expect(r.next.task.stage).toBe("in_review");
-      expect(r.next.task.reviewRound).toBe(f.state.task.reviewRound + 1);
-      expect(r.actions.some((a) => a.kind === "merge_base")).toBe(false);
+test.each([
+  "external",
+  "missing",
+  "different_branch",
+  "dirty_behind",
+  "unknown",
+])("%s does not suppress head-change or CI reconciliation", (condition) => {
+  for (const stage of ["ci", "awaiting_approval"] as const) {
+    const f = setup(stage);
+    if (condition === "external") f.state.runs[0]!.origin = "external";
+    if (condition === "missing") f.git.exists = false;
+    if (condition === "different_branch") f.git.branch = "main";
+    if (condition === "dirty_behind") {
+      f.git.dirty = true;
+      f.git.dirtyPaths = ["edited.txt"];
+      f.git.currentBaseSha = base;
+      f.git.behindBase = 1;
     }
-  },
-);
+    if (condition === "unknown") {
+      f.pr.mergeable = "unknown";
+      f.git.conflictsWithBase = null;
+    }
+    if (stage === "awaiting_approval") f.pr.headSha = base;
+    const r = fixed(f.state, f.observations);
+    expect(r.next.task.stage).toBe("in_review");
+    expect(r.next.task.reviewRound).toBe(f.state.task.reviewRound + 1);
+    expect(r.actions.some((a) => a.kind === "merge_base")).toBe(false);
+  }
+});
 
 test("an external session does not suppress publication or reviewed-head CI failure", () => {
   const publishing = setup("in_review");
@@ -232,7 +235,9 @@ test("an external session does not suppress publication or reviewed-head CI fail
   const published = fixed(publishing.state, publishing.observations);
   expect(published.next.task.stage).toBe("awaiting_approval");
   expect(published.next.review?.publicationPending).toBe(false);
-  expect(published.next.task.reviewRound).toBe(publishing.state.task.reviewRound);
+  expect(published.next.task.reviewRound).toBe(
+    publishing.state.task.reviewRound,
+  );
 
   const failing = setup("awaiting_approval");
   failing.state.runs[0]!.origin = "external";
