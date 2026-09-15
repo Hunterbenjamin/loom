@@ -25,6 +25,7 @@ import {
   readArtifactRow,
   saveArtifacts,
 } from "./artifacts.js";
+import { BriefStore } from "./briefs.js";
 import {
   approvalSchema,
   contextSchema,
@@ -82,6 +83,7 @@ class CommitConflict extends Error {
 export class Store {
   private roleProfilesForTask?: (task: Task) => ReconcileConfig["roleProfiles"];
   readonly mainMessages: MainMessageStore;
+  readonly briefs: BriefStore;
   readonly leadMessages: LeadMessageStore;
   readonly hooks: SqliteHookLog;
   readonly outbox: Outbox;
@@ -91,6 +93,7 @@ export class Store {
     readonly dataDirectory: string,
     private config: ReconcileConfig,
   ) {
+    this.briefs = new BriefStore(db);
     this.mainMessages = new MainMessageStore(db);
     this.leadMessages = new LeadMessageStore(db);
     this.hooks = new SqliteHookLog(db);

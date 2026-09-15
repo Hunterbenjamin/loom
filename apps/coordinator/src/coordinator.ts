@@ -6,6 +6,7 @@ import {
   pullRequestReviewChange,
 } from "@loom/protocol";
 import { Attachments, withAttachedFiles } from "./attachments.js";
+import { DailyBriefs } from "./briefs.js";
 import { ConversationViews } from "./conversations.js";
 import { PaneInventory, paneKey } from "./pane-inventory.js";
 import { PullRequestViews } from "./pull-requests.js";
@@ -207,6 +208,7 @@ export class Coordinator {
   readonly recipes: RecipeStore;
   private readonly attachments: Attachments;
   private readonly baselineConfig: CoordinatorConfig;
+  readonly briefs: DailyBriefs;
   readonly leads = new Map<string, LeadSession>();
   private readonly schedules = new Map<
     string,
@@ -469,6 +471,13 @@ export class Coordinator {
         return () => clearTimeout(timer);
       });
     this.logger = options.log ?? (() => {});
+    this.briefs = new DailyBriefs({
+      store: this.store,
+      research: this.adapters.research,
+      now: this.now,
+      log: this.logger,
+    });
+    this.briefs.recover();
     this.startedAt = this.now();
     this.epoch = epochOf(this.startedAt);
     this.recipes = new RecipeStore(this.store.dataDirectory);
@@ -720,6 +729,7 @@ export class Coordinator {
 
   /** Starts the timers that make this a long-running process, rather than a driven loop. */
   run(): void {
+    this.briefs.start();
     this.leadPoll = setInterval(() => void this.pollLeads(), 1500);
     this.leadPoll.unref?.();
     // Event-driven from here: every enqueue starts its pass, and every pass drains the executor.
@@ -747,6 +757,7 @@ export class Coordinator {
   }
 
   async stop(): Promise<void> {
+    await this.briefs.stop();
     await this.prViews.stop();
     await this.conversationViews.stop();
     if (this.panePoll) clearInterval(this.panePoll);
@@ -1574,6 +1585,30 @@ export class Coordinator {
             throw new Error("Scratch created but inventory unavailable");
           return { ok: true, result: { kind: "scratch_created", pane } };
         }
+        case "get_briefs":
+          return {
+            ok: true,
+            result: { kind: "briefs", state: this.store.briefs.state() },
+          };
+        case "get_brief": {
+          const run = this.store.briefs.get(command.id as string);
+          if (!run) throw new Error("Unknown daily brief");
+          return { ok: true, result: { kind: "brief", run } };
+        }
+        case "run_brief":
+          return {
+            ok: true,
+            result: {
+              kind: "brief",
+              run: this.briefs.run("manual", command.id as string),
+            },
+          };
+        case "set_brief_schedule":
+          this.store.briefs.setEnabled(command.enabled as boolean);
+          return {
+            ok: true,
+            result: { kind: "briefs", state: this.store.briefs.state() },
+          };
         case "select_repo": {
           this.store.selectRepo(command.repoId as string);
           this.publishRepos();

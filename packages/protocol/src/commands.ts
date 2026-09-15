@@ -1,3 +1,4 @@
+import { briefRun, briefState } from "./briefs.js";
 import {
   pullRequestCommand,
   pullRequestCommitDiff,
@@ -99,6 +100,13 @@ export const setTitle = z.strictObject({
 });
 
 export const command = z.union([
+  z.strictObject({ kind: z.literal("get_briefs") }),
+  z.strictObject({ kind: z.literal("get_brief"), id: z.string().uuid() }),
+  z.strictObject({ kind: z.literal("run_brief"), id: z.string().uuid() }),
+  z.strictObject({
+    kind: z.literal("set_brief_schedule"),
+    enabled: z.boolean(),
+  }),
   setTitle,
 
   z.strictObject({
@@ -263,6 +271,8 @@ export const commandRequest = z.strictObject({
 
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
+  z.strictObject({ kind: z.literal("briefs"), state: briefState }),
+  z.strictObject({ kind: z.literal("brief"), run: briefRun }),
   z.strictObject({
     kind: z.literal("settings_updated"),
     scope: settingsScope,

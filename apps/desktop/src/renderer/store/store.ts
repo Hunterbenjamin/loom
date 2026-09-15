@@ -51,7 +51,8 @@ export type ViewId =
   | "awaiting-approval"
   | "done"
   | "pull-requests"
-  | "settings";
+  | "settings"
+  | "briefs";
 type Pane = "list" | "board";
 export type TabId = "overview" | "plan" | "terminal";
 export type SortKey =
@@ -84,6 +85,8 @@ export interface UiState {
   prQuery: string;
   prCursor: number | null;
   openPr: { repoId: PullRequestRow["repoId"]; number: number } | null;
+  /** The brief open over the Daily brief list. */
+  openBrief: string | null;
   view: ViewId;
   pane: Pane;
   /** Coordinator projection; empty only when no repository is registered. */
@@ -131,7 +134,11 @@ export interface State {
 }
 
 /** The Tracker's three destinations. Other view ids remain reachable by keyboard and palette. */
-export const VIEWS: { id: ViewId; label: string; hint: string }[] = [
+export const VIEWS: {
+  id: Exclude<ViewId, "settings" | "briefs">;
+  label: string;
+  hint: string;
+}[] = [
   {
     id: "needs-you",
     label: "Inbox",
@@ -158,6 +165,7 @@ const initialUi: UiState = {
   prQuery: "",
   prCursor: null,
   openPr: null,
+  openBrief: null,
   view: "all",
   pane: "list",
   repo: "",
@@ -628,7 +636,11 @@ export function createStore(
         prCursor: null,
         openTask: null,
         openPr: null,
+        openBrief: null,
       });
+    },
+    openBrief(openBrief: string | null) {
+      setUi({ openBrief });
     },
     setPane(pane: Pane) {
       setUi({ pane, cursor: null });

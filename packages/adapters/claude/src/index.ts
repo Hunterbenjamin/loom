@@ -239,3 +239,5 @@ export async function createClaudeAdapter(
     },
   };
 }
+
+export * from "./research.js";

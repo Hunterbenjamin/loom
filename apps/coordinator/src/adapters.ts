@@ -12,6 +12,7 @@ import type {
 } from "@loom/core";
 
 export interface Adapters {
+  research?: import("@loom/adapter-claude").BriefResearch;
   subscribeDiagnostics?(
     listener: (
       event: import("@loom/core").AdapterDiagnostic & { taskId: string | null },

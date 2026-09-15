@@ -4,7 +4,7 @@
 // the shared Codex daemon or global config.
 
 import { join } from "node:path";
-import { createClaudeAdapter } from "@loom/adapter-claude";
+import { createBriefResearch, createClaudeAdapter } from "@loom/adapter-claude";
 import { createCodexAdapter } from "@loom/adapter-codex";
 import { createGitAdapter } from "@loom/adapter-git";
 import { createGitHubAdapter } from "@loom/adapter-github";
@@ -93,6 +93,7 @@ export async function createRealAdapters(
         listeners.delete(listener);
       };
     },
+    research: createBriefResearch(config.claudeExecutable),
     git,
     github,
     paneHost,

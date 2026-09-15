@@ -24,7 +24,7 @@ import {
   type ViewId,
 } from "./store.js";
 
-type TaskViewId = Exclude<ViewId, "pull-requests" | "settings">;
+type TaskViewId = Exclude<ViewId, "pull-requests" | "settings" | "briefs">;
 
 const taskViewNames = {
   all: "all",
@@ -35,7 +35,8 @@ const taskViewNames = {
 } as const satisfies Record<TaskViewId, ViewName>;
 
 function taskViewName(view: ViewId): ViewName | null {
-  if (view === "pull-requests" || view === "settings") return null;
+  if (view === "pull-requests" || view === "settings" || view === "briefs")
+    return null;
   return taskViewNames[view];
 }
 
@@ -280,7 +281,10 @@ export function cursorRows(state: State): Row[] {
 }
 
 export const viewCounts = memo1(
-  (snapshot: Snapshot, repo: string): Record<ViewId, number> => {
+  (
+    snapshot: Snapshot,
+    repo: string,
+  ): Record<Exclude<ViewId, "briefs">, number> => {
     const counts = {
       all: 0,
       "needs-you": 0,
