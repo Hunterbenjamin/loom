@@ -67,6 +67,11 @@ that drift apart (for example two keybinding definitions, one of which silently 
 AGENTS.md asks for changing or deleting code over adding layers and for one definition per concept;
 planners state a bug's cause; reviewers block a fix that hides a bug or a second definition.
 
+Decision 2026-09-15: Main groups issues by review question, not one per finding. Each issue pays at
+least an implementer and a reviewer session plus a CI run, so homogeneous mechanical changes
+(deletions, unused code) share one issue; judgment calls and structural changes each get their own;
+and every issue stays small enough for one short session, since cost grows with session length.
+
 Submit the round head through `submit_review` with an empty `reviewerCommits`. Report a problem that
 must be fixed before merge as `status: escalate` with a `reason`; the implementer fixes it in its own
 session, and CI runs again before the next round. Report everything else as `status: open`, a
