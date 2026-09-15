@@ -182,3 +182,19 @@
 .backlog-editor select {
   width: 100%;
 }
+
+.tracker-which-key {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 100;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  box-shadow: 0 8px 32px #0004;
+}
+.tracker-which-key kbd {
+  display: inline-block;
+  min-width: 44px;
+}

@@ -985,3 +985,76 @@ test("a PR head change disables issue approval and invalidates its open confirma
   expect(button("Confirm approval")?.disabled).toBe(true);
   expect(button("Approve merge")?.disabled).toBe(true);
 });
+
+test("a confirms the captured plan; mouse approval still sends directly", async () => {
+  const { createShortcutHandler } = await import("./keys.js");
+  const h = setup("plan");
+  h.store.open(h.task.id);
+  const sender = vi.fn(async () => ({
+    ok: true as const,
+    result: { kind: "human" as const, inputId: inputId("approve-keyboard") },
+  }));
+  h.store.setSender(sender);
+  h.render();
+  const handler = createShortcutHandler(h.store);
+  const key = () =>
+    act(() =>
+      handler(new KeyboardEvent("keydown", { key: "a", cancelable: true })),
+    );
+  key();
+  expect(sender).not.toHaveBeenCalled();
+  expect(h.host.querySelector("dialog")?.textContent).toContain(
+    "plan version 9",
+  );
+  const confirm = h.host.querySelector<HTMLButtonElement>(
+    "dialog .pr-actions button:last-child",
+  );
+  expect(confirm?.disabled).toBe(false);
+  key();
+  expect(sender).not.toHaveBeenCalled();
+  await act(async () => confirm?.click());
+  expect(sender).toHaveBeenCalledExactlyOnceWith({
+    kind: "human",
+    taskId: h.task.id,
+    command: { type: "approve_plan", planVersion: 9 },
+  });
+
+  const mouse = setup("plan");
+  const mouseSender = vi.fn(async () => ({
+    ok: true as const,
+    result: { kind: "human" as const, inputId: inputId("approve-mouse") },
+  }));
+  mouse.store.setSender(mouseSender);
+  mouse.render();
+  await act(async () =>
+    mouse.host
+      .querySelector<HTMLButtonElement>('[data-issue-action="approve-plan"]')
+      ?.click(),
+  );
+  expect(mouse.host.querySelector("dialog")).toBeNull();
+  expect(mouseSender.mock.calls[0]).toEqual(sender.mock.calls[0]);
+});
+
+test("plan confirmation refuses a changed version", async () => {
+  const { createShortcutHandler } = await import("./keys.js");
+  const h = setup("plan");
+  h.store.open(h.task.id);
+  const sender = vi.fn();
+  h.store.setSender(sender);
+  h.render();
+  act(() =>
+    createShortcutHandler(h.store)(new KeyboardEvent("keydown", { key: "a" })),
+  );
+  act(() => {
+    h.store.getState().inbox = h.store
+      .getState()
+      .inbox.map((row) => ({ ...row, planVersion: 10 }));
+    h.store.setTab("plan");
+  });
+  const confirm = h.host.querySelector<HTMLButtonElement>(
+    "dialog .pr-actions button:last-child",
+  );
+  expect(confirm?.disabled).toBe(true);
+  await act(async () => confirm?.click());
+  expect(sender).not.toHaveBeenCalled();
+});

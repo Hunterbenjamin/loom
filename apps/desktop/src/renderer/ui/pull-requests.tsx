@@ -79,8 +79,8 @@ export function PullRequestsView() {
   return (
     <>
       <ListToolbar
-        query={ui.prQuery}
-        onQuery={store.setPrQuery}
+        query={ui.filterQuery}
+        onQuery={store.setFilterQuery}
         inputRef={search}
         label="Filter reviews"
       >
@@ -117,7 +117,7 @@ export function PullRequestsView() {
         ) : null}
         {!loading && groups.every((group) => group.count === 0) ? (
           <div className="pad faint" role="status">
-            {ui.prQuery.trim()
+            {ui.filterQuery.trim()
               ? "No reviews match this filter."
               : ui.prTab === "created"
                 ? "No pull requests created by you."

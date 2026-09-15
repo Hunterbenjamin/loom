@@ -1,4 +1,12 @@
-import type { KeyboardEvent, ReactNode, RefObject } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+  useRef,
+} from "react";
+import { useStore, useStoreApi } from "../store/react.js";
+import { useTrackerActions } from "./tracker-actions.js";
+import { keyHint } from "./tracker-keymap.js";
 
 export function stopButtonShortcut(event: KeyboardEvent<HTMLButtonElement>) {
   if (event.key === "Enter" || event.key === " ") event.stopPropagation();
@@ -11,20 +19,23 @@ export function ListToolbar({
   inputRef,
   label = "Filter",
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   query?: string;
   onQuery?: (value: string) => void;
   inputRef?: RefObject<HTMLInputElement | null>;
   label?: string;
 }) {
+  const ownRef = useRef<HTMLInputElement>(null);
+  const search = inputRef ?? ownRef;
+  useTrackerActions({ filter: () => search.current?.focus() });
   return (
     <div className="list-toolbar reviews-toolbar">
       <div className="list-segments reviews-tabs">{children}</div>
       {onQuery ? (
         <div className="list-search reviews-search" data-active={!!query}>
           <input
-            ref={inputRef}
-            data-pr-search
+            ref={search}
+            data-tracker-search
             aria-label={label}
             placeholder={`${label}…`}
             value={query}
@@ -40,8 +51,8 @@ export function ListToolbar({
           <button
             type="button"
             aria-label={label}
-            title={`${label} (/)`}
-            onClick={() => inputRef?.current?.focus()}
+            {...keyHint("filter", label)}
+            onClick={() => search.current?.focus()}
             onKeyDown={stopButtonShortcut}
           >
             <svg
@@ -109,6 +120,7 @@ export function ListRow({
   age?: ReactNode;
   title?: string;
   children?: ReactNode;
+  id?: string;
   [key: `data-${string}`]: string | boolean | undefined;
 }) {
   return (
@@ -158,4 +170,10 @@ export function LoadMore({
       {label}
     </button>
   );
+}
+
+export function TrackerFilter() {
+  const store = useStoreApi();
+  const query = useStore((state) => state.ui.filterQuery);
+  return <ListToolbar query={query} onQuery={store.setFilterQuery} />;
 }

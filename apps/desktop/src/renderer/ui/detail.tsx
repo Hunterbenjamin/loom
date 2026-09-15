@@ -1,5 +1,5 @@
 import type { HumanCommand, Sha, Task, TaskId } from "@loom/core";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { issuePrNumbers } from "../store/detail-selection.js";
 import { issueDecisions } from "../store/issue-actions.js";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
@@ -13,17 +13,16 @@ import { IssueDecisionPanel } from "./issue-decision-panel.js";
 import {
   ChangePlanDialog,
   ConfirmIssueApproval,
+  ConfirmPlanApproval,
   RequestChangesDialog,
 } from "./issue-dialogs.js";
 import { IssuePlanTab } from "./issue-plan-tab.js";
 import { IssueSecondaryMenu } from "./issue-secondary-menu.js";
 import { IssueToolbarAction } from "./issue-toolbar-action.js";
 import { Overview } from "./overview.js";
-import {
-  PULL_REQUEST_ACTION_EVENT,
-  type PullRequestActionRequest,
-} from "./pull-request-commands.js";
 import { ChangeCounts } from "./pull-request-overview.js";
+import { useTrackerActions } from "./tracker-actions.js";
+import { keyHint } from "./tracker-keymap.js";
 import { useHumanCommand } from "./use-human-command.js";
 import { usePullRequestCommand } from "./use-pull-request-command.js";
 
@@ -115,24 +114,36 @@ export function Detail({
     (row && row.detail.headSha !== reviewedHead)
       ? "This PR is not the issue’s reviewed head. Review the issue’s current PR before approving."
       : null;
-  const actionBar = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const activate = (event: Event) => {
-      const request = (event as CustomEvent<PullRequestActionRequest>).detail;
+  const [confirmPlan, setConfirmPlan] = useState<Extract<
+    HumanCommand,
+    { type: "approve_plan" }
+  > | null>(null);
+  const refresh = () => {
+    if (!busy && !disconnected && prNumber)
+      void run({
+        kind: "refresh_pull_requests",
+        repoId: task.repoId,
+        state: row?.detail.state ?? "open",
+      });
+  };
+  useTrackerActions({
+    ...Object.fromEntries(
+      tabs.map((item) => [`tab-${item.id}`, () => store.setTab(item.id)]),
+    ),
+    edit: () => {
       if (
-        request.repoId !== task.repoId ||
-        request.number !== prNumber ||
-        document.querySelector("dialog[open]")
+        task.stage === "backlog" &&
+        !disconnected &&
+        !submitting &&
+        pending === null
       )
-        return;
-      actionBar.current
-        ?.querySelector<HTMLElement>(`[data-pr-action="${request.action}"]`)
-        ?.click();
-    };
-    window.addEventListener(PULL_REQUEST_ACTION_EVENT, activate);
-    return () =>
-      window.removeEventListener(PULL_REQUEST_ACTION_EVENT, activate);
-  }, [task.repoId, prNumber]);
+        setEditing(true);
+    },
+    github: () => {
+      if (row) window.open(row.detail.url, "_blank", "noopener,noreferrer");
+    },
+    refresh,
+  });
   const requestCommand = (command: HumanCommand) => {
     if (command.type === "approve") setConfirmHead(command.headSha);
     else void send(command);
@@ -143,7 +154,6 @@ export function Detail({
       testId="detail"
       taskId={task.id}
       tab={tab}
-      actionRef={actionBar}
       onClose={() =>
         selection ? store.openPullRequest(null) : store.open(null)
       }
@@ -204,6 +214,7 @@ export function Detail({
               </button>
               <a
                 className="pr-github-chip mono"
+                {...keyHint("github")}
                 data-pr-action="open"
                 aria-label="Open on GitHub"
                 href={row.detail.url}
@@ -217,15 +228,10 @@ export function Detail({
           {prNumber ? (
             <button
               type="button"
+              {...keyHint("refresh")}
               data-pr-action="refresh"
               disabled={!!busy || disconnected}
-              onClick={() =>
-                void run({
-                  kind: "refresh_pull_requests",
-                  repoId: task.repoId,
-                  state: row?.detail.state ?? "open",
-                })
-              }
+              onClick={refresh}
             >
               Refresh
             </button>
@@ -252,6 +258,7 @@ export function Detail({
                 role="tab"
                 aria-controls="detail-panel"
                 aria-selected={tab === item.id}
+                {...keyHint(`tab-${item.id}`)}
                 data-tab={item.id}
                 onClick={() => store.setTab(item.id)}
               >
@@ -266,6 +273,7 @@ export function Detail({
                 type="button"
                 className="secondary"
                 disabled={disconnected || submitting || pending !== null}
+                {...keyHint("edit")}
                 data-issue-action="edit"
                 onClick={() => setEditing(true)}
               >
@@ -294,6 +302,10 @@ export function Detail({
           <IssueToolbarAction
             task={task}
             onCommand={requestCommand}
+            onKeyboardApprove={(command) => {
+              if (command.type === "approve_plan") setConfirmPlan(command);
+              else requestCommand(command);
+            }}
             onChangePlan={() => {
               if (planDecision?.planVersion != null)
                 setChangePlan({ planVersion: planDecision.planVersion });
@@ -310,6 +322,25 @@ export function Detail({
       }
       dialogs={
         <>
+          {confirmPlan ? (
+            <ConfirmPlanApproval
+              version={confirmPlan.planVersion}
+              disabled={
+                submitting ||
+                pending !== null ||
+                confirmPlan.planVersion !== planDecision?.planVersion ||
+                !planDecision?.actions.some(
+                  (action) =>
+                    action.id === "approve-plan" && !action.disabledReason,
+                )
+              }
+              onCancel={() => setConfirmPlan(null)}
+              onConfirm={() => {
+                setConfirmPlan(null);
+                void send(confirmPlan);
+              }}
+            />
+          ) : null}
           {editing ? (
             <EditBacklogIssue
               key={task.id}

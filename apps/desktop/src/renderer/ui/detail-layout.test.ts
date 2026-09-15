@@ -2,8 +2,12 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
+import { buildSnapshot } from "../fixtures/index.js";
+import { createFixtureStore } from "../fixtures/store.js";
+import { StoreProvider } from "../store/react.js";
 import { DetailLayout } from "./detail-layout.js";
 import { TrackerHelp } from "./tracker-help.js";
+import { trackerKeymap } from "./tracker-keymap.js";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -24,16 +28,20 @@ test("details focus their controls, provide a terminal focus exit, and restore f
   const root = createRoot(host);
   act(() =>
     root.render(
-      createElement(DetailLayout, {
-        breadcrumb: "Issue",
-        testId: "detail",
-        onClose: vi.fn(),
-        // biome-ignore lint/correctness/noChildrenProp: DetailLayout requires children in its typed props.
-        children: createElement(
-          "div",
-          { className: "xterm" },
-          createElement("textarea"),
-        ),
+      createElement(StoreProvider, {
+        store: createFixtureStore(buildSnapshot(2)),
+        // biome-ignore lint/correctness/noChildrenProp: typed provider children
+        children: createElement(DetailLayout, {
+          breadcrumb: "Issue",
+          testId: "detail",
+          onClose: vi.fn(),
+          // biome-ignore lint/correctness/noChildrenProp: DetailLayout requires children in its typed props.
+          children: createElement(
+            "div",
+            { className: "xterm" },
+            createElement("textarea"),
+          ),
+        }),
       }),
     ),
   );
@@ -62,8 +70,11 @@ test("help is a labeled modal with the complete map and Escape dismissal", () =>
   act(() => root.render(createElement(TrackerHelp, { onClose: close })));
   const dialog = host.querySelector("dialog")!;
   expect(dialog.open).toBe(true);
-  expect(dialog.textContent).toContain("g a · Issues");
-  expect(dialog.textContent).toContain("F6 returns focus");
+  for (const entry of trackerKeymap)
+    expect(
+      dialog.querySelector(`[data-key-id="${entry.id}"]`)?.textContent,
+    ).toContain(entry.label);
+  expect(dialog.textContent).toContain("⌘Enter");
   act(() => dialog.dispatchEvent(new Event("cancel", { cancelable: true })));
   expect(close).toHaveBeenCalledOnce();
 });

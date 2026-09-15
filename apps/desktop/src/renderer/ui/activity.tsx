@@ -4,6 +4,8 @@ import { useStore } from "../store/react.js";
 import { since } from "./format.js";
 import { PullRequestGlyph } from "./pull-request-glyph.js";
 import { PrMarkdown } from "./pull-request-overview.js";
+import { useTrackerActions } from "./tracker-actions.js";
+import { keyHint } from "./tracker-keymap.js";
 
 /** One line of an Overview's activity, from the issue (Loom) or its pull request (GitHub). */
 export interface ActivityItem {
@@ -42,6 +44,7 @@ const RECENT = 3;
 export function ActivityList({ items }: { items: ActivityItem[] }) {
   const now = useStore((s) => s.snapshot.now);
   const [expanded, setExpanded] = useState(false);
+  useTrackerActions({ activity: () => setExpanded((value) => !value) });
   const all = [...items].sort((a, b) =>
     (a.at ?? "9999").localeCompare(b.at ?? "9999"),
   );
@@ -54,6 +57,7 @@ export function ActivityList({ items }: { items: ActivityItem[] }) {
       {hidden ? (
         <button
           type="button"
+          {...keyHint("activity")}
           className="activity-more"
           onClick={() => setExpanded(true)}
         >
@@ -103,6 +107,7 @@ export function ActivityList({ items }: { items: ActivityItem[] }) {
       {expanded && all.length > RECENT ? (
         <button
           type="button"
+          {...keyHint("activity")}
           className="activity-more"
           onClick={() => setExpanded(false)}
         >

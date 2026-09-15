@@ -1,4 +1,6 @@
-import { type ReactNode, type Ref, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useTrackerActions } from "./tracker-actions.js";
+import { eventKey, keyHint, trackerKeymap } from "./tracker-keymap.js";
 
 /** Shared chrome for issue, PR-only and daily brief details. Escape is owned by useShortcuts. */
 export function DetailLayout({
@@ -12,7 +14,6 @@ export function DetailLayout({
   testId,
   taskId,
   className = "",
-  actionRef,
   tab,
 }: {
   breadcrumb: ReactNode;
@@ -25,11 +26,27 @@ export function DetailLayout({
   testId: string;
   taskId?: string;
   className?: string;
-  actionRef?: Ref<HTMLDivElement>;
   tab?: string;
 }) {
   const [fullscreen, setFullscreen] = useState(false);
   const header = useRef<HTMLElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const scroll = (amount: number) => {
+    if (body.current) body.current.scrollTop += amount;
+  };
+  useTrackerActions({
+    fullscreen: () => setFullscreen((value) => !value),
+    "scroll-down": () => scroll(60),
+    "scroll-up": () => scroll(-60),
+    "page-down": () => scroll((body.current?.clientHeight ?? 0) / 2),
+    "page-up": () => scroll(-(body.current?.clientHeight ?? 0) / 2),
+    top: () => {
+      if (body.current) body.current.scrollTop = 0;
+    },
+    bottom: () => {
+      if (body.current) body.current.scrollTop = body.current.scrollHeight;
+    },
+  });
   useEffect(() => {
     const previous = document.activeElement;
     header.current?.focus();
@@ -44,12 +61,15 @@ export function DetailLayout({
       data-testid={testId}
       data-task={taskId}
       data-fullscreen={fullscreen}
-      ref={actionRef}
       onKeyDownCapture={(event) => {
         // Xterm consumes Tab. F6 only returns focus to the detail chrome; it never
         // dispatches a tracker command or sends a key to the terminal process.
         if (
-          event.key === "F6" &&
+          !event.nativeEvent.isComposing &&
+          !document.querySelector("dialog[open]") &&
+          trackerKeymap
+            .find((entry) => entry.id === "terminal-focus")!
+            .keys.some((key) => key === eventKey(event.nativeEvent)) &&
           !event.metaKey &&
           !event.ctrlKey &&
           !event.altKey &&
@@ -68,6 +88,7 @@ export function DetailLayout({
         <button
           type="button"
           className="pr-icon-button"
+          {...keyHint("fullscreen")}
           data-detail-fullscreen
           aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
           aria-pressed={fullscreen}
@@ -79,7 +100,7 @@ export function DetailLayout({
           type="button"
           className="pr-icon-button"
           aria-label="Close detail"
-          title="Close (Esc)"
+          {...keyHint("close")}
           onClick={onClose}
         >
           ×
@@ -89,6 +110,7 @@ export function DetailLayout({
       {banner}
       {tab ? (
         <div
+          ref={body}
           className="tab-body pr-page-body"
           id="detail-panel"
           aria-label={tab}
@@ -98,7 +120,9 @@ export function DetailLayout({
           {children}
         </div>
       ) : (
-        <div className="tab-body pr-page-body">{children}</div>
+        <div ref={body} className="tab-body pr-page-body">
+          {children}
+        </div>
       )}
       {dialogs}
     </div>

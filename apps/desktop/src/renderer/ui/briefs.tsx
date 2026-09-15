@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
 import { DetailLayout } from "./detail-layout.js";
 import { ListGroupHeader, ListRow } from "./list-rows.js";
+import { useTrackerActions } from "./tracker-actions.js";
 
 const TIME_ZONE = "Asia/Makassar";
 const evidenceLabels: Record<
@@ -78,6 +79,7 @@ export function BriefsView() {
   const store = useStoreApi();
   const connection = useStore((s) => s.connection);
   const cursor = useStore((s) => s.ui.cursor);
+  const query = useStore((s) => s.ui.filterQuery);
   const open = useStore((s) => s.ui.openBrief);
   const [state, setState] = useState<BriefState | null>(null);
   const [error, setError] = useState("");
@@ -139,8 +141,49 @@ export function BriefsView() {
   const running = state?.runs.some((item) => item.status === "running");
   const openSummary = state?.runs.find((item) => item.id === open);
 
+  const rows = (state?.runs ?? []).filter((run) =>
+    `${rowText(run)} ${dateLabel(run.startedAt)} ${run.status}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
+  const select = (index: number) => {
+    store.setCursor(
+      rows.length ? Math.max(0, Math.min(rows.length - 1, index)) : null,
+    );
+  };
+  useTrackerActions({
+    "next-row": () => select(cursor === null ? 0 : cursor + 1),
+    "previous-row": () => select(cursor === null ? 0 : cursor - 1),
+    "first-row": () => select(0),
+    "last-row": () => select(rows.length - 1),
+    open: () => {
+      const row = rows[cursor ?? -1];
+      if (row) store.openBrief(row.id);
+    },
+    ...(open
+      ? {
+          "next-issue": () => {
+            const index = rows.findIndex((row) => row.id === open);
+            const row = rows[index + 1];
+            if (index >= 0 && row) store.openBrief(row.id);
+          },
+          "previous-issue": () => {
+            const index = rows.findIndex((row) => row.id === open);
+            const row = rows[index - 1];
+            if (index >= 0 && row) store.openBrief(row.id);
+          },
+        }
+      : {}),
+  });
+  const cursorId = rows[cursor ?? -1]?.id;
+  useEffect(() => {
+    if (cursorId)
+      document
+        .getElementById(`brief-row-${cursorId}`)
+        ?.scrollIntoView({ block: "nearest" });
+  }, [cursorId]);
   const months: { label: string; runs: BriefRunSummary[] }[] = [];
-  for (const run of state?.runs ?? []) {
+  for (const run of rows) {
     const label = format(run.startedAt, { month: "long", year: "numeric" });
     const last = months.at(-1);
     if (last?.label === label) last.runs.push(run);
@@ -206,12 +249,13 @@ export function BriefsView() {
             {month.runs.map((run) => (
               <ListRow
                 key={run.id}
-                cursor={state?.runs[cursor ?? -1]?.id === run.id}
+                cursor={cursorId === run.id}
                 onOpen={() => store.openBrief(run.id)}
                 leading={<BriefGlyph status={run.status} />}
                 text={rowText(run)}
                 title={rowText(run)}
                 data-brief={run.id}
+                id={`brief-row-${run.id}`}
                 meta={
                   <span>
                     {run.trigger === "scheduled" ? "Daily" : "Manual"}

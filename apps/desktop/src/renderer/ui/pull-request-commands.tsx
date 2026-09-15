@@ -4,31 +4,14 @@ import {
   deleteDisabledReason,
   mergeDisabledReason,
 } from "../store/pull-requests.js";
-import { useStore } from "../store/react.js";
-import type { UiState } from "../store/ui-state.js";
+import { useStore, useStoreApi } from "../store/react.js";
+import { runTrackerAction } from "./tracker-actions.js";
+import { formatKeys, trackerKeymap } from "./tracker-keymap.js";
 
-const ACTIONS = [
-  { action: "merge", label: "Squash and merge", key: "m" },
-  { action: "delete", label: "Delete branch", key: "d" },
-  { action: "open", label: "Open on GitHub", key: "o" },
-  { action: "refresh", label: "Refresh pull request", key: "r" },
-] as const;
-export type PullRequestActionRequest = NonNullable<UiState["openPr"]> & {
-  action: (typeof ACTIONS)[number]["action"];
-};
-export const PULL_REQUEST_ACTION_EVENT = "loom:pull-request-action";
-
-export function pullRequestShortcut(key: string) {
-  return ACTIONS.find((item) => item.key === key)?.action;
-}
-
-export function requestPullRequestAction(request: PullRequestActionRequest) {
-  window.dispatchEvent(
-    new CustomEvent(PULL_REQUEST_ACTION_EVENT, { detail: request }),
-  );
-}
+const ACTIONS = trackerKeymap.filter((entry) => entry.group === "Pull request");
 
 export function PullRequestPaletteCommands({ close }: { close(): void }) {
+  const store = useStoreApi();
   const selection = useStore((s) => s.ui.openPr);
   const pr = useStore(
     (s) =>
@@ -49,16 +32,16 @@ export function PullRequestPaletteCommands({ close }: { close(): void }) {
   return (
     <Command.Group heading={`Pull request #${selection.number}`}>
       {ACTIONS.filter(
-        ({ action }) =>
+        ({ id: action }) =>
           !task ||
           action === "merge" ||
-          action === "open" ||
+          action === "github" ||
           action === "refresh",
-      ).map(({ action, label, key }) => {
+      ).map(({ id: action, label }) => {
         const reason =
           task && action === "merge"
             ? "Use Approve merge on the issue’s reviewed head."
-            : action === "open"
+            : action === "github"
               ? pr || summary
                 ? null
                 : "Waiting for pull request detail."
@@ -79,11 +62,11 @@ export function PullRequestPaletteCommands({ close }: { close(): void }) {
             title={reason ?? undefined}
             onSelect={() => {
               close();
-              requestPullRequestAction({ ...selection, action });
+              runTrackerAction(store, action);
             }}
           >
             {task && action === "merge" ? "Approve merge on issue" : label}{" "}
-            <kbd>{key}</kbd>
+            <kbd>{formatKeys(action)}</kbd>
           </Command.Item>
         );
       })}
