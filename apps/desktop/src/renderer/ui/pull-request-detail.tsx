@@ -7,8 +7,8 @@ import {
 } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import type { UiState } from "../store/ui-state.js";
-import { DetailLayout } from "./detail-layout.js";
 import { Detail as IssueDetail } from "./detail.js";
+import { DetailLayout } from "./detail-layout.js";
 import {
   PULL_REQUEST_ACTION_EVENT,
   type PullRequestActionRequest,

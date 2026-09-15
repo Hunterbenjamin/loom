@@ -61,15 +61,19 @@ export function DetailLayout({
       </header>
       {toolbar ? <div className="pr-toolbar">{toolbar}</div> : null}
       {banner}
-      <div
-        className="tab-body pr-page-body"
-        id="detail-panel"
-        aria-label={tab}
-        role={tab ? "tabpanel" : undefined}
-        data-tab-body={tab}
-      >
-        {children}
-      </div>
+      {tab ? (
+        <div
+          className="tab-body pr-page-body"
+          id="detail-panel"
+          aria-label={tab}
+          role="tabpanel"
+          data-tab-body={tab}
+        >
+          {children}
+        </div>
+      ) : (
+        <div className="tab-body pr-page-body">{children}</div>
+      )}
       {dialogs}
     </div>
   );

@@ -1,6 +1,7 @@
 import type { PullRequestCommand } from "@loom/protocol";
 import { useRef, useState } from "react";
 import { useStoreApi } from "../store/react.js";
+
 /** What the human sees while the coordinator carries a command out and confirms it on GitHub. */
 function busyLabel(kind: PullRequestCommand["kind"]): string {
   switch (kind) {
