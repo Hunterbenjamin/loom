@@ -1,5 +1,4 @@
 import type {
-  BlobOid,
   FindingId,
   InputId,
   IsoTime,
@@ -9,6 +8,17 @@ import type {
   TaskId,
   WorktreePath,
 } from "@loom/core";
+import {
+  findingAnchor,
+  mappingStatus,
+  plan,
+  role,
+  severity,
+  side,
+  stage,
+  findingStatus as status,
+  testResult,
+} from "@loom/protocol";
 import { z } from "zod";
 
 const id = z.string().min(1);
@@ -20,45 +30,15 @@ const shaSchema = z
   .string()
   .regex(/^[0-9a-f]{40}$/)
   .transform((v) => v as Sha);
-const blobSchema = z
-  .string()
-  .regex(/^[0-9a-f]{40}$/)
-  .transform((v) => v as BlobOid);
 export const timeSchema = z.iso.datetime().transform((v) => v as IsoTime);
 const count = z.number().int().nonnegative();
 const line = z.number().int().positive();
-const role = z.enum(["planner", "implementer", "reviewer"]);
-const side = z.enum(["old", "new"]);
-const status = z.enum([
-  "open",
-  "addressed",
-  "disputed",
-  "resolved",
-  "fixed",
-  "escalate",
-  "waived",
-]);
-const severity = z.enum(["blocker", "major", "minor", "nit"]);
 const text = z.string();
 const nonempty = text.refine((s) => s.trim().length > 0, "Must not be blank");
 const texts = z.array(text);
-const stage = z.enum([
-  "backlog",
-  "todo",
-  "planning",
-  "plan_approval",
-  "in_progress",
-  "ci",
-  "in_review",
-  "awaiting_approval",
-  "merging",
-  "done",
-  "canceled",
-]);
-const planSchema = z.strictObject({
+const planSchema = plan.extend({
   goal: nonempty,
-  nonGoals: texts,
-  // Agents submit one-line outcomes; the stored plan keeps its { title, detail } shape.
+  // Agents submit one-line outcomes; storage keeps { title, detail } steps.
   steps: z
     .array(
       text
@@ -68,27 +48,18 @@ const planSchema = z.strictObject({
         .transform((title) => ({ title, detail: "" })),
     )
     .min(1),
-  areas: texts,
   acceptanceCriteria: z.array(nonempty).min(1),
-  testPlan: texts,
-  risks: texts,
-  openQuestions: texts,
-  suggestedImplementer: z.enum(["codex", "claude"]).nullable(),
 });
 /**
  * A plan as stored, which may be Loom's own: a small task's auto-generated plan carries its
  * description as steps and nothing else (core, stages.ts). Agents must submit more
  * (`planSchema`); the context tool must report what exists.
  */
-const storedPlanSchema = planSchema.extend({
-  goal: text,
-  steps: z.array(z.strictObject({ title: text, detail: text })),
-  acceptanceCriteria: texts,
-});
-const testInput = z.strictObject({
-  command: text,
-  outcome: z.enum(["passed", "failed", "skipped", "errored"]),
-  summary: text,
+const storedPlanSchema = plan;
+const testInput = testResult.pick({
+  command: true,
+  outcome: true,
+  summary: true,
 });
 const handoff = z.strictObject({
   from: role,
@@ -238,7 +209,7 @@ const findingViewSchema = z.strictObject({
       side,
       startLine: line.nullable(),
       endLine: line.nullable(),
-      mapping: z.enum(["exact", "moved", "ambiguous", "outdated"]),
+      mapping: mappingStatus,
     })
     .nullable(),
   snippet: text.nullable(),
@@ -357,21 +328,12 @@ export const resultSchema = <T extends z.ZodType>(value: T) =>
     z.strictObject({ ok: z.literal(true), value }),
     z.strictObject({ ok: z.literal(false), error: errorSchema }),
   ]);
-export const anchorSchema = z.strictObject({
-  baseSha: shaSchema,
-  headSha: shaSchema,
+const anchorHash = text.regex(/^[0-9a-f]{64}$/);
+export const anchorSchema = findingAnchor.extend({
+  // MCP permits free-form paths here but requires full SHA-256 hashes.
   oldPath: text.nullable(),
   newPath: text.nullable(),
-  oldBlobOid: blobSchema.nullable(),
-  newBlobOid: blobSchema.nullable(),
-  side,
-  startLine: line,
-  endLine: line,
-  startColumn: count.nullable(),
-  endColumn: count.nullable(),
-  selectedText: text,
-  selectedTextHash: text.regex(/^[0-9a-f]{64}$/),
-  contextBeforeHash: text.regex(/^[0-9a-f]{64}$/),
-  contextAfterHash: text.regex(/^[0-9a-f]{64}$/),
-  normalization: z.literal("lf-v1"),
+  selectedTextHash: anchorHash,
+  contextBeforeHash: anchorHash,
+  contextAfterHash: anchorHash,
 });
