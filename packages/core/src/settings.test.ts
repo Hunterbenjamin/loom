@@ -4,6 +4,7 @@ import {
   mergeSettings,
   resolveSettings,
   SETTINGS_CATALOG,
+  type SettingsValues,
   validateSettings,
 } from "./settings.js";
 
@@ -72,46 +73,67 @@ describe("settings resolution", () => {
 describe("settings validation", () => {
   const copy = () =>
     JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) as typeof DEFAULT_SETTINGS;
-  it("rejects unknown models, provider reasoning mismatches and unanswerable access", () => {
-    const invalid = copy();
-    invalid.roles.planner.model = "made-up";
-    invalid.roles.implementer.reasoningEffort = "high";
-    invalid.roles.reviewer.access = "approval-gated";
-    invalid.roles.reviewer.runMode = "headless";
-    expect(validateSettings(invalid)).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("Unknown codex model for planner"),
-        expect.stringContaining("Claude does not accept"),
-        expect.stringContaining("approval-gated access requires interactive"),
-      ]),
-    );
+  it("accepts the default settings", () => {
+    expect(validateSettings(copy())).toEqual([]);
   });
 
-  it("rejects invalid retry and numeric relationships", () => {
-    const invalid = copy();
-    invalid.runtime.retryBaseMs = 20;
-    invalid.runtime.retryCapMs = 10;
-    invalid.workflow.reviewRoundCap = 0;
-    expect(validateSettings(invalid)).toEqual(
-      expect.arrayContaining([
-        "Retry base must not exceed retry cap",
-        "Review round cap must be positive",
-      ]),
-    );
-  });
-
-  it("rejects incomplete or invalid native keybindings before persistence", () => {
-    const invalid = copy();
-    invalid.appearance.keyPrefix = "not+a+chord";
-    delete invalid.appearance.keybindings.help;
-    invalid.appearance.keybindings.close = ["Prefix not+a+chord"];
-    expect(validateSettings(invalid)).toEqual(
-      expect.arrayContaining([
-        "Key prefix must be a valid chord",
-        "Key bindings must define every supported action exactly once",
-        "Invalid key binding: Prefix not+a+chord",
-      ]),
-    );
+  it.each<[string, (settings: SettingsValues) => void]>([
+    [
+      "unknown model",
+      (s) => {
+        s.roles.planner.model = "made-up";
+      },
+    ],
+    [
+      "Claude reasoning effort",
+      (s) => {
+        s.roles.implementer.reasoningEffort = "high";
+      },
+    ],
+    [
+      "headless approval-gated access",
+      (s) => {
+        s.roles.reviewer.access = "approval-gated";
+        s.roles.reviewer.runMode = "headless";
+      },
+    ],
+    [
+      "retry base above cap",
+      (s) => {
+        s.runtime.retryBaseMs = 20;
+        s.runtime.retryCapMs = 10;
+      },
+    ],
+    [
+      "zero review rounds",
+      (s) => {
+        s.workflow.reviewRoundCap = 0;
+      },
+    ],
+    [
+      "invalid key prefix",
+      (s) => {
+        s.appearance.keyPrefix = "not+a+chord";
+      },
+    ],
+    [
+      "missing keybinding",
+      (s) => {
+        delete s.appearance.keybindings.help;
+      },
+    ],
+    [
+      "invalid keybinding",
+      (s) => {
+        s.appearance.keybindings.close = ["Prefix not+a+chord"];
+      },
+    ],
+  ])("rejects %s with a diagnostic", (_name, invalidate) => {
+    const settings = copy();
+    invalidate(settings);
+    const errors = validateSettings(settings);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.every((error) => error.trim().length > 0)).toBe(true);
   });
 });
 

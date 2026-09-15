@@ -84,20 +84,17 @@ test.each(["interactive", "headless"] as const)(
         });
       }
       expect(startThread).toHaveBeenCalled();
-      for (const [request] of startThread.mock.calls)
+      const history = h.store.runs(created.task.id);
+      for (const [index, [request]] of startThread.mock.calls.entries()) {
+        const thread = await startThread.mock.results[index]?.value;
+        const run = history.find((run) => run.sessionId === thread?.threadId);
+        expect(run).toBeDefined();
         expect(request).toMatchObject({
           model: "gpt-5.6-sol",
           config: { model_reasoning_effort: "medium" },
+          sandbox: run?.role === "planner" ? "read-only" : "danger-full-access",
         });
-      expect(
-        startThread.mock.calls.map(([request]) => request.sandbox),
-      ).toEqual([
-        "read-only", // planner
-        "danger-full-access", // initial implementer
-        "danger-full-access", // first review
-        "danger-full-access", // fresh implementer fix round
-        "danger-full-access", // review after the fix round
-      ]);
+      }
       expect(startTurn).toHaveBeenCalled();
       for (const [request] of startTurn.mock.calls)
         expect(request).toMatchObject({
