@@ -2,14 +2,14 @@ import { pullRequestDetailRow } from "@loom/protocol";
 import { parsePatchFiles } from "@pierre/diffs";
 import { expect, test } from "vitest";
 import { REVIEW_SECTIONS, reviewGroups } from "../store/pull-requests.js";
-import { createStore } from "../store/store.js";
 import { groupPrFiles, prActivity } from "../ui/pull-request-overview.js";
 import { buildSnapshot } from "./index.js";
 import { buildPullRequestDetails } from "./pull-requests.js";
+import { createFixtureStore } from "./store.js";
 
 test("Reviews fixtures cover every inbox section, completed pagination and Overview/Diff content", () => {
   const fixture = buildSnapshot();
-  const state = createStore(fixture).getState();
+  const state = createFixtureStore(fixture).getState();
   const groups = reviewGroups(state);
   expect(groups.filter((g) => g.count).map((g) => g.id)).toEqual(
     REVIEW_SECTIONS.map((g) => g.id),
