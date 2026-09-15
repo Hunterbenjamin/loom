@@ -486,7 +486,8 @@ describe.skipIf(!available)("tmux pane host", () => {
       runId: "run-env" as RunId,
       cwd,
       executable: "/bin/sh",
-      args: ["-c", `env > ${out}; sleep 30`],
+      // Publish only the completed environment: redirection creates an empty file before env writes.
+      args: ["-c", `env > ${out}.tmp && mv ${out}.tmp ${out}; sleep 30`],
       env: paneEnv({ LOOM_WANTED: "yes" }),
     });
     expect(ref.paneId).toMatch(/^%\d+$/);
