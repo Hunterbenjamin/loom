@@ -6,6 +6,7 @@ import {
   pullRequestReviewChange,
 } from "@loom/protocol";
 import { Attachments, withAttachedFiles } from "./attachments.js";
+import { DailyBriefs } from "./briefs.js";
 import { ConversationViews } from "./conversations.js";
 import { PaneInventory, paneKey } from "./pane-inventory.js";
 import { PullRequestViews } from "./pull-requests.js";
@@ -20,6 +21,7 @@ import type {
   Attention,
   HumanCommand,
   Input,
+  InputDisposition,
   InputId,
   IsoTime,
   Observations,
@@ -39,7 +41,6 @@ import {
   displayName,
   issueKey,
   MODEL_CATALOG,
-  mergeSettings,
   resolveSettings,
   resolveTaskRef,
   SETTINGS_CATALOG,
@@ -68,11 +69,16 @@ import { LeadSession } from "./lead.js";
 import { Loop } from "./loop.js";
 import { messageAgent } from "./main-messages.js";
 import { createMcpHost } from "./mcp-host.js";
-import { observe as observeOwners, PullRequestCache } from "./observe.js";
+import {
+  capacityReading,
+  observe as observeOwners,
+  PullRequestCache,
+} from "./observe.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
 import { registerRepo } from "./repos.js";
 import { ProtocolServer } from "./server.js";
+import { migrateSettings } from "./settings-migration.js";
 import { runShell, type Shell } from "./shell.js";
 import { resolveCommandTaskRefs } from "./task-refs.js";
 import { openTaskTerminal } from "./task-terminal.js";
@@ -192,6 +198,9 @@ const changedSettings = (before: SettingsPatch, after: SettingsPatch) =>
       : [{ key, oldValue, newValue }];
   });
 
+/** A pass whose owner reads take this long is logged, so slow owners show up in the log. */
+const SLOW_READ_MS = 2000;
+
 export class Coordinator {
   readonly config: CoordinatorConfig;
   readonly store: Store;
@@ -199,6 +208,7 @@ export class Coordinator {
   readonly recipes: RecipeStore;
   private readonly attachments: Attachments;
   private readonly baselineConfig: CoordinatorConfig;
+  readonly briefs: DailyBriefs;
   readonly leads = new Map<string, LeadSession>();
   private readonly schedules = new Map<
     string,
@@ -241,38 +251,6 @@ export class Coordinator {
       },
     ];
   }
-  private compatibilitySettings(repoId?: string): SettingsValues {
-    const repo = repoId
-      ? this.store.repos().find((item) => item.id === repoId)
-      : undefined;
-    let compatibility = mergeSettings(DEFAULT_SETTINGS, {
-      repository: {
-        baseBranch: repo?.baseBranch ?? this.config.baseBranch,
-        serialTests: repo?.serialTests ?? false,
-      },
-    });
-    for (const role of ["planner", "implementer", "reviewer"] as const) {
-      const provider =
-        this.config.providerOverrides[role] ??
-        repo?.defaultProviders[role] ??
-        compatibility.roles[role].provider;
-      compatibility = mergeSettings(compatibility, {
-        roles: {
-          [role]: {
-            provider,
-            model: this.config.models[provider],
-            reasoningEffort:
-              provider === "codex"
-                ? ((this.config.codexReasoningEffort as never) ?? "medium")
-                : null,
-            runMode: this.config.runModes[role] ?? "interactive",
-            access: this.config.agentAccess,
-          },
-        },
-      });
-    }
-    return compatibility;
-  }
   private effectiveSettings(repoId?: string): SettingsValues {
     const global = this.store.settings.read({ kind: "global" }).data;
     const repository = repoId
@@ -282,7 +260,7 @@ export class Coordinator {
       global,
       repository,
       this.config.settingsEnvironment,
-      this.compatibilitySettings(repoId),
+      DEFAULT_SETTINGS,
       this.config.providerEnvironment,
     ).effective;
   }
@@ -305,36 +283,6 @@ export class Coordinator {
         DEFAULT_SETTINGS,
         this.config.providerEnvironment,
       );
-      const effective = this.effectiveSettings(
-        scope.kind === "repository" ? scope.repoId : undefined,
-      );
-      if (scope.kind === "repository") {
-        const repo = this.store
-          .repos()
-          .find((item) => item.id === scope.repoId);
-        for (const role of ["planner", "implementer", "reviewer"] as const)
-          if (
-            repo?.defaultProviders[role] &&
-            settingValue(global.data, `roles.${role}.provider`) === undefined &&
-            settingValue(stored.data, `roles.${role}.provider`) === undefined &&
-            settingValue(
-              this.config.settingsEnvironment,
-              `roles.${role}.provider`,
-            ) === undefined
-          )
-            resolution.sources[`roles.${role}.provider`] = "repository";
-        for (const key of ["baseBranch", "serialTests"] as const)
-          if (
-            repo &&
-            settingValue(global.data, `repository.${key}`) === undefined &&
-            settingValue(stored.data, `repository.${key}`) === undefined &&
-            settingValue(
-              this.config.settingsEnvironment,
-              `repository.${key}`,
-            ) === undefined
-          )
-            resolution.sources[`repository.${key}`] = "repository";
-      }
       return {
         collection: "settings" as const,
         key: settingsId(scope),
@@ -344,7 +292,7 @@ export class Coordinator {
           version: stored.version,
           stored: stored.data,
           defaults: DEFAULT_SETTINGS,
-          effective,
+          effective: resolution.effective,
           sources: resolution.sources,
           catalog: SETTINGS_CATALOG,
           modelCatalog: MODEL_CATALOG,
@@ -426,47 +374,25 @@ export class Coordinator {
             }).data,
           }));
     const validateResolved = (
-      repositoryId: string | undefined,
       repositoryData: SettingsPatch | null,
       environment: SettingsPatch | null,
     ) => {
-      const compatibility = this.compatibilitySettings(repositoryId);
       const effective = resolveSettings(
         global,
         repositoryData,
         environment,
-        compatibility,
+        DEFAULT_SETTINGS,
         this.config.providerEnvironment,
       ).effective;
-      return validateSettings(effective).filter((message) => {
-        const match =
-          /^Unknown (?:codex|claude) model for (planner|implementer|reviewer):/.exec(
-            message,
-          );
-        if (!match) return true;
-        const role = match[1] as "planner" | "implementer" | "reviewer";
-        const path = `roles.${role}.model`;
-        const explicitlyConfigured =
-          settingValue(global, path) !== undefined ||
-          settingValue(repositoryData ?? {}, path) !== undefined ||
-          settingValue(environment ?? {}, path) !== undefined;
-        return (
-          explicitlyConfigured ||
-          effective.roles[role].model !== compatibility.roles[role].model
-        );
-      });
+      return validateSettings(effective);
     };
     const errors = [
-      ...validateResolved(undefined, null, null),
-      ...validateResolved(undefined, null, this.config.settingsEnvironment),
+      ...validateResolved(null, null),
+      ...validateResolved(null, this.config.settingsEnvironment),
       ...repositories.flatMap((repo) =>
         [
-          ...validateResolved(repo.id, repo.data, null),
-          ...validateResolved(
-            repo.id,
-            repo.data,
-            this.config.settingsEnvironment,
-          ),
+          ...validateResolved(repo.data, null),
+          ...validateResolved(repo.data, this.config.settingsEnvironment),
         ].map((message) => `${repo.id}: ${message}`),
       ),
     ];
@@ -484,47 +410,6 @@ export class Coordinator {
       changes,
     });
     if (scope.kind === "global") this.applyStoredRuntime(false);
-    if (
-      scope.kind === "repository" &&
-      changes.some((change) => change.key.startsWith("repository."))
-    ) {
-      const repo = this.store.repos().find((item) => item.id === scope.repoId);
-      if (repo) {
-        const effective = resolveSettings(
-          global,
-          next,
-          this.config.settingsEnvironment,
-          DEFAULT_SETTINGS,
-          this.config.providerEnvironment,
-        ).effective;
-        this.store.putRepo({
-          ...repo,
-          baseBranch: effective.repository.baseBranch,
-          serialTests: effective.repository.serialTests,
-        });
-        this.publishRepos();
-      }
-    }
-    if (
-      scope.kind === "global" &&
-      changes.some((change) => change.key.startsWith("repository."))
-    ) {
-      for (const repo of this.store.repos()) {
-        const repository = this.store.settings.read({
-          kind: "repository",
-          repoId: repo.id,
-        }).data;
-        const effective = resolveSettings(
-          next,
-          repository,
-          this.config.settingsEnvironment,
-          DEFAULT_SETTINGS,
-          this.config.providerEnvironment,
-        ).effective.repository;
-        this.store.putRepo({ ...repo, ...effective });
-      }
-      this.publishRepos();
-    }
     this.publishSettings();
     return saved.version;
   }
@@ -568,7 +453,6 @@ export class Coordinator {
   // Built on first use: the fields it closes over are assigned in the constructor body.
   private mcpCache: ReturnType<Coordinator["mcpMiddleware"]> | null = null;
   private mcp: Awaited<ReturnType<typeof serveHttp>> | null = null;
-  private pump: NodeJS.Timeout | null = null;
   private resync: NodeJS.Timeout | null = null;
 
   constructor(private readonly options: CoordinatorOptions) {
@@ -587,6 +471,13 @@ export class Coordinator {
         return () => clearTimeout(timer);
       });
     this.logger = options.log ?? (() => {});
+    this.briefs = new DailyBriefs({
+      store: this.store,
+      research: this.adapters.research,
+      now: this.now,
+      log: this.logger,
+    });
+    this.briefs.recover();
     this.startedAt = this.now();
     this.epoch = epochOf(this.startedAt);
     this.recipes = new RecipeStore(this.store.dataDirectory);
@@ -594,12 +485,16 @@ export class Coordinator {
     this.store.setRoleProfilesResolver(
       (task) => this.effectiveSettings(task.repoId).roles,
     );
-    this.applyStoredRuntime(true);
-
     this.loop = new Loop({
       store: this.store,
       drainExecutor: () => this.executor.drain(),
       observe: (state, inputs) => this.observe(state, inputs),
+      rebase: (readings, inputs) => ({
+        ...readings,
+        now: this.now() as never,
+        capacity: capacityReading(this.capacityDeps()),
+        inputs,
+      }),
       onCommit: ({ taskId, result }) => this.onCommit(taskId, result),
       onError: (error, taskId) => {
         this.log(`Pass for ${taskId} failed: ${error.message}`);
@@ -615,11 +510,14 @@ export class Coordinator {
       shell: options.shell ?? runShell,
       repo: (taskId) => this.repo(taskId),
       repoById: (repoId) => this.repoById(repoId),
+      repositorySettings: (repoId) => this.effectiveSettings(repoId).repository,
       schedule: (taskId, at, why) => this.schedule(taskId, at, why),
       notify: (level, title, body) => this.log(`[${level}] ${title}: ${body}`),
       now: () => this.now(),
       nextInputId: () => randomUUID() as InputId,
       onResult: (taskId) => this.loop.enqueue(taskId),
+      mayAct: (taskId) => this.loop.isVerified(taskId),
+      onUnconfirmed: (taskId) => this.loop.enqueue(taskId),
       reportAdapterFailure: (operation, error) =>
         this.reportAdapterFailure(operation, error),
     });
@@ -765,6 +663,8 @@ export class Coordinator {
   }
 
   async start(): Promise<RecoveryReport> {
+    migrateSettings(this.store, this.baselineConfig, this.now());
+    this.applyStoredRuntime(true);
     await this.recipes.load();
     for (const repo of this.store.repos()) await this.leadFor(repo.id).load();
     const selected = this.store.selectedRepo();
@@ -829,14 +729,12 @@ export class Coordinator {
 
   /** Starts the timers that make this a long-running process, rather than a driven loop. */
   run(): void {
+    this.briefs.start();
     this.leadPoll = setInterval(() => void this.pollLeads(), 1500);
     this.leadPoll.unref?.();
-    this.pump = setInterval(() => {
-      void this.settle().catch((error) =>
-        this.log(`Settle failed: ${(error as Error).message}`),
-      );
-    }, 250);
-    this.pump.unref?.();
+    // Event-driven from here: every enqueue starts its pass, and every pass drains the executor.
+    this.loop.start();
+    void this.executor.drain();
     this.resync = setInterval(() => this.resyncAll(), this.config.resyncMs);
     this.resync.unref?.();
   }
@@ -859,14 +757,15 @@ export class Coordinator {
   }
 
   async stop(): Promise<void> {
+    await this.briefs.stop();
     await this.prViews.stop();
     await this.conversationViews.stop();
     if (this.panePoll) clearInterval(this.panePoll);
     await this.inventory.stop();
     if (this.leadPoll) clearInterval(this.leadPoll);
-    if (this.pump) clearInterval(this.pump);
+    this.loop.stop();
     if (this.resync) clearInterval(this.resync);
-    this.pump = this.resync = null;
+    this.resync = null;
     for (const cancel of this.timers) cancel();
     this.timers.clear();
     this.publishFailures.clear();
@@ -881,6 +780,11 @@ export class Coordinator {
   resyncAll(): void {
     for (const task of this.store.tasks())
       if (!TERMINAL.includes(task.stage)) this.loop.enqueue(task.id);
+  }
+
+  /** Whether a fresh pass has confirmed the task's latest commit, so its actions may run. */
+  confirmed(taskId: TaskId): boolean {
+    return this.loop.isVerified(taskId);
   }
 
   /** Runs queued passes and the executor until nothing is left. Tests drive the loop with this. */
@@ -953,8 +857,12 @@ export class Coordinator {
     return state;
   }
 
-  /** A human command becomes an input; reconcile decides what it means (principle 3). */
+  /**
+   * A human command becomes an input; reconcile decides what it means (principle 3). It is decided
+   * at once against the task's last readings when it can be (design §5.1a), and a pass follows.
+   */
   submitHuman(taskId: TaskId, command: HumanCommand): InputId {
+    const started = performance.now();
     const input: Input = {
       id: randomUUID() as InputId,
       receivedAt: this.now(),
@@ -962,8 +870,28 @@ export class Coordinator {
       command,
     };
     this.store.enqueueInput(taskId, input);
-    this.loop.enqueue(taskId);
+    const applied = this.loop.applyHuman(taskId);
+    if (applied)
+      this.log(
+        `${command.type} for ${taskId} decided in ${(performance.now() - started).toFixed(1)} ms`,
+      );
     return input.id;
+  }
+
+  /**
+   * What reconcile decided about an input. Decided inputs answer at once; otherwise (no readings
+   * yet in this process, or an agent's input first in line) this runs the passes that decide it.
+   */
+  private async decision(
+    taskId: TaskId,
+    inputId: InputId,
+  ): Promise<InputDisposition> {
+    for (let pass = 0; pass < 50; pass++) {
+      const disposition = this.store.inputDisposition(taskId, inputId);
+      if (disposition) return disposition;
+      await this.loop.pass(taskId);
+    }
+    throw new Error(`Input ${inputId} was queued but not consumed`);
   }
 
   repo(taskId: TaskId): Repo {
@@ -1147,16 +1075,28 @@ export class Coordinator {
     this.timers.add(cancel);
   }
 
+  private capacityDeps() {
+    return {
+      config: this.config,
+      capacity: { counts: () => this.store.capacityCounts() },
+      coolingDownUntil: () => ({
+        codex: this.cooldowns.get("codex") ?? null,
+        claude: this.cooldowns.get("claude") ?? null,
+      }),
+    };
+  }
+
   private async observe(
     state: TaskState,
     inputs: Input[],
   ): Promise<Observations> {
+    const started = performance.now();
+    let times: Record<string, number> = {};
     const observations = await observeOwners(
       {
         adapters: this.adapters,
-        config: this.config,
+        ...this.capacityDeps(),
         pullRequests: this.pullRequests,
-        capacity: { counts: () => this.store.capacityCounts() },
         dependencies: () => this.store.dependencyStages(state.task.id),
         inputs: () => inputs,
         launchedSessions: () =>
@@ -1170,19 +1110,22 @@ export class Coordinator {
                   .filter(Boolean) as never[],
               ),
           ),
-        coolingDownUntil: () => ({
-          codex: this.cooldowns.get("codex") ?? null,
-          claude: this.cooldowns.get("claude") ?? null,
-        }),
         repoOf: (s) => {
           const repo = this.store.repos().find((r) => r.id === s.task.repoId);
           return repo
-            ? { github: repo.github, baseBranch: repo.baseBranch }
+            ? {
+                github: repo.github,
+                baseBranch: this.effectiveSettings(repo.id).repository
+                  .baseBranch,
+              }
             : null;
         },
         now: () => this.now(),
         reportAdapterFailure: (operation, error) =>
           this.reportAdapterFailure(operation, error),
+        onReadTimes: (value) => {
+          times = value;
+        },
       },
       state,
     );
@@ -1200,6 +1143,15 @@ export class Coordinator {
     observations.workflowCommands = await this.workflow.read(
       this.repo(state.task.id).root,
     );
+    const elapsed = performance.now() - started;
+    if (elapsed >= SLOW_READ_MS)
+      this.log(
+        `Reading the owners of ${state.task.id} took ${Math.round(elapsed)} ms (${Object.entries(
+          times,
+        )
+          .map(([owner, ms]) => `${owner} ${ms}`)
+          .join(", ")})`,
+      );
     return observations;
   }
 
@@ -1633,6 +1585,30 @@ export class Coordinator {
             throw new Error("Scratch created but inventory unavailable");
           return { ok: true, result: { kind: "scratch_created", pane } };
         }
+        case "get_briefs":
+          return {
+            ok: true,
+            result: { kind: "briefs", state: this.store.briefs.state() },
+          };
+        case "get_brief": {
+          const run = this.store.briefs.get(command.id as string);
+          if (!run) throw new Error("Unknown daily brief");
+          return { ok: true, result: { kind: "brief", run } };
+        }
+        case "run_brief":
+          return {
+            ok: true,
+            result: {
+              kind: "brief",
+              run: this.briefs.run("manual", command.id as string),
+            },
+          };
+        case "set_brief_schedule":
+          this.store.briefs.setEnabled(command.enabled as boolean);
+          return {
+            ok: true,
+            result: { kind: "briefs", state: this.store.briefs.state() },
+          };
         case "select_repo": {
           this.store.selectRepo(command.repoId as string);
           this.publishRepos();
@@ -1646,8 +1622,9 @@ export class Coordinator {
             this.store,
             command.root as string,
             command.github as string,
-            (command.baseBranch as string | undefined) ??
-              this.config.baseBranch,
+            command.baseBranch as string | undefined,
+            this.effectiveSettings().repository.baseBranch,
+            this.now(),
           );
           this.store.selectRepo(repo.id);
           const lead = this.leadFor(repo.id);
@@ -1656,6 +1633,7 @@ export class Coordinator {
             await lead.recover();
           }
           this.publishRepos();
+          this.publishSettings();
           await this.publishLead();
           return { ok: true, result: { kind: "repo_added", repoId: repo.id } };
         }
@@ -1774,25 +1752,9 @@ export class Coordinator {
             };
           }
           const inputId = this.submitHuman(command.taskId, human);
-          if (command.command.type === "retry") {
-            for (let pass = 0; pass < 50; pass++) {
-              await this.loop.pass(command.taskId);
-              const disposition = this.store.inputDisposition(
-                command.taskId,
-                inputId,
-              );
-              if (!disposition) continue;
-              if (!disposition.accepted)
-                return {
-                  ok: false,
-                  error: { ...disposition.error, code: "invalid_input" },
-                };
-              return { ok: true, result: { kind: "human", inputId } };
-            }
-            throw new Error(
-              `Retry input ${inputId} was queued but not consumed`,
-            );
-          }
+          const disposition = await this.decision(command.taskId, inputId);
+          if (!disposition.accepted)
+            return { ok: false, error: disposition.error };
           return { ok: true, result: { kind: "human", inputId } };
         }
         case "open_attach_session": {

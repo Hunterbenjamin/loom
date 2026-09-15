@@ -44,6 +44,7 @@ export function useShortcuts(store: Store): void {
         if (ui.palette) return store.setPalette(false);
         if (ui.stagePicker) return store.setStagePicker(false);
         if (ui.openPr) return store.openPullRequest(null);
+        if (ui.openBrief) return store.openBrief(null);
         if (ui.openTask) return store.open(null);
         return;
       }

@@ -118,6 +118,7 @@ export function createStore(
   runCommand = commands.command;
   const panes = paneActivity(ctx);
   const { applyPaneTransitions, resetPaneTransitions, ...paneActions } = panes;
+  const edits = issueEditActions(ctx);
 
   return {
     getState: (): State => state,
@@ -135,7 +136,7 @@ export function createStore(
     },
     applyProtocol(client: ClientState, patch?: PatchFrame) {
       const previous = state;
-      state = applyProtocolState(state, client, patch);
+      state = applyProtocolState(state, client, patch, edits.withPendingMoves);
       const notifyTransitions = applyPaneTransitions(previous);
       emit();
       notifyTransitions();
@@ -169,8 +170,10 @@ export function createStore(
         prCursor: null,
         openTask: null,
         openPr: null,
+        openBrief: null,
       });
     },
+    openBrief: (openBrief: string | null) => setUi({ openBrief }),
     setPane: (pane: Pane) => setUi({ pane, cursor: null }),
     toggleListSection(stage: Stage) {
       const section = state.ui.listSections[stage];
@@ -267,6 +270,6 @@ export function createStore(
     },
     setStagePicker: (stagePicker: boolean) => setUi({ stagePicker }),
     toast: (toast: string | null) => setUi({ toast }),
-    ...issueEditActions(ctx),
+    ...edits.actions,
   };
 }

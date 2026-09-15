@@ -6,6 +6,7 @@ import { loadScenarios } from "@loom/fake-agent";
 import { PROTOCOL_VERSION } from "@loom/protocol";
 import { afterEach, expect, test, vi } from "vitest";
 import { LoomClient } from "./client.js";
+import { Loop } from "./loop.js";
 import { createHarness, type Harness, ScenarioDriver } from "./test-support.js";
 
 let open: Harness[] = [];
@@ -35,7 +36,7 @@ const served = async () => {
   return h;
 };
 
-test("retry reports the reconciler rejection instead of a successful queue acknowledgement", async () => {
+test("retry reports the reconciler's rejection in its acknowledgement", async () => {
   const h = await served();
   const task = h.coordinator.createTask({
     repoId: h.repo.id,
@@ -52,7 +53,7 @@ test("retry reports the reconciler rejection instead of a successful queue ackno
   ).toMatchObject({
     ok: false,
     error: {
-      code: "invalid_input",
+      code: "wrong_stage",
       message: "retry is not allowed in backlog",
     },
   });
@@ -74,8 +75,22 @@ test("settings updates publish atomically, reject stale/global-only writes, and 
   const second = await connect(h, "settings-second");
   const scope = { kind: "repository" as const, repoId: h.repo.id };
   const before = first.state?.collections.settings.get(`repo:${h.repo.id}`);
-  expect(before?.effective.roles.implementer.provider).toBe(
-    h.repo.defaultProviders.implementer,
+  expect(before?.effective.roles.implementer.provider).toBe("codex");
+  const invalid = await first.command({
+    kind: "update_settings",
+    scope,
+    expectedVersion: before?.version ?? 0,
+    patch: { roles: { implementer: { provider: "claude" } } },
+  });
+  expect(invalid).toMatchObject({
+    ok: false,
+    error: { message: "Settings validation failed" },
+  });
+  if (invalid.ok) throw new Error("mismatched provider/model was accepted");
+  expect(invalid.error.details).toEqual(
+    expect.arrayContaining([
+      expect.stringContaining("Unknown claude model for implementer"),
+    ]),
   );
   const saved = await first.command({
     kind: "update_settings",
@@ -90,12 +105,12 @@ test("settings updates publish atomically, reject stale/global-only writes, and 
   if (!saved.ok) throw new Error(JSON.stringify(saved.error));
   expect(saved).toMatchObject({
     ok: true,
-    result: { kind: "settings_updated", version: 1 },
+    result: { kind: "settings_updated", version: 2 },
   });
   await vi.waitFor(() =>
     expect(
       second.state?.collections.settings.get(`repo:${h.repo.id}`)?.version,
-    ).toBe(1),
+    ).toBe(2),
   );
   const effective = second.state?.collections.settings.get(
     `repo:${h.repo.id}`,
@@ -103,8 +118,8 @@ test("settings updates publish atomically, reject stale/global-only writes, and 
   expect(effective).toMatchObject({
     roles: {
       planner: { model: "claude-opus-4-6" },
-      implementer: { provider: h.repo.defaultProviders.implementer },
-      reviewer: { provider: h.repo.defaultProviders.reviewer },
+      implementer: { provider: "codex" },
+      reviewer: { provider: "claude" },
     },
     workflow: { size: "small", requirePlanApproval: true },
     repository: { baseBranch: "develop", serialTests: true },
@@ -124,7 +139,7 @@ test("settings updates publish atomically, reject stale/global-only writes, and 
     await second.command({
       kind: "update_settings",
       scope,
-      expectedVersion: 1,
+      expectedVersion: 2,
       patch: { runtime: { capTotal: 8 } },
     }),
   ).toMatchObject({
@@ -140,24 +155,21 @@ test("settings updates publish atomically, reject stale/global-only writes, and 
     size: "small",
     requirePlanApproval: true,
     roleProfiles: {
-      implementer: { provider: h.repo.defaultProviders.implementer },
-      reviewer: { provider: h.repo.defaultProviders.reviewer },
+      implementer: { provider: "codex" },
+      reviewer: { provider: "claude" },
     },
   });
-  expect(h.store.repos()[0]).toMatchObject({
-    baseBranch: "develop",
-    serialTests: true,
-  });
+  expect(h.store.repos()[0]).toEqual(h.repo);
   expect(
     await first.command({
       kind: "reset_settings",
       scope,
-      expectedVersion: 1,
+      expectedVersion: (before?.version ?? 0) + 1,
       keys: ["workflow.size", "repository.baseBranch"],
     }),
   ).toMatchObject({
     ok: true,
-    result: { kind: "settings_updated", version: 2 },
+    result: { kind: "settings_updated", version: 3 },
   });
   await vi.waitFor(() =>
     expect(
@@ -175,6 +187,25 @@ test("settings updates publish atomically, reject stale/global-only writes, and 
       expect.objectContaining({ settingKey: "repository.baseBranch" }),
     ]),
   );
+}, 30_000);
+
+test("environment role settings win and retain their source", async () => {
+  const h = await createHarness({
+    serveProtocol: true,
+    config: {
+      settingsEnvironment: { roles: { planner: { provider: "codex" } } },
+      providerEnvironment: { models: { codex: "gpt-5.6-sol" } },
+    },
+  });
+  open.push(h);
+  const client = await connect(h, "environment-settings");
+  const settings = client.state?.collections.settings.get(`repo:${h.repo.id}`);
+  expect(settings?.effective.roles.planner).toMatchObject({
+    provider: "codex",
+    model: "gpt-5.6-sol",
+  });
+  expect(settings?.sources["roles.planner.provider"]).toBe("environment");
+  expect(settings?.sources["roles.planner.model"]).toBe("environment");
 }, 30_000);
 
 test("immediate global settings update core consumers and reset to the startup baseline", async () => {
@@ -221,7 +252,7 @@ test("immediate global settings update core consumers and reset to the startup b
     await client.command({
       kind: "reset_settings",
       scope: { kind: "global" },
-      expectedVersion: 1,
+      expectedVersion: (before?.version ?? 0) + 1,
       keys: [
         "runtime.capTotal",
         "runtime.deliveryTimeoutMs",
@@ -323,7 +354,7 @@ test("a bad token is refused and the socket closes", async () => {
   expect(h.coordinator.protocol.clients).toBe(0);
 }, 30_000);
 
-test("a command is acknowledged, recorded as an input, and shows up as patches", async () => {
+test("a human command is decided before its acknowledgement, and its patch needs no owner read", async () => {
   const h = await served();
   const client = await connect(h, "window-2");
 
@@ -349,6 +380,20 @@ test("a command is acknowledged, recorded as an input, and shows up as patches",
   await patched;
   expect(client.state?.collections.task.get(taskId)?.stage).toBe("backlog");
 
+  // Design §5.1a: the move is decided against the readings of the last pass, with no owner read,
+  // so the acknowledgement already carries reconcile's decision and the patch follows at once.
+  const passes = vi.spyOn(Loop.prototype, "pass");
+  const next = client.await(
+    (frame) =>
+      frame.type === "patch" &&
+      frame.changes.some(
+        (change) =>
+          change.op === "upsert" &&
+          change.collection === "task" &&
+          change.value.id === taskId &&
+          change.value.stage !== "backlog",
+      ),
+  );
   const moved = await client.command({
     kind: "human",
     taskId,
@@ -356,15 +401,15 @@ test("a command is acknowledged, recorded as an input, and shows up as patches",
   });
   expect(moved).toMatchObject({ ok: true, result: { kind: "human" } });
   const inputId = (moved as { result: { inputId: string } }).result.inputId;
-  // Principle 3: the command is an input; reconcile decides what it means.
-  expect(h.store.inputDisposition(taskId, inputId)).toBeNull();
-
-  const next = client.await((frame) => frame.type === "patch");
-  await h.coordinator.settle();
-  await next;
   expect(h.store.inputDisposition(taskId, inputId)).toMatchObject({
     accepted: true,
   });
+  await next;
+  expect(passes).not.toHaveBeenCalled();
+  // Its actions wait for the fresh pass that confirms the move.
+  expect(h.coordinator.confirmed(taskId)).toBe(false);
+  await h.coordinator.settle();
+  expect(h.coordinator.confirmed(taskId)).toBe(true);
   expect(client.state?.collections.task.get(taskId)?.stage).not.toBe("backlog");
 }, 30_000);
 
@@ -661,7 +706,12 @@ test("select_repo and add_repo publish one durable selection to existing and new
   );
   const root = join(h.dataRoot, "second-repository");
   await mkdir(root);
-  const add = { kind: "add_repo" as const, root, github: "sample/second" };
+  const add = {
+    kind: "add_repo" as const,
+    root,
+    github: "sample/second",
+    baseBranch: "develop",
+  };
   expect(await first.command(add)).toMatchObject({
     ok: true,
     result: { kind: "repo_added", repoId: "sample-second" },
@@ -674,9 +724,16 @@ test("select_repo and add_repo publish one durable selection to existing and new
   expect(observer.state?.collections.repo.get("sample-second")).toMatchObject({
     root: await realpath(root),
     github: "sample/second",
-    baseBranch: h.config.baseBranch,
-    serialTests: false,
   });
+  await vi.waitFor(() =>
+    expect(
+      observer.state?.collections.settings.get("repo:sample-second"),
+    ).toMatchObject({
+      version: 1,
+      effective: { repository: { baseBranch: "develop" } },
+      sources: { "repository.baseBranch": "repository" },
+    }),
+  );
   expect(await first.command(add)).toMatchObject({ ok: true });
   expect(h.store.repos()).toHaveLength(2);
   expect(h.paneHost.launches).toHaveLength(0);

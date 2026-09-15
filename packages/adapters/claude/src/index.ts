@@ -103,6 +103,17 @@ export async function createClaudeAdapter(
     bashCommandPrefixes: undefined, // Will be set per-run if interactive
   };
 
+  // Callers that ask while a listing is running share it: its answer is as fresh as a new one
+  // started a few milliseconds earlier, and each listing spawns `claude`.
+  let listing: Promise<ClaudeAgentsEntry[]> | null = null;
+  const listSessions = (): Promise<ClaudeAgentsEntry[]> => {
+    if (!listing)
+      listing = readAgents(config.agents ?? {}).finally(() => {
+        listing = null;
+      });
+    return listing;
+  };
+
   const run = (sessionId: ProviderSessionId): HeadlessRun => {
     const found = headlessRuns.get(sessionId);
     if (!found) throw new Error(`no headless run for session ${sessionId}`);
@@ -114,8 +125,7 @@ export async function createClaudeAdapter(
     promptReceipt,
     readConversation,
 
-    listSessions: (): Promise<ClaudeAgentsEntry[]> =>
-      readAgents(config.agents ?? {}),
+    listSessions,
 
     hookSummary: async (
       sessionId: ProviderSessionId,
@@ -229,3 +239,5 @@ export async function createClaudeAdapter(
     },
   };
 }
+
+export * from "./research.js";

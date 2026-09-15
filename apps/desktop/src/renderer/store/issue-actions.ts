@@ -411,11 +411,35 @@ export function issueDecisions(state: State, task: Task): IssueActionState {
 }
 
 export function issueEditActions(ctx: StoreContext) {
+  /**
+   * Cards dropped on a column but not yet republished, with the task version they were dropped at.
+   * The board shows them in the new column at once; the coordinator's next version of the task
+   * replaces the move, and a refusal puts the card back.
+   */
+  const moves = new Map<TaskId, { to: Stage; version: number }>();
+  const withPendingMoves = (
+    snapshot: State["snapshot"],
+  ): State["snapshot"] => {
+    if (!moves.size) return snapshot;
+    let changed = false;
+    const tasks = snapshot.tasks.map((task) => {
+      const move = moves.get(task.id);
+      if (!move) return task;
+      if (task.version !== move.version) {
+        moves.delete(task.id);
+        return task;
+      }
+      if (task.stage === move.to) return task;
+      changed = true;
+      return { ...task, stage: move.to };
+    });
+    return changed ? { ...snapshot, tasks } : snapshot;
+  };
   const setSnapshot = (snapshot: State["snapshot"]) => {
     ctx.set({ ...ctx.get(), snapshot });
     ctx.emit();
   };
-  return {
+  const actions = {
     moveTask(id: TaskId, to: Stage) {
       const state = ctx.get();
       if (ctx.live) {
@@ -423,11 +447,31 @@ export function issueEditActions(ctx: StoreContext) {
           ctx.toast("The coordinator controls this stage.");
           return;
         }
-        void ctx.command({
-          kind: "human",
-          taskId: id,
-          command: { type: "move", to },
-        });
+        const task = state.snapshot.tasks.find((item) => item.id === id);
+        if (!task || task.stage === to) return;
+        const from = task.stage;
+        const dropped = { to, version: task.version };
+        moves.set(id, dropped);
+        setSnapshot(withPendingMoves(state.snapshot));
+        void ctx
+          .command({
+            kind: "human",
+            taskId: id,
+            command: { type: "move", to },
+          })
+          .then((outcome) => {
+            if (outcome.ok || moves.get(id) !== dropped) return;
+            moves.delete(id);
+            const current = ctx.get();
+            setSnapshot({
+              ...current.snapshot,
+              tasks: current.snapshot.tasks.map((item) =>
+                item.id === id && item.version === dropped.version
+                  ? { ...item, stage: from }
+                  : item,
+              ),
+            });
+          });
         return;
       }
       const task = state.snapshot.tasks.find((item) => item.id === id);
@@ -533,6 +577,11 @@ export function issueEditActions(ctx: StoreContext) {
       }
       const at = minutesBefore(0);
       const id = `LOOM-${state.snapshot.tasks.length + 101}` as TaskId;
+      const roles = state.settings.find(
+        (settings) =>
+          settings.scope.kind === "repository" &&
+          settings.scope.repoId === repo,
+      )?.effective.roles;
       const task: Task = {
         id,
         repoId: repo as Task["repoId"],
@@ -549,12 +598,17 @@ export function issueEditActions(ctx: StoreContext) {
         requirePlanApproval: options.requirePlanApproval ?? true,
         reviewRound: 0,
         reviewRoundCap: 3,
-        providers: state.snapshot.repos.find((item) => item.id === repo)
-          ?.defaultProviders ?? {
-          planner: "codex",
-          implementer: "claude",
-          reviewer: "codex",
-        },
+        providers: roles
+          ? {
+              planner: roles.planner.provider,
+              implementer: roles.implementer.provider,
+              reviewer: roles.reviewer.provider,
+            }
+          : {
+              planner: "codex",
+              implementer: "claude",
+              reviewer: "codex",
+            },
         blockedBy: [],
         budgetMinutes: null,
         size: options.size ?? "normal",
@@ -573,4 +627,5 @@ export function issueEditActions(ctx: StoreContext) {
       return id;
     },
   };
+  return { actions, withPendingMoves };
 }

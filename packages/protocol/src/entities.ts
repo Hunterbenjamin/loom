@@ -50,9 +50,6 @@ export const repo = z.strictObject({
   id: repoId,
   root: worktreePath,
   github: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
-  baseBranch: z.string().min(1),
-  defaultProviders: providerRules,
-  serialTests: z.boolean(),
 });
 
 // ---------------------------------------------------------------- flags and attention

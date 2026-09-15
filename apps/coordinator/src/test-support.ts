@@ -56,6 +56,8 @@ interface HarnessOptions {
   serveProtocol?: boolean;
   /** Extra files committed into the repository before the branch exists. */
   files?: Record<string, string>;
+  /** Runs inside the recorded WORKFLOW `setup`, so a test can hold one worktree's setup open. */
+  shell?: (command: string, cwd: string) => Promise<void>;
   config?: Partial<Omit<CoordinatorConfig, "runModes">> & {
     /** Raw environment-style value parsed at the same boundary as production configuration. */
     runModes?: string;
@@ -138,7 +140,7 @@ async function open(
     baseBranch: "main",
     bind: "127.0.0.1:0",
     token: "test-token-0123456789abcdef",
-    models: { codex: "fake-codex-model", claude: "fake-claude-model" },
+    models: { codex: "gpt-5.1-codex", claude: "claude-opus-5" },
     ...options.config,
   });
   const store = await openStore({
@@ -153,15 +155,47 @@ async function open(
     id: "example-repo" as RepoId,
     root: (await createGitAdapter().realpath(repoRoot)) as WorktreePath,
     github: "example/repo",
-    baseBranch: "main",
-    defaultProviders: {
+  };
+  store.putRepo(repo);
+  const fixtureSettings = store.settings.read({
+    kind: "repository",
+    repoId: repo.id,
+  });
+  if (fixtureSettings.version === 0) {
+    const legacyProviders = {
       planner: "claude",
       implementer: "codex",
       reviewer: "claude",
-    },
-    serialTests: false,
-  };
-  store.putRepo(repo);
+    } as const;
+    store.settings.update({
+      scope: { kind: "repository", repoId: repo.id },
+      expectedVersion: fixtureSettings.version,
+      data: {
+        roles: Object.fromEntries(
+          (["planner", "implementer", "reviewer"] as const).map((role) => {
+            const provider =
+              config.providerOverrides[role] ?? legacyProviders[role];
+            return [
+              role,
+              {
+                provider,
+                model: config.models[provider],
+                reasoningEffort:
+                  provider === "codex"
+                    ? (config.codexReasoningEffort ?? "medium")
+                    : null,
+                runMode: config.runModes[role],
+                access: config.agentAccess,
+              },
+            ];
+          }),
+        ),
+      },
+      actor: "fixture",
+      changedAt: "2026-09-12T00:00:00.000Z",
+      changes: [],
+    });
+  }
   // Core picks the branch name, and the fake is scoped to one branch, so the first call fixes it.
   const github = new FakeGitHub(clock, repo.github, "loom/pending", null);
   // A real GitHub survives a coordinator restart; this in-memory one does not, so on the first
@@ -237,6 +271,7 @@ async function open(
     adapters,
     shell: async (command, cwd) => {
       shellCalls.push({ command, cwd });
+      await options.shell?.(command, cwd);
     },
     now: () => clock.now(),
     after: (ms, callback) => clock.after(ms, callback),

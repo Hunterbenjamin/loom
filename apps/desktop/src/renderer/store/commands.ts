@@ -32,7 +32,7 @@ export function commandActions(ctx: StoreContext) {
       ctx.toast(
         outcome.ok
           ? outcome.result.kind === "human"
-            ? `Queued by coordinator (${outcome.result.inputId}); watch Activity for the result.`
+            ? null
             : "Coordinator acknowledged the command."
           : `${outcome.error.code}: ${outcome.error.message}`,
       );

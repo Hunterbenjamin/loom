@@ -78,13 +78,6 @@ export function snapshot(): SnapshotBody {
         id: REPO,
         root: id.worktree("/private/var/loom/repos/loom"),
         github: "you/loom",
-        baseBranch: "main",
-        defaultProviders: {
-          planner: "codex",
-          implementer: "claude",
-          reviewer: "codex",
-        },
-        serialTests: false,
       },
     ],
     tasks: [

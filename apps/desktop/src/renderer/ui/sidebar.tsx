@@ -97,6 +97,16 @@ export function Sidebar() {
         <button
           type="button"
           className="view-item"
+          data-view="briefs"
+          aria-current={view === "briefs" ? "page" : undefined}
+          onClick={() => store.setView("briefs")}
+        >
+          <ViewIcon view="briefs" />
+          <span>Daily brief</span>
+        </button>
+        <button
+          type="button"
+          className="view-item"
           data-view="settings"
           aria-current={view === "settings" ? "page" : undefined}
           title="Settings"
@@ -158,6 +168,13 @@ function ViewIcon({ view }: { view: string }) {
         <path d="M4.5 5v6" />
         <path d="M8.5 3.5h1.5a1.5 1.5 0 0 1 1.5 1.5v6" />
         <path d="M10 2l-1.5 1.5L10 5" />
+      </svg>
+    );
+  if (view === "briefs")
+    return (
+      <svg {...common} aria-hidden="true">
+        <rect x="2.5" y="2" width="11" height="12" rx="1.5" />
+        <path d="M5 5h6M5 8h6M5 11h3" />
       </svg>
     );
   if (view === "settings")

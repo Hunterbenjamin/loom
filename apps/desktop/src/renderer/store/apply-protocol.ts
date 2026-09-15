@@ -13,6 +13,8 @@ export function applyProtocol(
   state: State,
   client: ClientState,
   patch?: PatchFrame,
+  reconcileSnapshot: (snapshot: State["snapshot"]) => State["snapshot"] =
+    (snapshot) => snapshot,
 ): State {
   const selectedPr =
     state.ui.prCursor === null
@@ -29,7 +31,7 @@ export function applyProtocol(
   const repoChanged = repo !== state.ui.repo;
   let next: State = {
     ...state,
-    snapshot: projectSnapshot(state.snapshot, client, patch),
+    snapshot: reconcileSnapshot(projectSnapshot(state.snapshot, client, patch)),
     pullRequestLists: changed(patch, "pull_requests")
       ? [...client.collections.pull_requests.values()]
       : state.pullRequestLists,

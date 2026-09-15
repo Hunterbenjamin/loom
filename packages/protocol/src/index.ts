@@ -1,6 +1,7 @@
 // The coordinator to UI API. Windows hold no durable state: they connect, take a snapshot, apply
 // patches, and send commands. Designed for several windows at once (docs/design/ui.md).
 
+export * from "./briefs.js";
 export * from "./commands.js";
 export * from "./entities.js";
 export * from "./frames.js";

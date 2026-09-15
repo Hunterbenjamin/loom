@@ -69,8 +69,9 @@ is captured on each run. Retries and recovery retain that recipe, while an expli
 current effective role profile. Live supervisor values apply immediately; the catalog labels values
 that apply to the next task, next run, or coordinator restart. Every stored mutation uses an expected
 version and appends a redacted audit row. Settings and audit schemas reject secret-bearing keys.
-At startup the coordinator opens the store with bootstrap defaults, resolves the global settings
-row, refreshes core's reconcile configuration, and only then constructs tool and GitHub adapters.
+At startup the coordinator opens the store, migrates legacy repository configuration into sparse
+settings, resolves the global settings row, refreshes core's reconcile configuration, and only then
+constructs tool and GitHub adapters.
 Immediate changes replace the live reconcile configuration and reschedule affected supervisor
 timers; resetting a value re-resolves from the immutable startup/environment baseline. Provider-wide
 model environment variables are applied after each role's effective provider is selected, so a
@@ -83,15 +84,14 @@ is present.
 Repository scope is intentionally limited to role profiles, task/workflow defaults, base branch and
 serialized tests. Capacity, retry/polling, executable paths, Main, GitHub observation and
 desktop presentation are single-supervisor or single-instance facts and are editable only at Global
-defaults; repository documents show them as inherited and disabled. Existing `Repo.defaultProviders`
-remain the per-role compatibility baseline until that exact role field is overridden, so one sparse
-edit cannot reroute the other roles.
+defaults; repository documents show them as inherited and disabled. Settings resolve from built-in
+defaults, sparse global and repository documents, and environment overrides only.
 
 | Configuration | Current code owner/location | Classification |
 |---|---|---|
 | Planner, implementer and reviewer provider (`LOOM_PROVIDER_*`), provider model (`LOOM_MODEL_CODEX`, `LOOM_MODEL_CLAUDE`), Codex reasoning (`LOOM_CODEX_REASONING_EFFORT`), `LOOM_RUN_MODES`, semantic `LOOM_AGENT_ACCESS` | `apps/coordinator/src/config.ts`, `packages/core/src/settings.ts`, run recipe and provider launch adapters | Exposed; next run. Planner read-only remains a fixed floor. |
 | Plan approval, size, budget, review-round cap, merge policy | create-task protocol/CLI and `packages/core` task policy | Exposed; captured on the next task. Explicit creation values win. |
-| Repository base branch, default providers and serialized-test flag | `packages/core` `Repo`, `apps/coordinator/src/repos.ts` | Exposed in the Repositories and role sections at global/repository scope; repository identity/root remains registration-owned. |
+| Repository base branch, default providers and serialized-test flag | Stored settings | Exposed in the Repositories and role sections at global/repository scope; repository identity/root remains registration-owned. |
 | Main model (`main.model`, `LOOM_MODEL_LEAD`) | `apps/coordinator/src/lead.ts`, `config.ts` | Exposed in Main; next run. |
 | Capacity, retry base/cap/attempts, stall/unknown/delivery timeouts, GitHub task poll, resync and heartbeat | `apps/coordinator/src/config.ts`, loop/executor/observation | Exposed in Advanced runtime; immediate except heartbeat, which needs restart. |
 | Worktree root and tmux/Codex/Claude executables (`LOOM_WORKTREE_ROOT`, `LOOM_TMUX`, `LOOM_CODEX`, `LOOM_CLAUDE`) | coordinator config and launch adapters | Exposed; restart required. |
@@ -117,8 +117,16 @@ failed or stale guard, failed merge precondition, or recovery observation voids 
 - **Reconcile from current state.** Every event enqueues `reconcile(taskId)`: hooks, app-server
   notifications, pane-host hints, and changes found by polling GitHub. Reconcile re-reads from each owner,
   compares that with the desired state, and takes idempotent actions. A full resync runs about every 60 seconds.
-- **One reconcile at a time per issue.** Stage transitions are compare-and-set on a version column
-  and are logged in a `transitions` table.
+- **Human commands are instant.** A move, cancel, plan approval, merge approval or finding waiver is
+  decided the moment it arrives, against the readings the issue was last reconciled with (what the
+  human was looking at), and its acknowledgement carries that decision. A pass with fresh readings
+  follows at once, and the executor runs none of the issue's actions until it has committed, so
+  every launch and merge still rests on a fresh reading. A command that would be refused, or that
+  messages or answers an agent, is decided by that fresh pass instead. See `docs/design/core.md` §5.1a.
+- **One reconcile at a time per issue; issues in parallel.** Passes for different issues read
+  their owners concurrently, and the executor runs one action at a time per issue with issues in
+  parallel; git operations that write a repository's shared refs are serialized per repository.
+  Stage transitions are compare-and-set on a version column and are logged in a `transitions` table.
 - **Join key: the worktree path.**
   - Claude hooks, Codex threads, tmux panes and `claude agents --json` all report their working directory (`cwd`).
     A pane's `pane_start_path` survives its process, so a dead pane still joins to its issue.
@@ -660,3 +668,38 @@ Newly observed merges in either PR lists or detail are hints to invalidate the m
 branch's observation cache and enqueue reconciliation immediately, regardless of a manual issue
 reference. GitHub's task observation alone supplies the merged fact that makes the task Done.
 Cache invalidation generations prevent pre-hint reads from restoring a stale conditional body.
+
+### Daily AI builder brief
+
+The coordinator owns one instance-wide daily research schedule (07:00 Asia/Makassar),
+run records and validated brief artifacts in SQLite metadata. It is independent of repositories,
+Main conversations and issue stages. The desktop's Daily brief page lists history like Reviews and opens
+a brief in the Reviews detail layout (reading column and property rail), reading results over
+authenticated protocol commands; it can pause the schedule and request a new run.
+Renderer state is only a disposable read cache and current selection. History shows the latest
+30 runs; older records remain stored and addressable by ID.
+
+A coordinator timer checks every 30 seconds and on startup. After wake/restart it catches up only
+today's missed edition, without replaying a backlog of days. The scheduled date is persisted before
+launch and allows at most one automatic attempt per local date. A manual run after 07:00 also
+satisfies that day's scheduled edition. Manual refreshes remain available after completion or failure,
+even with scheduling paused. An active run coalesces concurrent requests; a repeated run ID returns
+its existing record. Failed jobs retain their error and require an explicit manual retry or the next
+day's schedule. Closing the window does not stop research; the host must be awake with its coordinator
+running. This does not install a second operating-system cron job.
+
+Research runs in a dedicated instance-data workspace with a provider session UUID saved before
+launch. The existing Claude Agent SDK supplies a web-only session (WebSearch/WebFetch), with no
+repository tools, inherited settings or MCP servers, using Sonnet and a $3 budget/30-turn limit.
+The adapter observes native SDK messages and validates structured output with zod; at least one
+successful live web lookup is required. Source relevance and evidence classification are research
+judgments, not independently verified guarantees. The final brief is a coordinator-owned artifact;
+the provider continues to own its transcript. Shutdown aborts the owned query; a record still running
+at startup is marked interrupted rather than inventing a successful brief or automatically repeating
+an uncertain run. No issue, branch, pane, Main message or workflow transition is created.
+
+Editorial instructions prioritize agent development workflows, usable capabilities, practical
+research implications and business opportunities for a software builder. Each item includes original
+sources, publication date when known, evidence strength, limitations and a next step. Opportunity
+analysis distinguishes technical feasibility from customer demand. Previous successful coverage is
+provided to reduce repetition. Thin news days produce fewer items rather than filler.
