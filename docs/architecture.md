@@ -243,8 +243,7 @@ The Claude launch restricts Main to Loom MCP and read-only file tools within the
 the agent has no terminal attach capability. Human viewers still attach to its panel.
 The coordinator persists the per-instance last-opened repository in SQLite and publishes selection
 to windows. Selecting another repository retargets a viewer without stopping either session.
-Startup recovers every per-repository recipe and idempotently migrates the legacy single recipe
-to the first registered repository, keeping its session ID and token.
+Startup recovers every per-repository recipe.
 This conversation-only policy is separate from issue planners' and reviewers' edit restrictions,
 so those issue roles retain the tools needed to inspect the repository and run tests.
 Main may also send short questions or heads-ups through `message_agent`, fire-and-forget. Every
