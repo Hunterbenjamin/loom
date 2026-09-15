@@ -81,4 +81,7 @@ test("plans are short and record decisions; acceptance criteria are the bar impl
   expect(leadBrief()).toContain(
     "never add requirements the human did not ask for",
   );
+  expect(leadBrief()).toContain(
+    "Group work by the review question and the files it touches, not one issue per finding",
+  );
 });
