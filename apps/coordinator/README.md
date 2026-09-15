@@ -1,512 +1,103 @@
 # @loom/coordinator
 
-Terminology: an “issue” in the UI is a “task” in the code; internal identifiers and MCP tool names retain `task`.
+One background process per instance. It reads owners, calls the pure core reconciler, commits state,
+executes actions and serves agents/windows. [Architecture](../../docs/architecture.md) owns integration
+and recovery rules; [core workflow](../../docs/design/core.md) owns decisions and concurrency.
 
-The process that runs everything else. One per instance (`LOOM_INSTANCE`, `LOOM_DATA_ROOT`): it
-loads state, reads the owners, runs `reconcile`, commits, executes the actions, hosts the MCP
-server agents call, and serves windows over the protocol. It makes no workflow decisions of its
-own — `@loom/core` does — and it owns no facts any other tool owns.
+## Running the CLI
+
+From the repository root, `pnpm loom` runs [src/cli.ts](src/cli.ts) with tsx. Use the
+[development launcher](../../README.md#development) for a persistent dev coordinator and desktop.
+For an explicitly configured isolated instance:
 
 ```sh
-export LOOM_INSTANCE=dev LOOM_DATA_ROOT=~/.loom LOOM_TOKEN=$(openssl rand -hex 24)
-loom repo add ~/src/example example/repo   # see "The CLI" for how to run `loom` today
-loom serve &
-loom issue create example-repo "Rename the widget" "Rename Widget to Gadget everywhere."
-loom issue move <issue> todo
-loom status
-loom attach <issue> implementer          # prints the pane host's argv; --exec runs it
+pnpm loom repo add ~/src/example example/repo
+pnpm loom serve
+# In another terminal with the same instance environment:
+pnpm loom issue create example-repo "Rename the widget" "Rename Widget to Gadget."
+pnpm loom issue move <issue> todo
+pnpm loom status
+pnpm loom attach <issue> implementer  # prints attach argv; --exec runs it
 ```
 
-## The loop
+`issue` is the public command group; `task` remains a hidden compatibility alias. Issue references
+accept canonical `t-…` IDs, repository keys such as `LOOM-12`, or numbers within an unambiguous
+repository. Quote descriptions as one argument; `--` ends option parsing.
 
-One pass per issue at a time; enqueues during a pass coalesce into one more pass. A pass is
-`store.loadTaskState` → fresh observations → `reconcile` → `store.commit(taskId, result, version)`.
-A compare-and-set conflict reloads and retries up to three times, then re-enqueues. Passes are
-asked for by adapter hints, new inputs, `schedule` actions, and a full resync about every 60 s. The
-store's default of one input per pass is not raised.
+Useful diagnostics and actions:
 
-Observations are read outside every transaction, and a failure stays a failed `Reading`: core
-treats that as unknown, never as proof. The GitHub read is conditional, keeping its ETag and the
-last body here rather than in core. Provider status for a run comes from its adapter, the pane
-comes from the pane host, and `resumable` is asked of the provider directly rather than inferred
-from a failed read.
+```sh
+pnpm loom issue list --view needs_you
+pnpm loom issue show <issue>
+pnpm loom issue inspect <issue> --json
+pnpm loom issue timings <issue>
+pnpm loom issue restart <issue> <runId>
+pnpm loom issue answer <issue> <questionId> <answer>
+pnpm loom issue answer-request <issue> <runId> <requestId> accept
+```
 
-## The executor
+`inspect` uses a read-only store connection without migrations/recovery and works while the
+coordinator is stopped. It reports persisted flags, runs, delivery, questions, approvals, recent
+outbox results and findings; it does not refresh providers. Other issue commands are protocol
+clients. `serve` and `repo add` are local administration commands.
 
-Claims outbox rows, rechecks `isClaimCurrent` immediately before any side effect, maps each
-`Action` kind to the adapter that owns it, and records the outcome with `store.outbox.finish` as an
-`action_result` input. Actions run at least once, so every executor checks the owner first: an
-existing worktree, an existing PR, a remote head already at the SHA, a session already live under
-that ID. A failure is classified `retryable`, `precondition` (the world moved; re-read and decide
-again) or `fatal`.
-
-## Launching a run
-
-The whole recipe is persisted before anything starts, in `<data>/runs/<run>/recipe.json` with mode
-`0600`, outside the repository: the derived Claude session ID (UUIDv5 of `<runId>#<epoch>`), an
-unguessable per-run MCP token, the per-run settings and MCP config paths, the environment
-allowlist, the cwd, the executable and its arguments. The token rides in `LOOM_MCP_TOKEN` and in
-the run's MCP config, never in `--settings` and never in argv. Then `ensurePane` for an interactive
-run, the Agent SDK for a headless one, and one Codex app-server per issue, outside the pane host.
-
-A repeated `start_run` adopts the session the recipe already names instead of opening a second one,
-and a pane that died while the coordinator was down is recreated from the recipe — never from the
-pane's own argv, and never from a screen.
-
-## The send gate
-
-Before any send, the provider's current status is read again and must permit it: never while it is
-waiting on a permission or a question, and never while it is `unknown`. A refusal is a
-`precondition`, so the next pass decides afresh rather than retrying blindly. Delivery is confirmed
-only by the provider; the resend rule is core's.
-
-## The MCP host
-
-`serveHttp` from `@loom/mcp` on loopback. `submit` persists the input and runs passes for its issue
-until that input is consumed, then answers with its disposition. `context` is read-only and
-role-filtered. Its first read per run session epoch returns the full view (including the repo's
-`WORKFLOW.md` commands); later reads return changed sections and current must-act findings unless
-the caller requests `{ full: true }`. `resolveToken` consults current run
-state on every call, so an ended or superseded run reads `stale_run` rather than `unknown_run`.
-`buildAnchor` reads the reviewed blobs through the git adapter, never the working file.
-
-### WORKFLOW.md (design note 13.3, settled here)
-
-`<repo root>/WORKFLOW.md`. A `## <name>` heading followed by a fenced block is one command;
-everything else in the file is prose. Names are lowercased with spaces folded to `_`.
-
-- **Missing file:** no commands. Nothing fails.
-- **Malformed file** (a duplicate name, a name or command the schema refuses): no commands at all,
-  and one warning. Half-parsed commands are worse than none, because an agent would run them.
-- **Cache:** per absolute path, invalidated on size or mtime, so editing the file takes effect
-  without restarting the coordinator.
-
-It is read only for `get_task_context`. No guard and no transition depends on it.
-
-## Prompts
-
-The planner, implementer and reviewer briefs are templates here, filled from the issue. They are
-short on purpose and tell the agent how `get_task_context`'s full and changes views work. They are
-what a run is *launched* with — Codex's developer instructions and Claude's first
-headless prompt. The messages a running agent receives, including the fix round's findings
-projection, are core's.
-
-## Recovery
-
-On startup: load the store, ask `store.outbox.startupRunning` what was uncertain and, for each row,
-check the owner and either record the recovered result or `requeue` it; `thread/resume` every live
-Codex run; poll `claude agents --json`; recreate an interactive run's pane from its recipe when the
-host reports it dead; and reconcile every non-terminal issue. Nothing is replayed on the strength of
-a guess.
+`restart` explicitly replaces the named current run with current effective agent settings; use
+`show` to find its ID. [Agent context](../../docs/design/agents.md#context-and-fix-rounds) explains
+what survives a new session. `--small` on creation selects the [small-task path](../../docs/design/core.md#stage-rules).
 
 ## Configuration
 
-Environment variables configure the coordinator:
-
-- `LOOM_INSTANCE` — unique name for this coordinator instance (required).
-- `LOOM_DATA_ROOT` — directory where issue state is stored (required).
-- `LOOM_TOKEN` — bearer token for the protocol server (required, min 16 bytes).
-- `LOOM_BIND` — the protocol server's loopback address, `host:port` format. Defaults to
-  `127.0.0.1:47800`.
-- `LOOM_MCP_PORT` — stable port for the MCP HTTP server. Defaults to `LOOM_BIND`'s port + 1
-  (e.g., 47801 for the default bind port). If the port is in use, coordinator startup fails with a
-  clear error message. Set this to a different value if the default port is occupied.
-- `LOOM_HOOK_PORT` — stable port for the Claude hook receiver. Defaults to `LOOM_BIND`'s port + 2
-  (e.g., 47802 for the default bind port). If the port is in use, coordinator startup fails with a
-  clear error message. Set this to a different value if the default port is occupied.
-- Other variables: `LOOM_WORKTREE_ROOT`, `LOOM_BASE_BRANCH`, `LOOM_MODEL_CODEX`, `LOOM_MODEL_CLAUDE`,
-  `LOOM_TMUX`, `LOOM_CODEX`, `LOOM_CLAUDE`.
-
-### Issue agent settings
-
-Set `LOOM_PROVIDER_PLANNER`, `LOOM_PROVIDER_IMPLEMENTER`, and `LOOM_PROVIDER_REVIEWER` to
-`codex` or `claude` to override repository/issue routing for new runs in this instance.
-Unset roles retain their existing routing. `LOOM_MODEL_CODEX` and `LOOM_MODEL_CLAUDE` select
-each provider's issue model; `LOOM_CODEX_REASONING_EFFORT` explicitly selects Codex reasoning.
-For example, to run all three roles on Sol with medium reasoning:
-
-```sh
-LOOM_PROVIDER_PLANNER=codex
-LOOM_PROVIDER_IMPLEMENTER=codex
-LOOM_PROVIDER_REVIEWER=codex
-LOOM_MODEL_CODEX=gpt-5.6-sol
-LOOM_CODEX_REASONING_EFFORT=medium
-```
-
-Restart the coordinator after changing its environment. These settings apply to newly created
-runs, including future roles on existing issues. Existing runs and retries keep their recorded
-provider, model, and reasoning level. To explicitly replace a current planning, implementation,
-or review run, use **Agents → Restart with current agent settings**, or
-`pnpm loom issue restart <issue> <runId>`. This retires the selected agent and creates a fresh
-session on the same issue/worktree, preserving its plan, findings and review round. It does not
-transfer the old provider's conversation. Use `loom issue show <issue>` to find the current run ID.
-The replacement waits for confirmed retirement; a stale run ID is rejected. Main retains its separate model settings.
-Reasoning is persisted with the run, outbox action, and launch recipe and passed to both the
-Codex thread and subsequent turns; the issue's private TUI configuration receives it too.
-Older runs without a reasoning field retain provider defaults. These are instance environment
-settings. The desktop Settings page now stores global defaults and sparse per-repository overrides,
-shows environment precedence, and labels whether changes apply immediately, to the next task/run,
-or after coordinator restart. Repository overrides are limited to agent roles, workflow defaults,
-base branch and serialized tests; supervisor capacity/timing, executables, Main, GitHub and
-desktop preferences are instance-wide and can only be edited in Global defaults.
-
-`LOOM_RUN_MODES` is a comma-separated per-role override such as
-`planner=headless,reviewer=headless`. Planner, implementer, and reviewer all default to
-`interactive`, giving every Loom-owned run a pane that can be attached. Partial overrides leave
-unspecified roles interactive; only `interactive` and `headless` are accepted. Like provider and
-model settings, this is captured when a new run row is created. Existing runs, retries/resumes, and
-external sessions keep their recorded mode. Interactive planners and reviewers remain read-only,
-and every interactive role's initial prompt travels through the provider-status send gate only after
-the coordinator has recorded its provider session and pane.
-
-When the coordinator restarts, it uses the same stable ports so that live runs' settings and MCP
-config files remain valid.
-
-## The protocol server
-
-A WebSocket on `LOOM_BIND` (loopback by default) with `LOOM_TOKEN`, implementing `@loom/protocol`:
-`hello`/`welcome`, a snapshot from the store plus the derived views, then patches after every
-commit with sequence numbers **per connection** and contiguous, so a gap always means loss.
-Subscriptions filter the stream; heartbeats drop a client that misses three; human commands are
-recorded as inputs and acknowledged with their input ID. Frames are validated on the way out as
-well as in.
-
-Task-targeted `fetch_diff` and `save_review_state` answer `unavailable`: they belong to the Workbench, in
-Phase 4, and the git adapter has no raw-patch reader yet.
-
-## The CLI
-
-`loom` is a protocol client and holds no state. `loom serve` and `loom repo add` are
-instance-local admin commands that open the store directly. `loom issue inspect` also reads the
-store directly, using a read-only connection without migrations or startup recovery.
-
-`loom issue` is the primary command group. `loom task` remains a hidden compatibility alias for existing scripts.
-
-```sh
-loom issue list [--view needs_you]
-loom issue show <issue>
-loom issue inspect <issue> [--json]
-loom issue answer <issue> <questionId> <answer>
-loom issue answer-request <issue> <runId> <requestId> accept|decline|cancel
-```
-
-`issue create <repo> <title> [description]` preserves the description exactly; quote it as
-one shell argument. Use `--` before positional text that starts with `--`. The repository's
-pnpm shell emulator keeps literal backticks and quotes intact when forwarding script arguments.
-CLI errors include the error code, message, and each validator or guard detail on its own line.
-
-`inspect` prints persisted issue flags, all runs (newest last), message delivery history with
-80-character text previews, open questions, pending plan/merge/provider approvals, the last ten
-outbox rows with executor timestamps and results, and finding counts and open locations. Text
-uses aligned columns without colour; `--json` returns the same data as one object. It works with
-the coordinator stopped and reads the instance selected by `LOOM_INSTANCE` and `LOOM_DATA_ROOT`
-(with the usual CLI environment). These are the last stored observations, not a live provider
-refresh. No agents are contacted and no state is changed.
-
-`answer-request` answers a provider's approval request (e.g., a Codex `command_approval` for a
-test run). The decision is one of: `accept` (approve the operation), `decline` (reject it), or
-`cancel` (cancel the operation). The `generation` field (for Codex threading) is read from the
-run's current state in the snapshot.
-
-Each per-issue Codex app-server appends stderr to `<taskDirectory>/app-server.log` (created with
-mode 0600). Startup logs the path; the file is preserved across restarts without rotation.
-
-**Running it today:** no package in this repository emits JavaScript yet — everything is consumed
-as TypeScript source by Vitest and by electron-vite — so `loom` needs a TypeScript-aware runtime
-until a build step lands:
-
-```sh
-pnpm loom serve          # a root script over tsx, which is a workspace dev dependency
-```
-
-`main(argv)` is exported from `src/cli.ts`, so the command table is callable directly as well.
-
-### Small issue fast path
-
-Small issues (docs, typos, one-file fixes) skip the planning stage and reach `done` in ≤5 minutes when idle:
-
-```sh
-loom issue create <repo> <title> [description] --small
-```
-
-Small issues auto-generate a plan from the title (goal) and description (steps), then route directly from `todo` to `in_progress`, skipping the planning and plan_approval stages. The plan is marked as accepted, so no human approval is needed.
-
-**Qualifying scope:** ~200 lines or fewer, single file, no architectural decisions. Docs, typos, comments, config updates, simple refactors.
-
-**How it works:**
-1. Issue created with `--small` flag or `size: 'small'` via Main tools.
-2. On first reconcile, a plan is auto-generated from issue title (goal) and description (steps split by newlines).
-3. Issue transitions directly: `todo` → `in_progress` (no planning stage).
-4. Implementer fixes it; reviewer runs only tests for affected packages.
-5. Targets ≤5 minutes wall-clock from `todo` to `done` when idle.
-
-### Timing measurements
-
-Measure small issue stage durations:
-
-```sh
-loom issue timings <issue>
-```
-
-Prints per-stage transition times from the audit log. Useful for verifying the ≤5-minute target and understanding latency bottlenecks.
-
-## Troubleshooting
-
-### Claude folder-trust dialog on first launch
-
-**Symptom:** An interactive Claude run stops at the folder-trust dialog on first launch in a new
-worktree.
-
-**Cause:** Claude Code requires folder trust to open the worktree directory.
-
-**Resolution:** Click the Trust button in Claude's dialog to allow access to the worktree.
-
-### MCP `unknown_run` error
-
-**Symptom:** An MCP tool call fails with `unknown_run`.
-
-**Cause:** Codex registration lacked the bearer header in http_headers, preventing authentication
-of MCP requests.
-
-**Resolution:** Fixed; the coordinator now includes http_headers with the bearer token in all
-Codex registrations.
-
-### Codex reviewer stuck in `unknown` state
-
-**Symptom:** A Codex reviewer gets stuck in `unknown` state and does not progress.
-
-**Cause:** The reviewer's thread had no rollout, meaning the state machine did not transition.
-
-**Resolution:** Fixed; the coordinator now rotates the session when `resumable=false`, ensuring
-proper state transitions on resumable runs.
-
-### Codex per-issue home missing auth
-
-**Symptom:** Codex cannot authenticate within the per-issue home directory.
-
-**Cause:** The `auth.json` file was not accessible in the per-issue home.
-
-**Resolution:** Fixed; the coordinator now links `auth.json` from `~/.codex` into each issue's
-home directory on startup.
-
-### Run stalls on provider usage limit
-
-**Symptom:** A run stalls and does not proceed, with the provider reporting a usage limit
-reached (e.g., Claude rate limit).
-
-**Cause:** The provider's API usage limit has been reached.
-
-**Resolution:** The human can paste `continue` in an interactive run to retry the operation, or
-wait for the provider's limit to reset before the next attempt.
-
-## Recovery contract: panes and Codex sockets
-
-### Pane persistence during recovery
-
-When the coordinator restarts and finds a dead pane for a live run that still owns it, the pane is
-relaunched from its recipe (the command line and environment). The new pane's info
-(sessionName, windowId, paneId, hostGeneration) is immediately persisted to the run record before
-any subsequent pane operation. This ensures pane-scoped sends target the new pane, not the old,
-dead one.
-
-**Idempotency:** If recovery is rerun on the same relaunched pane, the run record is updated to the
-same pane info and is not duplicated.
-
-### Recognizing pane recovery stalls
-
-If a coordinator restart leaves a run observable-to-nobody but the pane is alive and working,
-look for:
-
-1. **Attention reason:** `observability_failure` or `status_unknown` (instead of a human-input wait like
-   `provider_input`). The `observability_failure` reason specifically indicates the provider cannot be
-   observed.
-2. **Startup log:** `serve.log` shows `recovered: 0 recorded, 0 requeued, 0 Codex threads resumed, 1 panes relaunched`
-   while the pane is alive and actively working.
-3. **Provider status:** The run remains in `unknown` status even though the pane is running and the
-   process is progressing.
-
-**Cause:** The pane was relaunched but (a) its info was not persisted, causing pane operations to target
-the dead pane, or (b) a Codex app-server socket issue prevented thread resume. See issue t-d5033ac7 for
-Codex socket probing and adoption behavior.
-
-### Debugging pane persistence
-
-Run `loom issue inspect <taskId> --json` and check:
-- `runs[].pane.windowId` and `runs[].pane.paneId` — should match the live pane (e.g., `@63`, `%63`).
-- `runs[].status` — should be `working` or another live status if the pane is active and working.
-- `runs[].unknownSince` — if this is set and holds for longer than `unknownGraceMs` (default 30s),
-  the run will raise `observability_failure`.
-
-If the recorded pane IDs do not match the live pane but the live pane is working, the run record was
-not updated during recovery. Manually update the run record or restart the coordinator and check
-recovery logs for errors.
-
-### Bounded run and app-server recovery
-
-Task app-server recovery asks the store for every unended Codex run, across roles, with a
-recorded session. If any exists, recovery sends no signal and emits a task/session-correlated
-diagnostic; the failed provider read leaves the run `unknown`, and `observability_failure` makes it
-visible after `unknownGraceMs`. With no live owner, cleanup still revalidates PID birth time and the
-exact private socket command immediately before each signal. This guard does not apply to explicit
-task shutdown or a user-requested stop.
-
-The 2026-09-13 incident was initiated by adapter stale/orphan recovery, not by Operator: Operator
-recorded the diagnostic and attempted to route a bug. PID 22448 matched that issue's private
-app-server, so it could have hosted the live reviewer thread. The historical event did not include a
-provider session ID, so stronger attribution is not possible. New refused-recovery diagnostics carry
-the recorded session correlation. After a disconnect, existing adapter subscriptions are resumed and
-hydrated before reads retry. Persistent unknown observation and pending delivery are bounded by
-`unknownGraceMs` and `deliveryTimeoutMs`; an interrupted idle reviewer that has not submitted is
-bounded by `stallAfterMs` and remains in review with `idle_without_submission` attention.
-
-Operator bug routing remains explicit. Set `operator.repoId` in Settings (or
-`LOOM_OPERATOR_REPO`) to a registered repository. If it is absent, Operator status keeps the filing
-failure visible; Loom does not silently select a repository.
-
-## Tests
-
-`src/*.test.ts`, against `@loom/fake-agent`'s providers, pane host and GitHub, a throwaway Git
-repository with a real bare remote, and a fake clock. The real coordinator, executor, store, MCP
-server and protocol server are used throughout; no agent, terminal or daemon is started.
-
-- `e2e.test.ts` — the walking skeleton: Todo through plan, implementation, review, one fix round,
-  approval and merge to Done, plus CI failing after approval and a human push.
-- `faults.test.ts` — crash and retry, a dropped delivery, a duplicate event, a rate limit, a
-  vanished interactive run, a blocking question.
-- `restart.test.ts` — the coordinator killed between a push and its receipt.
-- `gate.test.ts` — a run at a permission dialog receives no paste.
-- `protocol.test.ts` — a fake client's snapshot, command ack, patches and a forced sequence gap.
-- `cli.test.ts` — inspect text snapshots and JSON from a temporary fixture database, including history and missing issues.
-- `units.test.ts` — derived IDs, the environment allowlist, the config, `WORKFLOW.md`, the mapper.
-- `real.test.ts` — opt-in (`LOOM_REAL_PROVIDERS=1`), one real headless Claude planner on `haiku`.
-  GitHub stays faked: the merge half needs a throwaway GitHub repository this test cannot create.
-
-```sh
-pnpm test
-pnpm lint
-pnpm typecheck
-```
-
-## Permission allowlists
-
-Interactive Claude implementer runs receive an automatically-derived permission allowlist for Bash
-commands, so they execute approved project commands without stopping on permission prompts. This
-allows implementers to work continuously without human intervention.
-
-### Fixed allowlist
-
-Every interactive Claude implementer run is pre-allowed these command prefixes:
-
-- `git add` — stage changes
-- `git commit` — commit staged changes
-- `git status` — show repository status
-- `git diff` — show uncommitted changes
-- `git log` — show commit history
-- `pnpm install` — install dependencies
-- `pnpm exec vitest` — run tests
-- `pnpm exec biome` — run formatter/linter
-- `pnpm exec tsc` — run type checker
-
-The following are **explicitly never allowed**, even if a workflow command references them:
-
-- `git push` — coordinator handles merges through GitHub
-- `git merge` — coordinator handles merges through GitHub
-- `gh` — coordinator manages GitHub through its own adapter
-- `rm` — prevents accidental data loss
-- `curl` — hook communication uses its own curl; nested curl creates layering issues
-
-### Derived from WORKFLOW.md
-
-In addition to the fixed allowlist, any command defined in the repository's `WORKFLOW.md` is
-converted to a `pnpm <name>` prefix and automatically allowed. For example:
-
-```markdown
-## test
-```
-pnpm test
-```
-
-## build
-```
-pnpm build
-```
-```
-
-This WORKFLOW.md exposes commands `test` and `build`, which are converted to prefixes `pnpm test`
-and `pnpm build` and included in the permission allowlist. The coordinator reads the file once per
-run, so editing WORKFLOW.md in a worktree takes effect without restarting the coordinator.
-
-**Note:** If WORKFLOW.md is malformed or missing, the run receives only the fixed allowlist and
-continues without error. See [WORKFLOW.md policy](./README.md#workflowmd-design-note-133-settled-here) for details.
-
-## Projects
-
-`select_repo({repoId})` stores the per-instance last-opened repository in SQLite metadata. Snapshots
-include `projects: [{id: "project", repoId}]`; `project` patches keep every window synchronized.
-Unknown IDs are rejected. The first registered repository is the initial default; with none the
-selection is null and Tracker offers Open repository.
-
-`add_repo({root, github, baseBranch?})` shares `loom repo add` registration: canonical root, owner/name
-ID and provider defaults. Repeated identical registration reuses the row and preserves configuration;
-a conflicting root/origin is refused. It selects the registered project and publishes registry and
-selection changes immediately. Electron's native folder chooser derives root and GitHub owner/name
-from Git's origin before sending this command. Errors remain inline in the picker.
-
-## Main
-
-`open_lead_session({repoId})` opens that repository's interactive Claude Main; `stop_lead_session({repoId})` stops it and
-revokes its token. `LOOM_MODEL_LEAD` defaults to `LOOM_MODEL_CLAUDE`. Its private recipe and settings
-are in `<instance data>/lead/<repoId>/`, with cwd at the repository root and tmux workspace
-`lead-<repoId>` (`loom-lead-<repoId>` on the instance server). No issue or run is created.
-The configured stable MCP port takes precedence over the recipe; ephemeral instances reuse the
-saved Main port across coordinator restarts. Recovery rewrites Main settings to the current
-endpoint and relaunches only confirmed dead Main panes; absence requires an explicit open.
-The internal `lead` identity and configuration names stay compatible. Main launches with Loom MCP
-and only `Read`, `Glob`, `Grep` within its repository; shell, editing, web and subagent tools
-are denied. Other MCP servers and terminal attach tools are unavailable to Main. Existing live
-sessions keep their launch permissions until the human restarts Main.
-
-Each token scopes all Main tools to its repository. `create_task` may omit `repoId`; explicit foreign
-repositories, issue references and dependencies are rejected. Main accepts a canonical `t-…` ID,
-`LOOM-12`, or bare `12`, resolved against that repository. Switching the desktop picker retargets the
-Main viewer without stopping another project's session.
-
-Startup loads and recovers every per-repository recipe. A legacy `lead/recipe.json` migrates once
-to the first registered repository, preserving session/token, copying settings and `main-notes`,
-and retiring the source only after the destination is committed. A recorded legacy pane is closed
-before moving the same session into its repository workspace. Missing panes still require an
-explicit open. No repositories means migration waits until a repository is registered.
-
-Main introduces its repository in two sentences and waits. On a subsequent panel open, the coordinator
-requests a brief Needs-you summary only if native status is idle with no pending dialog. It never
-pastes into a busy or waiting session, polls for a turn, or retries an uncertain summary delivery.
-The Main-only `set_note({note})` tool atomically replaces `<instance data>/lead/<repoId>/main-notes` (max 2,000
-characters; empty clears it). Every launch includes this note as context, including session rotation.
-See [the UI design](../../docs/design/ui.md#main) for controls and tool scope.
-
-### Coordinator automation
-
-The Operator was removed by user decision on 2026-09-13. Two narrow behaviours remain in
-plain core code, using fresh provider/git observations and the existing guarded outbox:
-
-- A Loom-launched implementer's native permission request is accepted for an exact command
-  from its registered repository's validated `WORKFLOW.md`, or a conservative simple `git add`,
-  `git commit -m` or `pnpm install` command. Extra install flags require an exact workflow entry.
-  Claude requires a waiting native Bash PermissionRequest with an occurrence ID; Codex requires
-  a command approval on the current connection generation. Questions, trust dialogs and all
-  other commands retain `provider_input` attention for the human. Actions are deduplicated by
-  request identity and revalidated immediately before execution.
-- A vanished Loom-launched interactive implementation with no accepted submission, review,
-  replacement or live run can have its clean committed branch pushed through `push_branch`.
-  The exact recorded HEAD must be ahead of base and its remote (or the remote branch absent);
-  git proves remote ancestry and the executor rechecks worktree, branch and HEAD. Push is never
-  forced. The coordinator retains `run_vanished` attention, never opens a PR automatically and
-  never fabricates a submission or changes the stage. Reconciliation and recovery reuse the
-  same commit-keyed outbox intent.
-
-Existing headless retry limits and human plan/merge approvals remain unchanged. Runtime failures
-are logged for the human; no agent files bugs or resets retry budgets automatically.
-
-For constrained test hosts, `LOOM_TEST_SLOW_GIT=1 pnpm test --maxWorkers=1 --testTimeout=30000`
-allows up to two minutes for coordinator Git scenarios. Normal deadlines, fake-clock assertions,
-scenario step limits and UI performance budgets are unchanged.
+Required environment:
+
+| Variable | Purpose |
+|---|---|
+| `LOOM_INSTANCE` | Private instance name |
+| `LOOM_DATA_ROOT` | Parent directory of instance state |
+| `LOOM_TOKEN` | Protocol authentication token, at least 16 characters |
+| `LOOM_BIND` | Optional protocol `host:port`, default `127.0.0.1:47800` |
+| `LOOM_MCP_PORT` | Optional stable MCP port, default bind port + 1 |
+| `LOOM_HOOK_PORT` | Optional stable Claude-hook port, default bind port + 2 |
+
+Set credentials privately; never put actual tokens in commands, logs or repository files. Occupied
+stable ports fail startup rather than changing endpoints under live runs. Restart after changing
+process environment. Settings precedence and scope are documented in
+[architecture](../../docs/architecture.md#settings); [src/config.ts](src/config.ts) is the environment
+mapping, including `LOOM_PROVIDER_*`, `LOOM_MODEL_*`, `LOOM_RUN_MODES` and executable overrides.
+
+## WORKFLOW.md
+
+[src/workflow.ts](src/workflow.ts) reads the registered repository root's `WORKFLOW.md`. A
+`## <name>` heading followed by a fenced block defines a command; names become lowercase with
+spaces folded to underscores. Other content is prose. Missing files expose no commands; malformed
+or duplicate commands reject the entire file and produce a warning. The path cache invalidates on
+size/mtime changes.
+
+Commands appear in `get_task_context` and supply the exact-command allowlist for
+[coordinator automation](../../docs/design/core.md#coordinator-automation). They do not execute merely
+because they are listed.
+
+## Source map
+
+| Source | Responsibility |
+|---|---|
+| [coordinator.ts](src/coordinator.ts) | Compose instance services, startup/shutdown and published state |
+| [loop.ts](src/loop.ts), [observe.ts](src/observe.ts) | Reconcile scheduling and owner reads |
+| [executor.ts](src/executor.ts), [recovery.ts](src/recovery.ts) | Outbox effects and uncertain-action recovery |
+| [launch.ts](src/launch.ts), [recipes.ts](src/recipes.ts) | Provider launch and private saved recipes |
+| [mcp-host.ts](src/mcp-host.ts), [prompts.ts](src/prompts.ts) | Task context, submission bridge and role briefs |
+| [server.ts](src/server.ts), [commands.ts](src/commands.ts) | Authenticated protocol and command dispatch |
+| [pull-requests.ts](src/pull-requests.ts), [conversations.ts](src/conversations.ts) | Subscription-scoped owner projections |
+| [pane-inventory.ts](src/pane-inventory.ts), [terminals.ts](src/terminals.ts) | Native inventory and terminal commands |
+| [lead.ts](src/lead.ts), [main-messages.ts](src/main-messages.ts) | Main lifecycle and its issue-agent messages |
+| [briefs.ts](src/briefs.ts), [settings.ts](src/settings.ts) | Daily research and settings services |
+
+## Diagnostics and verification
+
+Per-issue Codex stderr is retained in `<taskDirectory>/app-server.log` with private permissions.
+For stalled work, inspect the recorded attention and delivery state before acting; terminal activity
+does not establish provider observability. Unknown observations use the
+[recovery contract](../../docs/architecture.md#recovery). Answer Claude folder trust in its native dialog.
+Do not repair a live instance by manually rewriting run rows.
+
+Colocated tests cover the real loop/store/executor with temporary Git repos and fake providers;
+real provider tests are opt-in under the [repository rules](../../AGENTS.md#checks).

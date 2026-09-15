@@ -1,184 +1,86 @@
 # Agent layers
 
-Terminology: an “issue” in the UI is a “task” in the code; internal identifiers and MCP tool names retain `task`.
+[AGENTS.md](../../AGENTS.md) owns repository principles and safety. [Core workflow](core.md) owns
+stage transitions; agents submit structured results and never move stages themselves.
 
-Who talks to whom, who decides what, and who is allowed to be busy. This note records the direction
-agreed on 2026-09-12 and updated by the 2026-09-13 decision to remove the Operator. It builds on the principles in [`AGENTS.md`](../../AGENTS.md) and the
-contract in [`core.md`](core.md); core owns the stage rules.
-
-## What the first day showed
-
-- One agent (the Claude Code session that built Loom) played three roles at once: the one the human
-  talks to, the one that handles what agents need, and the one that reviews PRs. Whenever it was doing
-  the second or third, the human could not talk to it, which is the problem Loom exists to solve.
-- The Lead panel (PR #56) inherited the same shape and, left alone, spent twenty minutes running a
-  "restart drill" of its own devising instead of being available.
-- Every prompt an implementer stopped on (`pnpm test`, `git commit`, folder trust) was answered by
-  tmux keystrokes from outside Loom. Nothing recorded them; the human saw neither the prompt nor the
-  answer.
-
-The fix is a separation the human named: the agent you talk to must never be the agent that is busy.
-
-## Layers
-
-| Layer | Kind | Job | May be busy? |
-|---|---|---|---|
-| **Human** | | Direction, approvals that are theirs, questions only they can answer | |
-| **Main** | Interactive Claude session, one per repository, behind the bottom-bar toggle | The brain, with hands: understand intent, do what the human asks (anything on the machine), turn larger work into issues, summarize what is going on, ask the human what is actually theirs | Yes, when the human asks it to |
-| **Coordinator** | Code (`apps/coordinator`, `packages/core`) | Stages, launches, review rounds, merges on approval, recovery | Always; it is a process |
-| **Issue agents** | Planner, implementer, reviewer runs (unchanged) | The work of one issue, one role at a time | Yes |
-
-### Reviewers are checkers
-
-CI has already passed on the head a reviewer reads: Loom starts a review round only after CI is
-green on the implementer's submitted commit. So reviewers don't run lint, the typecheck or the
-suite; they run a test only to confirm a suspected bug. They never edit or commit, even though their
-worktree allows it: Loom refuses a submission with reviewer commits or `fixed` statuses.
-
-Read the diff against the issue and the accepted plan (AGENTS.md is already in context), and judge what machines can't:
-whether the change does what was asked (nothing missing, no scope creep), logic and edge cases,
-fit with Loom's architecture and principles, and whether the tests check the right thing. Most
-reviews should find nothing blocking. Block only on a real bug, a principle or AGENTS.md violation,
-an unmet acceptance criterion, a fix that hides a bug instead of removing its cause, or a second
-definition of something the code already defines; the rest of the plan is guidance, and a different reasonable
-approach or a missing optional detail is a non-blocking note.
-
-### Plans are short and record decisions
-
-Decision 2026-09-14, after plans of 1,700–3,600 words: the most detailed plans cost the most review
-rounds, often on requirements nobody asked for, and buried the decisions the human approves. A plan
-is about 300–600 words: goal, non-goals, the design decisions for the human, areas (files or
-modules, no line numbers), at most eight acceptance criteria written as observable behaviour, a
-brief test plan, risks and open questions. The implementer reads the code itself; the acceptance
-criteria are its bar, and it records a better approach as a decision rather than following
-code-level steps. Planners don't add requirements beyond the issue.
-
-Decision 2026-09-15, after plans still ran 1,250–1,900 words under that prompt: each step is a
-one-line outcome (`submit_plan` takes steps as strings of at most 200 characters, stored with an
-empty `detail`), and core rejects a plan over 800 words with a message that says why. Research on
-repository context files points the same way: agents follow written instructions closely, so
-guidance the code already shows adds cost and constraints rather than quality (Gloaguen et al.,
-"Evaluating AGENTS.md", 2026). AGENTS.md keeps only what an agent can't discover: principles,
-checks, safety rules and git conventions.
-
-Decision 2026-09-15: agents fix causes, not symptoms. Code written session by session tends to grow
-by layering guards, fallbacks and retries over bugs, and to answer the same question in two places
-that drift apart (for example two keybinding definitions, one of which silently failed to import).
-AGENTS.md asks for changing or deleting code over adding layers and for one definition per concept;
-planners state a bug's cause; reviewers block a fix that hides a bug or a second definition.
-
-Decision 2026-09-15: Main groups issues by review question, not one per finding. Each issue pays at
-least an implementer and a reviewer session plus a CI run, so homogeneous mechanical changes
-(deletions, unused code) share one issue; judgment calls and structural changes each get their own;
-and every issue stays small enough for one short session, since cost grows with session length.
-
-Submit the round head through `submit_review` with an empty `reviewerCommits`. Report a problem that
-must be fixed before merge as `status: escalate` with a `reason`; the implementer fixes it in its own
-session, and CI runs again before the next round. Report everything else as `status: open`, a
-non-blocking note that never costs a round; severity alone never requests a fix round. Provide
-verdicts (`resolved`, `reopened` or `escalate`) for earlier addressed/disputed findings and any
-remaining open blockers. In a later round, review only what changed since
-`worktree.lastReviewedHead` from `get_task_context`, plus the verdicts owed.
-
-The coordinator validates the submission, records it, and pushes the reviewed head before opening
-the PR. Reviewers do not move cards or
-merge. A successful submission may return `next: in_review` while publication is pending; this is
-completed reviewer work, not a request to submit again. Only an explicit escalation invokes the
-implementer's automatic fix-round path; the cap and nonconvergence checks still apply.
-
-### Main is the brain, and has hands
-
-Decision 2026-09-13 (after the "brain and hands" pattern: one agent that can do anything, and
-issue agents as its hands): Main has the same access the human has on the machine. It launches
-like a full-access implementer, `--permission-mode bypassPermissions`, with no tool allowlist, no
-restricted mode and no strict MCP configuration, in the repository root. It can run shell and git,
-edit any file on disk, use the web and subagents, read the coordinator's log and store, and repair a
-stuck pipeline itself. The two things that stay the human's are merging and pushing to a base
-branch; Main's prompt says so and code enforces it for Loom's own commands. The paragraphs below
-describe how Main is scoped and recovered per repository; the earlier "no hands" rules are gone.
-
-The selected project determines the Main shown in the bottom panel. Each repository owns a
-separate session, recipe, settings, token and notes under `<instance data>/lead/<repoId>/`, with
-cwd at its root and workspace `lead-<repoId>` (`loom-lead-<repoId>`). Open/stop commands and attach
-targets carry `repoId`. Switching projects opens Main lazily and detaches only the old viewer.
-The coordinator recovers every per-repository recipe on startup.
-
-Main's authenticated tools default to and enforce its repository: list/inspect/create/move/approval
-and other task commands cannot reach another project's tasks. Its introduction names the repository.
-
-Main's Loom tools each answer in under a second: list and inspect issues, create and move them,
-approve or reject a plan, approve a merge the human has delegated, request changes, answer a
-question, answer a provider request, retry, cancel, list repositories, push an issue branch, open
-a PR. Larger or parallel work becomes an issue; "look into why the reviewer is stuck" is something
-Main may simply do. The panel remains a human view of Main's conversation. Its first response is
-a two-sentence introduction, then it waits; it never starts drills or resumes work on its own.
-Internal `lead` identifiers remain for compatibility.
-
-### The Coordinator stays code
-
-The orchestrator the human described, "planning agents → implementer agents → review agents → back
-to the orchestrator", is the reconciler. It is deterministic, restart-safe and tested; an LLM in its
-place would be slower and less reliable, and principle 3 ("code moves issues between stages") exists
-for exactly this reason. Auto-merge is therefore a **policy flag on the coordinator**, per
-repository with a per-issue override:
-
-| `merge.approval` | Meaning |
+| Actor | Responsibility |
 |---|---|
-| `always` | A human approves every merge (today's behaviour). |
-| `clean-review` | The coordinator merges when the reviewer submits with no findings and CI is green; otherwise a human. |
-| `never` | Loom never merges; the human merges on GitHub and Loom observes it. |
+| Human | Direction, authorization, questions and final decisions |
+| Main | Act on the human's requests and organize larger work into issues |
+| Coordinator | Deterministic workflow, launches, recovery and guarded external actions |
+| Issue agents | Plan, implement or review one issue in a recorded role/run |
 
-No agent decides to merge. Main can only *approve* within what the human has
-delegated to it, and every approval is an input on the issue like any other.
+## Issue agents
 
-## How the layers communicate
+The executable brief templates are in [prompts.ts](../../apps/coordinator/src/prompts.ts), and
+submission validation is in [core/submissions.ts](../../packages/core/src/submissions.ts) and
+[MCP schemas](../../packages/mcp/src/schemas.ts).
 
-Main may message agents fire-and-forget through Loom; every message is recorded; Main never waits.
-Messages are short questions or heads-ups, never a way to drive work; work becomes an issue.
-This is the user decision of 2026-09-13. Everything goes through Loom, so it is persisted and visible:
+- **Planner:** investigate the cause and propose decisions, not code-level instructions. Target
+  300–600 words; the enforced cap is 800. Steps are one-line outcomes (up to 200 characters each),
+  with at most eight observable acceptance criteria. Include goal, non-goals, areas, a brief test
+  plan, risks and questions. Do not invent requirements. Planners have read-only launch restrictions.
+- **Implementer:** meet acceptance criteria, fix causes and record material departures from the
+  plan. Tests are evidence of behavior; update a test when the intended behavior changes rather
+  than preserving an obsolete design. Commit and submit. Run only test files covering the change;
+  lint, typecheck, full suites, builds and other scripts belong to CI unless the plan asks for them.
+- **Reviewer:** inspect the submitted diff against the issue, acceptance criteria and principles.
+  Judge logic, edge cases, ownership and whether tests prove the intended behavior. CI has already
+  passed (or the no-check grace has elapsed); run a test only to confirm a suspected bug. Never edit
+  or commit, even though launch access permits it. Escalate real bugs, principle violations, unmet
+  acceptance criteria, hidden causes or duplicate definitions. Optional improvements are notes.
 
-| From | To | Channel |
-|---|---|---|
-| Human | Main | The bottom-bar panel |
-| Main | Coordinator | Loom commands (create, move, approve, answer) |
-| Main | Issue agents | `message_agent`: an issue note authored `main`, then the core message path and provider-confirmed receipt; unavailable or waiting runs are refused |
-| Coordinator | Everyone | Snapshot and patches (protocol) |
+Review submissions name the round head and have an empty `reviewerCommits`. `fixed` findings and
+verdicts are rejected. Blocking findings use `escalate` with a reason; `open` is non-blocking,
+regardless of severity. Later reviews inspect changes since `worktree.lastReviewedHead` and give
+required verdicts on addressed/disputed findings and open blockers. Publication can remain pending
+after a successful submission; that does not call for another submission.
 
-When the human is not looking, a `for human` row raises a desktop notification. When they open the
-panel, nothing is sent to Main (decision 2026-09-13: opening a terminal is looking, not asking). Main summarizes the rows when the human asks, from the same snapshot.
+### Context and fix rounds
 
-### Coordinator automation
+Call `get_task_context` first. Each run session epoch gets a full role view on its first read;
+subsequent reads return changed sections and must-act findings. Read again when Loom reports state
+changed; `{full: true}` requests the whole view. Read markers are in memory, so coordinator restart
+safely causes another full response.
 
-The Operator was removed by user decision on 2026-09-13. Two narrow behaviours remain in
-plain core code, using fresh provider/git observations and the existing guarded outbox:
+Cross-role context travels through coordinator artifacts, not provider transcripts: brief, accepted
+plan, decisions, findings, test evidence and handoff. `.task/` mirrors are kept out of Git. The
+[store](../../packages/store/README.md#artifacts-and-migrations) owns durable versions.
 
-- A Loom-launched implementer's native permission request is accepted for an exact command
-  from its registered repository's validated `WORKFLOW.md`, or a conservative simple `git add`,
-  `git commit -m` or `pnpm install` command. Extra install flags require an exact workflow entry.
-  Claude requires a waiting native Bash PermissionRequest with an occurrence ID; Codex requires
-  a command approval on the current connection generation. Questions, trust dialogs and all
-  other commands retain `provider_input` attention for the human. Actions are deduplicated by
-  request identity and revalidated immediately before execution.
-- A vanished Loom-launched interactive implementation with no accepted submission, review,
-  replacement or live run can have its clean committed branch pushed through `push_branch`.
-  The exact recorded HEAD must be ahead of base and its remote (or the remote branch absent);
-  git proves remote ancestry and the executor rechecks worktree, branch and HEAD. Push is never
-  forced. The coordinator retains `run_vanished` attention, never opens a PR automatically and
-  never fabricates a submission or changes the stage. Reconciliation and recovery reuse the
-  same commit-keyed outbox intent.
+CI failures, blocking review/human findings and base conflicts start fresh implementer fix-round
+sessions. The previous run retires before the replacement launches in the same worktree. Context
+contains the reason, findings and base-to-HEAD diff; the diff is capped at 60 KiB and supplies a stat
+and exact Git command when truncated. Retries/recovery resume that fix run's captured session;
+they do not create another fix round. Reviewers also start fresh per round.
 
-Existing headless retry limits and human plan/merge approvals remain unchanged. Runtime failures
-are logged for the human; no agent files bugs or resets retry budgets automatically.
+## Main
 
-## Main persistence
+Main is one interactive Claude session per repository, separate from issue runs. It launches at the
+repository root with broad machine access, including shell, files, web and subagents. It can act on
+the human's request or create issues for work needing tracking and review. It introduces the
+repository and waits; launch notes do not authorize maintenance or drills. Issue scoping follows
+the review question: batch related mechanical work, separate judgment calls and structural changes.
 
-Main keeps one Loom-held `main-notes` document per repository under `lead/<repoId>/`, replaced
-through `set_note({note})` (max 2,000 characters; empty clears it). Each launch includes that
-context without authorizing work. Sessions, settings and credentials survive coordinator restarts.
-`message_agent` accepts only an exact task/run or a task/role. Main's authored notes and idempotent
-receipts are stored separately from task-run message delivery; there is no Operator reply channel.
+**Existing instruction conflict:** [prompts.ts](../../apps/coordinator/src/prompts.ts) permits Main
+to read and repair the coordinator's log/store directly when asked. [AGENTS.md](../../AGENTS.md#safety)
+requires access to a running Loom instance through the supplied MCP tools. The broad launch is
+implemented in [lead.ts](../../apps/coordinator/src/lead.ts). This conflict is unresolved.
 
-## Out of scope
+Internal `lead` names remain compatibility identifiers: commands such as `open_lead_session`,
+`LOOM_MODEL_LEAD`, and private `lead/<repoId>/` recipes. Each repository has its own session ID,
+token, settings and `main-notes`. Switching projects retargets the viewer without stopping the old
+session. Startup recovers saved recipes; confirmed dead panes may relaunch, while absent/stopped
+panes require explicit open. A legacy single-repository recipe migrates to the first registered repo.
 
-- A Main shared across repositories or instances.
-- Unrecorded agent chat, synchronous conversations or using messages to assign work.
+Main's MCP token scopes issue operations to its repository. It cannot submit issue-agent results;
+issue-run identities cannot invoke Main tools. Main can approve only within the human's authorization,
+and the same core guards apply. Tool definitions live in [mcp/lead.ts](../../packages/mcp/src/lead.ts).
+
+`set_note` replaces repository notes (up to 2,000 characters; empty clears). Notes are included on
+launch as context. `message_agent` targets an exact task/run or task/role with a short question or
+heads-up, not a work assignment. Notes and idempotency receipts are durable; unavailable, waiting,
+ended, ambiguous and foreign targets are refused. Queued is not delivered: native confirmation
+uses the core message path. Main never waits or polls for an answer.
+
+When the panel requests a summary, the coordinator sends it only if native status is idle without a
+pending dialog. Chat visibility and starting/stopping Main are separate controls; see [UI](ui.md#main).
