@@ -4,7 +4,7 @@ Loom's `PaneHost`: tmux on a private server, `-L loom-<instance>`, with a privat
 before any pane exists. It owns terminal processes and nothing else. It never reports agent
 state, never names a provider session, and `pasteText` never means more than "bytes written".
 
-Chosen in [spike 06](../../../spikes/06-tmux-pane-host/FINDINGS.md), which measured tmux against
+Chosen in spike 06, which measured tmux against
 the budgets Herdr met: 5–6 ms keystroke to glyph, 89 of 89 prompts delivered exactly once, two
 clients and Ghostty on one agent at the same time, recovery from a killed server in about 30 s.
 
@@ -89,7 +89,7 @@ const host = createTmuxPaneHost({
 
 `pnpm test` runs them against a throwaway server of their own, `-L loom-test-<pid>`, killed
 afterwards; they never name another socket and never start an agent. They are skipped when tmux
-is not installed. Real-provider probes stay in spike 06 and are not run from here.
+is not installed. Real-provider probes were run in spike 06 and are retained in Git history.
 
 Workbench inventory includes session ID, window name and pane title as native metadata. It excludes
 the monitor and grouped view aliases, and retains dead panes. `listClients` counts clients in the

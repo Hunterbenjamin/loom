@@ -1,4 +1,5 @@
 import type { ReconcileConfig, Task, TaskId, TaskState } from "@loom/core";
+import { issueKey } from "@loom/core";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { readArtifactRow } from "./artifacts.js";
@@ -15,6 +16,7 @@ import {
 import { dispositionSchema } from "./input-schemas.js";
 import type { Outbox } from "./outbox.js";
 import { assertSame, dataRow, ownedRow, readEntities } from "./records.js";
+import type { RepositoryStore } from "./repositories.js";
 import {
   artifactKind,
   decode,
@@ -29,6 +31,7 @@ export class TaskStateStore {
     private readonly db: Database.Database,
     private readonly outbox: Outbox,
     private config: ReconcileConfig,
+    private readonly repositories: RepositoryStore,
   ) {}
   /** Replace live reconcile inputs after an immediate settings update. */
   setReconcileConfig(config: ReconcileConfig): void {
@@ -86,6 +89,10 @@ export class TaskStateStore {
   loadTaskState(taskId: TaskId): TaskState {
     return this.db.transaction(() => {
       const task = this.readTask(taskId);
+      const repo = this.repositories
+        .repos()
+        .find((repo) => repo.id === task.repoId);
+      if (!repo) throw new Error("Unknown registered repository");
       const contextRow = dataRow
         .extend({ artifact_versions: text })
         .parse(
@@ -170,6 +177,7 @@ export class TaskStateStore {
       );
       return {
         task,
+        issueKey: issueKey(repo, task),
         worktree,
         runs,
         messages: readEntities(

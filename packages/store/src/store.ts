@@ -68,7 +68,7 @@ export class Store {
       this.queries,
     );
     this.inputs = new InputStore(db, this.outbox);
-    this.state = new TaskStateStore(db, this.outbox, config);
+    this.state = new TaskStateStore(db, this.outbox, config, this.repositories);
     this.commits = new TaskCommitStore(
       db,
       this.state,

@@ -504,6 +504,7 @@ test("list clients receive plan version and core-derived inbox metadata without 
   await h.coordinator.settle();
   const client = await connect(h, "inbox-window");
   expect(client.state?.collections.inbox.get(created.task.id)).toEqual({
+    whatChanged: null,
     taskId: created.task.id,
     forHuman: null,
     linkedPrNumbers: [],

@@ -70,6 +70,7 @@ export function artifact(
 export function richState(): TaskState {
   const state = coreFixture().state;
   state.config = config;
+  state.issueKey = "FIXTURE-1";
   state.task.version = 1;
   state.task.attention = {
     reasons: ["question"],

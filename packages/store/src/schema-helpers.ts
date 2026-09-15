@@ -52,6 +52,7 @@ export const artifactKind = z.enum([
   "findings",
   "test_results",
   "handoff",
+  "implementation",
 ]);
 export const side = z.enum(["old", "new"]);
 export const severity = z.enum(["blocker", "major", "minor", "nit"]);
