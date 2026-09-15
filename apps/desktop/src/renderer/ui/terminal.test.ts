@@ -88,7 +88,7 @@ function terminalFixture() {
 function renderTerminal(snapshot: Snapshot) {
   const task = snapshot.tasks[0];
   if (!task) throw new Error("No task");
-  const store = createStore(snapshot, true, "dev");
+  const store = createStore(snapshot, "dev");
   store.setSender(async () => ({
     ok: true,
     result: {

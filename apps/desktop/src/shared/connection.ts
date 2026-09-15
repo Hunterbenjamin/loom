@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 export const connectionConfig = z.discriminatedUnion("mode", [
-  z.strictObject({ mode: z.literal("fixtures") }),
   z.strictObject({ mode: z.literal("unconfigured"), message: z.string() }),
   z.strictObject({
     mode: z.literal("live"),
@@ -16,9 +15,7 @@ export type ConnectionConfig = z.output<typeof connectionConfig>;
 /** Only main calls this: never expose the environment wholesale, or read a database. */
 export function connectionFromEnvironment(
   env: Record<string, string | undefined>,
-  fixtures: boolean,
 ): ConnectionConfig {
-  if (fixtures) return { mode: "fixtures" };
   const bind = env.LOOM_BIND || "127.0.0.1:47800";
   if (!/^(\[[^\]]+\]|[^:/?#@]+):\d+$/.test(bind))
     return { mode: "unconfigured", message: "LOOM_BIND must be host:port" };
@@ -34,6 +31,6 @@ export function connectionFromEnvironment(
     : {
         mode: "unconfigured",
         message:
-          "Set LOOM_INSTANCE, LOOM_DATA_ROOT, LOOM_TOKEN and optionally LOOM_BIND, or use --fixtures",
+          "Set LOOM_INSTANCE, LOOM_DATA_ROOT, LOOM_TOKEN and optionally LOOM_BIND",
       };
 }

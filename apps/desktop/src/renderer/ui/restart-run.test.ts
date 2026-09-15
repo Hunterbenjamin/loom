@@ -29,7 +29,7 @@ test("Agents restarts the current run through the validated command without edit
     .at(-1);
   if (!run) throw new Error("Missing run fixture");
   run.endReason = null;
-  const store = createStore(snapshot, true, "dev");
+  const store = createStore(snapshot, "dev");
   store.setTab("overview");
   store.setConnection("connected");
   const send = vi.fn(async () => ({

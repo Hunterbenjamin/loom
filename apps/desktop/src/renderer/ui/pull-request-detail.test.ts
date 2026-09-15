@@ -58,7 +58,7 @@ function setup(change: Partial<PullRequestDetailRow["detail"]> = {}) {
   row.detail = { ...row.detail, ...change };
   // Direct GitHub actions belong only to PRs without an issue.
   row.taskId = null;
-  const store = createStore(fixture, true);
+  const store = createStore(fixture);
   store.setConnection("connected");
   const selection = { repoId: row.repoId, number: row.number };
   const wire = toSnapshot(fixture);

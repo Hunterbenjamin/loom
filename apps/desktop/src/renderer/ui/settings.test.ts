@@ -57,7 +57,7 @@ async function mount() {
       audit: [],
     },
   ] as never;
-  const store = createStore(snapshot, true, "dev");
+  const store = createStore(snapshot, "dev");
   store.applyProtocol(stateFromSnapshot(wire.meta, wire.body));
   const send = vi
     .fn<(command: unknown) => Promise<AckOutcome>>()

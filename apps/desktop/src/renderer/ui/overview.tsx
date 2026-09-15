@@ -722,7 +722,7 @@ function Files({
 }
 
 function RestartRun({ task, run }: { task: Task; run: Run }) {
-  const connected = useStore((s) => s.live && s.connection === "connected");
+  const connected = useStore((s) => s.connection === "connected");
   const { send, outcome, submitting } = useHumanCommand(task.id);
   return (
     <div className="panel">

@@ -65,7 +65,7 @@ export function Detail({
   const [editing, setEditing] = useState(false);
   const [file, setFile] = useState<string | null>(null);
   const { run, busy, outcome: prOutcome } = usePullRequestCommand();
-  const disconnected = useStore((s) => s.live && s.connection !== "connected");
+  const disconnected = useStore((s) => s.connection !== "connected");
   const theme = useStore((s) => s.ui.theme);
   const repo = useStore((s) =>
     s.snapshot.repos.find((item) => item.id === task.repoId),

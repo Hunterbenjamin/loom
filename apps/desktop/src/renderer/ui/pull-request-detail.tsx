@@ -45,7 +45,7 @@ export function PullRequestDetail({
       (r) => r.repoId === selection.repoId && r.number === selection.number,
     ),
   );
-  const connection = useStore((s) => s.live && s.connection !== "connected");
+  const connection = useStore((s) => s.connection !== "connected");
   const task = useStore((s) => selectedDetailTask(s, selection));
   const [file, setFile] = useState<string | null>(null);
   const [deleteAfterMerge, setDeleteAfterMerge] = useState(true);

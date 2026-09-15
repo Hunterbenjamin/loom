@@ -7,25 +7,16 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
+import { startDesktopHarness } from "../scripts/desktop-harness.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const temporary = mkdtempSync(join(tmpdir(), "loom-terminal-"));
-const instance = `test-${process.pid}`;
-const env = {
-  ...process.env,
-  TMUX: "",
-  TMUX_TMPDIR: temporary,
-  LOOM_INSTANCE: instance,
-  LOOM_ATTACH_PANE: "resize:@0",
-  LOOM_WIDTH: "1440",
-  LOOM_HEIGHT: "900",
-  LOOM_EXIT_WHEN_INTERACTIVE: "",
-  ELECTRON_RENDERER_URL: "",
-};
+const harness = await startDesktopHarness({ terminals: true });
+const env = { ...harness.env, LOOM_WIDTH: "1440", LOOM_HEIGHT: "900" };
 const tmux = (...args) =>
   execFileSync(
-    process.env.LOOM_TMUX_BIN ?? "tmux",
-    ["-L", `loom-${instance}`, "-f", "/dev/null", ...args],
+    "tmux",
+    ["-L", `loom-${env.LOOM_INSTANCE}`, "-f", "/dev/null", ...args],
     {
       env,
       encoding: "utf8",
@@ -34,30 +25,8 @@ const tmux = (...args) =>
 
 let app;
 try {
-  tmux(
-    "new-session",
-    "-d",
-    "-s",
-    "resize",
-    "-x",
-    "100",
-    "-y",
-    "30",
-    "/bin/sh",
-    "-c",
-    "while :; do printf '\\033[H%0200d\\r\\n' 0; sleep 0.05; done",
-  );
-  tmux("set-option", "-w", "-t", "resize:@0", "window-size", "latest");
-  tmux("set-option", "-w", "-t", "resize:@0", "aggressive-resize", "on");
-  // Grouped attach sessions inherit global session options, not the source's local options.
-  tmux("set-option", "-g", "status", "off");
-
   app = await electron.launch({
-    args: [
-      root,
-      "--fixtures",
-      `--user-data-dir=${join(temporary, "electron")}`,
-    ],
+    args: [root, `--user-data-dir=${join(temporary, "electron")}`],
     cwd: root,
     env,
   });
@@ -69,15 +38,25 @@ try {
       globalThis.terminalResizes.push({ cols, rows });
     });
   });
-  await page.evaluate(() => {
-    const { snapshot } = window.loom.store.getState();
-    window.loom.store.open(snapshot.tasks[0].id);
+  await page.waitForFunction(
+    () => window.loom?.store.getState().connection === "connected",
+  );
+  await page.evaluate((id) => {
+    window.loom.store.open(id);
     window.loom.store.setTab("terminal");
-  });
+  }, harness.terminalTaskId);
   await page.waitForFunction(
     () =>
       window.loom.term &&
-      document.querySelector(".terminal-bar").textContent.includes("pid "),
+      document
+        .querySelector(".terminal-wrap .terminal-bar")
+        .textContent.includes("pid "),
+  );
+  const [owned] = await harness.host.listPanes();
+  assert.ok(owned, "the coordinator created an owned shell");
+  await harness.host.pasteText(
+    owned.ref,
+    "while :; do printf '\\033[H%0200d\\r\\n' 0; sleep 0.05; done",
   );
   await page
     .waitForFunction(() =>
@@ -89,7 +68,8 @@ try {
     .catch(async (error) => {
       console.error(
         await page.evaluate(() => ({
-          status: document.querySelector(".terminal-bar")?.textContent,
+          status: document.querySelector(".terminal-wrap .terminal-bar")
+            ?.textContent,
           lines: Array.from({ length: window.loom.term?.rows ?? 0 }, (_, i) =>
             window.loom.term.buffer.active.getLine(i)?.translateToString(),
           ),
@@ -176,7 +156,7 @@ try {
         "display-message",
         "-p",
         "-t",
-        "resize:@0",
+        owned.ref.paneId,
         "#{pane_width}x#{pane_height}",
       ),
       `${final.cols}x${final.rows}`,
@@ -189,7 +169,7 @@ try {
     await app?.close();
   } finally {
     try {
-      tmux("kill-server");
+      await harness.close();
     } finally {
       rmSync(temporary, { recursive: true, force: true });
     }

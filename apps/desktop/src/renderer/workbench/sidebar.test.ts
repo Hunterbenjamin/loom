@@ -17,7 +17,7 @@ import { Sidebar } from "./sidebar.js";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 test("renders spaces and agents, always-expanded tabs, filtering and pinned controls", async () => {
-  const store = createStore(undefined, true, "test");
+  const store = createStore(undefined, "test");
   const linked = {
     ...pane,
     id: JSON.stringify([pane.hostGeneration, "%3"]),
@@ -211,7 +211,7 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
 });
 
 test("grouping changes agent order, keeps dead agents out of the list, and leaves the tree alone", async () => {
-  const store = createStore(undefined, true, "test");
+  const store = createStore(undefined, "test");
   const agents = [
     {
       ...pane,
@@ -309,7 +309,7 @@ test("grouping changes agent order, keeps dead agents out of the list, and leave
 test.each([false, true])(
   "pins workbench sessions with dev controls available=%s",
   async (available) => {
-    const store = createStore(undefined, true, "test");
+    const store = createStore(undefined, "test");
     const coordinator = {
       ...pane,
       id: "coordinator",

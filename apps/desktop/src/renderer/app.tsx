@@ -56,7 +56,6 @@ export function App() {
   }, [appearance, store]);
   const waiting = useStore(
     (s) =>
-      s.live &&
       s.connection !== "connected" &&
       (s.ui.view === "pull-requests"
         ? s.snapshot.pullRequests.length === 0
@@ -91,12 +90,14 @@ export function App() {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
-  // One frame after the first rows are on screen: the point the window is usable.
+  // Measure first data paint, including the coordinator snapshot on a cold start.
   useEffect(() => {
-    requestAnimationFrame(() =>
+    if (waiting) return;
+    const frame = requestAnimationFrame(() =>
       requestAnimationFrame(() => window.loomHost.interactive()),
     );
-  }, []);
+    return () => cancelAnimationFrame(frame);
+  }, [waiting]);
 
   useEffect(() => {
     if (!toast) return;
