@@ -242,6 +242,13 @@
 .pr-activity {
   margin-top: 40px;
 }
+.activity-more {
+  padding: 4px 0;
+  color: var(--text-dim);
+}
+.activity-more:hover {
+  color: var(--text);
+}
 .pr-activity ol {
   list-style: none;
   padding: 0;

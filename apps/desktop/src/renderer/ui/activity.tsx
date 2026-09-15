@@ -1,4 +1,5 @@
 import type { IsoTime } from "@loom/core";
+import { useState } from "react";
 import { useStore } from "../store/react.js";
 import { since } from "./format.js";
 import { PullRequestGlyph } from "./pull-request-glyph.js";
@@ -31,16 +32,34 @@ const GLYPHS: Partial<Record<ActivityItem["kind"], string>> = {
   run: "▸",
 };
 
-/** Oldest first, in the pull request activity style. */
+/** How many of the latest entries show before the list is expanded. */
+const RECENT = 3;
+
+/**
+ * Oldest first, in the pull request activity style. Only the latest entries show until the human
+ * expands the earlier ones, as GitHub and Linear do.
+ */
 export function ActivityList({ items }: { items: ActivityItem[] }) {
   const now = useStore((s) => s.snapshot.now);
-  const sorted = [...items].sort((a, b) =>
+  const [expanded, setExpanded] = useState(false);
+  const all = [...items].sort((a, b) =>
     (a.at ?? "9999").localeCompare(b.at ?? "9999"),
   );
+  const hidden = expanded ? 0 : Math.max(0, all.length - RECENT);
+  const sorted = all.slice(hidden);
   return (
     <section className="pr-activity">
       <h3>Activity</h3>
-      {sorted.length ? null : <p className="faint">No activity yet.</p>}
+      {all.length ? null : <p className="faint">No activity yet.</p>}
+      {hidden ? (
+        <button
+          type="button"
+          className="activity-more"
+          onClick={() => setExpanded(true)}
+        >
+          Show {hidden} earlier {hidden === 1 ? "entry" : "entries"}
+        </button>
+      ) : null}
       <ol>
         {sorted.map((item) => (
           <li
@@ -81,6 +100,15 @@ export function ActivityList({ items }: { items: ActivityItem[] }) {
           </li>
         ))}
       </ol>
+      {expanded && all.length > RECENT ? (
+        <button
+          type="button"
+          className="activity-more"
+          onClick={() => setExpanded(false)}
+        >
+          Show only the latest {RECENT}
+        </button>
+      ) : null}
     </section>
   );
 }

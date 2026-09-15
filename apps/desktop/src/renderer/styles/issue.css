@@ -130,6 +130,35 @@
   }
 }
 
+.overview-findings {
+  margin-top: 34px;
+}
+.overview-findings > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+  cursor: pointer;
+}
+.overview-findings > summary > h3 {
+  margin: 0;
+}
+.issue-finding > summary {
+  cursor: pointer;
+}
+/* A flex summary drops the native disclosure marker, so draw one. */
+.overview-findings > summary::before,
+.issue-finding > summary::before {
+  content: "▸";
+  color: var(--text-faint);
+}
+.overview-findings[open] > summary::before,
+.issue-finding[open] > summary::before {
+  content: "▾";
+}
+.issue-finding[open] > summary {
+  margin-bottom: 8px;
+}
 .issue-finding.settled {
   opacity: 0.6;
 }
