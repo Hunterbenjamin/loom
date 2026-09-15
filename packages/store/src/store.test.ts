@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ActionKey, InputId, TaskId } from "@loom/core";
 import { reconcile } from "@loom/core";
+import { stage as stageSchema } from "@loom/protocol";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fixture as coreFixture } from "../../core/test/fixtures.js";
@@ -28,7 +29,6 @@ import {
 import { actionKind, actionSchema } from "./action-schemas.js";
 import { contextSchema } from "./entity-schemas.js";
 import { openReadOnlyStore, openStore, type Store } from "./index.js";
-import { stage as stageSchema } from "./schema-helpers.js";
 
 let root: string;
 const stores: Store[] = [];

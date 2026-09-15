@@ -1,3 +1,4 @@
+import { MESSAGE_WHEN_VALUES } from "@loom/core";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 
@@ -6,7 +7,7 @@ export const leadMessage = z.strictObject({
   repoId: z.string().min(1),
   text: z.string().max(16384),
   textHash: z.string().min(1),
-  when: z.enum(["now", "after_turn"]).optional(),
+  when: z.enum(MESSAGE_WHEN_VALUES).optional(),
   state: z.enum(["queued", "sent", "delivered", "failed", "refused"]),
   reason: z.string().nullable(),
   createdAt: z.string().datetime(),

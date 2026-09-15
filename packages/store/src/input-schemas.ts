@@ -1,5 +1,6 @@
 import type { Input, InputDisposition } from "@loom/core";
-import { editTask } from "@loom/protocol";
+import { MESSAGE_WHEN_VALUES } from "@loom/core";
+import { editTask, storedEntities } from "@loom/protocol";
 import { z } from "zod";
 import { actionResultSchema } from "./action-schemas.js";
 import { anchorSchema, planSchema } from "./entity-schemas.js";
@@ -16,10 +17,10 @@ import {
   time,
 } from "./schema-helpers.js";
 
-const testResult = z.object({
-  command: text,
-  outcome: z.enum(["passed", "failed", "skipped", "errored"]),
-  summary: text,
+const testResult = storedEntities.testResult.pick({
+  command: true,
+  outcome: true,
+  summary: true,
 });
 const callSchema = z.discriminatedUnion("tool", [
   z.object({
@@ -154,7 +155,7 @@ const commandSchema = z.discriminatedUnion("type", [
     type: z.literal("send_message"),
     runId: id,
     text,
-    when: z.enum(["now", "after_turn"]).optional(),
+    when: z.enum(MESSAGE_WHEN_VALUES).optional(),
     // The coordinator replaces protocol attachment IDs with resolved local image paths before
     // persisting this command. Non-image attachment paths are already appended to text.
     attachmentIds: z.array(text).optional(),

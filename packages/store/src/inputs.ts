@@ -1,4 +1,3 @@
-import { PROVIDER_VALUES } from "@loom/core";
 import type {
   CapacityObservation,
   DependencyObservation,
@@ -6,6 +5,7 @@ import type {
   InputDisposition,
   TaskId,
 } from "@loom/core";
+import { PROVIDER_VALUES } from "@loom/core";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { taskSchema } from "./entity-schemas.js";
