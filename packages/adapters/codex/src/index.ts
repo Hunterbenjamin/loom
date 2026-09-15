@@ -12,6 +12,7 @@ import {
   type OnHint,
   type ProviderSessionId,
   type RateLimitObservation,
+  type TokenCounts,
   type WorktreePath,
 } from "@loom/core";
 import { z } from "zod";
@@ -85,6 +86,7 @@ class AppServerAdapter implements CodexAdapter {
   /** Each thread's own overrides, replayed on every resume (see `CodexAdapter.resumeThread`). */
   private readonly threadConfigs = new Map<string, Record<string, unknown>>();
   private readonly activity = new Map<string, IsoTime>();
+  private readonly usage = new Map<string, TokenCounts>();
   private readonly errors = new Map<
     string,
     { turnId: string; error: CodexErrorObservation }
@@ -114,6 +116,9 @@ class AppServerAdapter implements CodexAdapter {
   }
   activityAt(threadId: ProviderSessionId) {
     return this.activity.get(threadId) ?? null;
+  }
+  tokenUsage(threadId: ProviderSessionId) {
+    return this.usage.get(threadId) ?? null;
   }
   subscribe(onHint: OnHint) {
     this.listeners.add(onHint);
@@ -180,6 +185,7 @@ class AppServerAdapter implements CodexAdapter {
     this.currentGeneration = null;
     this.pending.clear();
     this.errors.clear();
+    this.usage.clear();
     const generation = ++this.counter;
     const connected = await RpcConnection.connect({
       socketPath: this.server.socket,
@@ -305,6 +311,18 @@ class AppServerAdapter implements CodexAdapter {
       if (request.activityAt)
         this.markActivity(request.threadId, request.activityAt);
       this.hint(request.threadId);
+      return;
+    }
+    if (message.method === "thread/tokenUsage/updated") {
+      const update = schemas.threadTokenUsageUpdated.parse(message.params);
+      const total = update.tokenUsage.total;
+      this.usage.set(update.threadId, {
+        input: total.inputTokens,
+        cachedInput: total.cachedInputTokens,
+        output: total.outputTokens,
+        reasoning: total.reasoningOutputTokens,
+      });
+      this.hint(update.threadId);
       return;
     }
     const params = z

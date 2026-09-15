@@ -266,6 +266,23 @@ export interface PaneRef {
   paneId: string;
 }
 
+/**
+ * Provider-reported cumulative token counts. `input` includes `cachedInput`, and `output`
+ * includes `reasoning`, matching the totals exposed by both supported providers.
+ */
+export interface TokenCounts {
+  input: number;
+  cachedInput: number;
+  output: number;
+  reasoning: number;
+}
+
+export interface SessionTokenUsage {
+  sessionId: ProviderSessionId;
+  counts: TokenCounts;
+  observedAt: IsoTime;
+}
+
 export interface Run {
   id: RunId;
   taskId: TaskId;
@@ -292,6 +309,8 @@ export interface Run {
   sessionId: ProviderSessionId | null;
   /** +1 only when the provider can no longer resume the session, deriving a fresh one. */
   sessionEpoch: number;
+  /** (cache: provider) Latest cumulative usage for every provider session used by this run. */
+  tokenUsage?: SessionTokenUsage[];
   /** Codex app-server connection generation; scopes request IDs. (ref) */
   codexGeneration: number | null;
   /** Interactive runs only. (ref: pane host) */
@@ -339,6 +358,25 @@ export interface Run {
   observedAttempt?: number;
   /** Attempts remain monotonic for action keys; human retry resets this budget offset. */
   retryBaseAttempt?: number;
+}
+
+export function sumTokenUsage(
+  runs: Iterable<Pick<Run, "tokenUsage">>,
+): TokenCounts {
+  const total: TokenCounts = {
+    input: 0,
+    cachedInput: 0,
+    output: 0,
+    reasoning: 0,
+  };
+  for (const run of runs)
+    for (const usage of run.tokenUsage ?? []) {
+      total.input += usage.counts.input;
+      total.cachedInput += usage.counts.cachedInput;
+      total.output += usage.counts.output;
+      total.reasoning += usage.counts.reasoning;
+    }
+  return total;
 }
 
 // ---------------------------------------------------------------- Messages and questions

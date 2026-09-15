@@ -3,7 +3,7 @@
 // Subscriptions deliver hints: a reason to re-read, never a fact to act on.
 
 import type { ActionOutputs } from "./actions.js";
-import type { CiState, PaneRef } from "./entities.js";
+import type { CiState, PaneRef, TokenCounts } from "./entities.js";
 import type {
   BlobOid,
   IsoTime,
@@ -402,6 +402,8 @@ export interface CodexAdapter {
   checkResumable(threadId: ProviderSessionId): Promise<boolean | null>;
   /** Latest provider activity evidence, never the time of an unchanged poll. Persist in the coordinator. */
   activityAt(threadId: ProviderSessionId): IsoTime | null;
+  /** Latest cumulative token total announced for this thread; null means no evidence. */
+  tokenUsage(threadId: ProviderSessionId): TokenCounts | null;
   /** Current app-server connection generation; null while disconnected. */
   generation(): number | null;
   startThread(req: {
@@ -541,6 +543,16 @@ export interface ClaudeAdapter {
   ): Promise<boolean>;
   /** `RunObservation.activityAt`: latest hook receipt for the session; null means no evidence. */
   activityAt(sessionId: ProviderSessionId): Promise<IsoTime | null>;
+  /**
+   * Fold cumulative usage from the main transcript and sibling subagent transcripts.
+   * Claude input is input + cache_creation + cache_read; cached input is cache_read;
+   * reasoning is thinking_tokens (zero when absent).
+   */
+  tokenUsage(request: {
+    sessionId: ProviderSessionId;
+    cwd: WorktreePath;
+    transcriptPath?: string | null;
+  }): Promise<TokenCounts | null>;
   subscribe(onHint: OnHint): Unsubscribe;
 }
 

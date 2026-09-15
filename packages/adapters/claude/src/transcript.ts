@@ -1,12 +1,13 @@
-import { open, stat } from "node:fs/promises";
+import { open, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import type {
   ClaudeAdapter,
   ConversationItem,
   ConversationRead,
   IsoTime,
+  TokenCounts,
 } from "@loom/core";
 import { z } from "zod";
 
@@ -30,8 +31,22 @@ const line = z.looseObject({
   is_meta: z.boolean().optional(),
   message: z
     .looseObject({
+      id: z.string().optional(),
       role: z.string().optional(),
       content: z.union([z.string(), z.array(block)]),
+      usage: z
+        .looseObject({
+          input_tokens: z.number().int().nonnegative(),
+          cache_creation_input_tokens: z
+            .number()
+            .int()
+            .nonnegative()
+            .optional(),
+          cache_read_input_tokens: z.number().int().nonnegative().optional(),
+          output_tokens: z.number().int().nonnegative(),
+          thinking_tokens: z.number().int().nonnegative().optional(),
+        })
+        .optional(),
     })
     .optional(),
 });
@@ -44,6 +59,7 @@ interface Cache {
   decoder: StringDecoder;
   items: ConversationItem[];
   tools: Map<string, ConversationItem>;
+  usage: Map<string, TokenCounts>;
 }
 const caches = new Map<string, Cache>();
 const clip = (value: string, max: number) => ({
@@ -73,6 +89,19 @@ function consume(cache: Cache, raw: string): void {
   } catch {
     return;
   }
+  const usage = parsed.message?.usage;
+  const messageId = parsed.message?.id;
+  // Sidechain messages are hidden from conversation display but still belong to the session bill.
+  if (usage && messageId)
+    cache.usage.set(messageId, {
+      input:
+        usage.input_tokens +
+        (usage.cache_creation_input_tokens ?? 0) +
+        (usage.cache_read_input_tokens ?? 0),
+      cachedInput: usage.cache_read_input_tokens ?? 0,
+      output: usage.output_tokens,
+      reasoning: usage.thinking_tokens ?? 0,
+    });
   if (parsed.isSidechain || parsed.isMeta || parsed.is_meta) return;
   if (
     (parsed.type !== "user" && parsed.type !== "assistant") ||
@@ -157,6 +186,7 @@ export const readConversation: ClaudeAdapter["readConversation"] = async (
       decoder: new StringDecoder("utf8"),
       items: [],
       tools: new Map(),
+      usage: new Map(),
     };
     caches.set(key, cache);
   }
@@ -182,4 +212,55 @@ export const readConversation: ClaudeAdapter["readConversation"] = async (
   }
   const truncated = cache.items.length > 300;
   return { items: cache.items.slice(-300), truncated };
+};
+
+const emptyUsage = (): TokenCounts => ({
+  input: 0,
+  cachedInput: 0,
+  output: 0,
+  reasoning: 0,
+});
+
+/** Read provider-owned usage from scratch so restarts and transcript rewinds are idempotent. */
+export const readTokenUsage: ClaudeAdapter["tokenUsage"] = async (request) => {
+  const path =
+    request.transcriptPath ?? defaultPath(request.sessionId, request.cwd);
+  const paths = [path];
+  try {
+    const subagents = join(dirname(path), request.sessionId, "subagents");
+    const entries = await readdir(subagents, { withFileTypes: true });
+    paths.push(
+      ...entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
+        .map((entry) => join(subagents, entry.name))
+        .sort(),
+    );
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
+      throw error;
+  }
+  const usage = new Map<string, TokenCounts>();
+  for (const transcript of paths) {
+    const contents = await readFile(transcript, "utf8");
+    const cache: Cache = {
+      path: transcript,
+      inode: 0,
+      offset: 0,
+      partial: "",
+      decoder: new StringDecoder("utf8"),
+      items: [],
+      tools: new Map(),
+      usage,
+    };
+    for (const raw of contents.split("\n")) consume(cache, raw);
+  }
+  if (usage.size === 0) return null;
+  const total = emptyUsage();
+  for (const counts of usage.values()) {
+    total.input += counts.input;
+    total.cachedInput += counts.cachedInput;
+    total.output += counts.output;
+    total.reasoning += counts.reasoning;
+  }
+  return total;
 };

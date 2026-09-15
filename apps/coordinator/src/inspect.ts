@@ -4,6 +4,8 @@ import {
   displayName,
   type FindingStatus,
   issueKey,
+  type Role,
+  sumTokenUsage,
   type TaskId,
 } from "@loom/core";
 import type { Store } from "@loom/store";
@@ -26,6 +28,16 @@ export function inspectTask(store: Store, taskId: TaskId, adapters?: Adapters) {
   };
   for (const finding of state.findings) counts[finding.status]++;
   const codexServerRunning = adapters?.codexServerRunning(taskId) ?? false;
+  const roles: Role[] = ["planner", "implementer", "reviewer"];
+  const tokenUsage = {
+    total: sumTokenUsage(runs),
+    byRole: Object.fromEntries(
+      roles.map((role) => [
+        role,
+        sumTokenUsage(runs.filter((run) => run.role === role)),
+      ]),
+    ) as Record<Role, ReturnType<typeof sumTokenUsage>>,
+  };
 
   return {
     notes: store.mainMessages.notes(taskId),
@@ -48,6 +60,7 @@ export function inspectTask(store: Store, taskId: TaskId, adapters?: Adapters) {
       prNumber: task.prNumber,
       worktreePath: task.worktreePath,
       codexServerRunning,
+      tokenUsage,
     },
     runs: runs.map((run) => ({
       id: run.id,
@@ -67,6 +80,7 @@ export function inspectTask(store: Store, taskId: TaskId, adapters?: Adapters) {
       pendingDialog: run.pendingDialog ?? null,
       endedAt: run.endedAt,
       endReason: run.endReason,
+      tokenUsage: run.tokenUsage?.length ? sumTokenUsage([run]) : null,
     })),
     messages: runs.map((run) => ({
       runId: run.id,

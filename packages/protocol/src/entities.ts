@@ -238,6 +238,13 @@ export const providerRequest = z.strictObject({
   receivedAt: isoTime,
 });
 
+export const tokenCounts = z.strictObject({
+  input: count,
+  cachedInput: count,
+  output: count,
+  reasoning: count,
+});
+
 /** A provider request is only unique within its generation (gap 9). Use this for a list key. */
 export const providerRequestKey = (request: ProviderRequest): string =>
   `${request.generation ?? "-"}:${request.id}`;
@@ -260,6 +267,15 @@ export const run = z.strictObject({
   access: z.enum(["full", "approval-gated"]).optional(),
   sessionId: providerSessionId.nullable(),
   sessionEpoch: count,
+  tokenUsage: z
+    .array(
+      z.strictObject({
+        sessionId: providerSessionId,
+        counts: tokenCounts,
+        observedAt: isoTime,
+      }),
+    )
+    .optional(),
   codexGeneration: count.nullable(),
   pane: z
     .strictObject({

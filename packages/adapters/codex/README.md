@@ -53,6 +53,11 @@ change global config.
    the protocol supplies no timestamp). Unchanged polls and replayed timestamped
    events do not advance it. The in-memory timestamp survives reconnects, not a new
    adapter instance.
+8. Persist `tokenUsage()` as a cumulative per-thread fact. The adapter validates
+   `thread/tokenUsage/updated` and keeps only its latest `tokenUsage.total`; repeated
+   notifications replace that value. A reconnect clears the connection-local cache and
+   `thread/resume` is expected to re-emit the total. Until it does, `null` means no new
+   evidence and the coordinator retains its stored value.
 
 Pending requests retain the original numeric/string wire ID, the thread identity,
 and the connection generation. Answers are explicit and stay visible until
@@ -79,6 +84,11 @@ The real private-server smoke test on 0.154.0 confirmed:
 - A nonexistent ID returns `thread not loaded: <id>` from `thread/read`, even
   with `includeTurns: true`. Native resume distinguishes missing history with
   `no rollout found for thread id <id>`.
+
+The opt-in inference probe confirmed on 0.154.0 that `thread/resume` re-emits the identical
+cumulative usage after both a reconnect and an app-server restart. The measurement used one minimal
+`gpt-5.6-luna` turn on 2026-09-15. The probe requires credentials provisioned in its private
+`CODEX_HOME` and is skipped unless `LOOM_REAL_PROVIDERS=1`.
 
 New threads explicitly use `historyMode: legacy` for complete snapshot hydration.
 Partial/paginated histories are rejected rather than silently losing delivery

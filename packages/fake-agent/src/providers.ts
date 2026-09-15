@@ -10,6 +10,7 @@ import type {
   ProviderSessionId,
   Run,
   RunObservation,
+  TokenCounts,
   WorktreePath,
 } from "@loom/core";
 import type { FakeClock } from "./clock.js";
@@ -49,6 +50,7 @@ export interface FakeSession {
   transcript: ClaudeSessionObservation["hooks"]["promptSubmits"];
   conversation: ConversationItem[];
   conversationReads: number;
+  tokenUsage: TokenCounts | null;
 }
 export class FakeProviders {
   readonly sessions = new Map<ProviderSessionId, FakeSession>();
@@ -124,6 +126,7 @@ export class FakeProviders {
       transcript: [],
       conversation: [],
       conversationReads: 0,
+      tokenUsage: { input: 0, cachedInput: 0, output: 0, reasoning: 0 },
     });
     return id;
   }
@@ -382,7 +385,8 @@ export class FakeProviders {
       pane: null,
       resumable: s?.resumable ?? null,
       activityAt: s?.activityAt ?? null,
-      readFailures: { resumable: null, activityAt: null },
+      tokenUsage: s?.tokenUsage ? structuredClone(s.tokenUsage) : null,
+      readFailures: { resumable: null, activityAt: null, tokenUsage: null },
       provider:
         s && !s.connected
           ? {
@@ -412,6 +416,10 @@ export class FakeProviders {
     generation: () => this.connection,
     checkResumable: async (id) => this.sessions.get(id)?.resumable ?? false,
     activityAt: (id) => this.sessions.get(id)?.activityAt ?? null,
+    tokenUsage: (id) => {
+      const usage = this.sessions.get(id)?.tokenUsage;
+      return usage ? structuredClone(usage) : null;
+    },
     startThread: async (req) => ({
       threadId: this.create("codex", req.cwd),
       generation: this.connection ?? this.lastGeneration,
@@ -581,6 +589,10 @@ export class FakeProviders {
     },
     resumable: async (id) => this.sessions.get(id)?.resumable ?? false,
     activityAt: async (id) => this.sessions.get(id)?.activityAt ?? null,
+    tokenUsage: async ({ sessionId }) => {
+      const usage = this.sessions.get(sessionId)?.tokenUsage;
+      return usage ? structuredClone(usage) : null;
+    },
     subscribe: this.hints.subscribe,
   };
 }

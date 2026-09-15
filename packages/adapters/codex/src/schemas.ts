@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ThreadTokenUsageUpdatedNotification } from "./generated/v2/ThreadTokenUsageUpdatedNotification.js";
 
 export const identifier = z.string().min(1);
 export const unixSeconds = z.number().finite().min(0).max(8_640_000_000_000);
@@ -15,6 +16,23 @@ export const providerError = z.object({
     .union([z.string(), z.record(z.string(), z.unknown())])
     .nullable(),
 });
+const tokenUsageBreakdown = z.object({
+  totalTokens: z.number().int().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  cachedInputTokens: z.number().int().nonnegative(),
+  cacheWriteInputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  reasoningOutputTokens: z.number().int().nonnegative(),
+});
+export const threadTokenUsageUpdated = z.object({
+  threadId: identifier,
+  turnId: identifier,
+  tokenUsage: z.object({
+    total: tokenUsageBreakdown,
+    last: tokenUsageBreakdown,
+    modelContextWindow: z.number().int().nonnegative().nullable(),
+  }),
+}) satisfies z.ZodType<ThreadTokenUsageUpdatedNotification>;
 const userContent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }),
   z.object({

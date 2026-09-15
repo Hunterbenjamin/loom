@@ -55,7 +55,7 @@ carry for them are in [`docs/design/ui.md`](design/ui.md).
 | Issue fields, stage, plans, findings, test results, approvals, run records | Coordinator (SQLite + artifact files) | Authoritative |
 | Branches (including PR head existence), PRs, CI, reviews, merge state | GitHub / local git | Cache with fetch time; repository PR lists, readiness counts derived from them, and subscribed detail/patch projections are disposable, including PRs without issues |
 | Diffs | The worktree or the PR | Computed on demand |
-| Session transcripts and live status | Codex daemon / Claude Code | Cache + references; conversation rows are a disposable, subscription-scoped projection |
+| Session transcripts, live status and token usage | Codex daemon / Claude Code | Cache + references; conversation rows are a disposable, subscription-scoped projection, while each run caches the latest cumulative usage per provider session |
 | Terminal processes | tmux, only while its server is alive | References (`{hostGeneration, sessionName, windowId, paneId}`), plus each run's intended command line and environment, so Loom can relaunch it. Pane IDs restart at `%0` after a server death, so every ref is scoped to a host generation |
 
 Done is derived from GitHub: an issue is Done only once its PR is merged.
@@ -170,7 +170,7 @@ Each provider has four channels:
 | Channel | Codex | Claude Code |
 |---|---|---|
 | **Control** | App-server over a unix socket: `thread/start`, `turn/start`, `turn/steer`, `turn/interrupt`; the coordinator answers approval requests. | Headless roles: Agent SDK or `claude -p --output-format stream-json`. Interactive: the pane host's `pasteText` (refusing text that starts with `/` or `!`), and `sendKey Escape` to interrupt. |
-| **Observe** | App-server notifications plus `readConversation` through `thread/read {includeTurns:true}`. | `claude agents --json` owns live status (`busy`, `waiting`, `idle`). Per-session hooks add detail and `readConversation` incrementally reads the provider-given transcript path. The pane host supplies no status at all. See [Claude Code](#claude-code). |
+| **Observe** | App-server notifications plus `readConversation` through `thread/read {includeTurns:true}`. `thread/tokenUsage/updated` owns cumulative token usage. | `claude agents --json` owns live status (`busy`, `waiting`, `idle`). Per-session hooks add detail; the provider-given transcript and `<session-id>/subagents/*.jsonl` beside it own token usage, while `readConversation` incrementally reads the main transcript. The pane host supplies no status at all. See [Claude Code](#claude-code). |
 | **Attach** | A tmux pane running `codex resume <thread> --remote unix://…` against the coordinator's server. Concurrent attach verified on 0.154.0; see [spike 01 findings](../spikes/01-codex-shared-thread/FINDINGS.md). | A tmux pane; "take over" a headless run with `claude --resume <id>`. For the in-app view, see [Embedded terminals](#embedded-terminals). |
 | **Signal** (agent → Loom) | Loom MCP tools | Loom MCP tools |
 
@@ -179,6 +179,9 @@ The Loom MCP tools are `get_task_context`, `submit_plan`, `report_progress`, `as
 against a schema before any transition.
 
 Rules:
+- Token usage is a provider-owned cumulative fact. Reconciliation replaces the cached entry for
+  the run's current provider session rather than adding observations; rotating a session retains
+  the earlier entry. A missing or failed read leaves the last cached value unchanged.
 - Choose and record the session ID before launch: `claude --session-id <uuid>`, or the Codex thread ID
   returned by `thread/start`.
 - All roles (planner, implementer, reviewer) run interactively by default for visibility in panes.

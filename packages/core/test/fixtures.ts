@@ -218,7 +218,8 @@ export function fixture(stage: Stage = "in_progress"): {
     runId: r.id,
     resumable: true,
     activityAt: null,
-    readFailures: { resumable: null, activityAt: null },
+    tokenUsage: null,
+    readFailures: { resumable: null, activityAt: null, tokenUsage: null },
     pane:
       r.mode === "interactive" && r.pane
         ? {

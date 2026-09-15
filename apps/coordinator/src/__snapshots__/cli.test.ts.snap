@@ -19,6 +19,7 @@ exports[`empty task diagnostics omit questions and approvals in text 1`] = `
   prNumber:               -
   worktreePath:           -
   codexServerRunning:     false
+  tokenUsage:             {"total":{"input":0,"cachedInput":0,"output":0,"reasoning":0},"byRole":{"planner":{"input":0,"cachedInput":0,"output":0,"reasoning":0},"implementer":{"input":0,"cachedInput":0,"output":0,"reasoning":0},"reviewer":{"input":0,"cachedInput":0,"output":0,"reasoning":0}}}
 
 Runs (0, newest last)
 Messages
@@ -54,6 +55,7 @@ exports[`task inspect prints a complete fixture without a coordinator 1`] = `
   prNumber:               1
   worktreePath:           /tmp/loom/t1
   codexServerRunning:     false
+  tokenUsage:             {"total":{"input":0,"cachedInput":0,"output":0,"reasoning":0},"byRole":{"planner":{"input":0,"cachedInput":0,"output":0,"reasoning":0},"implementer":{"input":0,"cachedInput":0,"output":0,"reasoning":0},"reviewer":{"input":0,"cachedInput":0,"output":0,"reasoning":0}}}
 
 Runs (4, newest last)
   id:                     t1/reviewer/0
@@ -73,6 +75,7 @@ Runs (4, newest last)
   pendingDialog:          -
   endedAt:                2026-09-12T00:00:00.000Z
   endReason:              submitted
+  tokenUsage:             -
 
   id:                     t1/planner/0
   role:                   planner
@@ -91,6 +94,7 @@ Runs (4, newest last)
   pendingDialog:          -
   endedAt:                -
   endReason:              -
+  tokenUsage:             -
 
   id:                     t1/implementer/0
   role:                   implementer
@@ -109,6 +113,7 @@ Runs (4, newest last)
   pendingDialog:          -
   endedAt:                -
   endReason:              -
+  tokenUsage:             -
 
   id:                     t1/reviewer/1
   role:                   reviewer
@@ -127,6 +132,7 @@ Runs (4, newest last)
   pendingDialog:          -
   endedAt:                -
   endReason:              -
+  tokenUsage:             -
 
 Messages
   runId:                  t1/reviewer/0

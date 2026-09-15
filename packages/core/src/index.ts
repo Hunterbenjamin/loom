@@ -2,7 +2,7 @@ export type * from "./actions.js";
 export type * from "./adapters.js";
 export { reconcile } from "./engine.js";
 export type * from "./entities.js";
-export { summarizeTask } from "./entities.js";
+export { summarizeTask, sumTokenUsage } from "./entities.js";
 export type {
   AttentionDerivation,
   AttentionInput,

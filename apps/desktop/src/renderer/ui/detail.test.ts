@@ -153,6 +153,49 @@ test("CI detail shows the submitted head and linked check status", () => {
   );
 });
 
+test("issue detail shows compact per-run and issue token totals", () => {
+  const h = setup("plan");
+  const runs = h.snapshot.runs.slice(0, 2);
+  for (const run of runs) run.taskId = h.task.id;
+  if (!runs[0] || !runs[1]) throw new Error("missing usage runs");
+  runs[0].tokenUsage = [
+    {
+      sessionId: "usage-a" as never,
+      counts: {
+        input: 12_000,
+        cachedInput: 4_000,
+        output: 3_000,
+        reasoning: 1_000,
+      },
+      observedAt: h.snapshot.now,
+    },
+  ];
+  runs[1].tokenUsage = [
+    {
+      sessionId: "usage-b" as never,
+      counts: {
+        input: 500,
+        cachedInput: 100,
+        output: 200,
+        reasoning: 50,
+      },
+      observedAt: h.snapshot.now,
+    },
+  ];
+  h.render();
+  expect(
+    h.host.querySelector("[data-testid=issue-token-usage]")?.textContent,
+  ).toContain("12.5K in · 4.1K cached · 3.2K out · 1.1K reasoning");
+  expect(
+    [...h.host.querySelectorAll("[data-testid=run-token-usage]")].map(
+      (node) => node.textContent,
+    ),
+  ).toEqual([
+    "Tokens · 12K in · 4K cached · 3K out · 1K reasoning",
+    "Tokens · 500 in · 100 cached · 200 out · 50 reasoning",
+  ]);
+});
+
 test("plan approval opened from the Issues list shows only the header actions", () => {
   const h = setup("plan");
   h.store.open(h.task.id);

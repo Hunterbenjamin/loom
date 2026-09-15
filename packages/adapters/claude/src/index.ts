@@ -38,7 +38,7 @@ import {
   readMcpConfig,
   writeSettingsFiles,
 } from "./settings.js";
-import { readConversation } from "./transcript.js";
+import { readConversation, readTokenUsage } from "./transcript.js";
 
 export * from "./agents.js";
 export * from "./headless.js";
@@ -213,6 +213,8 @@ export async function createClaudeAdapter(
 
     activityAt: async (sessionId: ProviderSessionId): Promise<IsoTime | null> =>
       foldHookSummary(await log.bySession(sessionId)).lastEventAt,
+
+    tokenUsage: readTokenUsage,
 
     subscribe: (onHint: OnHint): Unsubscribe => {
       listeners.add(onHint);

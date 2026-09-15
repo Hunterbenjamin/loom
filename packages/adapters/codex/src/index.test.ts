@@ -105,6 +105,53 @@ afterEach(async () => {
 });
 
 describe("Codex app-server adapter", () => {
+  it("keeps the latest cumulative token usage and rejects malformed updates", async () => {
+    await adapter.resumeThread(threadId);
+    const update = (inputTokens: number) => ({
+      method: "thread/tokenUsage/updated",
+      params: {
+        threadId,
+        turnId,
+        tokenUsage: {
+          total: {
+            totalTokens: inputTokens + 30,
+            inputTokens,
+            cachedInputTokens: 40,
+            cacheWriteInputTokens: 3,
+            outputTokens: 30,
+            reasoningOutputTokens: 10,
+          },
+          last: {
+            totalTokens: 30,
+            inputTokens: 20,
+            cachedInputTokens: 4,
+            cacheWriteInputTokens: 0,
+            outputTokens: 10,
+            reasoningOutputTokens: 2,
+          },
+          modelContextWindow: 200_000,
+        },
+      },
+    });
+    fake.broadcast(update(100));
+    await vi.waitFor(() =>
+      expect(adapter.tokenUsage(threadId)).toEqual({
+        input: 100,
+        cachedInput: 40,
+        output: 30,
+        reasoning: 10,
+      }),
+    );
+    fake.broadcast(update(120));
+    await vi.waitFor(() =>
+      expect(adapter.tokenUsage(threadId)?.input).toBe(120),
+    );
+    fake.broadcast({
+      method: "thread/tokenUsage/updated",
+      params: { threadId, turnId, tokenUsage: { total: { inputTokens: -1 } } },
+    });
+    await vi.waitFor(() => expect(adapter.generation()).toBeNull());
+  });
   it("initializes Unix WebSocket with the experimental handshake before any RPC", async () => {
     const result = await adapter.startThread({
       cwd: fake.directory as WorktreePath,

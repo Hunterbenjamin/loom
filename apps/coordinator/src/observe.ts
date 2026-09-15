@@ -140,15 +140,41 @@ export async function observeRun(
       activityFailure = error instanceof Error ? error.message : String(error);
       activityAt = null;
     }
+  let tokenUsage: RunObservation["tokenUsage"] = null;
+  let tokenUsageFailure: string | null = null;
+  if (run.sessionId)
+    try {
+      if (run.provider === "codex")
+        tokenUsage = (await adapters.codex(run.taskId)).tokenUsage(
+          run.sessionId,
+        );
+      else {
+        const transcriptPath =
+          provider.ok && provider.value?.provider === "claude"
+            ? provider.value.hooks.transcriptPath
+            : (await adapters.claude.hookSummary(run.sessionId)).transcriptPath;
+        tokenUsage = await adapters.claude.tokenUsage({
+          sessionId: run.sessionId,
+          cwd: run.worktreePath,
+          transcriptPath,
+        });
+      }
+    } catch (error) {
+      tokenUsageFailure =
+        error instanceof Error ? error.message : String(error);
+      tokenUsage = null;
+    }
   return {
     runId: run.id,
     provider,
     pane,
     resumable,
     activityAt,
+    tokenUsage,
     readFailures: {
       resumable: resumableFailure,
       activityAt: activityFailure,
+      tokenUsage: tokenUsageFailure,
     },
   };
 }
@@ -337,6 +363,11 @@ export async function observe(
       deps.reportAdapterFailure?.(
         `Provider activity read for ${run.runId}`,
         run.readFailures.activityAt,
+      );
+    if (run.readFailures.tokenUsage)
+      deps.reportAdapterFailure?.(
+        `Provider token usage read for ${run.runId}`,
+        run.readFailures.tokenUsage,
       );
   }
   const counts = deps.capacity.counts();

@@ -1,4 +1,10 @@
-import type { AttentionReason, IsoTime, RunStatus, Stage } from "@loom/core";
+import type {
+  AttentionReason,
+  IsoTime,
+  RunStatus,
+  Stage,
+  TokenCounts,
+} from "@loom/core";
 import { STAGE_LABELS } from "../fixtures/index.js";
 
 export { STAGE_LABELS };
@@ -17,6 +23,19 @@ export function since(now: IsoTime, at: IsoTime): string {
 export function clock(at: IsoTime): string {
   const date = new Date(at);
   return `${date.toISOString().slice(5, 10)} ${date.toISOString().slice(11, 16)}`;
+}
+
+const compactNumber = new Intl.NumberFormat("en", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+export function formatTokenCount(value: number): string {
+  return compactNumber.format(value);
+}
+
+export function formatTokenUsage(counts: TokenCounts): string {
+  return `${formatTokenCount(counts.input)} in · ${formatTokenCount(counts.cachedInput)} cached · ${formatTokenCount(counts.output)} out · ${formatTokenCount(counts.reasoning)} reasoning`;
 }
 
 export const ATTENTION_LABELS: Record<AttentionReason, string> = {
