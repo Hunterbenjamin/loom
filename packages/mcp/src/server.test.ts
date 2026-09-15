@@ -77,6 +77,7 @@ test("lists all tools with input and output schemas; context never enters the in
   expect(await call("get_task_context", {})).toMatchObject({
     ok: true,
     value: {
+      view: "full",
       task: {
         summary: host.state.task.summary,
         description: host.state.task.description,
@@ -87,6 +88,50 @@ test("lists all tools with input and output schemas; context never enters the in
   });
   expect(host.inputs).toEqual([]);
   expect(host.passes).toBe(0);
+});
+test("get_task_context returns changes after the first read and full on request or epoch change", async () => {
+  const { call, host, run } = await connect();
+  expect(await call("get_task_context", {})).toMatchObject({
+    ok: true,
+    value: { view: "full" },
+  });
+  expect(await call("get_task_context", {})).toEqual({
+    ok: true,
+    value: {
+      view: "changes",
+      header: {
+        task: {
+          stage: host.state.task.stage,
+          reviewRound: host.state.task.reviewRound,
+        },
+        run: { id: run.id, round: run.round, attempts: run.attempts },
+        worktree: {
+          baseSha: host.state.worktree?.baseSha,
+          headSha: head,
+          roundHead: host.state.review?.headSha,
+          lastReviewedHead: host.state.review?.lastReviewedHead,
+        },
+      },
+      mustAct: [],
+    },
+  });
+  expect(await call("get_task_context", { full: true })).toMatchObject({
+    ok: true,
+    value: { view: "full", brief: "Implement the MCP boundary" },
+  });
+  run.sessionEpoch++;
+  expect(await call("get_task_context", {})).toMatchObject({
+    ok: true,
+    value: { view: "full" },
+  });
+});
+
+test("get_task_context rejects unknown input", async () => {
+  const { call } = await connect();
+  expect(await call("get_task_context", { verbose: true })).toMatchObject({
+    ok: false,
+    error: { code: "invalid_input" },
+  });
 });
 test("get_task_context reports an auto-generated plan with no acceptance criteria", async () => {
   const { call, host } = await connect();

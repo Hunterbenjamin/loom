@@ -1,4 +1,6 @@
 import {
+  type GetTaskContextFullOutput,
+  type GetTaskContextInput,
   type GetTaskContextOutput,
   type InputDisposition,
   type InputId,
@@ -6,6 +8,7 @@ import {
   type RunId,
   reconcile,
   type TaskState,
+  taskContextChanges,
 } from "@loom/core";
 import type { McpHost, McpInput } from "./server.js";
 
@@ -15,13 +18,17 @@ export class InMemoryHost implements McpHost {
   readonly dispositions = new Map<InputId, InputDisposition>();
   readonly tokens = new Map<string, RunId>();
   passes = 0;
+  private readonly contextReads = new Map<
+    RunId,
+    { sessionEpoch: number; context: GetTaskContextFullOutput }
+  >();
   constructor(
     public state: TaskState,
     public observations: Observations,
     private readonly readContext: (
       state: TaskState,
       runId: RunId,
-    ) => GetTaskContextOutput,
+    ) => GetTaskContextFullOutput,
   ) {}
   resolveToken = (token: string) => {
     const runId = this.tokens.get(token);
@@ -43,8 +50,18 @@ export class InMemoryHost implements McpHost {
         this.state.task.stage !== "canceled",
     };
   };
-  context(runId: RunId) {
-    return structuredClone(this.readContext(this.state, runId));
+  context(runId: RunId, input: GetTaskContextInput = {}): GetTaskContextOutput {
+    const run = this.state.runs.find((candidate) => candidate.id === runId);
+    if (!run) throw new Error("Missing context run");
+    const current = structuredClone(this.readContext(this.state, runId));
+    const previous = this.contextReads.get(runId);
+    this.contextReads.set(runId, {
+      sessionEpoch: run.sessionEpoch,
+      context: current,
+    });
+    return input.full || !previous || previous.sessionEpoch !== run.sessionEpoch
+      ? current
+      : taskContextChanges(previous.context, current);
   }
   async submit(input: McpInput): Promise<InputDisposition> {
     const previous = this.dispositions.get(input.id);

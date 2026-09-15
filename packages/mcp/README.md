@@ -34,13 +34,15 @@ exports factories rather than a standalone executable with its own durable state
 reserved for MCP; host diagnostics belong on stderr and must exclude tokens.
 
 The `McpHost` contract consists of `submit(input): Promise<InputDisposition>` and
-`context(runId): GetTaskContextOutput | Promise<GetTaskContextOutput>`. The host must:
+`context(runId, {full?}): GetTaskContextOutput | Promise<GetTaskContextOutput>`. The host must:
 
 - Persist the supplied input ID and enriched call before reconciling. Serialize reconciliation
   per task and atomically commit state, audit rows and that input's disposition before answering.
   Retain dispositions so replaying the same persisted input cannot duplicate its effects.
 - Recheck the run's liveness within the submission transaction (core already does this) and the
   read transaction for context. Context is role-filtered by the host and never enters the inbox.
+  Remember the last full projection read in each run session epoch: return `view: "full"` on the
+  first read, after an epoch change, or when `full` is true; otherwise return `view: "changes"`.
 - Refresh the observations required by core's guards, including git HEAD and PR state. This
   server does not read git or infer facts from terminal output.
 

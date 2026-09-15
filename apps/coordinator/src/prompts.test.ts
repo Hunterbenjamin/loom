@@ -72,6 +72,11 @@ test("plans are short and record decisions; acceptance criteria are the bar impl
     "the fix must remove that cause, not hide it",
   );
   expect(brief("implementer")).toContain("Fix causes, not symptoms");
+  expect(brief("implementer")).toContain("later calls return the changes");
+  expect(brief("implementer")).toContain("{ full: true }");
+  expect(brief("implementer")).not.toContain(
+    "the only source that stays current",
+  );
   expect(brief("reviewer")).toContain(
     "a fix that hides a bug instead of removing its cause, or a second definition",
   );

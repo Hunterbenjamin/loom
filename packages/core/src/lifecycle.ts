@@ -344,7 +344,7 @@ function launch(c: Context, run: Run, resume: boolean, fresh = false): void {
       run.attempts,
       [
         `You are Loom's ${run.role} for task ${c.task.id}: ${c.task.title}.`,
-        "Call the Loom MCP tool `get_task_context` first; it is the only source that stays current.",
+        "Call the Loom MCP tool `get_task_context` first. The first call returns the full role view. Call it again only when told state changed; later calls return the changes and anything you must act on. Use `{ full: true }` to reread everything.",
         COMPLETION[run.role],
         "Inspect the existing worktree changes, plan, findings and handoff before continuing. Preserve existing work; this may be a fresh session replacing an earlier agent.",
         "Loom moves the task between stages; you never do. Don't merge and don't push to the base branch.",

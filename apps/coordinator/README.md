@@ -63,8 +63,10 @@ only by the provider; the resend rule is core's.
 ## The MCP host
 
 `serveHttp` from `@loom/mcp` on loopback. `submit` persists the input and runs passes for its issue
-until that input is consumed, then answers with its disposition. `context` is read-only, is
-role-filtered, and includes the repo's `WORKFLOW.md` commands. `resolveToken` consults current run
+until that input is consumed, then answers with its disposition. `context` is read-only and
+role-filtered. Its first read per run session epoch returns the full view (including the repo's
+`WORKFLOW.md` commands); later reads return changed sections and current must-act findings unless
+the caller requests `{ full: true }`. `resolveToken` consults current run
 state on every call, so an ended or superseded run reads `stale_run` rather than `unknown_run`.
 `buildAnchor` reads the reviewed blobs through the git adapter, never the working file.
 
@@ -84,8 +86,8 @@ It is read only for `get_task_context`. No guard and no transition depends on it
 ## Prompts
 
 The planner, implementer and reviewer briefs are templates here, filled from the issue. They are
-short on purpose and point the agent at `get_task_context`, which is the only view that stays
-current. They are what a run is *launched* with — Codex's developer instructions and Claude's first
+short on purpose and tell the agent how `get_task_context`'s full and changes views work. They are
+what a run is *launched* with — Codex's developer instructions and Claude's first
 headless prompt. The messages a running agent receives, including the fix round's findings
 projection, are core's.
 
