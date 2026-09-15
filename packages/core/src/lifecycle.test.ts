@@ -10,7 +10,66 @@ import {
   now,
 } from "../test/fixtures.js";
 import type { Input, OutboxEntry, Run, RunObservation } from "./index.js";
-import { reconcile, runId } from "./index.js";
+import { reconcile, runId, sumTokenUsage } from "./index.js";
+
+describe("token usage", () => {
+  it("replaces usage per session, retains it on no evidence, and sums epochs and roles", () => {
+    const f = fixture("in_progress");
+    const observation = f.observations.runs[1] as RunObservation;
+    observation.tokenUsage = {
+      input: 100,
+      cachedInput: 40,
+      output: 20,
+      reasoning: 5,
+    };
+    const first = reconcile(f.state, f.observations).next;
+    const implementer = first.runs[1] as Run;
+    expect(implementer.tokenUsage).toEqual([
+      {
+        sessionId: implementer.sessionId,
+        counts: observation.tokenUsage,
+        observedAt: now,
+      },
+    ]);
+
+    observation.tokenUsage = {
+      input: 120,
+      cachedInput: 50,
+      output: 25,
+      reasoning: 6,
+    };
+    const replaced = reconcile(first, f.observations).next;
+    expect(replaced.runs[1]?.tokenUsage).toHaveLength(1);
+    f.observations.now = "2026-09-12T00:01:00.000Z" as typeof now;
+    const reread = reconcile(replaced, f.observations).next;
+    expect(reread.runs[1]?.tokenUsage).toEqual(replaced.runs[1]?.tokenUsage);
+    observation.tokenUsage = null;
+    const retained = reconcile(reread, f.observations).next;
+    expect(retained.runs[1]?.tokenUsage).toEqual(reread.runs[1]?.tokenUsage);
+
+    const rotated = retained;
+    const rotatedRun = rotated.runs[1] as Run;
+    rotatedRun.sessionId = "replacement-session" as never;
+    rotatedRun.sessionEpoch++;
+    observation.tokenUsage = {
+      input: 30,
+      cachedInput: 10,
+      output: 8,
+      reasoning: 2,
+    };
+    const final = reconcile(rotated, f.observations).next;
+    expect(final.runs[1]?.tokenUsage).toHaveLength(2);
+    expect(sumTokenUsage(final.runs)).toEqual({
+      input: 150,
+      cachedInput: 60,
+      output: 33,
+      reasoning: 8,
+    });
+    expect(
+      sumTokenUsage(final.runs.filter((run) => run.role === "implementer")),
+    ).toEqual({ input: 150, cachedInput: 60, output: 33, reasoning: 8 });
+  });
+});
 
 function failure(mode: "headless" | "interactive" = "headless") {
   const f = fixture("planning");
@@ -378,7 +437,8 @@ describe("launch results and persisted outbox", () => {
         runId: run.id,
         resumable: false,
         activityAt: null,
-        readFailures: { resumable: null, activityAt: null },
+        tokenUsage: null,
+        readFailures: { resumable: null, activityAt: null, tokenUsage: null },
         provider: { ok: false, at: now, reason: "no rollout" },
         pane: null,
       },
@@ -431,7 +491,8 @@ describe("launch results and persisted outbox", () => {
         runId: start.runId,
         resumable: null,
         activityAt: null,
-        readFailures: { resumable: null, activityAt: null },
+        tokenUsage: null,
+        readFailures: { resumable: null, activityAt: null, tokenUsage: null },
         provider: {
           ok: true,
           at: now,

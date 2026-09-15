@@ -187,6 +187,20 @@ export const runSchema = contract<Run>()(
     access: z.enum(["full", "approval-gated"]).optional(),
     sessionId: id.nullable(),
     sessionEpoch: count,
+    tokenUsage: z
+      .array(
+        z.object({
+          sessionId: id,
+          counts: z.object({
+            input: count,
+            cachedInput: count,
+            output: count,
+            reasoning: count,
+          }),
+          observedAt: time,
+        }),
+      )
+      .optional(),
     codexGeneration: count.nullable(),
     pane: paneRef.nullable(),
     status: z.enum([

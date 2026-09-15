@@ -28,6 +28,7 @@ const roots = [
   "v2/TurnSteerParams",
   "v2/TurnInterruptParams",
   "v2/ThreadUnsubscribeParams",
+  "v2/ThreadTokenUsageUpdatedNotification",
   "v2/CommandExecutionRequestApprovalResponse",
   "v2/FileChangeRequestApprovalResponse",
   "v2/ToolRequestUserInputResponse",

@@ -35,7 +35,7 @@ export function observeRuns(c: Context): void {
     }
   }
   for (const run of c.state.runs) {
-    if (run.endedAt || run.origin === "external") continue;
+    if (run.origin === "external") continue;
     // A launch result must be committed before old snapshots can describe this attempt.
     if (
       !run.launchedAt &&
@@ -56,6 +56,31 @@ export function observeRuns(c: Context): void {
       observation.provider.at < run.launchedAt
     )
       continue;
+    if (observation?.tokenUsage && run.sessionId) {
+      const tokenUsage = run.tokenUsage ?? [];
+      const next = {
+        sessionId: run.sessionId,
+        counts: { ...observation.tokenUsage },
+        observedAt: c.now,
+      };
+      const existing = tokenUsage.findIndex(
+        (entry) => entry.sessionId === run.sessionId,
+      );
+      if (existing === -1) tokenUsage.push(next);
+      else {
+        const previous = tokenUsage[existing]?.counts;
+        if (
+          !previous ||
+          previous.input !== next.counts.input ||
+          previous.cachedInput !== next.counts.cachedInput ||
+          previous.output !== next.counts.output ||
+          previous.reasoning !== next.counts.reasoning
+        )
+          tokenUsage[existing] = next;
+      }
+      run.tokenUsage = tokenUsage;
+    }
+    if (run.endedAt) continue;
     const derived = deriveStatus(run, observation);
     const provider = read(observation?.provider);
     const previousStatus = run.status;

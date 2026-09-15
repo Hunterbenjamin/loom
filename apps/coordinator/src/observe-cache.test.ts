@@ -11,6 +11,9 @@ test("run observation distinguishes failed supplemental reads from empty answers
     activityAt: vi.fn(() => {
       throw new Error("events unavailable");
     }),
+    tokenUsage: vi.fn(() => {
+      throw new Error("usage unavailable");
+    }),
   };
   const observation = await observeRun(
     {
@@ -26,7 +29,37 @@ test("run observation distinguishes failed supplemental reads from empty answers
   expect(observation.readFailures).toEqual({
     resumable: "rollout unreadable",
     activityAt: "events unavailable",
+    tokenUsage: "usage unavailable",
   });
+});
+
+test("run observation reads cumulative token usage independently", async () => {
+  const owner = {
+    readThread: vi.fn().mockResolvedValue(null),
+    checkResumable: vi.fn().mockResolvedValue(true),
+    activityAt: vi.fn().mockReturnValue(null),
+    tokenUsage: vi.fn().mockReturnValue({
+      input: 90,
+      cachedInput: 30,
+      output: 20,
+      reasoning: 5,
+    }),
+  };
+  const observation = await observeRun(
+    {
+      codex: vi.fn().mockResolvedValue(owner),
+      paneHost: { getPane: vi.fn().mockResolvedValue(null) },
+    } as unknown as Adapters,
+    now,
+    run(),
+  );
+  expect(observation.tokenUsage).toEqual({
+    input: 90,
+    cachedInput: 30,
+    output: 20,
+    reasoning: 5,
+  });
+  expect(observation.readFailures.tokenUsage).toBeNull();
 });
 
 test("a pre-merge read cannot refill a cache invalidated by a merge observation", async () => {

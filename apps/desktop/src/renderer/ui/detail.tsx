@@ -3,6 +3,7 @@ import {
   type HumanCommand,
   type Run,
   type Sha,
+  sumTokenUsage,
   type Task,
   type TaskId,
 } from "@loom/core";
@@ -12,7 +13,13 @@ import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, taskFindings, taskRuns } from "../store/selectors.js";
 import type { TabId } from "../store/store.js";
 import { AttentionChips } from "./bits.js";
-import { clock, RUN_STATUS_LABELS, since, stageLabel } from "./format.js";
+import {
+  clock,
+  formatTokenUsage,
+  RUN_STATUS_LABELS,
+  since,
+  stageLabel,
+} from "./format.js";
 import { IssueDecisionPanel } from "./issue-decision-panel.js";
 import { PrMarkdown } from "./pull-request-overview.js";
 import {
@@ -733,6 +740,8 @@ function Overview({ task }: { task: Task }) {
       Number(b.blocking) - Number(a.blocking),
   );
   const shownEvents = allActivity ? events : events.slice(0, 5);
+  const totalTokenUsage = sumTokenUsage(runs);
+  const hasTokenUsage = runs.some((run) => run.tokenUsage?.length);
   return (
     <div className="pr-overview issue-overview">
       <main className="pr-story">
@@ -864,6 +873,11 @@ function Overview({ task }: { task: Task }) {
       </main>
       <aside className="pr-rail">
         <div className="section-title">Agents</div>
+        {hasTokenUsage ? (
+          <div className="faint" data-testid="issue-token-usage">
+            Total tokens · {formatTokenUsage(totalTokenUsage)}
+          </div>
+        ) : null}
         {runs.length === 0 ? <div className="faint">No runs yet.</div> : null}
         {runs.map((run) => (
           <div className="panel" key={run.id}>
@@ -878,6 +892,11 @@ function Overview({ task }: { task: Task }) {
               {run.model}
               {run.reasoningEffort ? ` · ${run.reasoningEffort}` : ""}
             </div>
+            {run.tokenUsage?.length ? (
+              <div className="faint" data-testid="run-token-usage">
+                Tokens · {formatTokenUsage(sumTokenUsage([run]))}
+              </div>
+            ) : null}
             <div className="faint">
               {run.lastTurn?.error ??
                 run.lastTurn?.outcome ??

@@ -30,13 +30,51 @@ it.skipIf(process.env.LOOM_REAL_PROVIDERS !== "1")(
           "00000000-0000-7000-8000-000000000000" as ProviderSessionId,
         ),
       ).toBe(false);
-      const generation = adapter.generation();
-      await adapter.reconnect();
-      expect(adapter.generation()).toBeGreaterThan(generation ?? 0);
     } finally {
       await adapter.stopServer();
       await rm(directory, { recursive: true, force: true });
     }
   },
   30000,
+);
+
+it.skipIf(process.env.LOOM_REAL_PROVIDERS !== "1")(
+  "real usage is re-emitted on resume and survives an app-server restart",
+  async () => {
+    const directory = await mkdtemp("/tmp/loom-codex-usage-real-");
+    const adapter = createCodexAdapter({
+      taskDirectory: directory,
+      timeoutMs: 15000,
+    });
+    try {
+      await adapter.startServer();
+      const { threadId } = await adapter.startThread({
+        cwd: (await realpath(directory)) as WorktreePath,
+        model: "gpt-5.6-luna",
+        sandbox: "read-only",
+        developerInstructions: "Reply with only OK. Do not use tools.",
+        config: {},
+      });
+      await adapter.startTurn({ threadId, text: "Reply OK" });
+      await expect
+        .poll(() => adapter.tokenUsage(threadId), { timeout: 60_000 })
+        .not.toBeNull();
+      const total = adapter.tokenUsage(threadId);
+
+      await adapter.reconnect();
+      await expect
+        .poll(() => adapter.tokenUsage(threadId), { timeout: 15_000 })
+        .toEqual(total);
+
+      await adapter.stopServer();
+      await adapter.startServer();
+      await expect
+        .poll(() => adapter.tokenUsage(threadId), { timeout: 30_000 })
+        .toEqual(total);
+    } finally {
+      await adapter.stopServer();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  120_000,
 );

@@ -256,10 +256,13 @@ export interface RunObservation {
   resumable: boolean | null;
   /** Provider adapter: latest known activity time; null = no activity evidence, not fetch time. */
   activityAt: IsoTime | null;
+  /** Latest cumulative total for the run's current session; null means no provider evidence. */
+  tokenUsage: import("./entities.js").TokenCounts | null;
   /** Failed supplemental owner reads, kept separate from valid false/null answers. */
   readFailures: {
     resumable: string | null;
     activityAt: string | null;
+    tokenUsage: string | null;
   };
 }
 

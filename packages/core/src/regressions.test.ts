@@ -171,7 +171,8 @@ describe("reconciliation ordering and recovery regressions", () => {
       runId: r.id,
       resumable: null,
       activityAt: null,
-      readFailures: { resumable: null, activityAt: null },
+      tokenUsage: null,
+      readFailures: { resumable: null, activityAt: null, tokenUsage: null },
       provider: { ok: false, at: now, reason: "Disconnected" },
       pane: null,
     };
