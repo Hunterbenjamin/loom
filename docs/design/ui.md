@@ -165,7 +165,7 @@ The pane host keeps agent PTYs alive across window closes and app restarts, lets
 clients attach, delivers keys, and starts processes in a worktree with a controlled environment. It
 is replaceable behind one adapter interface; the Workbench is its user interface.
 
-[Spike 06](../../spikes/06-tmux-pane-host/FINDINGS.md) measured tmux for this role and it passed, so
+Spike 06 measured tmux for this role and it passed, so
 tmux is the pane host (`packages/adapters/tmux`). Herdr's one-attached-client rule conflicted with the
 multi-window model above, and its agent-awareness duplicated Loom's. The Workbench attaches through a
 *grouped* session per view — clients on the same tmux session share its current window, so each view
