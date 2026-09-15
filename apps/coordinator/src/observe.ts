@@ -288,6 +288,7 @@ interface ObserveDeps {
   coolingDownUntil(): Record<Provider, string | null>;
   /** Session IDs Loom launched, so its own runs are never mistaken for hand-started ones. */
   launchedSessions(): ReadonlySet<string>;
+  refreshBase(state: TaskState): Promise<void>;
   repoOf(state: TaskState): { github: string; baseBranch: string } | null;
   now(): string;
   reportAdapterFailure?: ReportAdapterFailure;
@@ -361,8 +362,14 @@ export async function observe(
     if (finding.resolution?.commitSha)
       candidates.add(finding.resolution.commitSha);
   const gitRead = worktree
-    ? reading(now, () =>
-        deps.adapters.git.readWorktree(
+    ? reading(now, async () => {
+        if (
+          ["ci", "in_review", "awaiting_approval", "merging"].includes(
+            state.task.stage,
+          )
+        )
+          await deps.refreshBase(state);
+        return deps.adapters.git.readWorktree(
           worktree,
           repo?.baseBranch ?? deps.config.baseBranch,
           [...candidates],
@@ -372,8 +379,8 @@ export async function observe(
           )
             ? state.review?.headSha
             : undefined,
-        ),
-      )
+        );
+      })
     : null;
   const githubRead =
     repo && state.task.branch

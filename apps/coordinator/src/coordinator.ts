@@ -921,6 +921,15 @@ export class Coordinator {
                   .filter(Boolean) as never[],
               ),
           ),
+        refreshBase: async (s) => {
+          const repo = this.store.repos().find((r) => r.id === s.task.repoId);
+          if (!repo) throw new Error("Missing repository for base observation");
+          await this.executor.refreshBase(
+            repo.root,
+            s.worktree?.baseBranch ??
+              this.effectiveSettings(repo.id).repository.baseBranch,
+          );
+        },
         repoOf: (s) => {
           const repo = this.store.repos().find((r) => r.id === s.task.repoId);
           return repo

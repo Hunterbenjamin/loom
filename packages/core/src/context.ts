@@ -434,13 +434,14 @@ export class Context {
   fix(reason = "Blocking findings require changes"): void {
     this.requestFixRun(reason);
   }
-  /** A fix round with no findings: the branch must be rebased onto base before it can merge. */
-  rebase(base: string, head: Sha): void {
+  /** A fix round for textual conflicts: merge base without rewriting the published branch. */
+  mergeBaseConflict(base: string, head: Sha, retireRunId?: RunId): void {
     this.requestFixRun(
-      `The branch conflicts with ${base} at ${head}. Rebase onto ${base} (or merge it in), preserve the reviewed changes, run the tests, and submit again.`,
+      `The branch conflicts with ${base} at ${head}. Merge ${base} into this branch and resolve the conflicts, preserve the reviewed changes, run the affected test files, and submit again. Do not rebase or force-push.`,
+      retireRunId,
     );
   }
-  private requestFixRun(reason: string): void {
+  private requestFixRun(reason: string, retireRunId?: RunId): void {
     const run = this.current("implementer");
     const round = (run?.round ?? -1) + 1;
     if (run) this.end(run, "superseded", false, true);
@@ -448,13 +449,16 @@ export class Context {
       role: "implementer",
       round,
       resume: false,
-      ...(run ? { retireRunId: run.id } : {}),
+      ...(retireRunId || run ? { retireRunId: retireRunId ?? run?.id } : {}),
       fixReason: reason,
     };
   }
   review(head: Sha): void {
     this.task.reviewRound++;
     this.state.review = {
+      baseSyncRounds:
+        (this.state.review?.baseSyncRounds ?? 0) +
+        (this.state.review?.nextRoundForBaseSync ? 1 : 0),
       headSha: head,
       lastReviewedHead: this.state.review?.lastReviewedHead ?? null,
       previousBlocking: this.state.review?.previousBlocking ?? null,

@@ -1,3 +1,4 @@
+import { baseSyncPending, reconcileBaseSync } from "./base-sync.js";
 import type { Context } from "./context.js";
 import type { CiState } from "./entities.js";
 import { structurallyEqual } from "./helpers.js";
@@ -75,7 +76,7 @@ export function reconcileCiGate(c: Context): void {
     if (!structurallyEqual(previous, cached))
       gate.ci = { ...cached, observedAt: reading.value.observedAt };
   }
-  if (task.blocked || task.failed) return;
+  if (task.blocked || task.failed || baseSyncPending(c)) return;
   // New commits after submitting withdraw it; the implementer submits the new head.
   if (git?.headSha && git.headSha !== gate.headSha) {
     state.ciGate = null;
@@ -97,6 +98,7 @@ export function reconcileCiGate(c: Context): void {
     )
       return;
   }
+  if (ci.conclusion !== "failure" && reconcileBaseSync(c)) return;
   state.ciGate = null;
   if (ci.conclusion === "failure") {
     const failed = failedChecks(ci);

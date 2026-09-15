@@ -67,7 +67,19 @@ const fields = {
     terminate: z.boolean().optional(),
     retire: z.boolean().optional(),
   },
-  push_branch: { worktreePath: text, branch: text, expectedHeadSha: sha },
+  merge_base: {
+    worktreePath: text,
+    branch: text,
+    baseBranch: text,
+    expectedHeadSha: sha,
+    baseSha: sha,
+  },
+  push_branch: {
+    worktreePath: text,
+    branch: text,
+    expectedHeadSha: sha,
+    nonForce: z.boolean().optional(),
+  },
   open_pr: {
     rescueHeadSha: sha.optional(),
     repoId: id,
@@ -173,6 +185,12 @@ export const actionSchema = contract<Action>()(
     z.object({
       key: id,
       taskId: id,
+      kind: z.literal("merge_base"),
+      ...fields.merge_base,
+    }),
+    z.object({
+      key: id,
+      taskId: id,
       kind: z.literal("push_branch"),
       ...fields.push_branch,
     }),
@@ -244,6 +262,7 @@ const outputs = {
   interrupt_run: empty,
   answer_provider_request: empty,
   stop_run: empty,
+  merge_base: z.object({ headSha: sha, conflicting: z.boolean() }),
   push_branch: z.object({ remoteHeadSha: sha }),
   open_pr: z.object({ number: positive, url: text }),
   merge_pr: z.object({ state: z.enum(["merged", "auto_merge_enabled"]) }),
@@ -302,6 +321,11 @@ export const actionResultSchema = contract<ActionResult>()(
       kind: z.literal("stop_run"),
       ok: z.literal(true),
       output: outputs.stop_run,
+    }),
+    z.object({
+      kind: z.literal("merge_base"),
+      ok: z.literal(true),
+      output: outputs.merge_base,
     }),
     z.object({
       kind: z.literal("push_branch"),

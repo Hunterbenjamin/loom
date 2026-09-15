@@ -480,6 +480,9 @@ export function submission(
         state.review.previousBlocking = count;
         state.review.reviewerCommits = [...review.reviewerCommits];
       }
+      const capReached =
+        task.reviewRound - (state.review?.baseSyncRounds ?? 0) >=
+        task.reviewRoundCap;
       let next: "in_review" | "awaiting_approval" | "in_progress" | "blocked";
       if (count === 0) {
         if (state.review) state.review.publicationPending = true;
@@ -489,16 +492,14 @@ export function submission(
             ? "awaiting_approval"
             : "in_review";
       } else if (
-        task.reviewRound >= task.reviewRoundCap ||
+        capReached ||
         reopened ||
         !state.findings.some((f) => f.status === "escalate" && f.blocking) ||
         (previous != null && count >= previous)
       ) {
         next = "blocked";
         c.block(
-          task.reviewRound >= task.reviewRoundCap
-            ? "review_round_cap"
-            : "review_not_converging",
+          capReached ? "review_round_cap" : "review_not_converging",
           "Review needs human direction",
         );
         c.notify(

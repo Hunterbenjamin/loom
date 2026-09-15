@@ -1,3 +1,4 @@
+import { reconcileBaseSync } from "./base-sync.js";
 import { ciFindings } from "./ci-gate.js";
 import type { Context } from "./context.js";
 import { openBlocking } from "./helpers.js";
@@ -59,6 +60,7 @@ export function reconcileStages(c: Context): void {
       });
     }
   }
+  if (task.stage !== "ci" && reconcileBaseSync(c)) return;
   if (
     (task.stage === "awaiting_approval" || task.stage === "merging") &&
     pr?.state === "open"
@@ -77,13 +79,6 @@ export function reconcileStages(c: Context): void {
         });
       c.stage("in_review", "PR head changed");
       c.review(pr.headSha);
-    } else if (pr.mergeable === "conflicting" && state.worktree) {
-      c.voidApprovals("stage_left");
-      c.stage(
-        "in_progress",
-        `Branch conflicts with ${state.worktree.baseBranch}`,
-      );
-      c.rebase(state.worktree.baseBranch, pr.headSha);
     } else if (pr.ci.headSha === pr.headSha && pr.ci.conclusion === "failure") {
       c.voidApprovals("ci_failed");
       ciFindings(c, pr.ci);

@@ -97,12 +97,21 @@ export interface GitAdapter {
     branch: string;
     allowedRoot: string;
   }): Promise<ActionOutputs["remove_worktree"]>;
+  /** Merge an immutable base into a clean task checkout; replay adopts the exact parent pair. */
+  mergeBase(req: {
+    worktreePath: WorktreePath;
+    branch: string;
+    baseBranch: string;
+    expectedHeadSha: Sha;
+    baseSha: Sha;
+  }): Promise<ActionOutputs["merge_base"]>;
   /**
-   * Refuses unless the local branch head equals `expectedHeadSha`. Never forces blindly:
-   * `expectedRemoteHeadSha` is the remote head Loom last observed, and the push replaces exactly
-   * that head with `--force-with-lease` so a rebased branch cannot overwrite unseen remote work.
+   * Refuses unless the local branch head equals `expectedHeadSha`. Automatic base merges use
+   * `nonForce`; other callers may replace only `expectedRemoteHeadSha` with a lease, preserving
+   * the existing explicit rebase workflow without overwriting unseen remote work.
    */
   push(req: {
+    nonForce?: boolean;
     worktreePath: WorktreePath;
     branch: string;
     expectedHeadSha: Sha;

@@ -374,6 +374,15 @@ describe("worktree actions", () => {
         expectedRemoteHeadSha: rebased,
       }),
     ).rejects.toThrow(/Git push failed.*failed to push some refs/s);
+    await expect(
+      adapter.push({
+        worktreePath: repo,
+        branch: "feat/issue",
+        expectedHeadSha: diverged,
+        expectedRemoteHeadSha: remoteChange,
+        nonForce: true,
+      }),
+    ).rejects.toThrow(/Git push failed/);
     expect(await command(remote, "rev-parse", "feat/issue")).toBe(remoteChange);
   });
   it("writes task files repeatedly and excludes them in the shared Git directory", async () => {
@@ -604,4 +613,69 @@ it("observes the complete reviewer range and refuses unrelated history", async (
   expect(
     (await adapter.readWorktree(repo, "main", [], roundHead)).reviewCommits,
   ).toBeNull();
+});
+
+describe("automatic base merges", () => {
+  async function diverge(conflicting = false) {
+    await git("checkout", "-b", "feat/sync");
+    await save("tracked.txt", "branch\n");
+    const head = await commitAll("branch");
+    await git("checkout", "main");
+    await save(conflicting ? "tracked.txt" : "base.txt", "main moved\n");
+    const base = await commitAll("base moved");
+    await git("checkout", "feat/sync");
+    return {
+      worktreePath: repo,
+      branch: "feat/sync",
+      baseBranch: "main",
+      expectedHeadSha: head,
+      baseSha: base,
+    };
+  }
+
+  it("creates a two-parent merge and adopts it on replay", async () => {
+    const req = await diverge();
+    const result = await adapter.mergeBase(req);
+    expect(result.conflicting).toBe(false);
+    expect(await git("rev-list", "--parents", "-n", "1", "HEAD")).toBe(
+      `${result.headSha} ${req.expectedHeadSha} ${req.baseSha}`,
+    );
+    expect(await readFile(join(repo, "tracked.txt"), "utf8")).toBe("branch\n");
+    expect(await readFile(join(repo, "base.txt"), "utf8")).toBe("main moved\n");
+    expect(await adapter.mergeBase(req)).toEqual(result);
+    expect((await adapter.readWorktree(repo, "main")).behindBase).toBe(0);
+  });
+
+  it("reports real conflicts without changing HEAD or leaving an unmerged index", async () => {
+    const req = await diverge(true);
+    expect(await adapter.mergeBase(req)).toEqual({
+      headSha: req.expectedHeadSha,
+      conflicting: true,
+    });
+    expect(await git("rev-parse", "HEAD")).toBe(req.expectedHeadSha);
+    expect(await git("status", "--porcelain")).toBe("");
+    expect(await adapter.mergeBase(req)).toEqual({
+      headSha: req.expectedHeadSha,
+      conflicting: true,
+    });
+  });
+
+  it("refuses dirty worktrees, another branch, and unrelated new commits", async () => {
+    const req = await diverge();
+    await save("untracked.txt", "human work\n");
+    await expect(adapter.mergeBase(req)).rejects.toThrow("dirty");
+    await commitAll("human commit");
+    await expect(adapter.mergeBase(req)).rejects.toThrow("HEAD changed");
+    await git("checkout", "main");
+    await expect(adapter.mergeBase(req)).rejects.toThrow("branch changed");
+  });
+
+  it("uses the fetched base even when the local base branch is stale", async () => {
+    const req = await diverge();
+    await git("update-ref", "refs/remotes/origin/main", req.baseSha);
+    await git("update-ref", "refs/heads/main", `${req.baseSha}^`);
+    const observed = await adapter.readWorktree(repo, "main");
+    expect(observed.currentBaseSha).toBe(req.baseSha);
+    expect(observed.behindBase).toBe(1);
+  });
 });

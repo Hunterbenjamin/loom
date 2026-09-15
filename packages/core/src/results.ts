@@ -60,6 +60,8 @@ export function actionResult(
         why: "retry",
       });
     } else {
+      // A base merge precondition invalidates the intent; the next owner reading decides anew.
+      if (row.action.kind === "merge_base") row.status = "canceled";
       if (row.action.kind === "answer_provider_request") {
         c.emit(`schedule:${input.key}:provider`, {
           kind: "schedule",
@@ -165,6 +167,29 @@ export function actionResult(
         message.sentAt =
           result.output.transportAttempt?.completedAt ?? input.receivedAt;
         message.transportRef = result.output.transportRef;
+      }
+      break;
+    }
+    case "merge_base": {
+      if (action.kind !== "merge_base") break;
+      if (result.output.conflicting) {
+        c.state.ciGate = null;
+        c.stage("in_progress", `Branch conflicts with ${action.baseBranch}`);
+        c.mergeBaseConflict(action.baseBranch, action.expectedHeadSha);
+      } else {
+        const head = result.output.headSha;
+        c.state.ciGate = { headSha: head, since: c.now };
+        c.stage(
+          "ci",
+          `Merged ${action.baseBranch}; CI running on ${head.slice(0, 7)}`,
+        );
+        c.emit(`push_branch:${c.task.id}:${head}`, {
+          kind: "push_branch",
+          worktreePath: action.worktreePath,
+          branch: action.branch,
+          expectedHeadSha: head,
+          nonForce: true,
+        });
       }
       break;
     }

@@ -518,6 +518,8 @@ export const contextSchema = contract<TaskContext>()(
         verdictIds: z.array(id),
         publicationPending: z.boolean().optional(),
         reviewerCommits: z.array(sha).optional(),
+        baseSyncRounds: count.optional(),
+        nextRoundForBaseSync: z.boolean().optional(),
       })
       .nullable(),
     ciGate: z

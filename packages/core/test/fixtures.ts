@@ -286,7 +286,7 @@ export function mcp(
   call: McpCall,
   role: Run["role"] = "implementer",
   id = "input1",
-): Input {
+): Extract<Input, { type: "mcp" }> {
   return {
     id: id as InputId,
     receivedAt: now,

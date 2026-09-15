@@ -46,7 +46,7 @@ export function roleBrief(input: BriefInput): string {
         ]
       : []),
     "",
-    `Worktree: ${input.worktreePath} (branch ${input.branch}). Round ${round} of at most ${task.reviewRoundCap}.`,
+    `Worktree: ${input.worktreePath} (branch ${input.branch}). Run round ${round}. Code enforces the ${task.reviewRoundCap}-round review cap; reviews caused by base movement are exempt.`,
     "Call `get_task_context` first. The first call returns the full role view. Call it again only when Loom says state changed; later calls return the changes and anything you must act on. Use `{ full: true }` to reread everything.",
     "Work in few steps: every step costs a model turn. Read whole files or large ranges, not small slices; put related commands in one call; and wait for a long command to finish in one call instead of checking back on it.",
     `Report through Loom's MCP tools: ${TOOLS[role]}`,

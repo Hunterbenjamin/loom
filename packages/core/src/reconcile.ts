@@ -113,6 +113,9 @@ export interface TaskState {
     /** Accepted review waiting for its push and fresh PR head/CI observation. */
     publicationPending?: boolean;
     reviewerCommits?: Sha[];
+    /** Run rounds stay monotonic; base movement does not consume the review cap. */
+    baseSyncRounds?: number;
+    nextRoundForBaseSync?: boolean;
   } | null;
   /**
    * Store: the implementer's submitted head waiting for CI before review. Review starts only on a

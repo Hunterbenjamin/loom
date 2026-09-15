@@ -405,8 +405,24 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
 - **Dependencies:** "blocked by" links. An issue starts only after its blockers are merged. No stacked PRs in v1.
 - **Overlapping changes:**
   - The planner lists the areas it expects to touch, and the coordinator warns about overlap with active issues.
-  - After each merge, `git merge-tree --write-tree` flags branches that now conflict.
-  - The agent rebases and re-runs tests before Awaiting approval.
+  - Before review (after green CI), during review, and before approval/merge, the coordinator
+    fetches the remote base under the repository executor lock. Git observations compare against
+    that fetched SHA, using the local base only for repositories without a remote tracking ref.
+    `git merge-tree --write-tree` owns textual conflict detection; a matching GitHub conflict is
+    used when local evidence is unavailable. Unknown mergeability alone never starts a fix run.
+  - Actual conflicts retire the active reviewer and start a fresh implementer session to merge
+    base, resolve conflicts and run affected tests. Clean base movement is merged only at the CI
+    gate before the planned review starts, using an owner-checked `merge_base` executor action
+    keyed by task/head/base, without an agent turn. It constructs a two-parent commit and updates
+    only a clean task checkout; replay adopts only that exact parent pair. Automatic publication
+    pushes without force and gates the resulting SHA on fresh CI before that review.
+    Clean base movement during or after review leaves the reviewed head, publication and approvals
+    intact; it never creates a replacement review. Busy or unavailable checkouts suppress automatic
+    merging, not unrelated head-change, CI-failure, publication or approval reconciliation.
+    Unknown mergeability alone neither starts a fix run nor stops stage reconciliation.
+  - Review run numbers remain monotonic for unique session IDs. Durable `baseSyncRounds` credits
+    exclude replacement reviews caused by base movement from the cap; interrupted convergence
+    comparisons are cleared. Ordinary review fix rounds still consume the cap.
   - Merges happen in approval order.
 - **Caps:** a global cap (start at 4 agents) and a per-provider cap.
 

@@ -77,6 +77,19 @@ it("parses the CI stage and a legacy gate without a cached reading", () => {
   ).toMatchObject({ headSha: "a".repeat(40) });
 });
 
+it("persists review cap exemptions and a pending base-sync review", () => {
+  const f = coreFixture("ci");
+  const review = {
+    ...f.state.review,
+    baseSyncRounds: 2,
+    nextRoundForBaseSync: true,
+  };
+  expect(contextSchema.parse({ ...f.state, review }).review).toMatchObject({
+    baseSyncRounds: 2,
+    nextRoundForBaseSync: true,
+  });
+});
+
 describe("task transactions", () => {
   it("replaces a completed stall schedule under its stable key", async () => {
     const store = await seeded();
@@ -788,6 +801,7 @@ describe("schema drift detection", () => {
       "answer_pane_prompt",
       "answer_provider_request",
       "stop_run",
+      "merge_base",
       "push_branch",
       "open_pr",
       "merge_pr",
