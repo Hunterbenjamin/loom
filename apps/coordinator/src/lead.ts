@@ -1,15 +1,7 @@
 // Main retains internal `lead` identifiers for persisted recipes, MCP identity and clients.
 // One coordinator-owned interactive session. No task, run, stage or reconciler state.
 import { randomUUID } from "node:crypto";
-import {
-  chmod,
-  copyFile,
-  mkdir,
-  readFile,
-  rename,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { textHash } from "@loom/adapter-claude";
 import type {
@@ -38,28 +30,36 @@ import { PreconditionFailed, pressPaneChoice } from "./executor.js";
 import { leadBrief } from "./prompts.js";
 import { runEnvironment } from "./recipes.js";
 
-const recipeSchema = z.strictObject({
-  sessionId: z.string().uuid(),
-  token: z.string().min(16),
-  model: z.string().min(1),
-  stopped: z.boolean(),
-  launched: z.boolean(),
-  mcpPort: z.number().int().min(1).max(65535),
-  cwd: z.string().min(1),
-  legacyCwd: z.string().optional(),
-  executable: z.string().min(1),
-  settingsPath: z.string().min(1),
-  args: z.array(z.string()),
-  env: z.record(z.string(), z.string()),
-  pane: z
-    .strictObject({
-      hostGeneration: z.string(),
-      sessionName: z.string(),
-      windowId: z.string(),
-      paneId: z.string(),
-    })
-    .nullable(),
-});
+const recipeSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      return value;
+    const current = { ...value } as Record<string, unknown>;
+    delete current.legacyCwd;
+    return current;
+  },
+  z.strictObject({
+    sessionId: z.string().uuid(),
+    token: z.string().min(16),
+    model: z.string().min(1),
+    stopped: z.boolean(),
+    launched: z.boolean(),
+    mcpPort: z.number().int().min(1).max(65535),
+    cwd: z.string().min(1),
+    executable: z.string().min(1),
+    settingsPath: z.string().min(1),
+    args: z.array(z.string()),
+    env: z.record(z.string(), z.string()),
+    pane: z
+      .strictObject({
+        hostGeneration: z.string(),
+        sessionName: z.string(),
+        windowId: z.string(),
+        paneId: z.string(),
+      })
+      .nullable(),
+  }),
+);
 type Recipe = z.output<typeof recipeSchema>;
 
 function leadDirectory(dataDirectory: string, repoId: string): string {
@@ -398,12 +398,7 @@ export class LeadSession {
     if (!recipe) return null;
     if (recipe.pane) {
       const observed = await this.deps.adapters.paneHost.getPane(recipe.pane);
-      if (
-        observed &&
-        (observed.startCwd === recipe.cwd ||
-          observed.startCwd === recipe.legacyCwd)
-      )
-        return observed;
+      if (observed && observed.startCwd === recipe.cwd) return observed;
     }
     // The workspace also contains a human shell. Cwd alone must never adopt it.
     // An explicit open can recover a lost launch receipt through ensurePane's owned key.
@@ -419,12 +414,6 @@ export class LeadSession {
         return;
       }
       await this.settings();
-      if (this.recipe.legacyCwd && pane) {
-        // Retire only the recorded legacy pane before moving this same session to its project.
-        await this.deps.adapters.paneHost.closePane(pane.ref);
-        await this.launch();
-        return;
-      }
       // Absence could be an intentional close. Only a confirmed dead pane is relaunched.
       if (pane?.dead) await this.launch();
     });
@@ -554,7 +543,7 @@ export class LeadSession {
       recipe.launched &&
       (await this.deps.adapters.claude.resumable(
         recipe.sessionId as ProviderSessionId,
-        (recipe.legacyCwd ?? recipe.cwd) as WorktreePath,
+        recipe.cwd as WorktreePath,
       ));
     const args = this.deps.adapters.claude.interactiveArgs({
       sessionId: recipe.sessionId as ProviderSessionId,
@@ -584,89 +573,7 @@ export class LeadSession {
       args,
       env: recipe.env,
     });
-    const { legacyCwd: _, ...current } = recipe;
-    await this.save({ ...current, args, launched: true, pane });
+    await this.save({ ...recipe, args, launched: true, pane });
     return pane;
   }
-}
-
-/** Keep a legacy process's endpoint stable even before its first repository is registered. */
-export async function legacyLeadPort(dataDirectory: string): Promise<number> {
-  try {
-    return recipeSchema.parse(
-      JSON.parse(
-        await readFile(join(dataDirectory, "lead", "recipe.json"), "utf8"),
-      ),
-    ).mcpPort;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
-    throw error;
-  }
-}
-
-/** Atomic destination recipe is the migration commit. The old source is retired only afterwards. */
-export async function migrateLead(
-  dataDirectory: string,
-  repo: Repo | undefined,
-): Promise<void> {
-  if (!repo) return;
-  const source = join(dataDirectory, "lead", "recipe.json");
-  let raw: string;
-  try {
-    raw = await readFile(source, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw error;
-  }
-  const old = recipeSchema.parse(JSON.parse(raw));
-  const directory = leadDirectory(dataDirectory, repo.id);
-  const destination = join(directory, "recipe.json");
-  try {
-    const existing = recipeSchema.parse(
-      JSON.parse(await readFile(destination, "utf8")),
-    );
-    if (existing.sessionId !== old.sessionId || existing.token !== old.token)
-      throw new Error("Legacy Main conflicts with an existing repository Main");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    if (
-      old.cwd !== dataDirectory ||
-      old.settingsPath !== join(dataDirectory, "lead", "settings.json")
-    )
-      throw new Error(
-        "Legacy Main recipe belongs to a different instance directory",
-      );
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    for (const [from, to] of [
-      [
-        join(dataDirectory, "lead", "settings.json"),
-        join(directory, "settings.json"),
-      ],
-      [join(dataDirectory, "main-notes"), join(directory, "main-notes")],
-    ] as const) {
-      try {
-        await copyFile(from, to);
-        await chmod(to, 0o600);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      }
-    }
-    const settingsPath = join(directory, "settings.json");
-    const migrated = {
-      ...old,
-      cwd: repo.root,
-      legacyCwd: old.cwd,
-      settingsPath,
-      args: old.args.map((arg) =>
-        arg === old.settingsPath ? settingsPath : arg,
-      ),
-    };
-    await writeFile(
-      `${destination}.tmp`,
-      `${JSON.stringify(migrated, null, 2)}\n`,
-      { mode: 0o600 },
-    );
-    await rename(`${destination}.tmp`, destination);
-  }
-  await unlink(source);
 }

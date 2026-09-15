@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { createClaudeAdapter } from "@loom/adapter-claude";
@@ -893,48 +893,18 @@ test("each repository has a private Main, scoped tools, notes and independent re
   );
 });
 
-test("startup migrates the legacy recipe once to the first registered repository and keeps identity", async () => {
-  const { mkdir, rename, writeFile } = await import("node:fs/promises");
-  const { migrateLead } = await import("./lead.js");
+test("stored recipes ignore legacyCwd without changing repository recovery", async () => {
   const { h } = await setup();
-  await h.coordinator.leadFor(h.repo.id).open();
+  const target = await h.coordinator.leadFor(h.repo.id).open();
   const saved = await recipe(h);
-  await h.coordinator.leadFor(h.repo.id).stop();
-  const { workspaceId } = await h.paneHost.ensureWorkspace({
-    taskId: "lead" as never,
-    cwd: h.store.dataDirectory as never,
-    label: "Legacy Main",
-  });
-  const legacyPane = await h.paneHost.ensurePane({
-    workspaceId,
-    runId: "lead" as never,
-    cwd: h.store.dataDirectory as never,
-    executable: "fake",
-    args: [],
-    env: {},
-  });
-  h.providers.create(
-    "claude",
-    h.store.dataDirectory as never,
-    saved.sessionId as ProviderSessionId,
-    "interactive",
-  );
+  const launches = h.paneHost.launches.length;
   await h.coordinator.stop();
-  const legacy = join(h.store.dataDirectory, "lead");
-  await mkdir(legacy, { recursive: true });
-  await rename(join(legacy, h.repo.id), join(h.dataRoot, "saved-main"));
   await writeFile(
-    join(legacy, "recipe.json"),
+    join(h.store.dataDirectory, `lead/${h.repo.id}/recipe.json`),
     JSON.stringify({
       ...saved,
-      cwd: h.store.dataDirectory,
-      settingsPath: join(legacy, "settings.json"),
-      pane: legacyPane,
+      legacyCwd: h.store.dataDirectory,
     }),
-  );
-  await writeFile(
-    join(h.store.dataDirectory, "main-notes"),
-    "Retained context",
   );
   const store = await openStore({
     dataRoot: h.dataRoot,
@@ -949,29 +919,12 @@ test("startup migrates the legacy recipe once to the first registered repository
   });
   cleanups.push(() => restarted.stop());
   await restarted.start();
-  const migrated = await recipe(h);
-  expect((await h.paneHost.getPane(legacyPane))?.dead).toBe(true);
-  expect(migrated.pane.sessionName).toBe(`loom-lead-${h.repo.id}`);
-  expect(migrated.args).toContain("--resume");
-  const launches = h.paneHost.launches.length;
-  expect(migrated).toMatchObject({
-    sessionId: saved.sessionId,
-    token: saved.token,
-    cwd: h.repo.root,
-    settingsPath: join(legacy, h.repo.id, "settings.json"),
-  });
-  expect(await restarted.leadFor(h.repo.id).note()).toBe("Retained context");
-  await expect(readFile(join(legacy, "recipe.json"))).rejects.toMatchObject({
-    code: "ENOENT",
-  });
-  await migrateLead(h.store.dataDirectory, h.repo);
-  expect(await recipe(h)).toEqual(migrated);
+  expect(restarted.leadFor(h.repo.id).sessionId).toBe(target.sessionId);
+  expect((await restarted.leadFor(h.repo.id).open()).sessionId).toBe(
+    target.sessionId,
+  );
   expect(h.paneHost.launches).toHaveLength(launches);
-  // Simulate a crash after the destination commit but before retiring the source.
-  await writeFile(join(legacy, "recipe.json"), JSON.stringify(saved));
-  await migrateLead(h.store.dataDirectory, h.repo);
-  expect(await recipe(h)).toEqual(migrated);
-  expect(h.paneHost.launches).toHaveLength(launches);
+  expect(await recipe(h)).not.toHaveProperty("legacyCwd");
 });
 
 async function messagingRun(

@@ -64,7 +64,7 @@ import {
 import { classify, Executor, PreconditionFailed } from "./executor.js";
 import { inspectTask } from "./inspect.js";
 import type { LaunchDeps } from "./launch.js";
-import { LeadSession, legacyLeadPort, migrateLead } from "./lead.js";
+import { LeadSession } from "./lead.js";
 import { Loop } from "./loop.js";
 import { messageAgent } from "./main-messages.js";
 import { createMcpHost } from "./mcp-host.js";
@@ -754,7 +754,6 @@ export class Coordinator {
 
   async start(): Promise<RecoveryReport> {
     await this.recipes.load();
-    await migrateLead(this.store.dataDirectory, this.store.repos()[0]);
     for (const repo of this.store.repos()) await this.leadFor(repo.id).load();
     const selected = this.store.selectedRepo();
     if (selected) this.store.selectRepo(selected);
@@ -762,7 +761,7 @@ export class Coordinator {
     const mcpPort =
       this.config.mcpPort ||
       [...this.leads.values()].find((lead) => lead.mcpPort)?.mcpPort ||
-      (await legacyLeadPort(this.store.dataDirectory));
+      0;
     try {
       this.mcp = await serveHttp(this.mcpOptions(), mcpPort);
     } catch (error) {
@@ -1635,7 +1634,6 @@ export class Coordinator {
           this.store.selectRepo(repo.id);
           const lead = this.leadFor(repo.id);
           if (!lead.sessionId) {
-            await migrateLead(this.store.dataDirectory, this.store.repos()[0]);
             await lead.load();
             await lead.recover();
           }

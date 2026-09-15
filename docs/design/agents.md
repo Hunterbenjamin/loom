@@ -96,8 +96,7 @@ The selected project determines the Main shown in the bottom panel. Each reposit
 separate session, recipe, settings, token and notes under `<instance data>/lead/<repoId>/`, with
 cwd at its root and workspace `lead-<repoId>` (`loom-lead-<repoId>`). Open/stop commands and attach
 targets carry `repoId`. Switching projects opens Main lazily and detaches only the old viewer.
-The coordinator recovers every recipe on startup. The legacy single recipe migrates idempotently
-to the first registered repository, keeping its persisted session ID and token.
+The coordinator recovers every per-repository recipe on startup.
 
 Main's authenticated tools default to and enforce its repository: list/inspect/create/move/approval
 and other task commands cannot reach another project's tasks. Its introduction names the repository.
