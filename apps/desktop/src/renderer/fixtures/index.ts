@@ -4,6 +4,7 @@ import type {
   AttentionReason,
   Finding,
   FindingStatus,
+  IsoTime,
   Message,
   Plan,
   Provider,
@@ -154,8 +155,7 @@ const minutesAgo = (at: IsoTime): number =>
   Math.round((Date.parse(NOW) - Date.parse(at)) / 60_000);
 
 /**
- * `taskCount` repeats the seed list to make a longer list. The app always uses the 40 written
- * below; the performance harness asks for 500 to measure scrolling.
+ * `taskCount` repeats the seed list so tests can request larger sample snapshots.
  */
 export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
   const random = rng(0xf00d);
