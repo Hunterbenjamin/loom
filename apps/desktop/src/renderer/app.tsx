@@ -3,7 +3,7 @@ import { attentionCount, inboxRows } from "./store/inbox.js";
 import { selectedPullRequests } from "./store/pull-requests.js";
 import { useStore, useStoreApi } from "./store/react.js";
 import { selectedRows } from "./store/selectors.js";
-import { VIEWS } from "./store/store.js";
+import { VIEWS } from "./store/ui-state.js";
 import { BoardView } from "./ui/board.js";
 import { BriefsView } from "./ui/briefs.js";
 import { CreateIssue } from "./ui/create-issue.js";

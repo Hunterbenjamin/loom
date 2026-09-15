@@ -1,6 +1,7 @@
 import type { AttentionReason, IsoTime, Run, Task } from "@loom/core";
 import type { TaskInbox } from "@loom/protocol";
-import type { State, TabId } from "./store.js";
+import type { State } from "./store.js";
+import type { TabId } from "./ui-state.js";
 
 export const REASON_LABELS: Record<AttentionReason, string> = {
   plan_needs_approval: "Plan waiting for approval",

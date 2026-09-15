@@ -1,14 +1,20 @@
 import type {
   AttentionReason,
+  Finding,
+  FindingStatus,
   HumanCommand,
   IsoTime,
   Run,
+  Stage,
   Task,
+  TaskId,
 } from "@loom/core";
 import { findingId } from "@loom/protocol";
+import { inputId, minutesBefore, transitionId } from "../fixtures/ids.js";
+import type { Comment } from "../fixtures/index.js";
 import { REASON_LABELS } from "./inbox.js";
 import { taskRuns, terminalsForTask } from "./selectors.js";
-import type { State } from "./store.js";
+import type { State, StoreContext } from "./store.js";
 
 export interface DecisionAction {
   id: string;
@@ -402,4 +408,222 @@ export function issueDecisions(state: State, task: Task): IssueActionState {
     result,
   };
   return result;
+}
+
+export function issueEditActions(ctx: StoreContext) {
+  /**
+   * Cards dropped on a column but not yet republished, with the task version they were dropped at.
+   * The board shows them in the new column at once; the coordinator's next version of the task
+   * replaces the move, and a refusal puts the card back.
+   */
+  const moves = new Map<TaskId, { to: Stage; version: number }>();
+  const withPendingMoves = (snapshot: State["snapshot"]): State["snapshot"] => {
+    if (!moves.size) return snapshot;
+    let changed = false;
+    const tasks = snapshot.tasks.map((task) => {
+      const move = moves.get(task.id);
+      if (!move) return task;
+      if (task.version !== move.version) {
+        moves.delete(task.id);
+        return task;
+      }
+      if (task.stage === move.to) return task;
+      changed = true;
+      return { ...task, stage: move.to };
+    });
+    return changed ? { ...snapshot, tasks } : snapshot;
+  };
+  const setSnapshot = (snapshot: State["snapshot"]) => {
+    ctx.set({ ...ctx.get(), snapshot });
+    ctx.emit();
+  };
+  const actions = {
+    moveTask(id: TaskId, to: Stage) {
+      const state = ctx.get();
+      if (ctx.live) {
+        if (to !== "backlog" && to !== "todo") {
+          ctx.toast("The coordinator controls this stage.");
+          return;
+        }
+        const task = state.snapshot.tasks.find((item) => item.id === id);
+        if (!task || task.stage === to) return;
+        const from = task.stage;
+        const dropped = { to, version: task.version };
+        moves.set(id, dropped);
+        setSnapshot(withPendingMoves(state.snapshot));
+        void ctx
+          .command({
+            kind: "human",
+            taskId: id,
+            command: { type: "move", to },
+          })
+          .then((outcome) => {
+            if (outcome.ok || moves.get(id) !== dropped) return;
+            moves.delete(id);
+            const current = ctx.get();
+            setSnapshot({
+              ...current.snapshot,
+              tasks: current.snapshot.tasks.map((item) =>
+                item.id === id && item.version === dropped.version
+                  ? { ...item, stage: from }
+                  : item,
+              ),
+            });
+          });
+        return;
+      }
+      const task = state.snapshot.tasks.find((item) => item.id === id);
+      if (!task || task.stage === to) return;
+      const at = minutesBefore(0);
+      setSnapshot({
+        ...state.snapshot,
+        tasks: state.snapshot.tasks.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                stage: to,
+                stageEnteredAt: at,
+                updatedAt: at,
+                version: item.version + 1,
+              }
+            : item,
+        ),
+        transitions: [
+          ...state.snapshot.transitions,
+          {
+            id: transitionId(`${id}-tm${state.snapshot.transitions.length}`),
+            taskId: id,
+            at,
+            from: task.stage,
+            to,
+            flags: {},
+            trigger: {
+              kind: "human",
+              command: "move",
+              inputId: inputId(`ui-${Date.now()}`),
+            },
+            reason: "Moved by hand in the window.",
+            taskVersion: task.version + 1,
+          },
+        ],
+      });
+    },
+    setFindingStatus(id: string, status: FindingStatus) {
+      const state = ctx.get();
+      if (ctx.live) {
+        ctx.toast("This action is not available in the live Tracker yet.");
+        return;
+      }
+      setSnapshot({
+        ...state.snapshot,
+        findings: state.snapshot.findings.map(
+          (finding): Finding =>
+            finding.id === id
+              ? { ...finding, status, updatedAt: minutesBefore(0) }
+              : finding,
+        ),
+      });
+    },
+    addComment(findingId: string, body: string) {
+      const state = ctx.get();
+      if (ctx.live) {
+        ctx.toast("This action is not available in the live Tracker yet.");
+        return;
+      }
+      if (body.trim() === "") return;
+      const comment: Comment = {
+        id: `c-${findingId}-${state.snapshot.comments.length}`,
+        findingId,
+        author: "you",
+        body: body.trim(),
+        at: minutesBefore(0),
+      };
+      setSnapshot({
+        ...state.snapshot,
+        comments: [...state.snapshot.comments, comment],
+      });
+    },
+    toggleViewed(task: TaskId, path: string) {
+      const state = ctx.get();
+      if (ctx.live) {
+        ctx.toast("This action is not available in the live Tracker yet.");
+        return;
+      }
+      const current = state.snapshot.viewedFiles[task] ?? [];
+      const next = current.includes(path)
+        ? current.filter((item) => item !== path)
+        : [...current, path];
+      setSnapshot({
+        ...state.snapshot,
+        viewedFiles: { ...state.snapshot.viewedFiles, [task]: next },
+      });
+    },
+    createTask(
+      title: string,
+      repo: string,
+      options: {
+        name?: string | null;
+        description?: string;
+        size?: Task["size"];
+        requirePlanApproval?: boolean;
+      } = {},
+    ) {
+      const state = ctx.get();
+      if (ctx.live) {
+        ctx.toast("This action is not available in the live Tracker yet.");
+        return;
+      }
+      const at = minutesBefore(0);
+      const id = `LOOM-${state.snapshot.tasks.length + 101}` as TaskId;
+      const roles = state.settings.find(
+        (settings) =>
+          settings.scope.kind === "repository" &&
+          settings.scope.repoId === repo,
+      )?.effective.roles;
+      const task: Task = {
+        id,
+        repoId: repo as Task["repoId"],
+        number: state.snapshot.tasks.length + 101,
+        name: options.name ?? null,
+        title,
+        description: options.description ?? "",
+        summary: null,
+        stage: "backlog",
+        stageEnteredAt: at,
+        version: 1,
+        blocked: null,
+        failed: null,
+        requirePlanApproval: options.requirePlanApproval ?? true,
+        reviewRound: 0,
+        reviewRoundCap: 3,
+        providers: roles
+          ? {
+              planner: roles.planner.provider,
+              implementer: roles.implementer.provider,
+              reviewer: roles.reviewer.provider,
+            }
+          : {
+              planner: "codex",
+              implementer: "claude",
+              reviewer: "codex",
+            },
+        blockedBy: [],
+        budgetMinutes: null,
+        size: options.size ?? "normal",
+        createdAt: at,
+        updatedAt: at,
+        worktreePath: null,
+        branch: null,
+        prNumber: null,
+        attention: { reasons: [], reasonSince: {}, since: null },
+      };
+      setSnapshot({
+        ...state.snapshot,
+        tasks: [task, ...state.snapshot.tasks],
+      });
+      ctx.setUi({ cursor: 0, openTask: id });
+      return id;
+    },
+  };
+  return { actions, withPendingMoves };
 }

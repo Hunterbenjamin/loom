@@ -9,7 +9,7 @@ import { lazy, Suspense, useState } from "react";
 import { issueDecisions } from "../store/issue-actions.js";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor } from "../store/selectors.js";
-import type { TabId } from "../store/store.js";
+import type { TabId } from "../store/ui-state.js";
 import { AttentionChips } from "./bits.js";
 import { since, stageLabel } from "./format.js";
 import { IssueDecisionPanel } from "./issue-decision-panel.js";
