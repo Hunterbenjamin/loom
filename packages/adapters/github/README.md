@@ -44,7 +44,7 @@ heuristic. `run` and `now` are injectable for tests.
   These use GitHub's native review node ID; regular comments use their numeric IDs.
   Outdated inline comments preserve `line: null`, their side, and their commit anchor.
 
-## Repository pull requests (slice 1)
+## Repository pull requests
 
 - `listPullRequests(repo, state)` accepts `open`, `merged`, or `closed` (closed excludes
   merged) and returns newest-first `PullRequestSummary` values. Lists use one GraphQL
@@ -81,9 +81,8 @@ heuristic. `run` and `now` are injectable for tests.
   deletion is deferred until a later call observes the merge; this adapter has no durable
   deferred-action queue. A caller wanting immediate merge-and-delete uses `auto: false`.
 
-Only adapter contracts and fakes are added here. Coordinator polling schedules, protocol
-commands, and UI are later slices. Repository reads use the same ownership and conditional
-polling rules below; they do not create tasks or change workflow stages.
+The [coordinator](../../../apps/coordinator/src/pull-requests.ts) owns subscriptions and polling.
+Repository reads do not create tasks or change workflow stages.
 
 ## Conditional polling
 

@@ -50,7 +50,7 @@ human commands with `runner.input(command)`.
 
 ## Playback rules
 
-- JSON uses the `Scenario`/`Step` shapes from core design §9. Unknown fields, invalid regexes,
+- JSON uses the `Scenario`/`Step` shapes in [src/scenario.ts](src/scenario.ts). Unknown fields, invalid regexes,
   negative durations and unknown tools fail zod validation. Tool payload validation happens at
   the real MCP boundary, so scripts can deliberately expect `invalid_input`.
 - Match on provider, role, mode and optional attempt. An exact attempt match wins; otherwise the
@@ -73,5 +73,4 @@ human commands with `runner.input(command)`.
 
 Tests cover the one-fix-round workflow, crash/retry, dropped delivery, duplicate hints, cooldown,
 human pushes, CI after approval, vanished interactive runs, MCP validation/authentication,
-questions/approvals, snapshot isolation, and adapter idempotency. Run `pnpm test`, `pnpm lint`, and
-`pnpm typecheck` at the repository root. Real-provider tests are unnecessary and were not run.
+questions/approvals, snapshot isolation, and adapter idempotency. These tests use fake providers.
