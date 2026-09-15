@@ -708,7 +708,7 @@ read-only and never becomes an input.
 
 | Tool | Role and stage | Input | Output | Guards (else `guard_failed`) |
 |---|---|---|---|---|
-| `get_task_context` | any run | `{}` | task, role, run, worktree, brief, plan, decisions, handoff, role-filtered findings, test results, answered questions, WORKFLOW commands | — |
+| `get_task_context` | any run | `{full?: boolean}` | First read, epoch change or `full`: `view: "full"` with task, role, run, worktree, brief, plan, decisions, handoff, role-filtered findings, test results, answered questions and WORKFLOW commands. Otherwise `view: "changes"` with the current header, must-act findings and only changed sections. | — |
 | `submit_plan` | planner / `planning` | `{plan: Plan}` | `{planVersion, next}` | Plan has a goal, at least one step and one acceptance criterion |
 | `report_progress` | any current run | `{summary, stepIndex, decisions[], testResults[]}` | `{recorded}` | `stepIndex` null or within the plan; nonempty test results need a fresh git HEAD |
 | `ask_human` | any current run | `{question, options[], blocking}` | `{questionId, delivery: "message"}` | — |

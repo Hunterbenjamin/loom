@@ -1,6 +1,8 @@
 import type {
   Action,
   ActionResult,
+  GetTaskContextFullOutput,
+  GetTaskContextInput,
   GetTaskContextOutput,
   GitWorktreeObservation,
   Input,
@@ -13,7 +15,7 @@ import type {
   TaskState,
   Transition,
 } from "@loom/core";
-import { reconcile } from "@loom/core";
+import { reconcile, taskContextChanges, taskContextFull } from "@loom/core";
 import {
   createMcpServer,
   McpGuardError,
@@ -112,6 +114,10 @@ export class ScenarioRunner {
     { client: Client; close(): Promise<void> }
   >();
   private receipts = new Map<InputId, InputDisposition>();
+  private contextReads = new Map<
+    Run["id"],
+    { sessionEpoch: number; context: GetTaskContextFullOutput }
+  >();
   private inputSequence = 0;
   private pendingInputs: Input[] = [];
   private scheduled = new Set<string>();
@@ -471,7 +477,7 @@ export class ScenarioRunner {
         };
       },
       host: {
-        context: (id) => this.context(id),
+        context: (id, input) => this.context(id, input),
         submit: async (input) => {
           const previous = this.receipts.get(input.id);
           if (previous) return structuredClone(previous);
@@ -504,70 +510,28 @@ export class ScenarioRunner {
     await client.connect(b);
     return client;
   }
-  private context(id: Run["id"]): GetTaskContextOutput {
+  private context(
+    id: Run["id"],
+    input: GetTaskContextInput,
+  ): GetTaskContextOutput {
     const run = this.state.runs.find((r) => r.id === id);
-    const worktree = this.state.worktree;
-    if (!run || !worktree) throw new Error("Missing task context");
+    if (!run) throw new Error("Missing task context");
     const git = this.observations?.git;
-    return {
-      task: {
-        id: this.state.task.id,
-        title: this.state.task.title,
-        description: this.state.task.description,
-        summary: this.state.task.summary,
-        stage: this.state.task.stage,
-        reviewRound: this.state.task.reviewRound,
-        reviewRoundCap: this.state.task.reviewRoundCap,
-      },
-      role: run.role,
-      run: { id, round: run.round, attempts: run.attempts },
-      worktree: {
-        path: worktree.path,
-        branch: worktree.branch,
-        baseBranch: worktree.baseBranch,
-        baseSha: worktree.baseSha,
-        headSha: git?.ok ? git.value.headSha : null,
-      },
+    const current = taskContextFull({
+      state: this.state,
+      runId: id,
+      headSha: git?.ok ? git.value.headSha : null,
       brief: this.state.task.description,
-      plan: this.state.plan
-        ? (({ accepted: _accepted, ...plan }) => plan)(this.state.plan)
-        : null,
-      decisions: String(this.state.artifactContents.decisions ?? ""),
-      handoff: (this.state.artifactContents.handoff ??
-        null) as GetTaskContextOutput["handoff"],
-      findings: this.state.findings
-        .filter((f) =>
-          run.role === "reviewer"
-            ? f.round < run.round || f.source !== "reviewer"
-            : ["open", "escalate", "addressed", "disputed"].includes(f.status),
-        )
-        .map((f) => ({
-          id: f.id,
-          round: f.round,
-          source: f.source,
-          severity: f.severity,
-          blocking: f.blocking,
-          status: f.status,
-          title: f.title,
-          body: f.body,
-          location: f.location
-            ? {
-                path: f.location.path,
-                side: f.location.side,
-                startLine: f.location.startLine,
-                endLine: f.location.endLine,
-                mapping: f.location.status,
-              }
-            : null,
-          snippet: f.anchor?.selectedText ?? null,
-        })),
-      testResults: (this.state.artifactContents.test_results ??
-        []) as GetTaskContextOutput["testResults"],
-      answeredQuestions: this.state.questions.flatMap((q) =>
-        q.answer ? [{ id: q.id, question: q.question, answer: q.answer }] : [],
-      ),
       workflow: {},
-    };
+    });
+    const previous = this.contextReads.get(id);
+    this.contextReads.set(id, {
+      sessionEpoch: run.sessionEpoch,
+      context: current,
+    });
+    return input.full || !previous || previous.sessionEpoch !== run.sessionEpoch
+      ? current
+      : taskContextChanges(previous.context, current);
   }
 }
 export const runScenario = (

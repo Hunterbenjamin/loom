@@ -42,7 +42,7 @@ export function roleBrief(input: BriefInput): string {
     DUTY[role],
     "",
     `Worktree: ${input.worktreePath} (branch ${input.branch}). Round ${round} of at most ${task.reviewRoundCap}.`,
-    "Call `get_task_context` first. It has the brief, the plan, the decisions log, the findings you are allowed to see, previous test results, answered questions and the repo's WORKFLOW commands. It is the only source that stays current.",
+    "Call `get_task_context` first. The first call returns the full role view. Call it again only when Loom says state changed; later calls return the changes and anything you must act on. Use `{ full: true }` to reread everything.",
     `Report through Loom's MCP tools: ${TOOLS[role]}`,
     "Loom moves the task between stages; you never do. Don't merge, don't push to the base branch, and don't edit another task's worktree.",
   ].join("\n");

@@ -112,7 +112,7 @@ const location = z
     "endLine must not precede startLine",
   );
 export const inputSchemas = {
-  get_task_context: z.record(z.string(), z.never()),
+  get_task_context: z.strictObject({ full: z.boolean().optional() }),
   submit_plan: z.strictObject({ plan: planSchema }),
   report_progress: z.strictObject({
     summary: text,
@@ -200,77 +200,120 @@ export const inputSchemas = {
     commitSha: shaSchema.nullable(),
   }),
 };
-export const outputSchemas = {
-  get_task_context: z.strictObject({
-    task: z.strictObject({
-      id: id.transform((v) => v as TaskId),
-      title: text,
-      description: text,
-      summary: text.nullable(),
-      stage,
-      reviewRound: count,
-      reviewRoundCap: line,
-    }),
-    role,
-    run: z.strictObject({ id: runIdSchema, round: count, attempts: line }),
-    worktree: z.strictObject({
-      path: text.startsWith("/").transform((v) => v as WorktreePath),
-      branch: text,
-      baseBranch: text,
-      baseSha: shaSchema,
-      headSha: shaSchema.nullable(),
-      /** The head this review round reviews, and the one the previous round reviewed. */
-      roundHead: shaSchema.nullable().optional(),
-      lastReviewedHead: shaSchema.nullable().optional(),
-    }),
-    brief: text,
-    plan: storedPlanSchema.extend({ version: line }).nullable(),
-    decisions: text,
-    handoff: handoff
-      .extend({
-        reviewerSubmission: z
-          .strictObject({
-            runId: runIdSchema,
-            round: count,
-            input: inputSchemas.submit_review,
-          })
-          .optional(),
-      })
-      .nullable(),
-    findings: z.array(
-      z.strictObject({
-        id: findingIdSchema,
-        round: count,
-        source: text,
-        severity,
-        blocking: z.boolean(),
-        status,
-        title: text,
-        body: text,
-        location: z
-          .strictObject({
-            path: text.nullable(),
-            side,
-            startLine: line.nullable(),
-            endLine: line.nullable(),
-            mapping: z.enum(["exact", "moved", "ambiguous", "outdated"]),
-          })
-          .nullable(),
-        snippet: text.nullable(),
-      }),
-    ),
-    testResults: z.array(
-      testInput.extend({
-        headSha: shaSchema,
-        ranAt: timeSchema,
+const taskContextTaskSchema = z.strictObject({
+  id: id.transform((v) => v as TaskId),
+  title: text,
+  description: text,
+  summary: text.nullable(),
+  stage,
+  reviewRound: count,
+  reviewRoundCap: line,
+});
+const taskContextRunSchema = z.strictObject({
+  id: runIdSchema,
+  round: count,
+  attempts: line,
+});
+const taskContextWorktreeSchema = z.strictObject({
+  path: text.startsWith("/").transform((v) => v as WorktreePath),
+  branch: text,
+  baseBranch: text,
+  baseSha: shaSchema,
+  headSha: shaSchema.nullable(),
+  roundHead: shaSchema.nullable().optional(),
+  lastReviewedHead: shaSchema.nullable().optional(),
+});
+const findingViewSchema = z.strictObject({
+  id: findingIdSchema,
+  round: count,
+  source: text,
+  severity,
+  blocking: z.boolean(),
+  status,
+  title: text,
+  body: text,
+  location: z
+    .strictObject({
+      path: text.nullable(),
+      side,
+      startLine: line.nullable(),
+      endLine: line.nullable(),
+      mapping: z.enum(["exact", "moved", "ambiguous", "outdated"]),
+    })
+    .nullable(),
+  snippet: text.nullable(),
+});
+const testResultSchema = testInput.extend({
+  headSha: shaSchema,
+  ranAt: timeSchema,
+  runId: runIdSchema,
+});
+const answeredQuestionSchema = z.strictObject({
+  id: questionIdSchema,
+  question: text,
+  answer: text,
+});
+const contextHandoffSchema = handoff
+  .extend({
+    reviewerSubmission: z
+      .strictObject({
         runId: runIdSchema,
+        round: count,
+        input: inputSchemas.submit_review,
+      })
+      .optional(),
+  })
+  .nullable();
+const fullContextSchema = z.strictObject({
+  view: z.literal("full"),
+  task: taskContextTaskSchema,
+  role,
+  run: taskContextRunSchema,
+  worktree: taskContextWorktreeSchema,
+  brief: text,
+  plan: storedPlanSchema.extend({ version: line }).nullable(),
+  decisions: text,
+  handoff: contextHandoffSchema,
+  findings: z.array(findingViewSchema),
+  testResults: z.array(testResultSchema),
+  answeredQuestions: z.array(answeredQuestionSchema),
+  workflow: z.record(z.string(), text),
+});
+export const outputSchemas = {
+  get_task_context: z.discriminatedUnion("view", [
+    fullContextSchema,
+    z.strictObject({
+      view: z.literal("changes"),
+      header: z.strictObject({
+        task: taskContextTaskSchema.pick({ stage: true, reviewRound: true }),
+        run: taskContextRunSchema,
+        worktree: taskContextWorktreeSchema.pick({
+          baseSha: true,
+          headSha: true,
+          roundHead: true,
+          lastReviewedHead: true,
+        }),
       }),
-    ),
-    answeredQuestions: z.array(
-      z.strictObject({ id: questionIdSchema, question: text, answer: text }),
-    ),
-    workflow: z.record(z.string(), text),
-  }),
+      mustAct: z.array(
+        findingViewSchema.pick({ id: true, title: true, status: true }),
+      ),
+      task: taskContextTaskSchema.optional(),
+      worktree: taskContextWorktreeSchema.optional(),
+      brief: text.optional(),
+      plan: storedPlanSchema.extend({ version: line }).nullable().optional(),
+      decisions: text.optional(),
+      handoff: contextHandoffSchema.optional(),
+      findings: z
+        .strictObject({
+          changed: z.array(findingViewSchema),
+          noLongerVisible: z.array(findingIdSchema),
+        })
+        .optional(),
+      testResults: z.array(testResultSchema).optional(),
+      answeredQuestions: z.array(answeredQuestionSchema).optional(),
+      workflow: z.record(z.string(), text).optional(),
+    }),
+  ]),
   submit_plan: z.strictObject({
     planVersion: line,
     next: z.enum(["plan_approval", "in_progress"]),
