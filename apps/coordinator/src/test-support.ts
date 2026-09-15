@@ -173,7 +173,7 @@ async function open(
       expectedVersion: fixtureSettings.version,
       data: {
         roles: Object.fromEntries(
-          ([...ROLE_VALUES]).map((role) => {
+          [...ROLE_VALUES].map((role) => {
             const provider =
               config.providerOverrides[role] ?? legacyProviders[role];
             return [

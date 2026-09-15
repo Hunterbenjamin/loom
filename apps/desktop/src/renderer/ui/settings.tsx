@@ -1,5 +1,11 @@
-import { PROVIDER_VALUES, ROLE_VALUES, RUN_MODE_VALUES } from "@loom/core";
-import { type SettingsValues, settingValue } from "@loom/core";
+import type { Provider } from "@loom/core";
+import {
+  PROVIDER_VALUES,
+  ROLE_VALUES,
+  RUN_MODE_VALUES,
+  type SettingsValues,
+  settingValue,
+} from "@loom/core";
 import type { SettingsDocument } from "@loom/protocol";
 import { useState } from "react";
 import { useStore } from "../store/react.js";
@@ -142,7 +148,7 @@ function RoleCell({
   const field = useField(context, `roles.${role}.${setting}`);
   const roles = context.writer.pending;
   const provider = (roles[`roles.${role}.provider`] ??
-    field.document.effective.roles[role].provider) as "codex" | "claude";
+    field.document.effective.roles[role].provider) as Provider;
   const catalog = field.document.modelCatalog.providers[provider];
   if (setting === "provider")
     return (
@@ -150,7 +156,7 @@ function RoleCell({
         field={{
           ...field,
           save: (value) => {
-            const next = value as "codex" | "claude";
+            const next = value as Provider;
             field.save(value, {
               [`roles.${role}.model`]:
                 field.document.modelCatalog.providers[next]?.models[0] ?? "",

@@ -56,20 +56,21 @@ export const STAGE_VALUES = [
 ] as const;
 export type Stage = (typeof STAGE_VALUES)[number];
 
-export type BlockedReason =
+export const BLOCKED_REASON_VALUES = [
   /** A `blockedBy` task isn't merged yet. */
-  | "dependencies"
+  "dependencies",
   /** A blocking `ask_human` question is unanswered. */
-  | "question"
+  "question",
   /** Blocking findings remain after the last allowed review round. */
-  | "review_round_cap"
+  "review_round_cap",
   /** A finding was reopened, or the blocking count didn't drop between rounds. */
-  | "review_not_converging"
+  "review_not_converging",
   /** The run's provider is rate limited until `until`. */
-  | "provider_cooling_down"
+  "provider_cooling_down",
   /** The PR was closed without merging; the human decides whether to cancel. */
-  | "pr_closed";
-
+  "pr_closed",
+] as const;
+export type BlockedReason = (typeof BLOCKED_REASON_VALUES)[number];
 export interface BlockedFlag {
   reason: BlockedReason;
   since: IsoTime;
@@ -102,22 +103,23 @@ export interface ProviderRules {
   reviewer: Provider;
 }
 
-export type AttentionReason =
-  | "plan_needs_approval"
-  | "needs_approval"
-  | "question"
-  | "provider_permission"
-  | "provider_input"
-  | "blocked"
-  | "failed"
+export const ATTENTION_REASON_VALUES = [
+  "plan_needs_approval",
+  "needs_approval",
+  "question",
+  "provider_permission",
+  "provider_input",
+  "blocked",
+  "failed",
   /** An interactive run vanished; only a human relaunches it. */
-  | "run_vanished"
-  | "stalled"
-  | "idle_without_submission"
-  | "status_unknown"
-  | "observability_failure"
-  | "over_budget";
-
+  "run_vanished",
+  "stalled",
+  "idle_without_submission",
+  "status_unknown",
+  "observability_failure",
+  "over_budget",
+] as const;
+export type AttentionReason = (typeof ATTENTION_REASON_VALUES)[number];
 export interface Attention {
   /** Empty means the task doesn't need the human. Sorted. */
   reasons: AttentionReason[];
@@ -165,7 +167,7 @@ export interface Task {
   /** Wall-clock budget; exceeding it adds `over_budget` attention, nothing else. */
   budgetMinutes: number | null;
   /** Task size: 'small' tasks skip planning and reduce reviewer scope. Defaults to 'normal'. */
-  size: "small" | "normal";
+  size: TaskSize;
   createdAt: IsoTime;
   updatedAt: IsoTime;
   /** Set once the worktree exists. (ref: local git; join key) */
@@ -211,19 +213,20 @@ export interface Worktree {
 export const RUN_MODE_VALUES = ["headless", "interactive"] as const;
 export type RunMode = (typeof RUN_MODE_VALUES)[number];
 
-export type RunStatus =
+export const RUN_STATUS_VALUES = [
   /** Launch requested; no provider observation yet. */
-  | "starting"
-  | "working"
+  "starting",
+  "working",
   /** Waiting on something outside the model; see `blockedOn`. */
-  | "blocked"
-  | "idle"
-  | "failed"
+  "blocked",
+  "idle",
+  "failed",
   /** Terminal. See `endReason`. */
-  | "ended"
+  "ended",
   /** No authoritative live channel right now. Never read as idle or failed. */
-  | "unknown";
-
+  "unknown",
+] as const;
+export type RunStatus = (typeof RUN_STATUS_VALUES)[number];
 export const RUN_BLOCKED_ON_VALUES = [
   "permission",
   "input",
@@ -307,7 +310,7 @@ export interface Run {
   provider: Provider;
   mode: RunMode;
   /** `external`: a session started by hand in this worktree. Observe-only; Loom never controls it. */
-  origin: "loom" | "external";
+  origin: RunOrigin;
   worktreePath: WorktreePath;
   /** The review round this run belongs to (0 for the planner and the first implementer run). */
   round: number;
@@ -350,7 +353,7 @@ export interface Run {
   restartInterruption?: {
     turnId: string;
     recordedAt: IsoTime;
-    outcome: "continued" | "completed" | "not_needed" | null;
+    outcome: RestartOutcome | null;
     decidedAt: IsoTime | null;
   } | null;
   /** (cache: provider) */
@@ -360,7 +363,7 @@ export interface Run {
   pendingDialog?: {
     requestId?: string;
     command?: string;
-    kind: "permission" | "input";
+    kind: DialogKind;
     tool: string;
     at: IsoTime;
   } | null;
@@ -411,15 +414,16 @@ export const MESSAGE_PURPOSE_VALUES = [
 ] as const;
 export type MessagePurpose = (typeof MESSAGE_PURPOSE_VALUES)[number];
 
-export type MessageStatus =
+export const MESSAGE_STATUS_VALUES = [
   /** Recorded; no send action has succeeded yet. */
-  | "pending"
+  "pending",
   /** The transport accepted it (`pasteText` wrote it, a `turn/start` response). Not proof of delivery. */
-  | "sent"
+  "sent",
   /** The provider confirmed it (Codex `turn/started`, Claude `UserPromptSubmit`). */
-  | "delivered"
-  | "failed";
-
+  "delivered",
+  "failed",
+] as const;
+export type MessageStatus = (typeof MESSAGE_STATUS_VALUES)[number];
 export type DeliveryConfirmation =
   | { via: "codex_turn_started"; turnId: string }
   | { via: "codex_user_message_item"; turnId: string }
@@ -440,7 +444,7 @@ export interface Message {
   purpose: MessagePurpose;
   text: string;
   /** Whether Loom may deliver during the current turn. */
-  when: "now" | "after_turn";
+  when: MessageWhen;
   /** Coordinator-resolved local images for Codex native input. */
   images?: string[];
   /** sha256 of the text after the provider's normalization (tab → 4 spaces, CRLF → LF). */
@@ -499,7 +503,7 @@ export interface Artifact {
   /** Relative to the data directory. */
   path: string;
   sha256: string;
-  createdBy: "human" | "coordinator" | { runId: RunId };
+  createdBy: ArtifactAuthor | { runId: RunId };
   createdAt: IsoTime;
 }
 
@@ -564,20 +568,22 @@ export type FindingSource = (typeof FINDING_SOURCE_VALUES)[number];
 export const SEVERITY_VALUES = ["blocker", "major", "minor", "nit"] as const;
 export type Severity = (typeof SEVERITY_VALUES)[number];
 /** Agent- and human-facing state. Kept apart from `MappingStatus`. */
-export type FindingStatus =
-  | "open"
+export const FINDING_STATUS_VALUES = [
+  "open",
   /** The implementer says a commit fixes it; the next reviewer verifies. */
-  | "addressed"
+  "addressed",
   /** The implementer disagrees; the next reviewer or the human decides. */
-  | "disputed"
-  | "resolved"
+  "disputed",
+  "resolved",
   /** Reviewer committed an inline fix. */
-  | "fixed"
+  "fixed",
   /** Reviewer requires an implementer fix round; resolution.note records why. */
-  | "escalate"
+  "escalate",
   /** A human accepted it as is. */
-  | "waived";
-/** Where the anchor points on the current head. `outdated` never resolves a finding. */
+  "waived",
+] as const;
+export type FindingStatus =
+  (typeof FINDING_STATUS_VALUES)[number]; /** Where the anchor points on the current head. `outdated` never resolves a finding. */
 export const MAPPING_STATUS_VALUES = [
   "exact",
   "moved",
@@ -623,7 +629,7 @@ export interface FindingLocation {
 }
 
 export interface FindingResolution {
-  by: "implementer" | "reviewer" | "human" | "ci";
+  by: FindingResolver;
   note: string;
   commitSha: Sha | null;
   at: IsoTime;
@@ -671,7 +677,7 @@ export type CiConclusion = (typeof CI_CONCLUSION_VALUES)[number];
 
 export interface CiCheck {
   name: string;
-  status: "queued" | "in_progress" | "completed";
+  status: CiCheckStatus;
   conclusion: string | null;
   url: string | null;
   /** GitHub adapter: stable check-run ID (stringified); never synthesize from name/head. */
@@ -713,7 +719,7 @@ export type Approval =
       findings: FindingsSnapshot;
       ci: CiState;
       /** Who authorized the exact-head approval. */
-      approvedBy: "human" | "policy";
+      approvedBy: ApprovalAuthor;
       createdAt: IsoTime;
       voidedAt: IsoTime | null;
       voidReason: ApprovalVoidReason | null;
@@ -750,7 +756,7 @@ export interface Transition {
 export interface TaskNote {
   id: string;
   taskId: string | null;
-  author: "main" | "lead" | "human";
+  author: TaskNoteAuthor;
   at: string;
   eventId: string;
   row: string;
@@ -790,3 +796,45 @@ export function summarizeTask(
 
   return firstSentence;
 }
+
+export const TASK_SIZE_VALUES = ["small", "normal"] as const;
+export type TaskSize = (typeof TASK_SIZE_VALUES)[number];
+export const RUN_ORIGIN_VALUES = ["loom", "external"] as const;
+export type RunOrigin = (typeof RUN_ORIGIN_VALUES)[number];
+export const RESTART_OUTCOME_VALUES = [
+  "continued",
+  "completed",
+  "not_needed",
+] as const;
+export type RestartOutcome = (typeof RESTART_OUTCOME_VALUES)[number];
+export const DIALOG_KIND_VALUES = ["permission", "input"] as const;
+export type DialogKind = (typeof DIALOG_KIND_VALUES)[number];
+export const MESSAGE_WHEN_VALUES = ["now", "after_turn"] as const;
+export type MessageWhen = (typeof MESSAGE_WHEN_VALUES)[number];
+export const ARTIFACT_AUTHOR_VALUES = ["human", "coordinator"] as const;
+export type ArtifactAuthor = (typeof ARTIFACT_AUTHOR_VALUES)[number];
+export const FINDING_RESOLVER_VALUES = [
+  "implementer",
+  "reviewer",
+  "human",
+  "ci",
+] as const;
+export type FindingResolver = (typeof FINDING_RESOLVER_VALUES)[number];
+export const CI_CHECK_STATUS_VALUES = [
+  "queued",
+  "in_progress",
+  "completed",
+] as const;
+export type CiCheckStatus = (typeof CI_CHECK_STATUS_VALUES)[number];
+export const APPROVAL_AUTHOR_VALUES = ["human", "policy"] as const;
+export type ApprovalAuthor = (typeof APPROVAL_AUTHOR_VALUES)[number];
+export const TASK_NOTE_AUTHOR_VALUES = ["main", "lead", "human"] as const;
+export type TaskNoteAuthor = (typeof TASK_NOTE_AUTHOR_VALUES)[number];
+export const SEND_VIA_VALUES = [
+  "codex_turn_start",
+  "codex_turn_steer",
+  /** Paste into the run's pane, then Enter. Never proof of delivery. */
+  "pane_paste",
+  "claude_sdk",
+] as const;
+export type SendVia = (typeof SEND_VIA_VALUES)[number];

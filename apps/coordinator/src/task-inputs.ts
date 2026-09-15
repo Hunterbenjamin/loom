@@ -1,4 +1,3 @@
-import { ROLE_VALUES } from "@loom/core";
 // Task creation and human inputs shared by the coordinator API and protocol commands.
 import { randomUUID } from "node:crypto";
 import type {
@@ -14,6 +13,7 @@ import type {
   TaskId,
   TaskState,
 } from "@loom/core";
+import { ROLE_VALUES } from "@loom/core";
 import type { Store } from "@loom/store";
 import type { CoordinatorConfig } from "./config.js";
 import type { Loop } from "./loop.js";
@@ -62,7 +62,7 @@ export class TaskInputs {
       reviewRound: 0,
       reviewRoundCap: settings.workflow.reviewRoundCap,
       roleProfiles: Object.fromEntries(
-        ([...ROLE_VALUES]).map((role) => {
+        [...ROLE_VALUES].map((role) => {
           const profile = settings.roles[role];
           const provider = input.providers?.[role] ?? profile.provider;
           return [

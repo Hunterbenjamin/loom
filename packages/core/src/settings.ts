@@ -1,5 +1,5 @@
-import { ROLE_VALUES } from "./entities.js";
 import type { Provider, Role, RunMode } from "./entities.js";
+import { ROLE_VALUES } from "./entities.js";
 import {
   DEFAULT_KEYBINDINGS,
   KEYBINDING_ACTIONS,

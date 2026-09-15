@@ -1,10 +1,10 @@
-import { ROLE_VALUES } from "@loom/core";
 // Offline diagnostics read coordinator-owned records; no provider observation or reconciliation.
 import { stripVTControlCharacters } from "node:util";
 import {
   displayName,
   type FindingStatus,
   issueKey,
+  ROLE_VALUES,
   type Role,
   sumTokenUsage,
   type TaskId,

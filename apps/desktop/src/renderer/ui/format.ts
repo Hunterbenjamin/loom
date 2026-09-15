@@ -1,4 +1,3 @@
-import { STAGE_VALUES } from "@loom/core";
 import type {
   AttentionReason,
   IsoTime,
@@ -6,6 +5,7 @@ import type {
   Stage,
   TokenCounts,
 } from "@loom/core";
+import { STAGE_VALUES } from "@loom/core";
 
 export const STAGES: Stage[] = [...STAGE_VALUES];
 
