@@ -44,9 +44,6 @@ export const repoSchema = contract<Repo>()(
     id,
     root: text,
     github: text,
-    baseBranch: text,
-    defaultProviders: providerRules,
-    serialTests: z.boolean(),
   }),
 );
 const attentionReason = z.enum([

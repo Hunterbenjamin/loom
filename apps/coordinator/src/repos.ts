@@ -1,5 +1,10 @@
 import { realpath, stat } from "node:fs/promises";
-import type { Repo, RepoId, WorktreePath } from "@loom/core";
+import type {
+  Repo,
+  RepoId,
+  SettingsPatch,
+  WorktreePath,
+} from "@loom/core";
 import type { Store } from "@loom/store";
 
 /** Shared by the offline CLI registration and the live protocol command. */
@@ -7,7 +12,9 @@ export async function registerRepo(
   store: Store,
   root: string,
   github: string,
-  baseBranch: string,
+  baseBranch: string | undefined,
+  effectiveBaseBranch: string,
+  changedAt: string,
 ): Promise<Repo> {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(github))
     throw new Error("Expected owner/name");
@@ -29,14 +36,24 @@ export async function registerRepo(
     id,
     root: path as WorktreePath,
     github,
-    baseBranch,
-    defaultProviders: {
-      planner: "claude",
-      implementer: "claude",
-      reviewer: "codex",
-    },
-    serialTests: false,
   };
   store.putRepo(repo);
+  if (baseBranch !== undefined && baseBranch !== effectiveBaseBranch) {
+    const data: SettingsPatch = { repository: { baseBranch } };
+    store.settings.update({
+      scope: { kind: "repository", repoId: id },
+      expectedVersion: 0,
+      data,
+      actor: "registration",
+      changedAt,
+      changes: [
+        {
+          key: "repository.baseBranch",
+          oldValue: undefined,
+          newValue: baseBranch,
+        },
+      ],
+    });
+  }
   return repo;
 }

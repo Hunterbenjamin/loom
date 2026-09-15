@@ -5,6 +5,33 @@ import { expect, test, vi } from "vitest";
 import { writeCodexHomeConfig } from "./launch.js";
 import { createHarness, ScenarioDriver } from "./test-support.js";
 
+const updateRole = (
+  h: Awaited<ReturnType<typeof createHarness>>,
+  role: "planner" | "implementer" | "reviewer",
+  value: {
+    provider?: "codex" | "claude";
+    model?: string;
+    reasoningEffort?: "medium" | null;
+  },
+) => {
+  const scope = { kind: "repository" as const, repoId: h.repo.id };
+  const current = h.store.settings.read(scope);
+  h.store.settings.update({
+    scope,
+    expectedVersion: current.version,
+    data: {
+      ...current.data,
+      roles: {
+        ...current.data.roles,
+        [role]: { ...current.data.roles?.[role], ...value },
+      },
+    },
+    actor: "test",
+    changedAt: h.clock.now(),
+    changes: [],
+  });
+};
+
 test.each(["interactive", "headless"] as const)(
   "all Codex roles use configured settings with %s launches and recovery",
   async (mode) => {
@@ -144,7 +171,11 @@ test("restart replaces Claude with Sol on the same dirty worktree and retires fi
     expect(old.provider).toBe("claude");
     const file = join(before.worktree.path, "unfinished.txt");
     await writeFile(file, "keep this work\n");
-    h.config.providerOverrides.planner = "codex";
+    updateRole(h, "planner", {
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "medium",
+    });
     expect(old.mode).toBe("interactive");
     expect(old.pane).not.toBeNull();
     const closed = vi.spyOn(h.paneHost, "closePane");
@@ -216,7 +247,7 @@ test("replacement waits through failed retirement and restart, then uses its cap
     const before = h.store.loadTaskState(created.task.id);
     const old = before.runs.find((r) => r.role === "implementer");
     if (!old?.pane) throw new Error("Missing interactive run");
-    h.config.models.codex = "gpt-5.6-sol";
+    updateRole(h, "implementer", { model: "gpt-5.6-sol" });
     const close = vi
       .spyOn(h.paneHost, "closePane")
       .mockRejectedValueOnce(new Error("temporary pane failure"));

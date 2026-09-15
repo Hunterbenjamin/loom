@@ -96,6 +96,10 @@ export interface ExecutorDeps {
   shell: Shell;
   repo(taskId: TaskId): Repo;
   repoById(repoId: RepoId): Repo;
+  repositorySettings(repoId: RepoId): {
+    baseBranch: string;
+    serialTests: boolean;
+  };
   /** Enqueue `reconcile(taskId)` at a time, for a `schedule` action. */
   schedule(taskId: TaskId, at: string, why: string): void;
   notify(level: "info" | "attention", title: string, body: string): void;
@@ -180,7 +184,7 @@ export class Executor {
         if (
           pr.state === "open" ||
           pr.head === pr.base ||
-          pr.head === repo.baseBranch
+          pr.head === this.deps.repositorySettings(repo.id).baseBranch
         )
           throw new PreconditionFailed(
             "Only a merged or closed PR's non-base branch can be deleted",
@@ -504,7 +508,7 @@ export class Executor {
       case "push_branch": {
         const baseBranch =
           state.worktree?.baseBranch ??
-          this.deps.repo(action.taskId).baseBranch;
+          this.deps.repositorySettings(state.task.repoId).baseBranch;
         if (action.branch === baseBranch)
           throw new Fatal("Refusing to push the repository base branch");
         // The remote may already be at this SHA, from an earlier attempt of the same intent.
