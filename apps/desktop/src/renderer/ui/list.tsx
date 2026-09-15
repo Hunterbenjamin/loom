@@ -1,6 +1,7 @@
 import { displayName } from "@loom/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useEffect, useMemo, useRef } from "react";
+import { finishedKey } from "../store/pane-transitions.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import {
   cursorRows,
@@ -159,6 +160,8 @@ function Row({
   const { task } = item.row;
   const repos = useStore((s) => s.snapshot.repos);
   const now = useStore((s) => s.snapshot.now);
+  const run = item.row.run;
+  const read = useStore((s) => !!run && s.readFinished.has(finishedKey(run)));
   return (
     <ListRow
       cursor={index === cursor}
@@ -171,7 +174,7 @@ function Row({
         task.stage === "ci" ? (
           <CiDot ci={item.row.ci} />
         ) : (
-          <RunDot run={item.row.run} />
+          <RunDot run={run} stage={task.stage} read={read} />
         )
       }
       title={`${task.title} — ${item.row.summary}`}

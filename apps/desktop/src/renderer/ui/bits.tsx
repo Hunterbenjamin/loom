@@ -1,4 +1,4 @@
-import type { Run, Task } from "@loom/core";
+import type { Run, Stage, Task } from "@loom/core";
 import type { TaskInbox } from "@loom/protocol";
 import { memo } from "react";
 import { agentState } from "../workbench/agents.js";
@@ -27,16 +27,40 @@ export function AttentionChips({ task }: { task: Task }) {
 }
 
 /** The same glyph set as the Workbench sidebar: spinner, red, blue, hollow circle. */
-export const RunDot = memo(function RunDot({ run }: { run: Run | null }) {
+export const RunDot = memo(function RunDot({
+  run,
+  stage,
+  read = false,
+}: {
+  run: Run | null;
+  /** A Done or Canceled issue needs nothing more, so it is always grey. */
+  stage?: Stage;
+  /** Whether the human has seen this run's finished turn; blue means unread. */
+  read?: boolean;
+}) {
   if (!run) return <span className="dot faint" title="No run" />;
   return (
     <span
       title={`${run.role} · ${run.provider} · ${RUN_STATUS_LABELS[run.status]}`}
     >
-      <Status state={agentState(run) as Indicator} />
+      <Status state={runDotState(run, stage, read)} />
     </span>
   );
 });
+
+function runDotState(run: Run, stage: Stage | undefined, read: boolean) {
+  if (stage === "done" || stage === "canceled")
+    return {
+      tone: "idle",
+      icon: "○",
+      label: stage === "done" ? "Done" : "Canceled",
+      priority: 5,
+    } satisfies Indicator;
+  const state = agentState(run) as Indicator;
+  return state.tone === "finished" && read
+    ? { ...state, tone: "idle", icon: "○" }
+    : state;
+}
 
 export function CiDot({ ci }: { ci: TaskInbox["ci"] | null }) {
   if (!ci || ci.conclusion === null || ci.conclusion === "pending")
