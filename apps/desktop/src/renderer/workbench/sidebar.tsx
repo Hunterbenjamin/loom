@@ -2,6 +2,7 @@ import type { PaneIdentity, PaneView } from "@loom/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { paneKey } from "../store/pane-transitions.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { conversationIndicator } from "./agents.js";
 import { devControlActions, useDevControlAvailable } from "./dev-controls.js";
 import { RenameRow } from "./rename-row.js";
 import { RowMenu } from "./row-menu.js";
@@ -13,42 +14,6 @@ import {
   workbenchSessions,
 } from "./selectors.js";
 import { Status } from "./status.js";
-
-function pinnedState(status: string, finished = false): Indicator {
-  const tone =
-    finished && status === "idle"
-      ? "finished"
-      : status === "waiting"
-        ? "waiting"
-        : status === "error"
-          ? "failed"
-          : status === "stopped"
-            ? "idle"
-            : status;
-  const icon =
-    tone === "finished"
-      ? "●"
-      : tone === "working"
-        ? "◌"
-        : tone === "waiting"
-          ? "●"
-          : tone === "idle"
-            ? "○"
-            : tone === "failed"
-              ? "!"
-              : "?";
-  return {
-    tone,
-    icon,
-    label:
-      tone === "finished"
-        ? "Finished"
-        : status === "waiting"
-          ? "Needs you"
-          : status,
-    priority: 0,
-  };
-}
 
 export function Sidebar({
   filter,
@@ -364,7 +329,9 @@ export function Sidebar({
               onClick={() => openPinned("main")}
               title={lead.reason ?? "Open Main terminal"}
             >
-              <Status state={pinnedState(lead.status, mainFinished)} />
+              <Status
+                state={conversationIndicator(lead.status, mainFinished)}
+              />
               <span className="wb-row-copy">
                 <strong>Main</strong>
                 <small>{lead.status}</small>

@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
 import { ChatWindow } from "../chat/chat-window.js";
-import { inboxRows } from "../store/inbox.js";
 import { readyToMergeCount } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { useWindowMode } from "../window-mode.js";
+import { conversationIndicator } from "../workbench/agents.js";
 import { ChimeMuteButton } from "../workbench/chime.js";
 import { attentionPanes } from "../workbench/selectors.js";
+import { Status } from "../workbench/status.js";
 
 export function LeadBar({
   onAttention,
@@ -25,7 +26,7 @@ export function LeadBar({
   const connection = useStore((s) => s.connection);
   const instance = useStore((s) => s.instance);
   const readyCount = useStore(readyToMergeCount);
-  const count = useStore((s) => inboxRows(s).length);
+  const unread = useStore((s) => s.mainFinished);
   const status = useStore((s) => s.lead.status);
   const statusReason = useStore((s) => s.lead.reason);
   const repo = useStore((s) => s.ui.repo);
@@ -100,12 +101,11 @@ export function LeadBar({
           ref={toggle}
           type="button"
           className="lead-toggle"
-          title={statusReason ?? undefined}
+          title={statusReason ?? conversationIndicator(status, unread).label}
           aria-expanded={active && mainOpen}
           onClick={() => store.toggleMainChat()}
         >
-          <span className={`chat-status ${status}`} /> Main{" "}
-          <span className="lead-badge">{count}</span>
+          <Status state={conversationIndicator(status, unread)} /> Main
           <kbd>⌘J</kbd>
         </button>
       </footer>

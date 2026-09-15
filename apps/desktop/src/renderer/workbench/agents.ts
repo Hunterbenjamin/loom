@@ -133,3 +133,47 @@ export function terminalAgents(
         a.state.priority - b.state.priority || a.name.localeCompare(b.name),
     );
 }
+
+/**
+ * The indicator for a conversation's status (Main or an agent chat), wherever it appears: the
+ * Workbench sidebar, the bottom bar and the chat header. The working spinner, a finished dot while
+ * the last reply is unread, a waiting dot when it needs an answer, and idle otherwise.
+ */
+export function conversationIndicator(
+  status: string,
+  unread = false,
+): Indicator {
+  const tone =
+    unread && status === "idle"
+      ? "finished"
+      : status === "waiting"
+        ? "waiting"
+        : status === "error"
+          ? "failed"
+          : status === "stopped"
+            ? "idle"
+            : status;
+  const icon =
+    tone === "finished"
+      ? "●"
+      : tone === "working"
+        ? "◌"
+        : tone === "waiting"
+          ? "●"
+          : tone === "idle"
+            ? "○"
+            : tone === "failed"
+              ? "!"
+              : "?";
+  return {
+    tone,
+    icon,
+    label:
+      tone === "finished"
+        ? "Finished"
+        : status === "waiting"
+          ? "Needs you"
+          : status,
+    priority: 0,
+  };
+}
