@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 import {
-  fixture,
   fixed,
-  head,
+  fixture,
+  type head,
   mcp,
   reviewCall,
   submit,

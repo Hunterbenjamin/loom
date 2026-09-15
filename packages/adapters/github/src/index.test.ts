@@ -807,14 +807,7 @@ describe("PR body replacement", () => {
     };
     fake.set(pr, current);
     fake.mutate(async (args, input) => {
-      expect(args).toEqual([
-        "api",
-        "--method",
-        "PATCH",
-        pr,
-        "--input",
-        "-",
-      ]);
+      expect(args).toEqual(["api", "--method", "PATCH", pr, "--input", "-"]);
       expect(JSON.parse(input ?? "{}")).toEqual({ body: update.body });
       fake.set(pr, { ...current, body: update.body });
       return ok();

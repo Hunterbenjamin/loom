@@ -628,7 +628,9 @@ export class FakeGitHub implements GitHubAdapter {
     }
     return { number: this.pr.number, url: this.pr.url };
   };
-  updatePullRequestBody: GitHubAdapter["updatePullRequestBody"] = async (req) => {
+  updatePullRequestBody: GitHubAdapter["updatePullRequestBody"] = async (
+    req,
+  ) => {
     this.scope(req.repo, req.branch);
     const pr = this.requirePr(req.number);
     if (pr.state !== "open" || pr.headSha !== req.expectedHeadSha)

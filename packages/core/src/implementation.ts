@@ -46,9 +46,7 @@ export function implementationBody(
     "## Tests",
     implementation?.testResults.length
       ? implementation.testResults
-          .map(
-            (test) => `- ${test.outcome}: ${test.command} — ${test.summary}`,
-          )
+          .map((test) => `- ${test.outcome}: ${test.command} — ${test.summary}`)
           .join("\n")
       : "No test results reported for this submission.",
   ].join("\n\n");

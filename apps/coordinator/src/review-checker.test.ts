@@ -91,9 +91,9 @@ test.each(["reviewer-checker", "reviewer-inline", "reviewer-dirty"])(
       expect(pushes.every((row) => row.status === "succeeded")).toBe(true);
       h = await h.restart();
       await h.coordinator.settle();
-      expect(
-        latestImplementation(h.store.loadTaskState(task.task.id)),
-      ).toEqual(implementation);
+      expect(latestImplementation(h.store.loadTaskState(task.task.id))).toEqual(
+        implementation,
+      );
       expect(h.store.loadTaskState(task.task.id).review).toEqual(state.review);
       expect(
         h.store.outbox
