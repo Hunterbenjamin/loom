@@ -112,7 +112,7 @@ test("status glyphs have accessible labels without icon chrome", async () => {
       ]),
     ).toEqual([
       ["○", "Idle"],
-      ["●", "Blocked / needs you"],
+      ["●", "Blocked"],
       ["●", "Ended"],
       ["!", "Failed"],
       ["?", "Status unavailable"],

@@ -1,5 +1,8 @@
 import { type Run, runLabel } from "@loom/core";
 import type { PaneIdentity, PaneView } from "@loom/protocol";
+import { agentIndicator, agentState, type Indicator } from "./agents.js";
+
+export type { Indicator } from "./agents.js";
 
 export const sameTerminal = (a: PaneIdentity, b: PaneIdentity) =>
   a.hostGeneration === b.hostGeneration &&
@@ -17,21 +20,6 @@ export const terminalName = (pane: PaneView) =>
         pane.command ||
         `Terminal ${pane.paneId.slice(1)}`;
 
-const indicators = {
-  waiting: { tone: "waiting", icon: "●", label: "Needs you", priority: 0 },
-  failed: { tone: "failed", icon: "!", label: "Failed", priority: 1 },
-  unknown: {
-    tone: "unknown",
-    icon: "?",
-    label: "Status unavailable",
-    priority: 2,
-  },
-  working: { tone: "working", icon: "◌", label: "Working", priority: 3 },
-  finished: { tone: "finished", icon: "●", label: "Finished", priority: 4 },
-  idle: { tone: "idle", icon: "○", label: "Idle", priority: 5 },
-};
-export type Indicator = (typeof indicators)[keyof typeof indicators];
-
 /** Only published provider status and coordinator attention determine the indicator. */
 export function paneIndicator(pane: PaneView, run?: Run): Indicator {
   const recorded =
@@ -41,35 +29,27 @@ export function paneIndicator(pane: PaneView, run?: Run): Indicator {
     run.pane.paneId === pane.paneId
       ? run
       : undefined;
-  if (pane.attention || pane.status === "blocked")
-    return {
-      ...indicators.waiting,
-      label:
-        recorded?.blockedOn === "permission"
-          ? "Needs you: permission"
-          : pane.status === "blocked"
-            ? "Blocked / needs you"
-            : "Needs you",
-    };
-  if (pane.unavailable) return indicators.unknown;
+  if (pane.attention)
+    return recorded?.status === "blocked"
+      ? agentState(recorded)
+      : agentIndicator("blocked", { blockedOn: "input" });
+  if (pane.unavailable) return agentIndicator("unknown");
   if (
+    pane.status === "starting" ||
+    pane.status === "working" ||
+    pane.status === "blocked" ||
+    pane.status === "idle" ||
     pane.status === "failed" ||
-    (pane.status === "ended" && recorded?.endReason === "crashed")
+    pane.status === "ended" ||
+    pane.status === "unknown"
   )
-    return indicators.failed;
-  if (pane.status === "unknown") return indicators.unknown;
-  if (pane.status === "working" || pane.status === "starting")
-    return {
-      ...indicators.working,
-      label: pane.status === "starting" ? "Starting" : "Working",
-    };
-  if (pane.status === "ended")
-    return { ...indicators.finished, label: "Ended" };
-  if (pane.status === "idle" && recorded?.lastTurn?.outcome === "completed")
-    return { ...indicators.finished, label: "Finished turn" };
-  if (pane.status === "idle" || (pane.status === null && !pane.runId))
-    return indicators.idle;
-  return indicators.unknown;
+    return agentIndicator(pane.status, {
+      blockedOn: recorded?.blockedOn,
+      endReason: recorded?.endReason,
+      finishedTurn: recorded?.lastTurn?.outcome === "completed",
+    });
+  if (pane.status === null && !pane.runId) return agentIndicator("idle");
+  return agentIndicator("unknown");
 }
 
 export const paneName = (pane: PaneView) =>
@@ -96,7 +76,7 @@ const pinned = (pane: PaneView) =>
 const rollup = (states: Indicator[]) =>
   states.reduce(
     (worst, state) => (state.priority < worst.priority ? state : worst),
-    indicators.idle,
+    agentIndicator("idle"),
   );
 const fuzzyMatch = (text: string, words: string[]) =>
   words.every((word) => {
@@ -143,7 +123,7 @@ export function spaces(
     );
     return state.tone === "finished" &&
       read?.has(JSON.stringify([pane.hostGeneration, pane.paneId]))
-      ? indicators.idle
+      ? agentIndicator("idle")
       : state;
   };
   const groups = new Map<string, TreeSpace>();
@@ -175,7 +155,7 @@ export function spaces(
             : null,
         branch: pane.branch,
         tabs: [],
-        indicator: indicators.idle,
+        indicator: agentIndicator("idle"),
       };
       groups.set(key, space);
     }
@@ -205,7 +185,7 @@ export function spaces(
             "Tab"),
         windowName: pane.windowName || pane.windowId || "Tab",
         panes: [],
-        indicator: indicators.idle,
+        indicator: agentIndicator("idle"),
       };
       tabs.set(windowKey, tab);
       space.tabs.push(tab);
