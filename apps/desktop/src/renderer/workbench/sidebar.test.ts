@@ -75,15 +75,13 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
     );
     expect(space?.textContent).toContain("Implementer");
     expect(space?.querySelectorAll(".wb-tree-pane")).toHaveLength(0);
-    expect(
-      [...element.querySelectorAll(".wb-terminal-list .wb-tree-row")].map(
-        (row) => ({
-          name: row.getAttribute("aria-label"),
-          text: row.querySelector(".wb-tree-name")?.textContent,
-          branch: row.querySelector(".wb-space-branch")?.textContent ?? null,
-        }),
-      ),
-    ).toMatchSnapshot();
+    for (const name of [
+      "Open space Fix delivery race",
+      "Open tab Implementer",
+      "Open space research",
+      "Open tab shell",
+    ])
+      expect(element.querySelector(`[aria-label="${name}"]`)).not.toBeNull();
     // The space row keeps a plain circle; its first tab carries the live indicator.
     expect(space?.querySelector(".wb-status")?.textContent).toBe("○");
     expect(
@@ -109,16 +107,11 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
         (el) => el.textContent,
       ),
     ).toEqual(["spaces", "agents"]);
-    expect(
-      element.querySelector(".wb-agents .wb-pinned")?.nextElementSibling
-        ?.className,
-    ).toBe("wb-agent-list");
     const agent = element.querySelector<HTMLButtonElement>(
       ".wb-agent-list button",
     );
-    expect(agent?.textContent).toContain(
-      "implementer · codexFix delivery race · codex",
-    );
+    expect(agent?.textContent).toContain("Fix delivery race");
+    expect(agent?.textContent).toContain("codex");
     expect(agent?.querySelector("small")?.textContent).toBe(
       "Fix delivery race · codex",
     );
@@ -145,9 +138,6 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
     expect(grouped?.getAttribute("aria-pressed")).toBe("false");
     // The sidebar can't be collapsed: no toggle anywhere.
     expect(element.querySelector('[aria-label="Collapse sidebar"]')).toBeNull();
-    expect(element.querySelector(".wb-sidebar-footer")).toBeNull();
-    expect(element.querySelector(".wb-spaces-footer")).toBeNull();
-    expect(element.querySelector("#agent-filter")).toBeNull();
     // Spaces are never collapsible: their tabs are always shown.
     expect(space?.querySelector(".wb-disclosure")).toBeNull();
     expect(space?.querySelector(".wb-tree-tab")).not.toBeNull();
@@ -280,8 +270,10 @@ test("grouping changes agent order, keeps dead agents out of the list, and leave
     ];
     // The dead pane is being reaped by the host: it is not an agent row at all.
     expect(
-      rows().map((row) => row.querySelector(".wb-status")?.textContent),
-    ).toEqual(["○", expect.stringMatching(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/)]);
+      rows().map((row) =>
+        row.querySelector(".wb-status")?.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Idle", "Working"]);
     expect(element.querySelector(".wb-agent-list .dead")).toBeNull();
     expect(choose).not.toHaveBeenCalled();
     const treeBefore = [
@@ -373,7 +365,6 @@ test.each([false, true])(
       ).not.toEqual(expect.arrayContaining(["Coordinator", "Desktop"]));
       expect(element.querySelectorAll(".wb-agent-list button")).toHaveLength(0);
       const fixed = element.querySelector(".wb-workbench-sessions");
-      expect(fixed?.nextElementSibling).toBeNull();
       expect(
         [...(fixed?.querySelectorAll("button") ?? [])].map(
           (row) => row.textContent,

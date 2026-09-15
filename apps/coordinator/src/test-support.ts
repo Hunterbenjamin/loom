@@ -565,13 +565,15 @@ export class ScenarioDriver {
     const { providers, github, store } = this.harness;
     if ("tool" in step) {
       const state = store.loadTaskState(p.taskId);
+      // Scenario substitution only needs HEAD, not status, mergeability or ancestry. The
+      // coordinator still performs its complete owner read when validating the MCP call.
       const head = state.worktree
-        ? ((
-            await this.harness.adapters.git.readWorktree(
-              state.worktree.path,
-              state.worktree.baseBranch,
-            )
-          ).headSha ?? null)
+        ? (
+            await exec("git", ["rev-parse", "HEAD"], {
+              cwd: state.worktree.path,
+              env: { ...process.env, ...GIT_ENVIRONMENT },
+            })
+          ).stdout.trim()
         : null;
       const input = substitute(step.input, {
         head,

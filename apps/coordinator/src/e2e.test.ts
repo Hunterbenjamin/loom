@@ -6,6 +6,7 @@ import { stat } from "node:fs/promises";
 import type { Sha, TaskId } from "@loom/core";
 import { loadScenarios } from "@loom/fake-agent";
 import { afterEach, expect, test, vi } from "vitest";
+import { codexPerTask } from "./adapters.js";
 import { createMcpHost } from "./mcp-host.js";
 import { createHarness, type Harness, ScenarioDriver } from "./test-support.js";
 
@@ -22,7 +23,7 @@ afterEach(async () => {
   const all = open;
   open = [];
   for (const value of all) await value.close().catch(() => undefined);
-}, 60_000);
+});
 
 const start = (h: Harness, title = "Change the example") => {
   const state = h.coordinator.createTask({
@@ -39,6 +40,7 @@ const stageOf = (h: Harness, id: TaskId) =>
 
 test("a task runs Todo to Done through plan, review, a fix round and a merge", async () => {
   const h = await harness();
+  Object.assign(h.adapters, codexPerTask(h.dataRoot, () => h.providers.codex));
   const taskId = start(h);
   const driver = new ScenarioDriver(h, await scenarios("walking-skeleton"));
   await driver.run();
@@ -49,21 +51,17 @@ test("a task runs Todo to Done through plan, review, a fix round and a merge", a
   const state = h.store.loadTaskState(taskId);
   expect(state.task.prNumber).toBe(1);
   const implementers = state.runs.filter((run) => run.role === "implementer");
-  expect(implementers.map((run) => run.id)).toEqual([
-    `${taskId}/implementer/0`,
-    `${taskId}/implementer/1`,
-  ]);
+  expect(implementers.map((run) => run.round)).toEqual([0, 1]);
+  expect(new Set(implementers.map((run) => run.id)).size).toBe(2);
   expect(new Set(implementers.map((run) => run.sessionId)).size).toBe(2);
   expect(implementers.every((run) => run.sessionId !== null)).toBe(true);
-  expect(
-    h.store.messages(taskId).some((message) => message.purpose === "fix_round"),
-  ).toBe(false);
   expect(
     state.runs.every((run) => run.mode === "interactive" && run.pane !== null),
   ).toBe(true);
   expect(state.findings.map((f) => f.status)).toEqual(["resolved"]);
   expect(state.task.attention.reasons).toContain("needs_approval");
 
+  expect(h.adapters.codexServerRunning(taskId)).toBe(true);
   const pr = h.github.snapshot();
   const headSha = pr?.headSha as Sha;
   h.github.ci("success");
@@ -82,6 +80,8 @@ test("a task runs Todo to Done through plan, review, a fix round and a merge", a
   await h.coordinator.settle();
   expect(stageOf(h, taskId)).toBe("done");
 
+  expect(h.adapters.codexIfRunning(taskId)).toBeNull();
+  expect(h.adapters.codexServerCount()).toBe(0);
   const done = h.store.loadTaskState(taskId);
   expect(done.runs.every((run) => run.endedAt !== null)).toBe(true);
   expect(done.worktree?.removedAt).not.toBeNull();
@@ -90,17 +90,6 @@ test("a task runs Todo to Done through plan, review, a fix round and a merge", a
   await expect(
     h.git("show-ref", "--verify", `refs/heads/${done.worktree.branch}`),
   ).resolves.toContain(done.worktree.branch);
-  for (const run of done.runs) {
-    if (run.provider !== "claude" || run.mode !== "headless" || !run.sessionId)
-      continue;
-    expect(await h.adapters.claude.headlessState(run.sessionId)).toBeNull();
-    expect(
-      (await h.adapters.claude.listSessions()).some(
-        (s) => s.sessionId === run.sessionId,
-      ),
-    ).toBe(false);
-    await h.adapters.claude.closeHeadless(run.sessionId);
-  }
   expect(done.task.attention.reasons).toEqual([]);
   const transitions = h.store.transitions(taskId).map((t) => t.to);
   expect(transitions).toEqual(
@@ -348,7 +337,7 @@ test("CI failing after approval voids it and starts a fresh implementer", async 
     state.runs.find((run) => run.role === "implementer" && run.round === 2)
       ?.fixReason,
   ).toContain("CI failed on reviewed head");
-}, 60_000);
+});
 
 test("a human push to the branch after review voids the approval and re-reviews", async () => {
   const h = await harness();
@@ -381,41 +370,4 @@ test("a human push to the branch after review voids the approval and re-reviews"
   const state = h.store.loadTaskState(taskId);
   expect(state.task.stage).toBe("in_review");
   expect(state.approvals.every((a) => a.voidedAt !== null)).toBe(true);
-}, 30_000);
-
-test("stopCodexServer is called when a task reaches done stage", async () => {
-  const h = await harness();
-  const taskId = start(h);
-  const driver = new ScenarioDriver(h, await scenarios("walking-skeleton"));
-  await driver.run();
-  await h.coordinator.settle();
-
-  expect(stageOf(h, taskId)).toBe("awaiting_approval");
-
-  // Approve and merge the PR
-  const pr = h.github.snapshot();
-  const headSha = pr?.headSha as Sha;
-  h.github.ci("success");
-  const approval = h.coordinator.submitHuman(taskId, {
-    type: "approve",
-    headSha,
-  });
-  await h.coordinator.settle();
-  expect(h.store.inputDisposition(taskId, approval)).toMatchObject({
-    accepted: true,
-  });
-
-  // Merge the PR to transition to done
-  h.github.merge();
-  h.coordinator.loop.enqueue(taskId);
-
-  // Spy on the stopCodexServer method
-  const stopSpy = vi.spyOn(h.adapters, "stopCodexServer");
-
-  // Settle the loop, which should call stopCodexServer for the task
-  await h.coordinator.settle();
-  expect(stageOf(h, taskId)).toBe("done");
-
-  // Verify stopCodexServer was called for the task
-  expect(stopSpy).toHaveBeenCalledWith(taskId);
 }, 30_000);

@@ -54,9 +54,11 @@ describe("reconciliation ordering and recovery regressions", () => {
       command({ type: "move", to: "todo" }, "queue"),
     ];
     const restarted = fixed(canceled.next, f.observations);
-    expect(
-      restarted.actions.find((a) => a.kind === "create_worktree")?.key,
-    ).toBe("create_worktree:t1#2");
+    const create = restarted.actions.find((a) => a.kind === "create_worktree");
+    expect(create).toBeDefined();
+    expect(queued.actions.some((action) => action.key === create?.key)).toBe(
+      false,
+    );
   });
   it("a planner releases its capacity slot in the implementation handoff", () => {
     const f = fixture("planning");
@@ -234,7 +236,7 @@ describe("reconciliation ordering and recovery regressions", () => {
       { headSha: head, runId: run().id, ranAt: now },
     ]);
   });
-  it("failed transport actions retry under suffixed keys without marking delivered", () => {
+  it("failed transport actions retry with a new identity without marking delivered", () => {
     const f = fixture();
     f.observations.inputs = [
       command({ type: "send_message", runId: run().id, text: "Hello" }),
@@ -255,9 +257,10 @@ describe("reconciliation ordering and recovery regressions", () => {
     const failed = fixed(queued.next, f.observations);
     f.observations.now = "2026-09-12T00:00:10.000Z" as typeof now;
     const retry = fixed(failed.next, f.observations);
-    expect(retry.actions.find((a) => a.kind === "send_message")?.key).toBe(
-      `${action.key}#2`,
-    );
+    const send = retry.actions.find((a) => a.kind === "send_message");
+    expect(send).toBeDefined();
+    expect(send?.key).not.toBe(action.key);
+    expect(send?.messageId).toBe(action.messageId);
     expect(retry.next.messages[0]?.status).toBe("pending");
   });
 });
