@@ -117,6 +117,7 @@ test.skipIf(process.env.LOOM_REAL_PROVIDERS !== "1")(
             runId: run.id,
             resumable: true,
             activityAt: null,
+            readFailures: { resumable: null, activityAt: null },
             pane: null,
             provider: { ok: true, at: f.observations.now, value },
           },

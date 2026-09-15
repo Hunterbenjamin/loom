@@ -8,6 +8,7 @@ import {
   type TaskState,
 } from "@loom/core";
 import { type PaneView, paneView } from "@loom/protocol";
+import type { ReportAdapterFailure } from "./adapters.js";
 
 export const paneKey = (p: { hostGeneration: string; paneId: string }) =>
   JSON.stringify([p.hostGeneration, p.paneId]);
@@ -114,6 +115,7 @@ export class PaneInventory {
       leadPanes?: ReadonlySet<string>;
     },
     private publish: (rows: PaneView[], unavailable: boolean) => void,
+    private reportAdapterFailure?: ReportAdapterFailure,
   ) {}
   private readonly reaped = new Set<string>();
   refresh(): Promise<void> {
@@ -163,7 +165,13 @@ export class PaneInventory {
               branch = this.git
                 .currentBranch(row.startCwd)
                 .then((value) => value ?? "HEAD")
-                .catch(() => null);
+                .catch((error) => {
+                  this.reportAdapterFailure?.(
+                    `Pane branch read for ${row.startCwd}`,
+                    error,
+                  );
+                  return null;
+                });
               branches.set(row.startCwd, branch);
             }
             return paneView.parse({ ...row, branch: await branch });
@@ -199,10 +207,16 @@ export class PaneInventory {
               windowId: row.windowId,
               paneId: row.paneId,
             })
-            .catch(() => {});
+            .catch((error) => {
+              this.reportAdapterFailure?.(
+                `Dead pane cleanup for ${row.id}`,
+                error,
+              );
+            });
         }
         this.unavailable = false;
-      } catch {
+      } catch (error) {
+        this.reportAdapterFailure?.("Pane inventory read", error);
         this.unavailable = true;
         this.rows = this.rows.map((p) =>
           p.unavailable ? p : { ...p, unavailable: true },

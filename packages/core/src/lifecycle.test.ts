@@ -378,6 +378,7 @@ describe("launch results and persisted outbox", () => {
         runId: run.id,
         resumable: false,
         activityAt: null,
+        readFailures: { resumable: null, activityAt: null },
         provider: { ok: false, at: now, reason: "no rollout" },
         pane: null,
       },
@@ -430,6 +431,7 @@ describe("launch results and persisted outbox", () => {
         runId: start.runId,
         resumable: null,
         activityAt: null,
+        readFailures: { resumable: null, activityAt: null },
         provider: {
           ok: true,
           at: now,

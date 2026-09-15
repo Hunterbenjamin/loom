@@ -31,7 +31,7 @@ import type {
 } from "@loom/core";
 import { deriveStatus } from "@loom/core";
 import type { Store } from "@loom/store";
-import type { Adapters } from "./adapters.js";
+import type { Adapters, ReportAdapterFailure } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
 import { checkPanePromptGate, checkSendGate } from "./gate.js";
 import {
@@ -103,6 +103,7 @@ export interface ExecutorDeps {
   nextInputId(): InputId;
   /** Called after each recorded result, so the loop picks the input up. */
   onResult(taskId: TaskId): void;
+  reportAdapterFailure?: ReportAdapterFailure;
 }
 
 export class Executor {
@@ -666,12 +667,21 @@ export class Executor {
     // a pane launched before that message may have died in the race. Now that the message is in,
     // put the pane back from its recipe. Only the pane changes; the thread is untouched.
     if (run.mode === "interactive" && run.provider === "codex") {
-      const live = run.pane
-        ? await adapters.paneHost.getPane(run.pane).catch(() => null)
-        : null;
+      let live = null;
+      let paneReadFailed = false;
+      if (run.pane)
+        try {
+          live = await adapters.paneHost.getPane(run.pane);
+        } catch (error) {
+          paneReadFailed = true;
+          this.deps.reportAdapterFailure?.(
+            `Post-delivery pane read for ${run.id}`,
+            error,
+          );
+        }
       const recipe = this.deps.launch.recipes.get(run.id);
       const workspaceId = state.worktree?.paneWorkspaceId;
-      if ((!live || live.dead) && recipe && workspaceId) {
+      if (!paneReadFailed && (!live || live.dead) && recipe && workspaceId) {
         try {
           const pane = await relaunchFromRecipe(
             this.deps.launch,

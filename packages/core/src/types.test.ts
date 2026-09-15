@@ -135,6 +135,7 @@ const observations: Observations = {
       runId: run.id,
       resumable: null,
       activityAt: null,
+      readFailures: { resumable: null, activityAt: null },
       provider: { ok: false, reason: "app-server socket closed", at: now },
       pane: null,
     },
@@ -240,7 +241,7 @@ it("requires every persisted task-context field", () => {
 it("requires owner evidence with explicit unknown semantics", () => {
   type RunEvidence = Pick<
     import("./observations.js").RunObservation,
-    "resumable" | "activityAt"
+    "resumable" | "activityAt" | "readFailures"
   >;
   type GitEvidence = Pick<
     import("./observations.js").GitWorktreeObservation,
@@ -253,5 +254,9 @@ it("requires owner evidence with explicit unknown semantics", () => {
   >().toEqualTypeOf<never>();
   expectTypeOf<RunEvidence["resumable"]>().toEqualTypeOf<boolean | null>();
   expectTypeOf<RunEvidence["activityAt"]>().toEqualTypeOf<IsoTime | null>();
+  expectTypeOf<RunEvidence["readFailures"]>().toEqualTypeOf<{
+    resumable: string | null;
+    activityAt: string | null;
+  }>();
   expectTypeOf<import("./entities.js").CiCheck["id"]>().toEqualTypeOf<string>();
 });

@@ -382,6 +382,7 @@ export class FakeProviders {
       pane: null,
       resumable: s?.resumable ?? null,
       activityAt: s?.activityAt ?? null,
+      readFailures: { resumable: null, activityAt: null },
       provider:
         s && !s.connected
           ? {

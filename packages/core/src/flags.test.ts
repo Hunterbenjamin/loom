@@ -619,6 +619,7 @@ describe("every attention reason", () => {
           runId: run.id,
           resumable: null,
           activityAt: null,
+          readFailures: { resumable: null, activityAt: null },
           provider: { ok: false, at: now, reason: "Offline" },
           pane: null,
         };

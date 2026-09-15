@@ -19,7 +19,7 @@ import type {
   TaskState,
   WorktreePath,
 } from "@loom/core";
-import type { Adapters } from "./adapters.js";
+import type { Adapters, ReportAdapterFailure } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
 
 const reading = async <T>(
@@ -115,6 +115,7 @@ export async function observeRun(
   // `resumable: null` is uncertainty, and must trigger a further owner read when recovery needs
   // it (design §5.2). Ask the provider directly rather than inferring from the failed read.
   let resumable: boolean | null = null;
+  let resumableFailure: string | null = null;
   if (run.sessionId)
     try {
       resumable =
@@ -123,20 +124,33 @@ export async function observeRun(
               run.sessionId,
             )
           : await adapters.claude.resumable(run.sessionId, run.worktreePath);
-    } catch {
+    } catch (error) {
+      resumableFailure = error instanceof Error ? error.message : String(error);
       resumable = null;
     }
   let activityAt: RunObservation["activityAt"] = null;
+  let activityFailure: string | null = null;
   if (run.sessionId)
     try {
       activityAt =
         run.provider === "codex"
           ? (await adapters.codex(run.taskId)).activityAt(run.sessionId)
           : await adapters.claude.activityAt(run.sessionId);
-    } catch {
+    } catch (error) {
+      activityFailure = error instanceof Error ? error.message : String(error);
       activityAt = null;
     }
-  return { runId: run.id, provider, pane, resumable, activityAt };
+  return {
+    runId: run.id,
+    provider,
+    pane,
+    resumable,
+    activityAt,
+    readFailures: {
+      resumable: resumableFailure,
+      activityAt: activityFailure,
+    },
+  };
 }
 
 /**
@@ -238,6 +252,7 @@ export interface ObserveDeps {
   launchedSessions(): ReadonlySet<string>;
   repoOf(state: TaskState): { github: string; baseBranch: string } | null;
   now(): string;
+  reportAdapterFailure?: ReportAdapterFailure;
 }
 
 /** One pass's observations. Every failure stays a failed `Reading`; nothing is invented. */
@@ -312,6 +327,18 @@ export async function observe(
   const runs = await Promise.all(
     live.map((run) => observeRun(deps.adapters, now, run)),
   );
+  for (const run of runs) {
+    if (run.readFailures.resumable)
+      deps.reportAdapterFailure?.(
+        `Provider resumable read for ${run.runId}`,
+        run.readFailures.resumable,
+      );
+    if (run.readFailures.activityAt)
+      deps.reportAdapterFailure?.(
+        `Provider activity read for ${run.runId}`,
+        run.readFailures.activityAt,
+      );
+  }
   const counts = deps.capacity.counts();
   const capacity: CapacityObservation = {
     version: counts.version,

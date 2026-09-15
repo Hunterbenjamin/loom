@@ -17,7 +17,7 @@ import type {
 } from "@loom/core";
 import { McpGuardError, type McpHost, type McpInput } from "@loom/mcp";
 import type { Store } from "@loom/store";
-import type { Adapters } from "./adapters.js";
+import type { Adapters, ReportAdapterFailure } from "./adapters.js";
 import { sha256 } from "./derive.js";
 import type { Loop } from "./loop.js";
 import { taskBrief } from "./prompts.js";
@@ -40,6 +40,7 @@ export interface McpHostDeps {
   /** Bounded: an input is consumed within one pass per input queued ahead of it. */
   maxPasses?: number;
   log?: (message: string) => void;
+  reportAdapterFailure?: ReportAdapterFailure;
 }
 
 const findingViews = (
@@ -114,7 +115,13 @@ export function createMcpHost(deps: McpHostDeps): {
       const repo = deps.repo(taskId);
       const git = await deps.adapters.git
         .readWorktree(worktree.path, worktree.baseBranch)
-        .catch(() => null);
+        .catch((error) => {
+          deps.reportAdapterFailure?.(
+            `MCP task context worktree read for ${taskId}`,
+            error,
+          );
+          return null;
+        });
       return {
         task: {
           id: state.task.id,
