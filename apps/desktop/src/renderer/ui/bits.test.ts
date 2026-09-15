@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { Run } from "@loom/core";
+import type { Run, Stage } from "@loom/core";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, test } from "vitest";
@@ -19,13 +19,16 @@ afterEach(() => {
 });
 
 describe("RunDot", () => {
-  function renderDot(run: Run | null): HTMLElement {
+  function renderDot(
+    run: Run | null,
+    props: { stage?: Stage; read?: boolean } = {},
+  ): HTMLElement {
     const container = document.createElement("div");
     document.body.append(container);
 
     const root = createRoot(container);
     act(() => {
-      root.render(createElement(RunDot, { run }));
+      root.render(createElement(RunDot, { run, ...props }));
     });
 
     cleanups.push(() => {
@@ -39,6 +42,25 @@ describe("RunDot", () => {
     if (!span) throw new Error("RunDot did not render a span");
     return span;
   }
+
+  test("a finished run is blue until read, and Done or Canceled issues are always grey", () => {
+    const fixture = buildSnapshot();
+    const base = fixture.runs[0];
+    if (!base) throw new Error("No run in fixture");
+    const finished: Run = {
+      ...base,
+      status: "ended",
+      endReason: "submitted",
+      endedAt: fixture.now,
+    };
+    expect(renderDot(finished).className).toContain("finished");
+    expect(renderDot(finished, { read: true }).className).toContain("idle");
+    expect(renderDot(finished, { stage: "done" }).className).toContain("idle");
+    expect(
+      renderDot({ ...base, status: "working" }, { stage: "canceled" })
+        .className,
+    ).toContain("idle");
+  });
 
   test("renders faint dot when no run", () => {
     const dot = renderDot(null);

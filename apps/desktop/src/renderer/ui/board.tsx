@@ -1,6 +1,7 @@
 import { displayName, type Stage } from "@loom/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useEffect, useRef, useState } from "react";
+import { finishedKey } from "../store/pane-transitions.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, type Row, selectedRows } from "../store/selectors.js";
 import {
@@ -67,6 +68,7 @@ function BoardViewComponent() {
 function Column({ rows }: { rows: Row[] }) {
   const store = useStoreApi();
   const cursor = useStore((s) => s.ui.cursor);
+  const readFinished = useStore((s) => s.readFinished);
   const all = useStore(selectedRows);
   const repos = useStore((s) => s.snapshot.repos);
   const now = useStore((s) => s.snapshot.now);
@@ -125,7 +127,11 @@ function Column({ rows }: { rows: Row[] }) {
                   {row.task.stage === "ci" ? (
                     <CiDot ci={row.ci} />
                   ) : (
-                    <RunDot run={row.run} />
+                    <RunDot
+                      run={row.run}
+                      stage={row.task.stage}
+                      read={!!row.run && readFinished.has(finishedKey(row.run))}
+                    />
                   )}
                   <span className="mono">{issueKeyFor(row.task, repos)}</span>
                   <span className="spacer" />
