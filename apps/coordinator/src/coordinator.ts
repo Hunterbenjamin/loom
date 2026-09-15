@@ -927,7 +927,7 @@ export class Coordinator {
           await this.executor.refreshBase(
             repo.root,
             s.worktree?.baseBranch ??
-              this.effectiveSettings(repo.id).repository.baseBranch,
+              this.settings.effective(repo.id).repository.baseBranch,
           );
         },
         repoOf: (s) => {
