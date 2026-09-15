@@ -454,7 +454,8 @@ that crosses providers goes only through artifacts.
   matching CI reading for the published inbox projection (head, start time, conclusion, checks and
   run URLs); GitHub remains its owner. A later green CI
   resolves earlier CI findings (`resolution.by: "ci"`), so the reviewer owes them no verdict. The
-  implementer runs lint, typecheck and changed-package tests before submitting; CI is the full check.
+  implementer runs only the test files that cover its change before submitting, not lint, typecheck,
+  the suite or builds: CI is the check, and a red CI comes back to the same session.
 - **The reviewer is a checker.** It reads the diff against the issue and the accepted plan, holds
   it to AGENTS.md (already in its context), and judges what machines can't: whether the change does what was asked, logic and
   edge cases, fit with the architecture, and whether the tests check the right thing. It blocks

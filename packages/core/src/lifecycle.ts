@@ -358,15 +358,16 @@ function launch(c: Context, run: Run, resume: boolean, fresh = false): void {
 /**
  * What "done" means for each role, stated in the first message. The first real run stopped after
  * implementing, with the tree uncommitted and no submission, because nothing had told it the work
- * ends with a tool call.
+ * ends with a tool call. How to do the work, including which checks to run, is the role brief's
+ * (apps/coordinator/src/prompts.ts); this only says how the work ends.
  */
 const COMPLETION: Record<Run["role"], string> = {
   planner:
     "Your work is complete only when `submit_plan` has succeeded. Do not stop before it has.",
   implementer:
-    "Implement the plan in this worktree, run the tests for the packages you changed plus the typecheck (not the whole suite; CI runs that), commit on this branch, and call `submit_for_review` with the commit's head SHA, a summary, your test results and a handoff. Your work is complete only when `submit_for_review` has succeeded. Do not stop before it has.",
+    "Commit on this branch and call `submit_for_review` with the commit's head SHA, a summary, the tests you ran and a handoff. Your work is complete only when `submit_for_review` has succeeded. Do not stop before it has.",
   reviewer:
-    "Review the branch against the plan by reading the diff and the implementer's recorded test results; do not rerun the test suite, CI is the gate. Run a test only to confirm a suspected bug or after an inline fix. Call `submit_review` once with every finding and a verdict for each addressed or disputed one. Your work is complete only when `submit_review` has succeeded.",
+    "Call `submit_review` once with every finding and a verdict for each addressed or disputed one. Your work is complete only when `submit_review` has succeeded.",
 };
 
 /**

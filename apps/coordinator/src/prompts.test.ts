@@ -72,6 +72,10 @@ test("plans are short and record decisions; acceptance criteria are the bar impl
     "the fix must remove that cause, not hide it",
   );
   expect(brief("implementer")).toContain("Fix causes, not symptoms");
+  expect(brief("implementer")).toContain(
+    "CI is the check: don't run lint, the typecheck, the whole suite",
+  );
+  expect(brief("reviewer")).toContain("Work in few steps");
   expect(brief("reviewer")).toContain(
     "a fix that hides a bug instead of removing its cause, or a second definition",
   );
