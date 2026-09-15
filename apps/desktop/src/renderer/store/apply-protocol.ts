@@ -13,8 +13,9 @@ export function applyProtocol(
   state: State,
   client: ClientState,
   patch?: PatchFrame,
-  reconcileSnapshot: (snapshot: State["snapshot"]) => State["snapshot"] =
-    (snapshot) => snapshot,
+  reconcileSnapshot: (snapshot: State["snapshot"]) => State["snapshot"] = (
+    snapshot,
+  ) => snapshot,
 ): State {
   const selectedPr =
     state.ui.prCursor === null

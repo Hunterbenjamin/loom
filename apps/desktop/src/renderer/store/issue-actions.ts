@@ -417,9 +417,7 @@ export function issueEditActions(ctx: StoreContext) {
    * replaces the move, and a refusal puts the card back.
    */
   const moves = new Map<TaskId, { to: Stage; version: number }>();
-  const withPendingMoves = (
-    snapshot: State["snapshot"],
-  ): State["snapshot"] => {
+  const withPendingMoves = (snapshot: State["snapshot"]): State["snapshot"] => {
     if (!moves.size) return snapshot;
     let changed = false;
     const tasks = snapshot.tasks.map((task) => {
