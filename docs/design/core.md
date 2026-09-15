@@ -972,12 +972,11 @@ are logged for the human; no agent files bugs or resets retry budgets automatica
 
 ### Retired persistence (2026-09-13)
 
-Migrations only add. Migration `0003_operator.sql` and its `operator_events`, `operator_notes`,
-`operator_ledger` and `operator_filings` tables remain in place, with existing data untouched.
-Runtime code no longer reads or writes any of them. Legacy Operator recipes, tokens and settings
-are ignored; startup neither launches nor manages that session. No destructive cleanup runs.
-Task `signature` remains optional for older records but is no longer populated by a filing agent.
-Migration `0006_main_messages.sql` adds `main_message_notes` and `main_message_receipts` for
+Migration `0010_drop_operator_tables.sql` removes the unused `operator_events`, `operator_notes`,
+`operator_ledger` and `operator_filings` tables introduced by migration `0003_operator.sql`.
+Legacy Operator recipes, tokens and settings are ignored; startup neither launches nor manages that
+session. Task `signature` remains optional for older records but is no longer populated by a filing
+agent. Migration `0006_main_messages.sql` added `main_message_notes` and `main_message_receipts` for
 Main's remaining message path; it does not copy or read retired Operator data.
 
 ### Main messages (2026-09-13)

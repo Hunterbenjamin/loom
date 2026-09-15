@@ -112,6 +112,33 @@ describe("numbered migrations", () => {
         .get(),
     ).toBe("tasks_repo_number");
   });
+  it("drops the retired Operator tables", async () => {
+    const db = open();
+    await migrate(db, join(root, "backups"), migrations.slice(0, 9));
+    const operatorTables = [
+      "operator_events",
+      "operator_notes",
+      "operator_ledger",
+      "operator_filings",
+    ];
+    expect(
+      db
+        .prepare(
+          `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${operatorTables.map(() => "?").join(", ")}) ORDER BY name`,
+        )
+        .pluck()
+        .all(...operatorTables),
+    ).toEqual([...operatorTables].sort());
+    await migrate(db, join(root, "backups"));
+    expect(
+      db
+        .prepare(
+          `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${operatorTables.map(() => "?").join(", ")})`,
+        )
+        .pluck()
+        .all(...operatorTables),
+    ).toEqual([]);
+  });
   it("backs up committed WAL pages before applying changes and is idempotent", async () => {
     const db = open();
     await migrate(db, join(root, "backups"), migrations.slice(0, 1));

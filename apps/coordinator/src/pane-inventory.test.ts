@@ -202,9 +202,22 @@ test("reaps a dead pane nobody owns so tmux can drop its emptied window and sess
     dead: true,
     exitCode: 0,
   };
-  const list = vi
-    .spyOn(host, "listPanes")
-    .mockResolvedValue([{ ...observation, dead: false }, dead]);
+  const list = vi.spyOn(host, "listPanes").mockResolvedValue([
+    { ...observation, dead: false },
+    dead,
+    {
+      ...dead,
+      ref: {
+        ...dead.ref,
+        sessionName: "loom-operator",
+        paneId: "%11",
+      },
+    },
+    {
+      ...dead,
+      ref: { ...dead.ref, sessionName: "loom-main", paneId: "%12" },
+    },
+  ]);
   vi.spyOn(host, "listClients").mockResolvedValue([]);
   const close = vi.spyOn(host, "closeTerminal").mockResolvedValue();
   const inventory = new PaneInventory(
@@ -214,15 +227,21 @@ test("reaps a dead pane nobody owns so tmux can drop its emptied window and sess
     () => {},
   );
   await inventory.refresh();
-  expect(close).toHaveBeenCalledExactlyOnceWith({
+  expect(close).toHaveBeenNthCalledWith(1, {
     hostGeneration: dead.ref.hostGeneration,
     sessionName: dead.ref.sessionName,
     windowId: dead.ref.windowId,
     paneId: "%9",
   });
+  expect(close).toHaveBeenNthCalledWith(2, {
+    hostGeneration: dead.ref.hostGeneration,
+    sessionName: "loom-operator",
+    windowId: dead.ref.windowId,
+    paneId: "%11",
+  });
   // Reported again before the host drops it: no second kill, the row waits for the next scan.
   await inventory.refresh();
-  expect(close).toHaveBeenCalledTimes(1);
+  expect(close).toHaveBeenCalledTimes(2);
   expect(list).toHaveBeenCalledTimes(2);
   // A dead pane the host tagged with a run id is never reaped, even before the run links it.
   list.mockResolvedValue([
@@ -233,7 +252,7 @@ test("reaps a dead pane nobody owns so tmux can drop its emptied window and sess
     },
   ]);
   await inventory.refresh();
-  expect(close).toHaveBeenCalledTimes(1);
+  expect(close).toHaveBeenCalledTimes(2);
 });
 
 test("renamed task spaces retain their task label even when only scratch panes remain", () => {

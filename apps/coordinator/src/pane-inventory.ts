@@ -187,7 +187,7 @@ export class PaneInventory {
             (row.runId && row.status !== "ended") ||
             row.unavailable ||
             row.sessionName.startsWith("loom-lead") ||
-            ["loom-main", "loom-operator"].includes(row.sessionName) ||
+            row.sessionName === "loom-main" ||
             this.reaped.has(row.id)
           )
             continue;
