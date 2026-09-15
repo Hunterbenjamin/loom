@@ -67,6 +67,8 @@ test("reviewer context keeps role filtering in full and changes views", async ()
     mustAct: [{ id: "visible", title: "Fix bug", status: "disputed" }],
   });
   expect(repeat).not.toHaveProperty("findings");
+});
+
 test("fix-round patches truncate on a UTF-8 boundary and retain the range and stat", () => {
   const from = "a".repeat(40) as Sha;
   const to = "b".repeat(40) as Sha;

@@ -140,7 +140,8 @@ test("a fresh fix run reads its compact handoff and current base-to-HEAD diff", 
     workflow: { read: async () => ({}) } as never,
     repo: () => h.repo,
   });
-  const context = await host.context(run.id);
+  const context = await host.context(run.id, {});
+  if (context.view !== "full") throw new Error("Expected a full context view");
   expect(context.run).toMatchObject({ id: run.id, round: 1 });
   expect(context.brief).toContain("Replace the contents of example.txt");
   expect(context.plan?.goal).toBe("Change the example file");

@@ -306,7 +306,11 @@ export const outputSchemas = {
       plan: storedPlanSchema.extend({ version: line }).nullable().optional(),
       decisions: text.optional(),
       fixRound: z
-        .strictObject({ reason: text, diff: z.string(), truncated: z.boolean() })
+        .strictObject({
+          reason: text,
+          diff: z.string(),
+          truncated: z.boolean(),
+        })
         .optional(),
       handoff: contextHandoffSchema.optional(),
       findings: z
