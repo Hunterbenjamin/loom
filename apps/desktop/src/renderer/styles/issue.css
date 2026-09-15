@@ -130,9 +130,8 @@
   .issue-toolbar-action .disabled-reason {
     max-width: none;
   }
-  .pr-breadcrumb .chip,
-  .detail.pr-detail > .pr-page-head > .pr-github-chip {
-    display: none;
+  .issue-toolbar-action {
+    width: 100%;
   }
   .issue-meta-line {
     white-space: nowrap;
