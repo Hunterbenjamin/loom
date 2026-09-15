@@ -216,7 +216,9 @@ export class GitHubActions {
           state.artifacts.find((artifact) => artifact.kind === "implementation")
             ?.version !== action.implementationVersion
         )
-          throw new PreconditionFailed("Implementation or PR ownership changed");
+          throw new PreconditionFailed(
+            "Implementation or PR ownership changed",
+          );
         const repo = this.deps.repo(action.taskId);
         await adapters.github.updatePullRequestBody({
           repo: repo.github,
