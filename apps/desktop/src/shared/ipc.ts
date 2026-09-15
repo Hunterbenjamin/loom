@@ -57,7 +57,7 @@ export interface PtyExit {
   signal: number;
 }
 
-export interface TerminalBridge {
+interface TerminalBridge {
   spawn(request: PtySpawnRequest): Promise<PtySpawnResult>;
   write(id: string, data: string): void;
   resize(id: string, cols: number, rows: number): void;
@@ -73,7 +73,7 @@ export interface TerminalBridge {
 
 export const windowMode = z.enum(["tracker", "workbench"]);
 export type WindowMode = z.output<typeof windowMode>;
-export interface NativeSettings {
+interface NativeSettings {
   version: 1;
   windowMode: WindowMode;
   terminalHistoryLimit: number;
@@ -87,7 +87,7 @@ export const devControlCommand = z.enum([
 ]);
 export type DevControlCommand = z.output<typeof devControlCommand>;
 
-export interface HostBridge {
+interface HostBridge {
   devControl(command: DevControlCommand): Promise<void>;
   devControlAvailable(): Promise<boolean>;
   chooseRepository(): Promise<{ root: string; github: string } | null>;

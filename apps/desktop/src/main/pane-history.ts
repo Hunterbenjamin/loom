@@ -4,7 +4,7 @@
 // the viewer before the host's first redraw (docs/design/ui.md, "Terminals").
 import { execFile } from "node:child_process";
 
-export interface PaneHost {
+interface PaneHost {
   tmux: string;
   socket: string;
   paneId: string;
@@ -33,7 +33,7 @@ function run(host: PaneHost, args: string[]): Promise<string> {
   });
 }
 
-export interface HistoryRequest {
+interface HistoryRequest {
   lines: number;
   /** Join wrapped lines, so they wrap again at the viewer's width. */
   join: boolean;

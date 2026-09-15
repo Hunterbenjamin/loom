@@ -75,7 +75,7 @@ const SYMBOLS: Record<string, string> = {
 const MODIFIER_KEYS = new Set(["Control", "Meta", "Alt", "Shift", "CapsLock"]);
 
 /** The binding string for a key press, or null for keys a binding can't name. */
-export function chordFromEvent(event: KeyboardEvent): string | null {
+function chordFromEvent(event: KeyboardEvent): string | null {
   let key = event.key;
   if (/^Key[A-Z]$/.test(event.code)) key = event.code.slice(3);
   else if (/^Digit\d$/.test(event.code) && !event.shiftKey)

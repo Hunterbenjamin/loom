@@ -28,7 +28,7 @@ export interface InboxRow {
   forHuman: TaskInbox["forHuman"];
   section: InboxSection;
 }
-export type InboxSection = "for-you" | "decisions" | "questions" | "problems";
+type InboxSection = "for-you" | "decisions" | "questions" | "problems";
 export const INBOX_SECTIONS: { id: InboxSection; label: string }[] = [
   { id: "for-you", label: "For you" },
   { id: "decisions", label: "Decisions" },

@@ -132,14 +132,6 @@ kbd {
   -webkit-app-region: no-drag;
 }
 
-.sidebar-section {
-  padding: 10px 10px 4px;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
 .sidebar-views {
   padding: 6px 0;
 }
@@ -293,7 +285,6 @@ kbd {
   background: var(--bg-active);
 }
 
-.group-header,
 .list-load-more {
   width: 100%;
   text-align: left;
@@ -305,38 +296,6 @@ kbd {
   padding: 0 12px;
   color: var(--text-dim);
   border-bottom: 1px solid var(--line);
-}
-
-.group-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  margin: 5px 0;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: var(--bg-hover);
-  color: var(--text-dim);
-}
-
-.cell-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.cell-title .id {
-  color: var(--text-faint);
-  font: 11px / 1 var(--mono);
-  flex: none;
-  width: 70px;
-}
-
-.cell-title .text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .task-copy {
@@ -491,19 +450,6 @@ kbd {
   grid-template-rows: auto auto 1fr;
   background: var(--bg);
   z-index: 5;
-}
-
-.detail-head {
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--line);
-  display: grid;
-  gap: 6px;
-}
-
-.detail-head h2 {
-  font-size: 15px;
-  margin: 0;
-  font-weight: 600;
 }
 
 .detail-meta {
@@ -678,10 +624,6 @@ ul.plain {
   color: var(--text);
 }
 
-.terminal-empty {
-  padding: 12px;
-}
-
 .terminal-bar {
   display: flex;
   align-items: center;
@@ -812,26 +754,6 @@ ul.plain {
   flex: 1;
   min-height: 0;
 }
-.inbox-row {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  align-items: flex-start;
-  text-align: left;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  overflow: hidden;
-}
-.inbox-row > span {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.inbox-row.selected {
-  background: var(--bg-active);
-}
 /* Reserve a layout row in both window modes; only the optional Lead panel overlays content. */
 .bottom-bar {
   position: relative;
@@ -881,21 +803,6 @@ ul.plain {
   border-top: 1px solid var(--line);
   box-shadow: 0 -8px 24px #0003;
   animation: lead-open 120ms ease-out;
-}
-.lead-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
-  font-size: 11px;
-}
-.lead-resize {
-  margin: 0;
-  border: 0;
-  height: 5px;
-  flex-shrink: 0;
-  cursor: ns-resize;
-  touch-action: none;
 }
 .lead-panel .terminal-wrap {
   flex: 1;
@@ -1063,10 +970,6 @@ ul.plain {
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
 }
-.pr-commit-message {
-  white-space: pre-wrap;
-  margin: 6px 0;
-}
 .pr-confirm code {
   overflow-wrap: anywhere;
 }
@@ -1083,10 +986,6 @@ ul.plain {
 .pr-closed {
   color: var(--danger);
 }
-.reviews-nav-label .pr-glyph {
-  color: inherit;
-}
-
 /* Reviews Overview: compact navigation, generous reading column, quiet property rail. */
 .main:has(.pr-detail) > .topbar {
   display: none;
@@ -1597,11 +1496,6 @@ ul.plain {
 }
 
 /* Reviews inbox: quiet section bars and one status mark per title row. */
-.reviews-nav-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 .list-toolbar,
 .reviews-toolbar {
   display: flex;
@@ -1726,8 +1620,7 @@ ul.plain {
   color: var(--text);
   font-size: 22px;
 }
-.list-row-age,
-.review-age {
+.list-row-age {
   width: 38px;
   text-align: right;
 }
@@ -1970,18 +1863,6 @@ ul.plain {
   border-radius: 50%;
   color: var(--danger, #ef7b67);
 }
-.chat-queued {
-  margin: 10px 0;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.chat-queued strong {
-  display: block;
-  margin-bottom: 4px;
-}
 .chat-send-button {
   width: 28px;
   height: 28px;
@@ -1999,18 +1880,6 @@ ul.plain {
   min-width: 0;
   color: var(--text-dim);
   white-space: nowrap;
-}
-.list-sort {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.list-sort select {
-  color: var(--text);
-  background: var(--bg-raised);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 4px 9px;
 }
 .inbox-glyph {
   width: 16px;

@@ -12,7 +12,7 @@ import type {
 import { later, millis, read, roleOwesWork } from "./helpers.js";
 import type { IsoTime, RunId } from "./ids.js";
 
-export const budgetStage = (stage: string): boolean =>
+const budgetStage = (stage: string): boolean =>
   [
     "planning",
     "plan_approval",

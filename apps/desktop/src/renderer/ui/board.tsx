@@ -1,7 +1,6 @@
 import { displayName, type Stage } from "@loom/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useRef, useState } from "react";
-import { STAGES } from "../fixtures/index.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, type Row, selectedRows } from "../store/selectors.js";
 import {
@@ -11,7 +10,7 @@ import {
   ProviderLabel,
   RunDot,
 } from "./bits.js";
-import { age, since, stageLabel } from "./format.js";
+import { age, since, STAGES, stageLabel } from "./format.js";
 
 function BoardViewComponent() {
   const rows = useStore(selectedRows);

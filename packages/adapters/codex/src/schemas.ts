@@ -2,8 +2,8 @@ import { z } from "zod";
 import type { ThreadTokenUsageUpdatedNotification } from "./generated/v2/ThreadTokenUsageUpdatedNotification.js";
 
 export const identifier = z.string().min(1);
-export const unixSeconds = z.number().finite().min(0).max(8_640_000_000_000);
-export const status = z.discriminatedUnion("type", [
+const unixSeconds = z.number().finite().min(0).max(8_640_000_000_000);
+const status = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("active"),
     activeFlags: z.array(z.enum(["waitingOnApproval", "waitingOnUserInput"])),
@@ -50,7 +50,7 @@ const item = z.union([
   z.object({ type: z.literal("userMessage"), content: z.array(userContent) }),
   z.object({ type: identifier.refine((type) => type !== "userMessage") }),
 ]);
-export const conversationItem = z.looseObject({
+const conversationItem = z.looseObject({
   id: identifier.optional(),
   type: identifier,
   content: z.union([z.array(userContent), z.array(z.string())]).optional(),
@@ -70,7 +70,7 @@ export const conversationItem = z.looseObject({
   error: z.unknown().optional(),
   query: z.string().optional(),
 });
-export const turn = z.object({
+const turn = z.object({
   id: identifier,
   status: z.enum(["inProgress", "completed", "interrupted", "failed"]),
   items: z.array(item),
@@ -79,7 +79,7 @@ export const turn = z.object({
   startedAt: unixSeconds.nullable(),
   completedAt: unixSeconds.nullable(),
 });
-export const threadMetadata = z.object({
+const threadMetadata = z.object({
   id: identifier,
   cwd: z.string().startsWith("/"),
   status,

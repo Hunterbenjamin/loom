@@ -63,7 +63,7 @@ export function http(value: unknown, headers: Record<string, string> = {}) {
     .join("")}\n${content}`;
 }
 
-export const graphqlFixture = JSON.parse(
+const graphqlFixture = JSON.parse(
   readFileSync(
     new URL("./fixtures/pull-requests-graphql.json", import.meta.url),
     "utf8",

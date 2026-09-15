@@ -48,7 +48,7 @@ export const REVIEW_SECTIONS: { id: ReviewSection; label: string }[] = [
   { id: "completed", label: "Completed" },
 ];
 
-export function reviewReady(pr: PullRequestRow): boolean {
+function reviewReady(pr: PullRequestRow): boolean {
   return (
     mergeDisabledReason(pr) === null &&
     pr.review !== "changes_requested" &&

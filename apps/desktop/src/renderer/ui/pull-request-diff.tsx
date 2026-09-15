@@ -20,7 +20,7 @@ type File = PullRequestDetailRow["detail"]["files"][number];
 let revision = 0;
 
 /** A capped patch's last file can be cut mid-hunk; never present it as complete. */
-export function parsePrPatch(
+function parsePrPatch(
   patch: NonNullable<PullRequestDetailRow["patch"]>,
 ) {
   const last = patch.patch.lastIndexOf("\ndiff --git ");

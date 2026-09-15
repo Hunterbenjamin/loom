@@ -16,7 +16,7 @@ export const runIdSchema = id.transform((v) => v as RunId);
 export const inputIdSchema = id.transform((v) => v as InputId);
 export const findingIdSchema = id.transform((v) => v as FindingId);
 export const questionIdSchema = id.transform((v) => v as QuestionId);
-export const shaSchema = z
+const shaSchema = z
   .string()
   .regex(/^[0-9a-f]{40}$/)
   .transform((v) => v as Sha);
@@ -55,7 +55,7 @@ const stage = z.enum([
   "done",
   "canceled",
 ]);
-export const planSchema = z.strictObject({
+const planSchema = z.strictObject({
   goal: nonempty,
   nonGoals: texts,
   // Agents submit one-line outcomes; the stored plan keeps its { title, detail } shape.

@@ -46,7 +46,7 @@ export function branchActions(run: GhRunner) {
   };
 }
 
-export async function branchExists(
+async function branchExists(
   run: GhRunner,
   repo: string,
   branch: string,

@@ -34,7 +34,7 @@ export interface IssueDecision {
   actions: DecisionAction[];
 }
 
-export interface IssueActionState {
+interface IssueActionState {
   decisions: IssueDecision[];
   status: {
     summary: string;

@@ -61,7 +61,7 @@ const recipeSchema = z.object({
   createdAt: z.string().min(1),
 });
 
-export type StoredRecipe = z.output<typeof recipeSchema>;
+type StoredRecipe = z.output<typeof recipeSchema>;
 
 export interface LaunchRecipe extends StoredRecipe {
   runId: RunId;

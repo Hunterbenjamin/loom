@@ -49,7 +49,7 @@ const hex = (seed: number) =>
   seed.toString(16).padStart(2, "0").repeat(20).slice(0, 40);
 
 export const sha = (seed: number) => parse(shaSchema, hex(seed));
-export const oid = (seed: number) => parse(blobOid, hex(seed));
+const oid = (seed: number) => parse(blobOid, hex(seed));
 
 const NOW = at("2026-09-12T09:00:00.000Z");
 const REPO = id.repo("repo-loom");

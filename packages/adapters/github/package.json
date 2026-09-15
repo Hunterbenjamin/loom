@@ -14,8 +14,5 @@
     "@loom/core": "workspace:*",
     "diff": "8.0.2",
     "zod": "^4.0.0"
-  },
-  "devDependencies": {
-    "@types/diff": "7.0.2"
   }
 }

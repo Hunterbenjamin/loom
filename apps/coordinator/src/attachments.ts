@@ -12,7 +12,7 @@ const metadata = z.strictObject({
   mediaType: z.string().min(1),
   path: z.string().min(1),
 });
-export type StagedAttachment = z.output<typeof metadata>;
+type StagedAttachment = z.output<typeof metadata>;
 
 const safeName = (name: string) => {
   const clean = basename(name)

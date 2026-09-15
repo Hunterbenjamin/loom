@@ -41,7 +41,7 @@ export function gateStatus(
 }
 
 /** Gate for pane prompt answers: allows 'blocked' and 'idle' statuses. */
-export function gatePanePromptStatus(
+function gatePanePromptStatus(
   observed: ReturnType<typeof deriveStatus>,
 ): GateDecision {
   if (!PANE_PROMPT_PERMITTED.includes(observed.status))

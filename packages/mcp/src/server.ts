@@ -33,7 +33,7 @@ import {
   timeSchema,
 } from "./schemas.js";
 
-export type McpIdentity =
+type McpIdentity =
   | { runId: RunId; active: boolean; kind?: "run"; reason?: string }
   | { kind: "lead"; active: boolean; repoId: string };
 

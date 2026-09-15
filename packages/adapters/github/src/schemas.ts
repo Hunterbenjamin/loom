@@ -39,7 +39,7 @@ export const pull = pullSummary.extend({
   merged_at: time.nullable(),
 });
 export type Pull = z.infer<typeof pull>;
-export const check = z.object({
+const check = z.object({
   id,
   name: z.string().min(1),
   head_sha: sha,

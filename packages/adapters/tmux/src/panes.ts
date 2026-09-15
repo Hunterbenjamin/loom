@@ -1,7 +1,7 @@
 // tmux's `-F` output, parsed and validated before anything in core sees it. Fields are joined
 // with US (0x1f) because a path may contain anything else, including a tab.
 
-import type { PaneObservation, PaneRef, WorktreePath } from "@loom/core";
+import type { PaneObservation, WorktreePath } from "@loom/core";
 import { z } from "zod";
 import {
   PANE_TITLE_OPTION,
@@ -165,6 +165,3 @@ export function toObservation(
     exitCode: row.dead ? row.exitCode : null,
   };
 }
-
-export const sameRef = (a: PaneRef, b: PaneRef): boolean =>
-  a.hostGeneration === b.hostGeneration && a.paneId === b.paneId;

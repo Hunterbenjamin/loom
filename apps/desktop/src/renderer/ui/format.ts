@@ -5,9 +5,34 @@ import type {
   Stage,
   TokenCounts,
 } from "@loom/core";
-import { STAGE_LABELS } from "../fixtures/index.js";
 
-export { STAGE_LABELS };
+export const STAGES: Stage[] = [
+  "backlog",
+  "todo",
+  "planning",
+  "plan_approval",
+  "in_progress",
+  "ci",
+  "in_review",
+  "awaiting_approval",
+  "merging",
+  "done",
+  "canceled",
+];
+
+export const STAGE_LABELS: Record<Stage, string> = {
+  backlog: "Backlog",
+  todo: "Todo",
+  planning: "Planning",
+  plan_approval: "Plan approval",
+  in_progress: "In progress",
+  ci: "CI",
+  in_review: "In review",
+  awaiting_approval: "Awaiting approval",
+  merging: "Merging",
+  done: "Done",
+  canceled: "Canceled",
+};
 
 export function age(minutes: number): string {
   if (minutes < 1) return "now";
@@ -30,7 +55,7 @@ const compactNumber = new Intl.NumberFormat("en", {
   maximumFractionDigits: 1,
 });
 
-export function formatTokenCount(value: number): string {
+function formatTokenCount(value: number): string {
   return compactNumber.format(value);
 }
 
@@ -66,13 +91,6 @@ export const RUN_STATUS_LABELS: Record<RunStatus, string> = {
 
 export function stageLabel(stage: Stage): string {
   return STAGE_LABELS[stage];
-}
-
-export function severityTone(severity: string): string {
-  if (severity === "blocker") return "danger";
-  if (severity === "major") return "attention";
-  if (severity === "nit") return "";
-  return "accent";
 }
 
 /** Stable model family for compact labels; retain unfamiliar model names as a fallback. */
