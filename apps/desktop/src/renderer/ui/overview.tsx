@@ -387,18 +387,43 @@ function Reviewers({ row }: { row: PullRequestDetailRow }) {
   );
 }
 
-/** A rail section whose one-line summary opens to its detail, like Checks. */
+/** Line icons for the rail's expandable rows, drawn like `PullRequestGlyph`. */
+const RAIL_ICONS: Record<"checks" | "agents" | "tests", ReactNode> = {
+  checks: (
+    <>
+      <path d="M1.5 3.5l1.2 1.2 2.3-2.4M1.5 8l1.2 1.2L5 6.8M1.5 12.5l1.2 1.2L5 11.3" />
+      <path d="M8 3.5h6.5M8 8h6.5M8 12.5h6.5" />
+    </>
+  ),
+  agents: (
+    <>
+      <rect x="2.5" y="5" width="11" height="8.5" rx="2.5" />
+      <path d="M8 2v3M6 9v1M10 9v1" />
+    </>
+  ),
+  tests: (
+    <>
+      <path d="M6 1.75h4M6.75 1.75v4.5L3 12.9a1 1 0 0 0 .87 1.35h8.26a1 1 0 0 0 .87-1.35L9.25 6.25v-4.5" />
+      <path d="M4.6 10h6.8" />
+    </>
+  ),
+};
+
+/**
+ * A rail row whose summary opens to its detail. Like the rest of the rail it shows an icon and
+ * a label, colored by state, with no disclosure arrow.
+ */
 function Collapsible({
   title,
   tone,
-  symbol,
+  icon,
   summary,
   children,
   testId,
 }: {
   title: string;
   tone: "good" | "danger" | "faint";
-  symbol: string;
+  icon: keyof typeof RAIL_ICONS;
   summary: string;
   children: ReactNode;
   testId?: string;
@@ -407,8 +432,22 @@ function Collapsible({
     <section data-testid={testId}>
       <h3>{title}</h3>
       <details className="pr-checks">
-        <summary>
-          <span className={tone}>{symbol}</span> {summary}
+        <summary className="pr-property">
+          <svg
+            className={`rail-icon ${tone}`}
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            {RAIL_ICONS[icon]}
+          </svg>
+          {summary}
         </summary>
         {children}
       </details>
@@ -429,9 +468,7 @@ function Checks({ row }: { row: PullRequestDetailRow }) {
             ? "danger"
             : "faint"
       }
-      symbol={
-        pr.checks === "success" ? "✓" : pr.checks === "failure" ? "×" : "●"
-      }
+      icon="checks"
       summary={
         {
           success: "All passed",
@@ -486,7 +523,7 @@ function Agents({ task }: { task: Task }) {
       title="Agents"
       testId="overview-agents"
       tone={working.length ? "good" : "faint"}
-      symbol={working.length ? "●" : "○"}
+      icon="agents"
       summary={
         working.length
           ? working.map((run) => `${run.role} working`).join(", ")
@@ -581,7 +618,7 @@ function Tests({ task }: { task: Task }) {
       title="Tests"
       testId="overview-tests"
       tone={!tests.length ? "faint" : failed ? "danger" : "good"}
-      symbol={!tests.length ? "●" : failed ? "×" : "✓"}
+      icon="tests"
       summary={
         !tests.length
           ? "No test results yet"
