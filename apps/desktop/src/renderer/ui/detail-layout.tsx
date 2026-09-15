@@ -1,6 +1,22 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  type RefObject,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTrackerActions } from "./tracker-actions.js";
 import { eventKey, keyHint, trackerKeymap } from "./tracker-keymap.js";
+
+// A mounted nested viewer supplies its scroller; otherwise the detail body owns scrolling.
+const DetailScroller = createContext<
+  RefObject<HTMLDivElement | null> | undefined
+>(undefined);
+export function useDetailScroller() {
+  return useContext(DetailScroller);
+}
 
 /** Shared chrome for issue, PR-only and daily brief details. Escape is owned by useShortcuts. */
 export function DetailLayout({
@@ -31,20 +47,27 @@ export function DetailLayout({
   const [fullscreen, setFullscreen] = useState(false);
   const header = useRef<HTMLElement>(null);
   const body = useRef<HTMLDivElement>(null);
+  const nestedScroller = useRef<HTMLDivElement>(null);
+  const scroller = () => nestedScroller.current ?? body.current;
   const scroll = (amount: number) => {
-    if (body.current) body.current.scrollTop += amount;
+    const element = scroller();
+    if (element) element.scrollTop += amount;
   };
   useTrackerActions({
     fullscreen: () => setFullscreen((value) => !value),
     "scroll-down": () => scroll(60),
     "scroll-up": () => scroll(-60),
-    "page-down": () => scroll((body.current?.clientHeight ?? 0) / 2),
-    "page-up": () => scroll(-(body.current?.clientHeight ?? 0) / 2),
+    "half-page-down": () => scroll((scroller()?.clientHeight ?? 0) / 2),
+    "half-page-up": () => scroll(-(scroller()?.clientHeight ?? 0) / 2),
+    "page-down": () => scroll(scroller()?.clientHeight ?? 0),
+    "page-up": () => scroll(-(scroller()?.clientHeight ?? 0)),
     top: () => {
-      if (body.current) body.current.scrollTop = 0;
+      const element = scroller();
+      if (element) element.scrollTop = 0;
     },
     bottom: () => {
-      if (body.current) body.current.scrollTop = body.current.scrollHeight;
+      const element = scroller();
+      if (element) element.scrollTop = element.scrollHeight;
     },
   });
   useEffect(() => {
@@ -117,11 +140,11 @@ export function DetailLayout({
           role="tabpanel"
           data-tab-body={tab}
         >
-          {children}
+          <DetailScroller value={nestedScroller}>{children}</DetailScroller>
         </div>
       ) : (
         <div ref={body} className="tab-body pr-page-body">
-          {children}
+          <DetailScroller value={nestedScroller}>{children}</DetailScroller>
         </div>
       )}
       {dialogs}

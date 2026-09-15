@@ -149,16 +149,30 @@ export const trackerKeymap = [
     scope: "detail",
   },
   {
-    id: "page-down",
-    keys: ["J"],
+    id: "half-page-down",
+    keys: ["Control+d"],
     label: "Half page down",
     group: "Detail",
     scope: "detail",
   },
   {
-    id: "page-up",
-    keys: ["K"],
+    id: "half-page-up",
+    keys: ["Control+u"],
     label: "Half page up",
+    group: "Detail",
+    scope: "detail",
+  },
+  {
+    id: "page-down",
+    keys: ["Space"],
+    label: "Page down",
+    group: "Detail",
+    scope: "detail",
+  },
+  {
+    id: "page-up",
+    keys: ["Shift+Space"],
+    label: "Page up",
     group: "Detail",
     scope: "detail",
   },
@@ -248,14 +262,14 @@ export const trackerKeymap = [
   },
   {
     id: "next-file",
-    keys: ["j"],
+    keys: ["n"],
     label: "Next file",
     group: "Diff (takes precedence)",
     scope: "diff",
   },
   {
     id: "previous-file",
-    keys: ["k"],
+    keys: ["p"],
     label: "Previous file",
     group: "Diff (takes precedence)",
     scope: "diff",
@@ -323,5 +337,6 @@ export function keyHint(id: TrackerActionId, label?: string | null) {
   };
 }
 export function eventKey(event: KeyboardEvent): string {
-  return `${event.metaKey ? "Meta+" : ""}${event.ctrlKey ? "Control+" : ""}${event.altKey ? "Alt+" : ""}${event.shiftKey && (event.key.length > 1 || event.metaKey || event.ctrlKey || event.altKey) ? "Shift+" : ""}${event.key}`;
+  const key = event.key === " " ? "Space" : event.key;
+  return `${event.metaKey ? "Meta+" : ""}${event.ctrlKey ? "Control+" : ""}${event.altKey ? "Alt+" : ""}${event.shiftKey && (key.length > 1 || event.metaKey || event.ctrlKey || event.altKey) ? "Shift+" : ""}${key}`;
 }
