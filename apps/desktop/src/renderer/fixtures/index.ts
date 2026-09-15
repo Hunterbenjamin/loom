@@ -195,25 +195,11 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
       id: repoId("repo-loom"),
       root: worktreePath("/Users/you/Projects/loom"),
       github: "you/loom",
-      baseBranch: "main",
-      defaultProviders: {
-        planner: "codex",
-        implementer: "claude",
-        reviewer: "codex",
-      },
-      serialTests: false,
     },
     {
       id: repoId("repo-herdr"),
       root: worktreePath("/Users/you/Projects/herdr"),
       github: "you/herdr",
-      baseBranch: "main",
-      defaultProviders: {
-        planner: "claude",
-        implementer: "codex",
-        reviewer: "claude",
-      },
-      serialTests: true,
     },
   ];
 
@@ -313,7 +299,10 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
             ? 0
             : 1,
       reviewRoundCap: 3,
-      providers: repo.defaultProviders,
+      providers:
+        repoIndex === 0
+          ? { planner: "codex", implementer: "claude", reviewer: "codex" }
+          : { planner: "claude", implementer: "codex", reviewer: "claude" },
       blockedBy: index === 22 ? [taskId("LOOM-118")] : [],
       budgetMinutes: index % 4 === 0 ? 180 : null,
       size: index % 5 === 0 ? "small" : "normal",
@@ -359,7 +348,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
         taskId: id,
         repoId: repo.id,
         branch,
-        baseBranch: repo.baseBranch,
+        baseBranch: "main",
         baseSha: sha(index * 7 + 1),
         portSlot: index % 8,
         paneWorkspaceId: `loom-${slug(title).slice(0, 20)}`,

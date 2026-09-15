@@ -40,7 +40,6 @@ import {
   displayName,
   issueKey,
   MODEL_CATALOG,
-  mergeSettings,
   resolveSettings,
   resolveTaskRef,
   SETTINGS_CATALOG,
@@ -78,6 +77,7 @@ import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
 import { registerRepo } from "./repos.js";
 import { ProtocolServer } from "./server.js";
+import { migrateSettings } from "./settings-migration.js";
 import { runShell, type Shell } from "./shell.js";
 import { resolveCommandTaskRefs } from "./task-refs.js";
 import { openTaskTerminal } from "./task-terminal.js";
@@ -249,38 +249,6 @@ export class Coordinator {
       },
     ];
   }
-  private compatibilitySettings(repoId?: string): SettingsValues {
-    const repo = repoId
-      ? this.store.repos().find((item) => item.id === repoId)
-      : undefined;
-    let compatibility = mergeSettings(DEFAULT_SETTINGS, {
-      repository: {
-        baseBranch: repo?.baseBranch ?? this.config.baseBranch,
-        serialTests: repo?.serialTests ?? false,
-      },
-    });
-    for (const role of ["planner", "implementer", "reviewer"] as const) {
-      const provider =
-        this.config.providerOverrides[role] ??
-        repo?.defaultProviders[role] ??
-        compatibility.roles[role].provider;
-      compatibility = mergeSettings(compatibility, {
-        roles: {
-          [role]: {
-            provider,
-            model: this.config.models[provider],
-            reasoningEffort:
-              provider === "codex"
-                ? ((this.config.codexReasoningEffort as never) ?? "medium")
-                : null,
-            runMode: this.config.runModes[role] ?? "interactive",
-            access: this.config.agentAccess,
-          },
-        },
-      });
-    }
-    return compatibility;
-  }
   private effectiveSettings(repoId?: string): SettingsValues {
     const global = this.store.settings.read({ kind: "global" }).data;
     const repository = repoId
@@ -290,7 +258,7 @@ export class Coordinator {
       global,
       repository,
       this.config.settingsEnvironment,
-      this.compatibilitySettings(repoId),
+      DEFAULT_SETTINGS,
       this.config.providerEnvironment,
     ).effective;
   }
@@ -313,36 +281,6 @@ export class Coordinator {
         DEFAULT_SETTINGS,
         this.config.providerEnvironment,
       );
-      const effective = this.effectiveSettings(
-        scope.kind === "repository" ? scope.repoId : undefined,
-      );
-      if (scope.kind === "repository") {
-        const repo = this.store
-          .repos()
-          .find((item) => item.id === scope.repoId);
-        for (const role of ["planner", "implementer", "reviewer"] as const)
-          if (
-            repo?.defaultProviders[role] &&
-            settingValue(global.data, `roles.${role}.provider`) === undefined &&
-            settingValue(stored.data, `roles.${role}.provider`) === undefined &&
-            settingValue(
-              this.config.settingsEnvironment,
-              `roles.${role}.provider`,
-            ) === undefined
-          )
-            resolution.sources[`roles.${role}.provider`] = "repository";
-        for (const key of ["baseBranch", "serialTests"] as const)
-          if (
-            repo &&
-            settingValue(global.data, `repository.${key}`) === undefined &&
-            settingValue(stored.data, `repository.${key}`) === undefined &&
-            settingValue(
-              this.config.settingsEnvironment,
-              `repository.${key}`,
-            ) === undefined
-          )
-            resolution.sources[`repository.${key}`] = "repository";
-      }
       return {
         collection: "settings" as const,
         key: settingsId(scope),
@@ -352,7 +290,7 @@ export class Coordinator {
           version: stored.version,
           stored: stored.data,
           defaults: DEFAULT_SETTINGS,
-          effective,
+          effective: resolution.effective,
           sources: resolution.sources,
           catalog: SETTINGS_CATALOG,
           modelCatalog: MODEL_CATALOG,
@@ -434,47 +372,25 @@ export class Coordinator {
             }).data,
           }));
     const validateResolved = (
-      repositoryId: string | undefined,
       repositoryData: SettingsPatch | null,
       environment: SettingsPatch | null,
     ) => {
-      const compatibility = this.compatibilitySettings(repositoryId);
       const effective = resolveSettings(
         global,
         repositoryData,
         environment,
-        compatibility,
+        DEFAULT_SETTINGS,
         this.config.providerEnvironment,
       ).effective;
-      return validateSettings(effective).filter((message) => {
-        const match =
-          /^Unknown (?:codex|claude) model for (planner|implementer|reviewer):/.exec(
-            message,
-          );
-        if (!match) return true;
-        const role = match[1] as "planner" | "implementer" | "reviewer";
-        const path = `roles.${role}.model`;
-        const explicitlyConfigured =
-          settingValue(global, path) !== undefined ||
-          settingValue(repositoryData ?? {}, path) !== undefined ||
-          settingValue(environment ?? {}, path) !== undefined;
-        return (
-          explicitlyConfigured ||
-          effective.roles[role].model !== compatibility.roles[role].model
-        );
-      });
+      return validateSettings(effective);
     };
     const errors = [
-      ...validateResolved(undefined, null, null),
-      ...validateResolved(undefined, null, this.config.settingsEnvironment),
+      ...validateResolved(null, null),
+      ...validateResolved(null, this.config.settingsEnvironment),
       ...repositories.flatMap((repo) =>
         [
-          ...validateResolved(repo.id, repo.data, null),
-          ...validateResolved(
-            repo.id,
-            repo.data,
-            this.config.settingsEnvironment,
-          ),
+          ...validateResolved(repo.data, null),
+          ...validateResolved(repo.data, this.config.settingsEnvironment),
         ].map((message) => `${repo.id}: ${message}`),
       ),
     ];
@@ -492,47 +408,6 @@ export class Coordinator {
       changes,
     });
     if (scope.kind === "global") this.applyStoredRuntime(false);
-    if (
-      scope.kind === "repository" &&
-      changes.some((change) => change.key.startsWith("repository."))
-    ) {
-      const repo = this.store.repos().find((item) => item.id === scope.repoId);
-      if (repo) {
-        const effective = resolveSettings(
-          global,
-          next,
-          this.config.settingsEnvironment,
-          DEFAULT_SETTINGS,
-          this.config.providerEnvironment,
-        ).effective;
-        this.store.putRepo({
-          ...repo,
-          baseBranch: effective.repository.baseBranch,
-          serialTests: effective.repository.serialTests,
-        });
-        this.publishRepos();
-      }
-    }
-    if (
-      scope.kind === "global" &&
-      changes.some((change) => change.key.startsWith("repository."))
-    ) {
-      for (const repo of this.store.repos()) {
-        const repository = this.store.settings.read({
-          kind: "repository",
-          repoId: repo.id,
-        }).data;
-        const effective = resolveSettings(
-          next,
-          repository,
-          this.config.settingsEnvironment,
-          DEFAULT_SETTINGS,
-          this.config.providerEnvironment,
-        ).effective.repository;
-        this.store.putRepo({ ...repo, ...effective });
-      }
-      this.publishRepos();
-    }
     this.publishSettings();
     return saved.version;
   }
@@ -601,8 +476,6 @@ export class Coordinator {
     this.store.setRoleProfilesResolver(
       (task) => this.effectiveSettings(task.repoId).roles,
     );
-    this.applyStoredRuntime(true);
-
     this.loop = new Loop({
       store: this.store,
       drainExecutor: () => this.executor.drain(),
@@ -628,6 +501,7 @@ export class Coordinator {
       shell: options.shell ?? runShell,
       repo: (taskId) => this.repo(taskId),
       repoById: (repoId) => this.repoById(repoId),
+      repositorySettings: (repoId) => this.effectiveSettings(repoId).repository,
       schedule: (taskId, at, why) => this.schedule(taskId, at, why),
       notify: (level, title, body) => this.log(`[${level}] ${title}: ${body}`),
       now: () => this.now(),
@@ -780,6 +654,8 @@ export class Coordinator {
   }
 
   async start(): Promise<RecoveryReport> {
+    migrateSettings(this.store, this.baselineConfig, this.now());
+    this.applyStoredRuntime(true);
     await this.recipes.load();
     for (const repo of this.store.repos()) await this.leadFor(repo.id).load();
     const selected = this.store.selectedRepo();
@@ -1226,7 +1102,11 @@ export class Coordinator {
         repoOf: (s) => {
           const repo = this.store.repos().find((r) => r.id === s.task.repoId);
           return repo
-            ? { github: repo.github, baseBranch: repo.baseBranch }
+            ? {
+                github: repo.github,
+                baseBranch: this.effectiveSettings(repo.id).repository
+                  .baseBranch,
+              }
             : null;
         },
         now: () => this.now(),
@@ -1707,8 +1587,9 @@ export class Coordinator {
             this.store,
             command.root as string,
             command.github as string,
-            (command.baseBranch as string | undefined) ??
-              this.config.baseBranch,
+            command.baseBranch as string | undefined,
+            this.effectiveSettings().repository.baseBranch,
+            this.now(),
           );
           this.store.selectRepo(repo.id);
           const lead = this.leadFor(repo.id);
@@ -1717,6 +1598,7 @@ export class Coordinator {
             await lead.recover();
           }
           this.publishRepos();
+          this.publishSettings();
           await this.publishLead();
           return { ok: true, result: { kind: "repo_added", repoId: repo.id } };
         }

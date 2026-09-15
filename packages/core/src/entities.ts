@@ -35,10 +35,6 @@ export interface Repo {
   root: WorktreePath;
   /** `owner/name`. (ref: GitHub) */
   github: string;
-  baseBranch: string;
-  defaultProviders: ProviderRules;
-  /** Repo is marked serial-tests: a lock guards its test step. */
-  serialTests: boolean;
 }
 
 // ---------------------------------------------------------------- Task

@@ -69,8 +69,9 @@ is captured on each run. Retries and recovery retain that recipe, while an expli
 current effective role profile. Live supervisor values apply immediately; the catalog labels values
 that apply to the next task, next run, or coordinator restart. Every stored mutation uses an expected
 version and appends a redacted audit row. Settings and audit schemas reject secret-bearing keys.
-At startup the coordinator opens the store with bootstrap defaults, resolves the global settings
-row, refreshes core's reconcile configuration, and only then constructs tool and GitHub adapters.
+At startup the coordinator opens the store, migrates legacy repository configuration into sparse
+settings, resolves the global settings row, refreshes core's reconcile configuration, and only then
+constructs tool and GitHub adapters.
 Immediate changes replace the live reconcile configuration and reschedule affected supervisor
 timers; resetting a value re-resolves from the immutable startup/environment baseline. Provider-wide
 model environment variables are applied after each role's effective provider is selected, so a
@@ -83,15 +84,14 @@ is present.
 Repository scope is intentionally limited to role profiles, task/workflow defaults, base branch and
 serialized tests. Capacity, retry/polling, executable paths, Main, GitHub observation and
 desktop presentation are single-supervisor or single-instance facts and are editable only at Global
-defaults; repository documents show them as inherited and disabled. Existing `Repo.defaultProviders`
-remain the per-role compatibility baseline until that exact role field is overridden, so one sparse
-edit cannot reroute the other roles.
+defaults; repository documents show them as inherited and disabled. Settings resolve from built-in
+defaults, sparse global and repository documents, and environment overrides only.
 
 | Configuration | Current code owner/location | Classification |
 |---|---|---|
 | Planner, implementer and reviewer provider (`LOOM_PROVIDER_*`), provider model (`LOOM_MODEL_CODEX`, `LOOM_MODEL_CLAUDE`), Codex reasoning (`LOOM_CODEX_REASONING_EFFORT`), `LOOM_RUN_MODES`, semantic `LOOM_AGENT_ACCESS` | `apps/coordinator/src/config.ts`, `packages/core/src/settings.ts`, run recipe and provider launch adapters | Exposed; next run. Planner read-only remains a fixed floor. |
 | Plan approval, size, budget, review-round cap, merge policy | create-task protocol/CLI and `packages/core` task policy | Exposed; captured on the next task. Explicit creation values win. |
-| Repository base branch, default providers and serialized-test flag | `packages/core` `Repo`, `apps/coordinator/src/repos.ts` | Exposed in the Repositories and role sections at global/repository scope; repository identity/root remains registration-owned. |
+| Repository base branch, default providers and serialized-test flag | Stored settings | Exposed in the Repositories and role sections at global/repository scope; repository identity/root remains registration-owned. |
 | Main model (`main.model`, `LOOM_MODEL_LEAD`) | `apps/coordinator/src/lead.ts`, `config.ts` | Exposed in Main; next run. |
 | Capacity, retry base/cap/attempts, stall/unknown/delivery timeouts, GitHub task poll, resync and heartbeat | `apps/coordinator/src/config.ts`, loop/executor/observation | Exposed in Advanced runtime; immediate except heartbeat, which needs restart. |
 | Worktree root and tmux/Codex/Claude executables (`LOOM_WORKTREE_ROOT`, `LOOM_TMUX`, `LOOM_CODEX`, `LOOM_CLAUDE`) | coordinator config and launch adapters | Exposed; restart required. |

@@ -16,13 +16,6 @@ const repo = (id: string, github: string, root = `/tmp/${id}`): Repo => ({
   id: id as RepoId,
   github,
   root: root as WorktreePath,
-  baseBranch: "main",
-  defaultProviders: {
-    planner: "codex",
-    implementer: "codex",
-    reviewer: "claude",
-  },
-  serialTests: false,
 });
 const task = (id: string, repoId: string, number: number): Task => ({
   ...fixture().state.task,

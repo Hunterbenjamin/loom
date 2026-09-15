@@ -68,13 +68,6 @@ test.skipIf(!enabled)(
       id: "real-repo" as RepoId,
       root: (await git.realpath(repoRoot)) as WorktreePath,
       github: "example/repo",
-      baseBranch: "main",
-      defaultProviders: {
-        planner: "claude",
-        implementer: "claude",
-        reviewer: "claude",
-      },
-      serialTests: false,
     };
     store.putRepo(repo);
     const claude = await createClaudeAdapter({

@@ -32,13 +32,6 @@ export const repo: Repo = {
   id: "repo" as RepoId,
   root: "/tmp/loom-store-fixture" as WorktreePath,
   github: "example/fixture",
-  baseBranch: "main",
-  defaultProviders: {
-    planner: "claude",
-    implementer: "codex",
-    reviewer: "claude",
-  },
-  serialTests: false,
 };
 export function task(id = taskId): Task {
   return {

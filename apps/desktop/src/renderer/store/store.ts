@@ -890,6 +890,11 @@ export function createStore(
       const repoId = repo;
       const at = minutesBefore(0);
       const id = `LOOM-${state.snapshot.tasks.length + 101}` as TaskId;
+      const roles = state.settings.find(
+        (settings) =>
+          settings.scope.kind === "repository" &&
+          settings.scope.repoId === repoId,
+      )?.effective.roles;
       const task: Task = {
         id,
         repoId: repoId as Task["repoId"],
@@ -906,12 +911,17 @@ export function createStore(
         requirePlanApproval: options.requirePlanApproval ?? true,
         reviewRound: 0,
         reviewRoundCap: 3,
-        providers: state.snapshot.repos.find((r) => r.id === repoId)
-          ?.defaultProviders ?? {
-          planner: "codex",
-          implementer: "claude",
-          reviewer: "codex",
-        },
+        providers: roles
+          ? {
+              planner: roles.planner.provider,
+              implementer: roles.implementer.provider,
+              reviewer: roles.reviewer.provider,
+            }
+          : {
+              planner: "codex",
+              implementer: "claude",
+              reviewer: "codex",
+            },
         blockedBy: [],
         budgetMinutes: null,
         size: options.size ?? "normal",
