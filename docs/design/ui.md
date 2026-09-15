@@ -43,7 +43,7 @@ and publishes it to all windows. Cancel creates nothing; chooser, Git and comman
 Create issue opens from `C`, the command palette, or **+** beside the repository picker. A native
 modal keeps keyboard focus inside it and autofocuses the required title. The Markdown description
 grows with its content; Command+Enter submits. Repository defaults to the selected project. Status offers Backlog and Todo (starts the workflow); size offers
-Normal and Small (skips planning, for one-file fixes), alongside Require plan approval.
+Normal and Small (skips planning, for one-file fixes, unless Require plan approval is on), alongside Require plan approval.
 
 The live window sends `create_task` and waits for its assigned key. Todo then sends a separate
 human move; its acknowledgement means queued. Errors remain inline with the draft; a failed move

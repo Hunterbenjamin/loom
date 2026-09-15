@@ -176,8 +176,9 @@ export function reconcileStages(c: Context): void {
     else if (!missing.length && task.blocked?.reason === "dependencies")
       c.block(null);
 
-    // For small tasks, auto-generate a plan and skip the planning stage
-    if (task.size === "small" && !state.plan) {
+    // A small task skips planning with a plan made from its description, unless the human asked
+    // to approve its plan: that request wins over the fast path.
+    if (task.size === "small" && !task.requirePlanApproval && !state.plan) {
       const autoPlan = {
         goal: task.title,
         nonGoals: [],
