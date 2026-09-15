@@ -63,11 +63,7 @@ test("submission keeps request intact and replaces implementation independently 
   expect(c.task.description).toBe(request);
   expect(latestImplementation(c.state)?.summary).toBe(call.input.summary);
   expect(
-    implementationBody(
-      c.task,
-      latestImplementation(c.state),
-      c.state.issueKey,
-    ),
+    implementationBody(c.task, latestImplementation(c.state), c.state.issueKey),
   ).not.toContain("3 passed");
   expect(
     c.state.artifacts.find((a) => a.kind === "implementation")?.version,
