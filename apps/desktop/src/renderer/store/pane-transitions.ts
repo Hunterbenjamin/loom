@@ -7,6 +7,13 @@ import type { State, StoreContext } from "./store.js";
 export const paneKey = (pane: Pick<PaneView, "hostGeneration" | "paneId">) =>
   JSON.stringify([pane.hostGeneration, pane.paneId]);
 
+/**
+ * The read-state key for a run's finished turn: its pane's key, so the Workbench and the tracker
+ * share one read state, or its id for a run without a pane.
+ */
+export const finishedKey = (run: Pick<Run, "id" | "pane">) =>
+  run.pane ? paneKey(run.pane) : JSON.stringify(["run", run.id]);
+
 export function createPaneTransitionDetector() {
   let previous = new Map<string, string>();
   return {
@@ -49,6 +56,16 @@ export function paneActivity(ctx: StoreContext) {
   const listeners = new Set<(pane: PaneView) => void>();
   let paneFocus: (() => PaneIdentity | "main" | undefined) | undefined;
 
+  const markRead = (candidates: readonly string[]) => {
+    const state = ctx.get();
+    const keys = candidates.filter((key) => !state.readFinished.has(key));
+    if (!keys.length) return;
+    ctx.set({
+      ...state,
+      readFinished: new Set([...state.readFinished, ...keys]),
+    });
+    ctx.emit();
+  };
   return {
     resetPaneTransitions() {
       detector.reset();
@@ -123,16 +140,11 @@ export function paneActivity(ctx: StoreContext) {
     markPanesRead(
       panes: readonly Pick<PaneView, "hostGeneration" | "paneId">[],
     ) {
-      const state = ctx.get();
-      const keys = panes
-        .map(paneKey)
-        .filter((key) => !state.readFinished.has(key));
-      if (!keys.length) return;
-      ctx.set({
-        ...state,
-        readFinished: new Set([...state.readFinished, ...keys]),
-      });
-      ctx.emit();
+      markRead(panes.map(paneKey));
+    },
+    /** Opening an issue reads its agents' finished turns. */
+    markRunsRead(runs: readonly Pick<Run, "id" | "pane">[]) {
+      markRead(runs.map(finishedKey));
     },
   };
 }

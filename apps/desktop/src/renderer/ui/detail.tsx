@@ -1,10 +1,11 @@
 import type { HumanCommand, Sha, Task, TaskId } from "@loom/core";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { issuePrNumbers } from "../store/detail-selection.js";
 import { issueDecisions } from "../store/issue-actions.js";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
-import { issueKeyFor } from "../store/selectors.js";
+import { issueKeyFor, taskRuns } from "../store/selectors.js";
 import type { TabId, UiState } from "../store/ui-state.js";
+import { agentState } from "../workbench/agents.js";
 import { AttentionChips } from "./bits.js";
 import { DetailLayout } from "./detail-layout.js";
 import { EditBacklogIssue } from "./edit-backlog-issue.js";
@@ -61,6 +62,13 @@ export function Detail({
     s.panes.some((pane) => pane.taskId === task.id && !pane.dead),
   );
   const plan = useStore((s) => s.snapshot.plans[task.id]);
+  const runs = useStore((s) => taskRuns(s.snapshot, task), shallowArray);
+  // Looking at an issue reads its agents' finished turns, so its list icon stops being blue.
+  useEffect(() => {
+    store.markRunsRead(
+      runs.filter((run) => agentState(run).tone === "finished"),
+    );
+  }, [store, runs]);
   const [editing, setEditing] = useState(false);
   const [file, setFile] = useState<string | null>(null);
   const { run, busy, outcome: prOutcome } = usePullRequestCommand();
