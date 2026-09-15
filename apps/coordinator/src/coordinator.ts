@@ -63,11 +63,10 @@ import { ProtocolServer } from "./server.js";
 import { CoordinatorSettings } from "./settings.js";
 import { migrateSettings } from "./settings-migration.js";
 import { runShell, type Shell } from "./shell.js";
-import {
-  type CreateTaskInput,
-  taskHandlers,
-} from "./task-commands.js";
+import { type CreateTaskInput, taskHandlers } from "./task-commands.js";
+
 export type { CreateTaskInput } from "./task-commands.js";
+
 import { resolveCommandTaskRefs } from "./task-refs.js";
 import { terminalHandlers } from "./terminals.js";
 import {
