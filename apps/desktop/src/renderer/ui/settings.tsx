@@ -1,3 +1,4 @@
+import { PROVIDER_VALUES, ROLE_VALUES, RUN_MODE_VALUES } from "@loom/core";
 import { type SettingsValues, settingValue } from "@loom/core";
 import type { SettingsDocument } from "@loom/protocol";
 import { useState } from "react";
@@ -16,7 +17,7 @@ import {
 import { KeyboardSettings } from "./settings-keys.js";
 
 type Role = keyof SettingsValues["roles"];
-const ROLES: Role[] = ["planner", "implementer", "reviewer"];
+const ROLES: Role[] = [...ROLE_VALUES];
 
 const SECTIONS = [
   { id: "general", label: "General", scoped: false },
@@ -158,7 +159,7 @@ function RoleCell({
             });
           },
         }}
-        options={["codex", "claude"]}
+        options={[...PROVIDER_VALUES]}
         labels={{ codex: "Codex", claude: "Claude" }}
       />
     );
@@ -175,7 +176,7 @@ function RoleCell({
   return (
     <Select
       field={field}
-      options={["interactive", "headless"]}
+      options={[...RUN_MODE_VALUES]}
       labels={{ interactive: "Interactive", headless: "Headless" }}
     />
   );

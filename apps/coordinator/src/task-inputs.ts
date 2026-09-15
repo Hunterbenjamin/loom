@@ -1,3 +1,4 @@
+import { ROLE_VALUES } from "@loom/core";
 // Task creation and human inputs shared by the coordinator API and protocol commands.
 import { randomUUID } from "node:crypto";
 import type {
@@ -61,7 +62,7 @@ export class TaskInputs {
       reviewRound: 0,
       reviewRoundCap: settings.workflow.reviewRoundCap,
       roleProfiles: Object.fromEntries(
-        (["planner", "implementer", "reviewer"] as const).map((role) => {
+        ([...ROLE_VALUES]).map((role) => {
           const profile = settings.roles[role];
           const provider = input.providers?.[role] ?? profile.provider;
           return [

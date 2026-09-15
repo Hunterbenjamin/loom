@@ -1,3 +1,4 @@
+import { PROVIDER_VALUES } from "@loom/core";
 import type {
   CapacityObservation,
   DependencyObservation,
@@ -65,7 +66,7 @@ export class InputStore {
         )
         .all()) {
         const row = z
-          .object({ provider: z.enum(["codex", "claude"]), count })
+          .object({ provider: z.enum([...PROVIDER_VALUES]), count })
           .parse(raw);
         active[row.provider] = row.count;
       }

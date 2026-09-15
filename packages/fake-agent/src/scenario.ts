@@ -1,3 +1,4 @@
+import { PROVIDER_VALUES, ROLE_VALUES, RUN_MODE_VALUES, TURN_OUTCOME_VALUES } from "@loom/core";
 import { readFile } from "node:fs/promises";
 import type { McpToolName } from "@loom/core";
 import { errorSchema, inputSchemas } from "@loom/mcp";
@@ -36,7 +37,7 @@ export const stepSchema = z.union([
     message: z.string(),
   }),
   z.strictObject({
-    turn: z.enum(["completed", "interrupted", "failed"]),
+    turn: z.enum([...TURN_OUTCOME_VALUES]),
     error: z
       .strictObject({ willRetry: z.boolean(), kind: z.string() })
       .optional(),
@@ -63,9 +64,9 @@ export const stepSchema = z.union([
 export const scenarioSchema = z.strictObject({
   name: z.string().min(1),
   agent: z.strictObject({
-    provider: z.enum(["codex", "claude"]),
-    role: z.enum(["planner", "implementer", "reviewer"]),
-    mode: z.enum(["interactive", "headless"]),
+    provider: z.enum([...PROVIDER_VALUES]),
+    role: z.enum([...ROLE_VALUES]),
+    mode: z.enum([...RUN_MODE_VALUES]),
     attempt: z.number().int().positive().optional(),
   }),
   steps: z.array(stepSchema),

@@ -1,3 +1,4 @@
+import { ROLE_VALUES } from "./entities.js";
 import type { Provider, Role, RunMode } from "./entities.js";
 import {
   DEFAULT_KEYBINDINGS,
@@ -217,7 +218,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
 const BOTH = ["global", "repository"] as const;
 const GLOBAL = ["global"] as const;
 export const SETTINGS_CATALOG: SettingDefinition[] = [
-  ...(["planner", "implementer", "reviewer"] as Role[]).flatMap((name) => [
+  ...([...ROLE_VALUES] as Role[]).flatMap((name) => [
     {
       key: `roles.${name}.provider`,
       section: "Agents & models" as const,
@@ -560,7 +561,7 @@ export function resolveSettings(
           ? "global"
           : "default";
   }
-  for (const role of ["planner", "implementer", "reviewer"] as const) {
+  for (const role of [...ROLE_VALUES]) {
     const profile = effective.roles[role];
     const model = providerEnvironment?.models?.[profile.provider];
     if (model !== undefined) {

@@ -1,3 +1,4 @@
+import { CI_CONCLUSION_VALUES, PROVIDER_VALUES } from "@loom/core";
 // Views the coordinator derives for its windows. Everything here is coordinator-owned and
 // survives a window closing (architecture principle 5); the store persists it, the UI only
 // renders it. Each one answers a gap the fixture shell found (PR #18, gaps 3-6).
@@ -290,7 +291,7 @@ export const taskInbox = z.strictObject({
     .strictObject({
       headSha: sha,
       since: isoTime,
-      conclusion: z.enum(["pending", "success", "failure", "none"]).nullable(),
+      conclusion: z.enum([...CI_CONCLUSION_VALUES]).nullable(),
       checks: z.array(
         z.strictObject({
           name: z.string(),
@@ -360,7 +361,7 @@ export const conversationSend = z.strictObject({
 export const conversation = z
   .strictObject({
     target: conversationTarget,
-    provider: z.enum(["claude", "codex"]),
+    provider: z.enum([...PROVIDER_VALUES]),
     status: z.enum(["working", "idle", "waiting", "stopped", "unknown"]),
     pendingPrompt: conversationPrompt.nullable(),
     sends: z.array(conversationSend).max(20),
@@ -410,7 +411,7 @@ export const paneView = paneIdentity
     paneTitle: z.string().nullable(),
     command: z.string(),
     /** The agent CLI in the pane's process tree, when the host found one. */
-    agent: z.enum(["codex", "claude"]).nullable().optional(),
+    agent: z.enum([...PROVIDER_VALUES]).nullable().optional(),
     startCwd: worktreePath,
     branch: z.string().min(1).nullable(),
     dead: z.boolean(),

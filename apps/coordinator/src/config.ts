@@ -1,3 +1,4 @@
+import { PROVIDER_VALUES, ROLE_VALUES, RUN_MODE_VALUES } from "@loom/core";
 // One instance's settings. `LOOM_INSTANCE` and `LOOM_DATA_ROOT` have no implicit production
 // default: a development coordinator must never open the stable instance's database.
 
@@ -64,8 +65,8 @@ function parseRunModes(value?: string): Record<Role, RunMode> {
 
   const parsed: Partial<Record<Role, RunMode>> = {};
   const parts = value.split(",").map((p) => p.trim());
-  const validRoles: Role[] = ["planner", "implementer", "reviewer"];
-  const validModes: RunMode[] = ["interactive", "headless"];
+  const validRoles: Role[] = [...ROLE_VALUES];
+  const validModes: RunMode[] = [...RUN_MODE_VALUES];
 
   for (const part of parts) {
     if (!part) {
@@ -119,9 +120,9 @@ export const configSchema = z
     models: z.object({ codex: z.string().min(1), claude: z.string().min(1) }),
     providerOverrides: z
       .object({
-        planner: z.enum(["codex", "claude"]).optional(),
-        implementer: z.enum(["codex", "claude"]).optional(),
-        reviewer: z.enum(["codex", "claude"]).optional(),
+        planner: z.enum([...PROVIDER_VALUES]).optional(),
+        implementer: z.enum([...PROVIDER_VALUES]).optional(),
+        reviewer: z.enum([...PROVIDER_VALUES]).optional(),
       })
       .default({}),
     codexReasoningEffort: z
@@ -276,7 +277,7 @@ export function configFromEnvironment(
       : derivedPort(bindPort, 2),
   });
   const rolePatch: SettingsPatch["roles"] = {};
-  for (const role of ["planner", "implementer", "reviewer"] as const) {
+  for (const role of [...ROLE_VALUES]) {
     const provider =
       parsed.providerOverrides[role] ?? DEFAULT_SETTINGS.roles[role].provider;
     const value: Partial<(typeof DEFAULT_SETTINGS.roles)[typeof role]> = {};
@@ -356,7 +357,7 @@ export function settingsDefaultsForConfig(
       excludedAuthors: config.excludedAuthors,
     },
   });
-  for (const role of ["planner", "implementer", "reviewer"] as const) {
+  for (const role of [...ROLE_VALUES]) {
     const provider =
       config.providerOverrides[role] ?? defaults.roles[role].provider;
     defaults = mergeSettings(defaults, {

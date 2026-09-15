@@ -1,3 +1,4 @@
+import { STAGE_VALUES } from "@loom/core";
 import type {
   AttentionReason,
   IsoTime,
@@ -6,19 +7,7 @@ import type {
   TokenCounts,
 } from "@loom/core";
 
-export const STAGES: Stage[] = [
-  "backlog",
-  "todo",
-  "planning",
-  "plan_approval",
-  "in_progress",
-  "ci",
-  "in_review",
-  "awaiting_approval",
-  "merging",
-  "done",
-  "canceled",
-];
+export const STAGES: Stage[] = [...STAGE_VALUES];
 
 export const STAGE_LABELS: Record<Stage, string> = {
   backlog: "Backlog",

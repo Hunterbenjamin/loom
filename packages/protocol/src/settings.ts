@@ -1,3 +1,4 @@
+import { PROVIDER_VALUES, ROLE_VALUES, RUN_MODE_VALUES } from "@loom/core";
 import { z } from "zod";
 import { isoTime, repoId } from "./ids.js";
 
@@ -17,10 +18,10 @@ export const reasoningEffort = z.enum([
   "ultra",
 ]);
 export const roleProfile = z.strictObject({
-  provider: z.enum(["codex", "claude"]),
+  provider: z.enum([...PROVIDER_VALUES]),
   model: z.string().min(1),
   reasoningEffort: reasoningEffort.nullable(),
-  runMode: z.enum(["interactive", "headless"]),
+  runMode: z.enum([...RUN_MODE_VALUES]),
   access: z.enum(["full", "approval-gated"]),
 });
 export const settingsValues = z.strictObject({
@@ -75,7 +76,7 @@ export const settingsValues = z.strictObject({
 export const settingsPatch = z.strictObject({
   roles: z
     .partialRecord(
-      z.enum(["planner", "implementer", "reviewer"]),
+      z.enum([...ROLE_VALUES]),
       roleProfile.partial(),
     )
     .optional(),
