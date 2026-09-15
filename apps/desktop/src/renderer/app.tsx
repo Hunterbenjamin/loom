@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { attentionCount, inboxRows } from "./store/inbox.js";
 import { selectedPullRequests } from "./store/pull-requests.js";
 import { useStore, useStoreApi } from "./store/react.js";
@@ -16,6 +16,7 @@ import { Palette, StagePicker } from "./ui/palette.js";
 import { PullRequestsView } from "./ui/pull-requests.js";
 import { SettingsView } from "./ui/settings.js";
 import { OpenRepository, Sidebar } from "./ui/sidebar.js";
+import { TrackerHelp } from "./ui/tracker-help.js";
 
 const PullRequestDetail = lazy(() =>
   import("./ui/pull-request-detail.js").then((m) => ({
@@ -25,7 +26,9 @@ const PullRequestDetail = lazy(() =>
 
 export function App() {
   const store = useStoreApi();
-  useShortcuts(store);
+  const [help, setHelp] = useState(false);
+  const showHelp = useCallback(() => setHelp(true), []);
+  useShortcuts(store, showHelp);
   useEffect(() => {
     store.setTrackerVisible(true);
     return () => store.setTrackerVisible(false);
@@ -103,6 +106,7 @@ export function App() {
 
   return (
     <div className="shell">
+      {help ? <TrackerHelp onClose={() => setHelp(false)} /> : null}
       <Sidebar />
       <div className="main">
         <header className="topbar">
@@ -121,6 +125,14 @@ export function App() {
             <span className="faint nums">{count}</span>
           )}
           <span className="spacer" />
+          <button
+            type="button"
+            onClick={showHelp}
+            title="Keyboard shortcuts (?)"
+            aria-label="Keyboard shortcuts"
+          >
+            ?
+          </button>
           {view !== "pull-requests" &&
             view !== "settings" &&
             view !== "briefs" && (

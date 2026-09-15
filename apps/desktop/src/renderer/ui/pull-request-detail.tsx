@@ -197,6 +197,7 @@ export function PullRequestDetail({
                 type="button"
                 role="tab"
                 id={`pr-tab-${label}`}
+                data-tab={label === "Overview" ? "overview" : "diff"}
                 aria-controls="detail-panel"
                 aria-selected={tab === label}
                 onClick={() => setTab(label)}

@@ -1,6 +1,6 @@
 import { displayName, type Stage } from "@loom/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { memo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, type Row, selectedRows } from "../store/selectors.js";
 import {
@@ -77,6 +77,16 @@ function Column({ rows }: { rows: Row[] }) {
     estimateSize: () => 84,
     overscan: 6,
   });
+
+  useEffect(() => {
+    const selected = all[cursor ?? -1];
+    const index = rows.findIndex((row) => row.task.id === selected?.task.id);
+    if (index < 0) return;
+    virtual.scrollToIndex(index, { align: "auto" });
+    scroller.current
+      ?.closest(".column")
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [cursor, all, rows, virtual]);
 
   return (
     <div className="column-body" ref={scroller}>

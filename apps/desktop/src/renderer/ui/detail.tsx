@@ -266,6 +266,7 @@ export function Detail({
                 type="button"
                 className="secondary"
                 disabled={disconnected || submitting || pending !== null}
+                data-issue-action="edit"
                 onClick={() => setEditing(true)}
               >
                 Edit issue
@@ -274,6 +275,7 @@ export function Detail({
                 type="button"
                 disabled={disconnected || submitting || pending !== null}
                 aria-busy={pending === "move" || undefined}
+                data-issue-action="todo"
                 onClick={() => void send({ type: "move", to: "todo" })}
               >
                 {pending === "move" ? (
