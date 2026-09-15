@@ -5,8 +5,8 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
 import { minutesBefore, taskId } from "../fixtures/ids.js";
 import { buildSnapshot } from "../fixtures/index.js";
+import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { StoreProvider } from "../store/react.js";
-import { createStore } from "../store/store.js";
 import { useShortcuts } from "./keys.js";
 import { ListView } from "./list.js";
 

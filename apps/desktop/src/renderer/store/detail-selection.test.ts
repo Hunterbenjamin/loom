@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
 import { buildSnapshot } from "../fixtures/index.js";
 import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
+import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { issuePrNumbers, selectedDetailTask } from "./detail-selection.js";
 import { pullRequestSubscriptions } from "./pull-requests.js";
-import { createStore } from "./store.js";
 
 test("issue selection subscribes to its PR and Review selection resolves the same task", () => {
   const snapshot = buildSnapshot();

@@ -68,7 +68,7 @@ function mount(conversation: Conversation, items: ConversationItem[] = []) {
     conversations: [conversation],
     conversationItems: items,
   };
-  const store = createStore(undefined, true, "test");
+  const store = createStore(undefined, "test");
   store.applyProtocol(stateFromSnapshot(meta, body));
   store.openChat(conversation.target);
   const send = vi.fn(

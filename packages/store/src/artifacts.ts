@@ -179,3 +179,26 @@ export function materialize(
     rmSync(temporary, { force: true });
   }
 }
+
+export class ArtifactStore {
+  constructor(
+    private readonly db: Database.Database,
+    private readonly dataDirectory: string,
+  ) {}
+  artifact(taskId: TaskId, kind: ArtifactKind, version: number) {
+    return readArtifact(this.db, taskId, kind, version);
+  }
+  materializeArtifact(
+    taskId: TaskId,
+    kind: ArtifactKind,
+    version: number,
+  ): void {
+    materialize(this.dataDirectory, this.artifact(taskId, kind, version));
+  }
+  repairArtifactFiles(): void {
+    for (const row of this.db
+      .prepare("SELECT data, content FROM artifacts ORDER BY rowid")
+      .all())
+      materialize(this.dataDirectory, readArtifactRow(row));
+  }
+}

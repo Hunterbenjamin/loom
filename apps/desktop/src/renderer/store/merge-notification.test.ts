@@ -10,7 +10,7 @@ function setup() {
   const fixture = buildSnapshot();
   const pr = fixture.pullRequests[0];
   if (!pr) throw new Error("Missing fixture");
-  const store = createStore(fixture, true);
+  const store = createStore(fixture);
   const notify = vi.fn();
   vi.stubGlobal("window", { loomHost: { notify } });
   const command: Command = {
@@ -95,7 +95,7 @@ test("transport loss reports uncertainty and notification failure never changes 
   expect(await h.store.command(h.command)).toEqual(h.success);
 });
 
-test("fixture commands and unsent commands never produce merge notifications", async () => {
+test("disconnected commands never produce merge notifications", async () => {
   const h = setup();
   await h.store.command(h.command);
   await createStore().command(h.command);

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { isoTime, minutesBefore, runId, taskId } from "../fixtures/ids.js";
 import type { Snapshot } from "../fixtures/index.js";
 import { buildSnapshot } from "../fixtures/index.js";
+import { createFixtureStore as createStore } from "../fixtures/store.js";
 import {
   cursorRows,
   groupRows,
@@ -9,8 +10,6 @@ import {
   sortRows,
   terminalsForTask,
 } from "./selectors.js";
-
-import { createStore } from "./store.js";
 import { LIST_PAGE_SIZE } from "./ui-state.js";
 
 describe("rowsFor", () => {

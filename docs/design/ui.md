@@ -32,6 +32,10 @@ Enter opens the resolving issue detail. Multiple runs for a reason can be select
 panel. A command acknowledgement follows the [core command contract](core.md#instant-human-commands);
 commands are not replayed after a disconnect.
 
+`?` opens the [Tracker shortcut map](../../apps/desktop/src/renderer/ui/tracker-help.tsx), which owns
+the key list. Shortcuts follow the active list, board or detail and pause in inputs and terminals.
+F6 returns focus from terminal input to detail controls.
+
 ## Combined issue and PR detail
 
 Issues, Inbox and linked Review rows open the same issue detail. Selecting a linked PR subscribes

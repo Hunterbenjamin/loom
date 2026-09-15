@@ -10,23 +10,21 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronBinary from "electron";
 import { _electron as electron } from "playwright";
+import { startDesktopHarness } from "../scripts/desktop-harness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
 const budgets = JSON.parse(readFileSync(join(here, "budgets.json"), "utf8"));
 const temporary = mkdtempSync(join(tmpdir(), "loom-desktop-perf-"));
-// Never inherit a live attach target. Latency is measured on a shell this harness creates.
-const env = {
-  ...process.env,
-  LOOM_INSTANCE: "dev",
-  LOOM_ATTACH_PANE: "",
-  LOOM_EXIT_WHEN_INTERACTIVE: "",
-  ELECTRON_RENDERER_URL: "",
-};
-const args = [root, "--fixtures", `--user-data-dir=${temporary}`];
+const LIST_ROWS = 500;
+const harness = await startDesktopHarness({
+  count: LIST_ROWS,
+  terminals: true,
+});
+const env = harness.env;
+const args = [root, `--user-data-dir=${temporary}`];
 let app;
 
-const LIST_ROWS = 500;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * Cold start, measured without Playwright: spawn the Electron binary the way a user launches
@@ -40,7 +38,6 @@ function coldStart() {
       cwd: root,
       env: {
         ...env,
-        LOOM_TASKS: String(LIST_ROWS),
         LOOM_WIDTH: "1440",
         LOOM_HEIGHT: "900",
         LOOM_EXIT_WHEN_INTERACTIVE: "1",
@@ -122,7 +119,6 @@ async function main() {
     cwd: root,
     env: {
       ...env,
-      LOOM_TASKS: String(LIST_ROWS),
       LOOM_WIDTH: "1440",
       LOOM_HEIGHT: "900",
     },
@@ -228,9 +224,10 @@ async function main() {
 
   step("terminal latency");
   // ---- keystroke to glyph
-  await page.evaluate(() => {
+  await page.evaluate((id) => {
+    window.loom.store.open(id);
     window.loom.store.setTab("terminal");
-  });
+  }, harness.terminalTaskId);
   await page.waitForSelector(".xterm-helper-textarea", { timeout: 20_000 });
   await page.waitForFunction(() => window.loom.term !== null, null, {
     timeout: 20_000,
@@ -360,6 +357,7 @@ main()
     try {
       await app?.close();
     } finally {
+      await harness.close();
       rmSync(temporary, { recursive: true, force: true });
     }
   });

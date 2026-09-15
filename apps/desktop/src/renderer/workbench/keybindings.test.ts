@@ -75,7 +75,7 @@ vi.mock("dockview", () => ({
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 async function harness() {
-  const store = createStore(undefined, true, "test");
+  const store = createStore(undefined, "test");
   store.applyProtocol(
     stateFromSnapshot(meta, { ...emptySnapshotBody(), panes: [pane] }),
   );

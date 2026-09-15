@@ -7,7 +7,7 @@ import {
   type Task,
 } from "@loom/core";
 import { type TaskInbox, taskInView, type ViewName } from "@loom/protocol";
-import type { Snapshot } from "../fixtures/index.js";
+import type { Snapshot } from "../store/snapshot.js";
 import { STAGES } from "../ui/format.js";
 
 export const issueKeyFor = (task: Task, repos: Snapshot["repos"]): string => {

@@ -2,26 +2,16 @@
 // full contents in the renderer (spike 04), so the fixture ships the patch, and the full
 // contents only for the files a reviewer can expand.
 
+import type {
+  PatchFileMeta,
+  SnapshotPatch as PatchFixture,
+} from "../store/snapshot.js";
 import { between, rng } from "./rng.js";
 
-export interface PatchFixture {
-  /** A Git patch, exactly as `git diff` would print it. */
-  text: string;
-  /** Stable per-file metadata, taken from Git rather than from the patch text. */
-  files: PatchFileMeta[];
-  /** Content-derived cache key; also Pierre's revision key. */
-  key: string;
-  contents: Record<string, { old: string; new: string }>;
-}
-
-export interface PatchFileMeta {
-  path: string;
-  status: "modified" | "added" | "deleted" | "renamed" | "binary";
-  previousPath: string | null;
-  added: number;
-  deleted: number;
-  language: string;
-}
+export type {
+  PatchFileMeta,
+  SnapshotPatch as PatchFixture,
+} from "../store/snapshot.js";
 
 const AREAS = [
   "packages/core/src",

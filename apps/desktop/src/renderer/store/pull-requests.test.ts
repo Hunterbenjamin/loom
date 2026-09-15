@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import { minutesBefore } from "../fixtures/ids.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
+import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { emptySnapshot } from "../live/snapshot.js";
 import {
   readyToMergeCount,
@@ -11,13 +12,12 @@ import {
   reviewNeedsHuman,
   selectedPullRequests,
 } from "./pull-requests.js";
-import { createStore } from "./store.js";
 
 test("live snapshots and PR patches update rows and retain the selected repo/number", () => {
   const fixture = buildSnapshot();
   const wire = toSnapshot(fixture);
   const client = stateFromSnapshot(wire.meta, wire.body);
-  const store = createStore(emptySnapshot(), true);
+  const store = createStore(emptySnapshot());
   store.applyProtocol(client);
   store.setView("pull-requests");
   store.setPrCursor(2);
@@ -84,9 +84,12 @@ test("PR lists, counts and subscriptions follow exactly one selected repository"
   const store = createStore();
   store.setView("pull-requests");
   store.setTrackerVisible(true);
+  store.getState().ui.repo = "";
   for (const repo of store.getState().snapshot.repos) {
     store.setPrCursor(3);
-    await store.setRepo(repo.id);
+    const wire = toSnapshot(store.getState().snapshot);
+    wire.body.projects = [{ id: "project", repoId: repo.id }];
+    store.applyProtocol(stateFromSnapshot(wire.meta, wire.body));
     expect(store.getState().ui.prCursor).toBeNull();
     const rows = selectedPullRequests(store.getState());
     expect(rows.length).toBeGreaterThan(0);
@@ -164,7 +167,11 @@ test("readiness follows GitHub patches and the selected repository, independent 
   expect(readyToMergeCount(store.getState())).toBe(1);
   const other = fixture.repos[1];
   if (!other) throw new Error("Missing repository");
-  await store.setRepo(other.id);
+  client.collections.project.set("project", {
+    id: "project",
+    repoId: other.id,
+  });
+  store.applyProtocol(client);
   expect(readyToMergeCount(store.getState())).toBe(0);
 });
 

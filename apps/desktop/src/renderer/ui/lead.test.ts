@@ -4,8 +4,8 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../app.js";
 import { buildSnapshot } from "../fixtures/index.js";
+import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { StoreProvider } from "../store/react.js";
-import { createStore } from "../store/store.js";
 import { WindowModeContext } from "../window-mode.js";
 import { LeadBar } from "./lead.js";
 

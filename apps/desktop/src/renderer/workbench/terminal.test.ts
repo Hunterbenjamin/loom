@@ -2,6 +2,7 @@
 import { act, createElement, Fragment } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
+import { buildSnapshot } from "../fixtures/index.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
 import { TerminalSession, TerminalTab } from "../ui/terminal.js";
@@ -49,7 +50,7 @@ const target = {
   paneId: "%1",
 };
 test("task detail automatically resolves its own terminal, displays the actual branch and ignores old run selection", async () => {
-  const store = createStore(undefined, true, "test");
+  const store = createStore(buildSnapshot(), "test");
   const task = store.getState().snapshot.tasks[0];
   if (!task) throw new Error("Missing task fixture");
   store.setRun("unrelated-run" as never);
@@ -151,7 +152,6 @@ test("two panel clients are independent; label/theme updates and parent paints p
       createElement(TerminalSession, {
         panelId: "a",
         pane: target,
-        live: true,
         theme,
         label,
       }),
@@ -159,7 +159,6 @@ test("two panel clients are independent; label/theme updates and parent paints p
         ? createElement(TerminalSession, {
             panelId: "b",
             pane: target,
-            live: true,
             theme,
             label: "b",
           })
@@ -201,7 +200,7 @@ test("pane crops attach at the full native window size and layout patches preser
     onExit: vi.fn(),
     off: vi.fn(),
   };
-  const store = createStore(undefined, true, "test");
+  const store = createStore(undefined, "test");
   window.loom = { store, ready: true, term: null };
   const element = document.createElement("div");
   document.body.append(element);
@@ -227,7 +226,6 @@ test("pane crops attach at the full native window size and layout patches preser
         },
         label: "Workbench",
         theme: "dark",
-        live: true,
       }),
     );
   try {

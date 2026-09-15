@@ -1,8 +1,7 @@
 import type { AttentionReason, RunId, Stage, TaskId } from "@loom/core";
 import type { ConversationTarget, PullRequestRow } from "@loom/protocol";
 import { repoId as parseRepoId } from "@loom/protocol";
-import type { Snapshot } from "../fixtures/index.js";
-import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
+import type { Snapshot } from "../store/snapshot.js";
 import type { ReviewSection } from "./pull-requests.js";
 import type { State } from "./store.js";
 
@@ -104,18 +103,14 @@ export const initialUi: UiState = {
 
 export function createInitialState(
   snapshot: Snapshot,
-  live: boolean,
   instance: string,
 ): State {
   return {
     snapshot,
     pullRequestLists: [],
-    pullRequestDetails: live
-      ? []
-      : buildPullRequestDetails(snapshot.pullRequests),
-    ui: { ...initialUi, repo: live ? "" : (snapshot.repos[0]?.id ?? "") },
-    live,
-    connection: live ? "connecting" : "fixtures",
+    pullRequestDetails: [],
+    ui: { ...initialUi },
+    connection: "connecting",
     inbox: snapshot.inbox,
     notes: [],
     panes: [],
@@ -130,16 +125,9 @@ export function createInitialState(
     lead: {
       id: parseRepoId.parse("lead"),
       sessionId: null,
-      status: live ? "stopped" : "idle",
+      status: "stopped",
     },
   };
-}
-
-/** The harness asks for a longer list with `?tasks=500`; the app itself never sets it. */
-export function fixtureTaskCount(): number | undefined {
-  if (typeof location === "undefined") return undefined;
-  const value = Number(new URLSearchParams(location.search).get("tasks"));
-  return Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 /** The Tracker's three destinations. Other view ids remain reachable by keyboard and palette. */

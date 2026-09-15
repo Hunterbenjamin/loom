@@ -17,7 +17,7 @@ import type {
   TaskInbox,
 } from "@loom/protocol";
 import { repoId as parseRepoId } from "@loom/protocol";
-import { buildSnapshot, type Snapshot } from "../fixtures/index.js";
+import { emptySnapshot } from "../live/snapshot.js";
 import { applyProtocol as applyProtocolState } from "./apply-protocol.js";
 import { chatActions } from "./chat.js";
 import { commandActions } from "./commands.js";
@@ -25,13 +25,12 @@ import { issueEditActions } from "./issue-actions.js";
 import { paneActivity } from "./pane-transitions.js";
 import { pullRequestActions } from "./pull-requests.js";
 import { cursorRows } from "./selectors.js";
+import type { Snapshot } from "./snapshot.js";
 import {
   applyPendingSelection,
   createInitialState,
-  fixtureTaskCount,
   LIST_PAGE_SIZE,
   type Pane,
-  resetUiForRepo,
   type SortKey,
   sectionCollapsed,
   type TabId,
@@ -45,7 +44,6 @@ export interface State {
   pullRequestLists: Entities["pull_requests"][];
   pullRequestDetails: PullRequestDetailRow[];
   ui: UiState;
-  live: boolean;
   connection: string;
   inbox: TaskInbox[];
   panes: PaneView[];
@@ -68,7 +66,6 @@ export interface StoreContext {
   set(state: State): void;
   setUi(patch: Partial<UiState>): void;
   emit(): void;
-  live: boolean;
   sender(): ((command: Command) => Promise<AckOutcome>) | null;
   command(value: Command): Promise<AckOutcome>;
   toast(message: string | null): void;
@@ -77,12 +74,11 @@ export interface StoreContext {
 export type Store = ReturnType<typeof createStore>;
 
 export function createStore(
-  snapshot: Snapshot = buildSnapshot(fixtureTaskCount()),
-  live = false,
-  instance = live ? "unconfigured" : "fixtures",
+  snapshot: Snapshot = emptySnapshot(),
+  instance = "unconfigured",
 ) {
   let pendingSelection: TaskId | null = null;
-  let state = createInitialState(snapshot, live, instance);
+  let state = createInitialState(snapshot, instance);
   let send: ((command: Command) => Promise<AckOutcome>) | null = null;
   let runCommand: (value: Command) => Promise<AckOutcome>;
   const listeners = new Set<() => void>();
@@ -109,7 +105,6 @@ export function createStore(
     },
     setUi,
     emit,
-    live,
     sender: () => send,
     command: (value) => runCommand(value),
     toast: (toast) => setUi({ toast }),
@@ -204,14 +199,12 @@ export function createStore(
     async setRepo(repo: string) {
       if (!state.snapshot.repos.some((item) => item.id === repo))
         throw new Error("Unknown registered repository");
-      if (live) {
-        if (!send) throw new Error("Coordinator is disconnected");
-        const outcome = await send({
-          kind: "select_repo",
-          repoId: parseRepoId.parse(repo),
-        });
-        if (!outcome.ok) throw new Error(outcome.error.message);
-      } else setUi(resetUiForRepo(state.ui, repo));
+      if (!send) throw new Error("Coordinator is disconnected");
+      const outcome = await send({
+        kind: "select_repo",
+        repoId: parseRepoId.parse(repo),
+      });
+      if (!outcome.ok) throw new Error(outcome.error.message);
     },
     async addRepo() {
       const folder = await window.loomHost.chooseRepository();
@@ -253,14 +246,13 @@ export function createStore(
     setPalette: (palette: boolean) => setUi({ palette }),
     setCreateIssue: (createIssue: boolean) =>
       setUi({ createIssue, palette: false, stagePicker: false }),
-    selectCreatedTask(id: TaskId, repo: string, todo: boolean) {
+    selectCreatedTask(id: TaskId, todo: boolean) {
       pendingSelection = id;
       setUi({
         createIssue: false,
         openPr: null,
         view: "all",
         pane: "list",
-        ...(live ? {} : { repo }),
         openTask: null,
         openRun: null,
         openReason: null,

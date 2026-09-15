@@ -18,7 +18,7 @@ export function EditBacklogIssue({
     task.requirePlanApproval,
   );
   const { send, submitting, outcome } = useHumanCommand(task.id);
-  const connected = useStore((s) => !s.live || s.connection === "connected");
+  const connected = useStore((s) => s.connection === "connected");
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const previous = document.activeElement;

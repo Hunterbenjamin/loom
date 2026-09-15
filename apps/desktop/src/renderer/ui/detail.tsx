@@ -65,7 +65,7 @@ export function Detail({
   const [editing, setEditing] = useState(false);
   const [file, setFile] = useState<string | null>(null);
   const { run, busy, outcome: prOutcome } = usePullRequestCommand();
-  const disconnected = useStore((s) => s.live && s.connection !== "connected");
+  const disconnected = useStore((s) => s.connection !== "connected");
   const theme = useStore((s) => s.ui.theme);
   const repo = useStore((s) =>
     s.snapshot.repos.find((item) => item.id === task.repoId),
@@ -266,6 +266,7 @@ export function Detail({
                 type="button"
                 className="secondary"
                 disabled={disconnected || submitting || pending !== null}
+                data-issue-action="edit"
                 onClick={() => setEditing(true)}
               >
                 Edit issue
@@ -274,6 +275,7 @@ export function Detail({
                 type="button"
                 disabled={disconnected || submitting || pending !== null}
                 aria-busy={pending === "move" || undefined}
+                data-issue-action="todo"
                 onClick={() => void send({ type: "move", to: "todo" })}
               >
                 {pending === "move" ? (
