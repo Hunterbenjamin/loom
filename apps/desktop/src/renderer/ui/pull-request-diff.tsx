@@ -12,6 +12,7 @@ import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { z } from "zod";
 import { useStore, useStoreApi } from "../store/react.js";
+import { useDetailScroller } from "./detail-layout.js";
 import { since } from "./format.js";
 import { ChangeCounts, groupPrFiles } from "./pull-request-overview.js";
 import { useTrackerActions } from "./tracker-actions.js";
@@ -61,6 +62,7 @@ function DiffContent({
   selectedFile?: string | null;
 }) {
   const store = useStoreApi();
+  const containerRef = useDetailScroller();
   const theme = useStore((s) => s.ui.theme);
   const now = useStore((s) => s.snapshot.now);
   const disconnected = useStore((s) => s.connection !== "connected");
@@ -507,6 +509,7 @@ function DiffContent({
       ) : null}
       {!loading && (tab === "files" || commit) ? (
         <CodeView
+          containerRef={containerRef}
           ref={handle}
           className="pr-diff-cards"
           items={items}

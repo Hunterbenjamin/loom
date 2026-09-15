@@ -243,6 +243,8 @@ export function createShortcutHandler(
       "right-column",
       "scroll-down",
       "scroll-up",
+      "half-page-down",
+      "half-page-up",
       "page-down",
       "page-up",
     ];

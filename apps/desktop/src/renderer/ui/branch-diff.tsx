@@ -4,10 +4,12 @@ import { parsePatchFiles } from "@pierre/diffs";
 import { CodeView } from "@pierre/diffs/react";
 import { useEffect, useMemo, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
+import { useDetailScroller } from "./detail-layout.js";
 
 /** Local branch changes before GitHub owns a PR diff. */
 export function BranchDiff({ task }: { task: Task }) {
   const store = useStoreApi();
+  const containerRef = useDetailScroller();
   const theme = useStore((s) => s.ui.theme);
   const [diff, setDiff] = useState<TaskDiff | null>(null);
   const [error, setError] = useState("");
@@ -62,6 +64,7 @@ export function BranchDiff({ task }: { task: Task }) {
   if (!items.length) return <div className="pad faint">No branch changes.</div>;
   return (
     <CodeView
+      containerRef={containerRef}
       className="pr-diff-cards"
       items={items}
       options={{

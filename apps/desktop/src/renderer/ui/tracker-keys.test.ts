@@ -134,11 +134,12 @@ test("detail actions dispatch by id; removed keys and repeated approval do nothi
   key("s");
   expect(store.getState().ui.stagePicker).toBe(true);
 });
-test("diff actions take precedence over scrolling and adjacent issues regardless of registration order", () => {
+test("diff file keys leave j/k for scrolling and hunk keys take precedence", () => {
   const { store, key } = setup();
   store.open(store.getState().snapshot.tasks[0]!.id);
   const scroll = vi.fn(),
     file = vi.fn(),
+    previousFile = vi.fn(),
     hunk = vi.fn();
   cleanups.push(
     registerTrackerActions(store, {
@@ -148,9 +149,12 @@ test("diff actions take precedence over scrolling and adjacent issues regardless
   );
   const remove = registerTrackerActions(store, {
     "next-file": file,
+    "previous-file": previousFile,
     "next-hunk": hunk,
   });
-  key("j");
+  key("n");
+  key("p");
+  expect(previousFile).toHaveBeenCalledOnce();
   key("]");
   expect(file).toHaveBeenCalledOnce();
   expect(hunk).toHaveBeenCalledOnce();
@@ -242,4 +246,45 @@ test("every binding has a unique action id and registry cleanup removes only its
     remove();
     expect(hasTrackerAction(store, entry.id)).toBe(false);
   }
+});
+
+test("standard scroll bindings repeat, expose hints, and stay paused while typing", async () => {
+  const { store, key } = setup();
+  const { formatKeys, keyHint } = await import("./tracker-keymap.js");
+  store.open(store.getState().snapshot.tasks[0]!.id);
+  const actions = {
+    "half-page-down": vi.fn(),
+    "half-page-up": vi.fn(),
+    "page-down": vi.fn(),
+    "page-up": vi.fn(),
+  };
+  cleanups.push(registerTrackerActions(store, actions));
+  const bindings = [
+    ["d", { ctrlKey: true }, "half-page-down"],
+    ["u", { ctrlKey: true }, "half-page-up"],
+    [" ", {}, "page-down"],
+    [" ", { shiftKey: true }, "page-up"],
+  ] as const;
+  document.body.innerHTML =
+    '<input><textarea></textarea><select></select><div contenteditable="true"><span></span></div><div class="xterm"><span></span></div>';
+  for (const [letter, options, id] of bindings) {
+    expect(key(letter, document.body, options).defaultPrevented).toBe(true);
+    key(letter, document.body, { ...options, repeat: true });
+    expect(actions[id]).toHaveBeenCalledTimes(2);
+    for (const target of document.querySelectorAll(
+      "input, textarea, select, span",
+    )) {
+      expect(key(letter, target, options).defaultPrevented).toBe(false);
+    }
+    expect(actions[id]).toHaveBeenCalledTimes(2);
+  }
+  expect(key("J", document.body, { shiftKey: true }).defaultPrevented).toBe(
+    false,
+  );
+  expect(key("K", document.body, { shiftKey: true }).defaultPrevented).toBe(
+    false,
+  );
+  expect(formatKeys("half-page-down")).toBe("Ctrl+D");
+  expect(formatKeys("page-up")).toBe("Shift+Space");
+  expect(keyHint("page-up")["aria-keyshortcuts"]).toBe("Shift+Space");
 });

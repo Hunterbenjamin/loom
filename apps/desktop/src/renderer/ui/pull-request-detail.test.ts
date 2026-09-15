@@ -14,7 +14,7 @@ import { pullRequestSubscriptions } from "../store/pull-requests.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
 import { Detail } from "./detail.js";
-import { useShortcuts } from "./keys.js";
+import { createShortcutHandler, useShortcuts } from "./keys.js";
 import { Palette } from "./palette.js";
 import { PullRequestDetail } from "./pull-request-detail.js";
 
@@ -24,6 +24,7 @@ vi.mock("@pierre/diffs/react", () => ({
     const ref = (props as { ref?: { current: unknown } }).ref;
     if (ref) ref.current = { scrollTo: scroll };
     const p = props as {
+      containerRef?: import("react").Ref<HTMLDivElement>;
       items: import("@pierre/diffs").CodeViewItem<undefined>[];
       renderCustomHeader?: (
         item: import("@pierre/diffs").CodeViewItem<undefined>,
@@ -31,7 +32,7 @@ vi.mock("@pierre/diffs/react", () => ({
     };
     return createElement(
       "div",
-      { "data-testid": "pierre" },
+      { "data-testid": "pierre", ref: p.containerRef },
       p.items.map((i) =>
         createElement("div", { key: i.id }, p.renderCustomHeader?.(i)),
       ),
@@ -850,7 +851,7 @@ test("Diff uses rail order, unified cards, durable Reviewed marks and file/hunk 
     (viewer.mock.lastCall?.[0] as Viewer | undefined)?.items[0]?.version,
   ).not.toBe(before.items[0]?.version);
   await act(async () =>
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" })),
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "n" })),
   );
   expect(h.host.querySelector(".pr-page-body")?.scrollTop).toBe(0);
   expect(scroll).toHaveBeenCalledWith({
@@ -1142,5 +1143,51 @@ test("a branch before its PR reads the coordinator diff", async () => {
     taskId: task.id,
     range: { mode: "whole_branch" },
   });
-  expect(h.host.querySelector('[data-testid="pierre"]')).not.toBeNull();
+  const viewport = h.host.querySelector<HTMLElement>(
+    '[data-testid="pierre"]',
+  )!;
+  expect(viewport).not.toBeNull();
+  const handler = createShortcutHandler(h.store);
+  window.addEventListener("keydown", handler);
+  cleanups.push(() => window.removeEventListener("keydown", handler));
+  checkScrollKeys(viewport);
+});
+
+function checkScrollKeys(element: HTMLElement) {
+  Object.defineProperties(element, {
+    clientHeight: { configurable: true, value: 600 },
+    scrollHeight: { configurable: true, value: 6000 },
+  });
+  element.scrollTop = 1000;
+  for (const [key, options, expected] of [
+    ["j", {}, 1060],
+    ["k", {}, 1000],
+    ["d", { ctrlKey: true }, 1300],
+    ["u", { ctrlKey: true }, 1000],
+    [" ", {}, 1600],
+    [" ", { shiftKey: true }, 1000],
+    ["G", { shiftKey: true }, 6000],
+  ] as const) {
+    press(key, window, options);
+    expect(element.scrollTop).toBe(expected);
+  }
+  press("g", window);
+  press("g", window);
+  expect(element.scrollTop).toBe(0);
+}
+
+test("scroll keys use the detail body, mounted diff viewport, and body again after tab changes", async () => {
+  const h = setup();
+  const body = h.host.querySelector<HTMLElement>(".pr-page-body")!;
+  checkScrollKeys(body);
+  await h.click("Diff");
+  const viewport = h.host.querySelector<HTMLElement>(
+    '[data-testid="pierre"]',
+  )!;
+  body.scrollTop = 123;
+  checkScrollKeys(viewport);
+  expect(body.scrollTop).toBe(123);
+  expect(scroll).not.toHaveBeenCalled();
+  await h.click("Overview");
+  checkScrollKeys(body);
 });
