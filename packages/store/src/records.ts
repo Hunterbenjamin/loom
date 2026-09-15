@@ -5,7 +5,7 @@ import { decode, encode, text } from "./schema-helpers.js";
 
 export const dataRow = z.object({ data: text });
 export const ownedRow = dataRow.extend({ task_id: text });
-export type EntityTable =
+type EntityTable =
   | "worktrees"
   | "runs"
   | "messages"

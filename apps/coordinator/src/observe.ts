@@ -200,7 +200,7 @@ export async function observeRun(
  * Result of observing external sessions. If readFailed is true, the observation is incomplete
  * and should not be used to end existing runs (preserve unknown state on transient failures).
  */
-export interface ExternalSessionsResult {
+interface ExternalSessionsResult {
   sessions: ExternalSessionObservation[];
   readFailed: boolean;
 }
@@ -272,11 +272,11 @@ export async function observeExternal(
   return { sessions: external, readFailed: false };
 }
 
-export interface CapacityReader {
+interface CapacityReader {
   counts(): { version: number; active: Record<Provider, number> };
 }
 
-export interface ObserveDeps {
+interface ObserveDeps {
   adapters: Adapters;
   config: CoordinatorConfig;
   pullRequests: PullRequestCache;

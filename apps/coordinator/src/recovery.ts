@@ -12,7 +12,7 @@ import type { LaunchDeps } from "./launch.js";
 import { codexThreadConfig, relaunchFromRecipe } from "./launch.js";
 import type { RecipeStore } from "./recipes.js";
 
-export interface RecoveryDeps {
+interface RecoveryDeps {
   store: Store;
   adapters: Adapters;
   recipes: RecipeStore;

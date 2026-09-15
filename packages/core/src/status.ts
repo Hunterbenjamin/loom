@@ -2,7 +2,7 @@ import type { Run, RunBlockedOn, RunEndReason, RunStatus } from "./entities.js";
 import { read } from "./helpers.js";
 import type { RunObservation } from "./observations.js";
 
-export interface StatusReading {
+interface StatusReading {
   status: RunStatus;
   blockedOn: RunBlockedOn | null;
   endReason?: RunEndReason;
@@ -11,7 +11,7 @@ export interface StatusReading {
 /** The pane host's only status fact: the pane's process exited. Never screen-derived. */
 const paneDead = (observation: RunObservation): boolean =>
   read(observation.pane)?.dead === true;
-export const isRateLimit = (text: string): boolean =>
+const isRateLimit = (text: string): boolean =>
   /rate.?limit|usage.?limit|usageLimitExceeded|rateLimitExceeded/i.test(text);
 export function deriveStatus(
   run: Run,

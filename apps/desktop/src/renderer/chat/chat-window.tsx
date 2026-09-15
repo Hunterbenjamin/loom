@@ -12,7 +12,7 @@ function comparableText(value: string) {
   return value.replace(/\r\n/g, "\n").trim();
 }
 
-export const CHAT_COMPOSER_MIN_HEIGHT = 24;
+const CHAT_COMPOSER_MIN_HEIGHT = 24;
 export const CHAT_COMPOSER_LINE_HEIGHT = 20;
 export const CHAT_COMPOSER_MAX_HEIGHT = CHAT_COMPOSER_LINE_HEIGHT * 4 + 4;
 
@@ -30,7 +30,7 @@ export function resizeChatComposer(textarea: HTMLTextAreaElement) {
 // Send times come from the coordinator's clock and transcript times from the provider's.
 const SEND_CLOCK_SKEW_MS = 5_000;
 
-export type ChatTimelineEntry =
+type ChatTimelineEntry =
   | { kind: "item"; item: ConversationItem }
   | { kind: "send"; send: Conversation["sends"][number] };
 

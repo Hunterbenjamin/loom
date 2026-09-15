@@ -6,6 +6,7 @@ import { stat } from "node:fs/promises";
 import type { Sha, TaskId } from "@loom/core";
 import { loadScenarios } from "@loom/fake-agent";
 import { afterEach, expect, test, vi } from "vitest";
+import { createMcpHost } from "./mcp-host.js";
 import { createHarness, type Harness, ScenarioDriver } from "./test-support.js";
 
 const scenarios = (name: string) =>
@@ -21,7 +22,7 @@ afterEach(async () => {
   const all = open;
   open = [];
   for (const value of all) await value.close().catch(() => undefined);
-}, 30_000);
+}, 60_000);
 
 const start = (h: Harness, title = "Change the example") => {
   const state = h.coordinator.createTask({
@@ -47,6 +48,16 @@ test("a task runs Todo to Done through plan, review, a fix round and a merge", a
   expect(stageOf(h, taskId)).toBe("awaiting_approval");
   const state = h.store.loadTaskState(taskId);
   expect(state.task.prNumber).toBe(1);
+  const implementers = state.runs.filter((run) => run.role === "implementer");
+  expect(implementers.map((run) => run.id)).toEqual([
+    `${taskId}/implementer/0`,
+    `${taskId}/implementer/1`,
+  ]);
+  expect(new Set(implementers.map((run) => run.sessionId)).size).toBe(2);
+  expect(implementers.every((run) => run.sessionId !== null)).toBe(true);
+  expect(
+    h.store.messages(taskId).some((message) => message.purpose === "fix_round"),
+  ).toBe(false);
   expect(
     state.runs.every((run) => run.mode === "interactive" && run.pane !== null),
   ).toBe(true);
@@ -101,6 +112,52 @@ test("a task runs Todo to Done through plan, review, a fix round and a merge", a
       "awaiting_approval",
       "merging",
       "done",
+    ]),
+  );
+}, 30_000);
+
+test("a fresh fix run reads its compact handoff and current base-to-HEAD diff", async () => {
+  const h = await harness();
+  const taskId = start(h);
+  const driver = new ScenarioDriver(h, await scenarios("walking-skeleton"));
+  await driver.run({
+    until: () =>
+      h.store
+        .loadTaskState(taskId)
+        .runs.some((run) => run.role === "implementer" && run.round === 1),
+    allowIncomplete: true,
+  });
+  const state = h.store.loadTaskState(taskId);
+  const run = state.runs.find(
+    (candidate) => candidate.role === "implementer" && candidate.round === 1,
+  );
+  if (!run) throw new Error("Missing fresh fix run");
+  const { host } = createMcpHost({
+    store: h.store,
+    adapters: h.adapters,
+    recipes: h.coordinator.recipes,
+    loop: {} as never,
+    workflow: { read: async () => ({}) } as never,
+    repo: () => h.repo,
+  });
+  const context = await host.context(run.id, {});
+  if (context.view !== "full") throw new Error("Expected a full context view");
+  expect(context.run).toMatchObject({ id: run.id, round: 1 });
+  expect(context.brief).toContain("Replace the contents of example.txt");
+  expect(context.plan?.goal).toBe("Change the example file");
+  expect(context.decisions).toBe("");
+  expect(context.fixRound).toMatchObject({
+    reason: expect.stringContaining("Review round 1"),
+    truncated: false,
+    diff: expect.stringContaining("+first implementation"),
+  });
+  expect(context.findings).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        source: "reviewer",
+        blocking: true,
+        title: "Fix the value",
+      }),
     ]),
   );
 }, 30_000);
@@ -256,7 +313,7 @@ test("a live run's token stays valid when the coordinator's recipe drifts from t
   });
 }, 30_000);
 
-test("CI failing after approval voids it and sends the task back to the implementer", async () => {
+test("CI failing after approval voids it and starts a fresh implementer", async () => {
   const h = await harness();
   const taskId = start(h);
   const driver = new ScenarioDriver(h, await scenarios("walking-skeleton"));
@@ -287,7 +344,11 @@ test("CI failing after approval voids it and sends the task back to the implemen
     true,
   );
   expect(state.approvals.every((a) => a.voidedAt !== null)).toBe(true);
-}, 30_000);
+  expect(
+    state.runs.find((run) => run.role === "implementer" && run.round === 2)
+      ?.fixReason,
+  ).toContain("CI failed on reviewed head");
+}, 60_000);
 
 test("a human push to the branch after review voids the approval and re-reviews", async () => {
   const h = await harness();

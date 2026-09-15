@@ -1,14 +1,17 @@
 import {
-  type Action,
-  actions,
   bindingChord,
   isPrefixBinding,
-  type KeybindingsConfig,
+  KEYBINDING_ACTIONS,
+  type KeybindingAction,
   type KeyStroke,
   matchesChord,
-} from "../../shared/keybindings.js";
+} from "@loom/core";
+import type { KeybindingsConfig } from "../../shared/keybindings.js";
 
-export { type Action, actions } from "../../shared/keybindings.js";
+export {
+  KEYBINDING_ACTIONS,
+  type KeybindingAction,
+} from "@loom/core";
 
 type KeyEvent = KeyStroke & {
   type: string;
@@ -18,7 +21,7 @@ type KeyEvent = KeyStroke & {
 /** One matcher per Workbench window; modifier presses must not cancel sequences. */
 export function bindingMatcher(
   config: KeybindingsConfig,
-  dispatch: (action: Action) => void,
+  dispatch: (action: KeybindingAction) => void,
   armed: (value: boolean) => void,
   now = Date.now,
 ) {
@@ -60,8 +63,8 @@ export function bindingMatcher(
     return false;
   };
   const find = (event: KeyStroke, sequence: boolean) =>
-    actions.find((a) =>
-      config.bindings[a.id].some(
+    KEYBINDING_ACTIONS.find((action) =>
+      config.bindings[action.id].some(
         (b) =>
           isPrefixBinding(b) === sequence &&
           matchesChord(bindingChord(b), event),

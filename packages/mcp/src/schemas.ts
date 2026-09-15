@@ -16,7 +16,7 @@ export const runIdSchema = id.transform((v) => v as RunId);
 export const inputIdSchema = id.transform((v) => v as InputId);
 export const findingIdSchema = id.transform((v) => v as FindingId);
 export const questionIdSchema = id.transform((v) => v as QuestionId);
-export const shaSchema = z
+const shaSchema = z
   .string()
   .regex(/^[0-9a-f]{40}$/)
   .transform((v) => v as Sha);
@@ -55,7 +55,7 @@ const stage = z.enum([
   "done",
   "canceled",
 ]);
-export const planSchema = z.strictObject({
+const planSchema = z.strictObject({
   goal: nonempty,
   nonGoals: texts,
   // Agents submit one-line outcomes; the stored plan keeps its { title, detail } shape.
@@ -273,6 +273,9 @@ const fullContextSchema = z.strictObject({
   brief: text,
   plan: storedPlanSchema.extend({ version: line }).nullable(),
   decisions: text,
+  fixRound: z
+    .strictObject({ reason: text, diff: z.string(), truncated: z.boolean() })
+    .optional(),
   handoff: contextHandoffSchema,
   findings: z.array(findingViewSchema),
   testResults: z.array(testResultSchema),
@@ -302,6 +305,13 @@ export const outputSchemas = {
       brief: text.optional(),
       plan: storedPlanSchema.extend({ version: line }).nullable().optional(),
       decisions: text.optional(),
+      fixRound: z
+        .strictObject({
+          reason: text,
+          diff: z.string(),
+          truncated: z.boolean(),
+        })
+        .optional(),
       handoff: contextHandoffSchema.optional(),
       findings: z
         .strictObject({

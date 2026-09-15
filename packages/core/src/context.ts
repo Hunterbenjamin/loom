@@ -431,28 +431,26 @@ export class Context {
       delivered: null,
     });
   }
-  fix(sequence: string): void {
-    const run = this.current("implementer");
-    this.requestRun("implementer");
-    if (run)
-      this.message(
-        run,
-        "fix_round",
-        sequence,
-        `Address the findings and submit for review.\n${JSON.stringify(this.state.findings)}`,
-      );
+  fix(reason = "Blocking findings require changes"): void {
+    this.requestFixRun(reason);
   }
   /** A fix round with no findings: the branch must be rebased onto base before it can merge. */
   rebase(base: string, head: Sha): void {
+    this.requestFixRun(
+      `The branch conflicts with ${base} at ${head}. Rebase onto ${base} (or merge it in), preserve the reviewed changes, run the tests, and submit again.`,
+    );
+  }
+  private requestFixRun(reason: string): void {
     const run = this.current("implementer");
-    this.requestRun("implementer");
-    if (run)
-      this.message(
-        run,
-        "fix_round",
-        `rebase:${head}`,
-        `The branch now conflicts with ${base}. Rebase onto ${base} (or merge it in) and resolve the conflicts, keeping the reviewed changes intact; run the tests, then submit for review again.`,
-      );
+    const round = (run?.round ?? -1) + 1;
+    if (run) this.end(run, "superseded", false, true);
+    this.state.desiredRun = {
+      role: "implementer",
+      round,
+      resume: false,
+      ...(run ? { retireRunId: run.id } : {}),
+      fixReason: reason,
+    };
   }
   review(head: Sha): void {
     this.task.reviewRound++;

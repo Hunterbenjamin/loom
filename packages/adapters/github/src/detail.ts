@@ -125,7 +125,7 @@ const metadata = s.graphqlPullRequest.omit({ commits: true }).extend({
   latest,
 });
 const full = metadata.extend(content);
-export const DETAIL_QUERY = `query($owner: String!, $name: String!, $number: Int!, $content: Boolean!) {
+const DETAIL_QUERY = `query($owner: String!, $name: String!, $number: Int!, $content: Boolean!) {
  repository(owner: $owner, name: $name) { pullRequest(number: $number) {
   viewerDidAuthor viewerLatestReviewRequest { id } closedAt
   number title author { login } state headRefName baseRefName headRefOid baseRefOid

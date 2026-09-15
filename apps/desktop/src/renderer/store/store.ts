@@ -52,7 +52,7 @@ export type ViewId =
   | "done"
   | "pull-requests"
   | "settings";
-export type Pane = "list" | "board";
+type Pane = "list" | "board";
 export type TabId = "overview" | "plan" | "terminal";
 export type SortKey =
   | "stage"
@@ -61,7 +61,7 @@ export type SortKey =
   | "provider"
   | "round"
   | "age";
-export type Theme = "dark" | "light";
+type Theme = "dark" | "light";
 
 /** Initial limit and each subsequent page for terminal list sections. */
 export const LIST_PAGE_SIZE = 10;

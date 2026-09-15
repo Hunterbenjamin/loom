@@ -12,7 +12,7 @@ import type {
 import { later, millis, read, roleOwesWork } from "./helpers.js";
 import type { IsoTime, RunId } from "./ids.js";
 
-export const budgetStage = (stage: string): boolean =>
+const budgetStage = (stage: string): boolean =>
   [
     "planning",
     "plan_approval",
@@ -104,7 +104,7 @@ export interface AttentionInput {
   /** A message whose delivery is uncertain needs the human. */
   messages: readonly Message[];
   stallAfterMs: number;
-  /** The idle window once Loom has sent the run a fix round: it already knows what to do. */
+  /** The idle window for a fresh implementer fix-round run: its handoff says what to do. */
   fixRoundStallAfterMs: number;
   unknownGraceMs: number;
 }
@@ -189,15 +189,11 @@ export function deriveAttention(input: AttentionInput): AttentionDerivation {
       ) {
         // Legacy idle runs have no interval yet; use their last native activity.
         const since = run.idleSince ?? run.lastActivityAt ?? run.launchedAt;
-        // After a delivered fix round the run owes a quick turnaround, not a fresh investigation.
-        const window = input.messages.some(
-          (m) =>
-            m.runId === run.id &&
-            m.purpose === "fix_round" &&
-            m.status === "delivered",
-        )
-          ? Math.min(input.stallAfterMs, input.fixRoundStallAfterMs)
-          : input.stallAfterMs;
+        // A fresh implementer fix run already has a bounded handoff and owes a quick turnaround.
+        const window =
+          run.role === "implementer" && run.round > 0
+            ? Math.min(input.stallAfterMs, input.fixRoundStallAfterMs)
+            : input.stallAfterMs;
         if (since) {
           const at = later(since, window);
           if (at <= input.now) fromRun("idle_without_submission", run.id);

@@ -479,6 +479,19 @@ describe("worktree actions", () => {
 });
 
 describe("diffs and blobs", () => {
+  it("returns a patch and stat for an immutable commit range", async () => {
+    const from = (await git("rev-parse", "HEAD")) as Sha;
+    await save("tracked.txt", "changed through the adapter\n");
+    const to = await commitAll();
+    const diff = await adapter.readDiff({
+      repoRoot: repo,
+      fromSha: from,
+      toSha: to,
+    });
+    expect(diff.patch).toContain("+changed through the adapter");
+    expect(diff.stat).toContain("tracked.txt");
+  });
+
   it("returns renames and unicode/quoted/newline paths from metadata with precise hunks", async () => {
     const old = 'original"雪\n.txt';
     const next = 'renamed"葉\n.txt';

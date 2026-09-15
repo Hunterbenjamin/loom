@@ -19,18 +19,17 @@ import type {
   Severity,
   Stage,
   Task,
-  TaskId,
   TestResult,
   Transition,
   Worktree,
 } from "@loom/core";
 import type { PullRequestRow, TaskInbox } from "@loom/protocol";
+import { STAGE_LABELS, STAGES } from "../ui/format.js";
 import {
   approvalId,
   blobOid,
   findingId,
   inputId,
-  isoTime,
   messageId,
   minutesBefore,
   NOW,
@@ -76,34 +75,6 @@ export interface Snapshot {
   viewedFiles: Record<string, string[]>;
   patch: PatchFixture;
 }
-
-export const STAGES: Stage[] = [
-  "backlog",
-  "todo",
-  "planning",
-  "plan_approval",
-  "in_progress",
-  "ci",
-  "in_review",
-  "awaiting_approval",
-  "merging",
-  "done",
-  "canceled",
-];
-
-export const STAGE_LABELS: Record<Stage, string> = {
-  backlog: "Backlog",
-  todo: "Todo",
-  planning: "Planning",
-  plan_approval: "Plan approval",
-  in_progress: "In progress",
-  ci: "CI",
-  in_review: "In review",
-  awaiting_approval: "Awaiting approval",
-  merging: "Merging",
-  done: "Done",
-  canceled: "Canceled",
-};
 
 const LONG_TITLE =
   "Reconcile Codex threads whose app-server generation changed while a blocking approval " +
@@ -910,6 +881,3 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
     patch,
   };
 }
-
-export type { TaskId };
-export { isoTime, NOW };

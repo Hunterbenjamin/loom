@@ -16,7 +16,7 @@ const statuses = {
   C: "copied",
   T: "type_changed",
 } as const;
-export interface RawChange {
+interface RawChange {
   change: FileChange;
   oldMode: string;
   newMode: string;

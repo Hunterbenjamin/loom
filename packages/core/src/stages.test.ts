@@ -187,7 +187,7 @@ describe("all 23 transition rows", () => {
     ({ observations }) => {
       observations.inputs = [mcp(reviewCall([finding()]), "reviewer")];
     },
-    ["send_message"],
+    ["stop_run"],
   );
   row(
     12,
@@ -207,7 +207,7 @@ describe("all 23 transition rows", () => {
       blockReview(f);
       f.observations.inputs = [command({ type: "grant_review_round" })];
     },
-    ["send_message"],
+    ["stop_run"],
   );
   row(
     14,
@@ -265,7 +265,7 @@ describe("all 23 transition rows", () => {
         observations.github.value.autoMergeEnabled = true;
       }
     },
-    ["disable_auto_merge", "send_message"],
+    ["disable_auto_merge", "stop_run"],
   );
   row(
     18,
@@ -276,7 +276,7 @@ describe("all 23 transition rows", () => {
         command({ type: "request_changes", findings: [finding()] }),
       ];
     },
-    ["send_message"],
+    ["stop_run"],
   );
   row(
     19,
@@ -647,9 +647,47 @@ describe("transition guards fail independently", () => {
     const r = fixed(f.state, f.observations);
     expect(r.next.task.stage).toBe("in_progress");
     expect(r.next.approvals.every((a) => a.voidedAt)).toBe(true);
+    expect(r.next.desiredRun).toMatchObject({
+      role: "implementer",
+      round: 1,
+      resume: false,
+      fixReason: expect.stringContaining("conflicts with"),
+    });
+  });
+  it.each([
+    {
+      name: "human request-changes",
+      stage: "awaiting_approval" as const,
+      setup: (f: ReturnType<typeof fixture>) => {
+        f.observations.inputs = [
+          command({ type: "request_changes", findings: [finding()] }),
+        ];
+      },
+      reason: "Human requested changes",
+    },
+    {
+      name: "human-granted fix round",
+      stage: "in_review" as const,
+      setup: (f: ReturnType<typeof fixture>) => {
+        blockReview(f);
+        f.observations.inputs = [command({ type: "grant_review_round" })];
+      },
+      reason: "Human granted another fix round",
+    },
+  ])("$name requests a fresh implementer run", ({ stage, setup, reason }) => {
+    const f = fixture(stage);
+    setup(f);
+    const result = fixed(f.state, f.observations);
+    expect(result.next.desiredRun).toMatchObject({
+      role: "implementer",
+      round: 1,
+      resume: false,
+      retireRunId: "t1/implementer/0",
+      fixReason: reason,
+    });
     expect(
-      r.next.messages.find((m) => m.purpose === "fix_round")?.text,
-    ).toMatch(/conflicts with/);
+      result.next.messages.some((message) => message.purpose === "fix_round"),
+    ).toBe(false);
   });
   reject(
     "#18 needs findings",

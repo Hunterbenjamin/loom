@@ -34,7 +34,7 @@ const scopeKey = (s: PrScope) =>
 const isPrScope = (s: Subscription): s is PrScope =>
   s.kind === "pull_requests" || s.kind === "pull_request";
 
-export interface PullRequestViewsDeps {
+interface PullRequestViewsDeps {
   github: GitHubAdapter;
   repo(id: RepoId): Repo;
   tasks(): Task[];

@@ -23,8 +23,8 @@ import { reconcile, runId } from "../src/index.js";
 export const now = "2026-09-12T00:00:00.000Z" as IsoTime;
 export const head = "a".repeat(40) as Sha;
 export const base = "b".repeat(40) as Sha;
-export const path = "/tmp/loom/t1" as WorktreePath;
-export const taskId = "t1" as TaskId;
+const path = "/tmp/loom/t1" as WorktreePath;
+const taskId = "t1" as TaskId;
 export const config: TaskState["config"] = {
   deriveClaudeSessionId: (id, epoch) =>
     `uuid:${id}#${epoch}` as ProviderSessionId,

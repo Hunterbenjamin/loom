@@ -5,13 +5,13 @@ import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 
-export interface Migration {
+interface Migration {
   version: number;
   name: string;
   breaking: boolean;
   sql: string;
 }
-export const migrationsDirectory = fileURLToPath(
+const migrationsDirectory = fileURLToPath(
   new URL("../migrations/", import.meta.url),
 );
 export function readMigrations(directory = migrationsDirectory): Migration[] {

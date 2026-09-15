@@ -66,8 +66,9 @@ test.each(["interactive", "headless"] as const)(
         startThread.mock.calls.map(([request]) => request.sandbox),
       ).toEqual([
         "read-only", // planner
-        "danger-full-access", // implementer
+        "danger-full-access", // initial implementer
         "danger-full-access", // first review
+        "danger-full-access", // fresh implementer fix round
         "danger-full-access", // review after the fix round
       ]);
       expect(startTurn).toHaveBeenCalled();

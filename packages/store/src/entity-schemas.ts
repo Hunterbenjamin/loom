@@ -185,6 +185,7 @@ export const runSchema = contract<Run>()(
     model: text,
     reasoningEffort: text.min(1).optional(),
     access: z.enum(["full", "approval-gated"]).optional(),
+    fixReason: text.min(1).optional(),
     sessionId: id.nullable(),
     sessionEpoch: count,
     tokenUsage: z
@@ -420,7 +421,7 @@ export const findingSchema = contract<Finding>()(
     updatedAt: time,
   }),
 );
-export const ciSchema = z.object({
+const ciSchema = z.object({
   headSha: sha,
   conclusion: z.enum(["success", "pending", "failure", "none"]),
   checks: z.array(
@@ -497,7 +498,7 @@ export const transitionSchema = contract<Transition>()(
     taskVersion: count,
   }),
 );
-export type TaskContext = Pick<
+type TaskContext = Pick<
   TaskState,
   | "plan"
   | "review"
@@ -549,6 +550,8 @@ export const contextSchema = contract<TaskContext>()(
         role,
         round: count,
         resume: z.boolean(),
+        retireRunId: id.optional(),
+        fixReason: text.min(1).optional(),
         fresh: z.boolean().optional(),
         replacement: z
           .object({

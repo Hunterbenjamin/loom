@@ -162,7 +162,7 @@ export function human(
       if (task.blocked?.reason === "review_round_cap") task.reviewRoundCap++;
       c.block(null);
       c.stage("in_progress", "Human granted fix round");
-      c.fix(sequence);
+      c.fix("Human granted another fix round");
       return null;
     case "waive_finding": {
       if (task.stage === "done" || task.stage === "canceled") return wrong();
@@ -218,7 +218,7 @@ export function human(
         if (reviewer) c.end(reviewer, "superseded", true);
       }
       c.stage("in_progress", "Human requested changes");
-      c.fix(sequence);
+      c.fix("Human requested changes");
       return null;
     case "answer_question": {
       const question = state.questions.find(

@@ -155,6 +155,31 @@ describe("headless retries and interactive control", () => {
     });
     expect(r.next.runs.length).toBe(3);
   });
+  it("retries an interrupted fix round on that round's recorded session", () => {
+    const f = failure();
+    const { run, observation } = f;
+    f.state.task.stage = "in_progress";
+    run.role = "implementer";
+    run.id = runId(f.state.task.id, "implementer", 1);
+    run.round = 1;
+    run.fixReason = "CI failed";
+    const fixSession = run.sessionId;
+    observation.runId = run.id;
+    f.state.runs = [run];
+    f.observations.runs = [observation];
+    const failed = reconcile(f.state, f.observations);
+    f.observations.now = "2026-09-12T00:00:10.000Z" as typeof now;
+    const retried = fixed(failed.next, f.observations);
+    expect(
+      retried.actions.find((action) => action.kind === "start_run"),
+    ).toMatchObject({
+      runId: run.id,
+      attempt: 2,
+      sessionId: fixSession,
+      resume: true,
+    });
+    expect(retried.next.runs).toHaveLength(1);
+  });
   it("does not retry without fresh git state", () => {
     const f = failure();
     const failed = reconcile(f.state, f.observations);

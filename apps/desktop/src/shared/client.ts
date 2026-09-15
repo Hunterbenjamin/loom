@@ -15,7 +15,7 @@ import {
   stateFromSnapshot,
 } from "@loom/protocol";
 
-export type ConnectionStatus = "connecting" | "connected" | "disconnected";
+type ConnectionStatus = "connecting" | "connected" | "disconnected";
 interface Options {
   url: string;
   token: string;

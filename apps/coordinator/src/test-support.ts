@@ -51,7 +51,7 @@ const GIT_ENVIRONMENT = {
   GIT_COMMITTER_EMAIL: "test@example.invalid",
 };
 
-export interface HarnessOptions {
+interface HarnessOptions {
   /** Serve the WebSocket protocol too. Off by default: most tests drive the loop directly. */
   serveProtocol?: boolean;
   /** Extra files committed into the repository before the branch exists. */
@@ -340,7 +340,7 @@ interface Playback {
   requested?: boolean;
 }
 
-export interface DriverOptions {
+interface DriverOptions {
   /** Stop as soon as this holds; the default runs until every bound script is consumed. */
   until?: () => boolean;
   maxSteps?: number;

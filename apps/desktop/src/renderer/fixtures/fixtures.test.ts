@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildSnapshot, STAGES } from "./index.js";
+import { STAGES } from "../ui/format.js";
+import { buildSnapshot } from "./index.js";
 
 const snapshot = buildSnapshot();
 

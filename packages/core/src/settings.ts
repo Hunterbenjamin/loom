@@ -1,4 +1,9 @@
 import type { Provider, Role, RunMode } from "./entities.js";
+import {
+  DEFAULT_KEYBINDINGS,
+  KEYBINDING_ACTIONS,
+  parseChord,
+} from "./keybindings.js";
 
 export type SettingsScope =
   | { kind: "global" }
@@ -203,92 +208,14 @@ export const DEFAULT_SETTINGS: SettingsValues = {
     chime: true,
     windowMode: "tracker",
     terminalHistoryLimit: 10_000,
-    keyPrefix: "Ctrl+Space",
-    keyTimeoutMs: 3000,
-    // Mirrors apps/desktop/src/shared/keybindings.ts; a desktop test keeps them equal.
-    keybindings: {
-      "split-right": ["Cmd+D", "Prefix |"],
-      "split-down": ["Cmd+Shift+D", "Prefix -"],
-      left: ["Cmd+Alt+ArrowLeft", "Prefix h"],
-      down: ["Cmd+Alt+ArrowDown", "Prefix j"],
-      up: ["Cmd+Alt+ArrowUp", "Prefix k"],
-      right: ["Cmd+Alt+ArrowRight", "Prefix l"],
-      new: ["Cmd+T", "Prefix c"],
-      "new-space": ["Cmd+N", "Prefix Shift+C"],
-      next: ["Cmd+Shift+]", "Prefix n"],
-      previous: ["Cmd+Shift+[", "Prefix p"],
-      close: ["Cmd+W", "Prefix x"],
-      "close-space": ["Cmd+Alt+W", "Prefix Shift+X"],
-      zoom: ["Cmd+Shift+Enter", "Prefix z"],
-      jump: ["Cmd+P", "Prefix g"],
-      help: ["Prefix ?"],
-      commands: ["Cmd+K"],
-      literal: ["Prefix Ctrl+Space"],
-      ...Object.fromEntries(
-        Array.from({ length: 9 }, (_, index) => [
-          [`tab-${index + 1}`, [`Cmd+${index + 1}`]],
-          [`agent-${index + 1}`, [`Ctrl+${index + 1}`]],
-          [`space-${index + 1}`, [`Prefix ${index + 1}`]],
-        ]).flat(),
-      ),
-    },
+    keyPrefix: DEFAULT_KEYBINDINGS.prefix,
+    keyTimeoutMs: DEFAULT_KEYBINDINGS.prefixTimeoutMs,
+    keybindings: DEFAULT_KEYBINDINGS.bindings,
   },
 };
 
 const BOTH = ["global", "repository"] as const;
 const GLOBAL = ["global"] as const;
-const KEYBINDING_ACTIONS = [
-  "split-right",
-  "split-down",
-  "left",
-  "down",
-  "up",
-  "right",
-  "new",
-  "new-space",
-  "next",
-  "previous",
-  "close",
-  "close-space",
-  "zoom",
-  "jump",
-  "help",
-  "commands",
-  "literal",
-  ...Array.from({ length: 9 }, (_, index) =>
-    ["tab", "agent", "space"].map((kind) => `${kind}-${index + 1}`),
-  ).flat(),
-] as const;
-const KEY_MODIFIERS = new Set(["Ctrl", "Cmd", "Alt", "Shift"]);
-const NAMED_KEYS = new Set([
-  "ArrowLeft",
-  "ArrowRight",
-  "ArrowUp",
-  "ArrowDown",
-  "Enter",
-  "Escape",
-  "Tab",
-  "Backspace",
-  "Delete",
-  "Home",
-  "End",
-  "PageUp",
-  "PageDown",
-  "Space",
-  "Plus",
-  ...Array.from({ length: 24 }, (_, index) => `F${index + 1}`),
-]);
-const validChord = (value: string) => {
-  const parts = value.split("+");
-  const key = parts.pop();
-  return (
-    !!key &&
-    parts.every((part) => KEY_MODIFIERS.has(part)) &&
-    new Set(parts).size === parts.length &&
-    (/^[\x21-\x7e]$/.test(key) || NAMED_KEYS.has(key))
-  );
-};
-
 export const SETTINGS_CATALOG: SettingDefinition[] = [
   ...(["planner", "implementer", "reviewer"] as Role[]).flatMap((name) => [
     {
@@ -569,13 +496,13 @@ export function validateSettings(values: SettingsValues): string[] {
     errors.push("Key prefix must be null or non-empty");
   if (
     values.appearance.keyPrefix !== null &&
-    !validChord(values.appearance.keyPrefix)
+    parseChord(values.appearance.keyPrefix) === null
   )
     errors.push("Key prefix must be a valid chord");
   const actions = Object.keys(values.appearance.keybindings);
   if (
     actions.length !== KEYBINDING_ACTIONS.length ||
-    KEYBINDING_ACTIONS.some((action) => !actions.includes(action))
+    KEYBINDING_ACTIONS.some(({ id }) => !actions.includes(id))
   )
     errors.push("Key bindings must define every supported action exactly once");
   const seenBindings = new Set<string>();
@@ -591,7 +518,8 @@ export function validateSettings(values: SettingsValues): string[] {
     for (const binding of bindings) {
       const prefixed = binding.startsWith("Prefix ");
       const chord = prefixed ? binding.slice(7) : binding;
-      if (!validChord(chord)) errors.push(`Invalid key binding: ${binding}`);
+      if (parseChord(chord) === null)
+        errors.push(`Invalid key binding: ${binding}`);
       if (prefixed && values.appearance.keyPrefix === null)
         errors.push(`Prefix binding needs a prefix: ${binding}`);
       const identity = `${prefixed}:${chord}`;

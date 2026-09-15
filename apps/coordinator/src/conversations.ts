@@ -16,7 +16,7 @@ import type { LeadSession } from "./lead.js";
 import type { Row } from "./views.js";
 
 type Scope = Extract<Subscription, { kind: "conversation" }>;
-export interface ConversationViewsDeps {
+interface ConversationViewsDeps {
   store: Store;
   adapters: Adapters;
   lead(repoId: string): LeadSession;

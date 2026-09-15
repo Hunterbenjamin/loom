@@ -7,7 +7,7 @@
 
 import type { FileChange, Finding, FindingLocation, Sha } from "@loom/core";
 
-export interface MappedRange {
+interface MappedRange {
   path: string | null;
   startLine: number | null;
   endLine: number | null;
@@ -15,7 +15,7 @@ export interface MappedRange {
 }
 
 /** One file's change between two heads, keyed by the path the anchor knows. */
-export type ChangeIndex = Map<string, FileChange>;
+type ChangeIndex = Map<string, FileChange>;
 
 export function indexChanges(changes: readonly FileChange[]): ChangeIndex {
   const index: ChangeIndex = new Map();
@@ -59,7 +59,7 @@ export function mapRange(
   };
 }
 
-export interface MapFindingsInput {
+interface MapFindingsInput {
   findings: readonly Finding[];
   findingIds: readonly string[];
   toHeadSha: Sha;

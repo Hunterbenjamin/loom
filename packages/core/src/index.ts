@@ -13,6 +13,7 @@ export { messageId, normalizeText, runId } from "./helpers.js";
 export { decidableFromLastReadings } from "./human.js";
 export type * from "./ids.js";
 export * from "./issue-ref.js";
+export * from "./keybindings.js";
 export { inFlightTurnId } from "./lifecycle.js";
 export type * from "./mcp.js";
 export type * from "./observations.js";

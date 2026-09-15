@@ -33,11 +33,11 @@ import {
 import { type WebSocket, WebSocketServer } from "ws";
 import type { Row } from "./views.js";
 
-export interface ServerCommandResult {
+interface ServerCommandResult {
   ok: true;
   result: unknown;
 }
-export interface ServerCommandError {
+interface ServerCommandError {
   ok: false;
   error: ProtocolError;
 }
