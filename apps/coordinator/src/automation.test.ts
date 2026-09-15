@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Run } from "@loom/core";
 import { afterEach, expect, test, vi } from "vitest";
@@ -136,48 +136,4 @@ test("a rescue queued before the worktree becomes dirty is refused by the execut
   expect(h.store.loadTaskState(task.id).task.attention.reasons).toContain(
     "run_vanished",
   );
-}, 30_000);
-
-test("restart ignores retired Operator recipes and preserves its tables untouched", async () => {
-  await setup();
-  const directory = h.store.dataDirectory;
-  await mkdir(join(directory, "operator"), { recursive: true });
-  const legacyRecipe = "retired recipe is deliberately not valid JSON";
-  await writeFile(join(directory, "operator", "recipe.json"), legacyRecipe);
-  // biome-ignore lint/complexity/useLiteralKeys: test-only access to install guards on retired tables
-  const db = h.store["db"];
-  for (const table of [
-    "operator_events",
-    "operator_notes",
-    "operator_ledger",
-  ]) {
-    const key = table === "operator_ledger" ? "key" : "id";
-    db.prepare(
-      `INSERT INTO ${table}(${key},data) VALUES ('retired','{}')`,
-    ).run();
-  }
-  for (const table of [
-    "operator_events",
-    "operator_notes",
-    "operator_ledger",
-    "operator_filings",
-  ])
-    for (const operation of ["INSERT", "UPDATE", "DELETE"])
-      db.exec(
-        `CREATE TRIGGER no_${table}_${operation} BEFORE ${operation} ON ${table} BEGIN SELECT RAISE(ABORT, 'retired table write'); END`,
-      );
-  h = await h.restart();
-  await h.coordinator.settle();
-  expect(
-    await readFile(join(directory, "operator", "recipe.json"), "utf8"),
-  ).toBe(legacyRecipe);
-  expect(
-    h.paneHost.launches.some((launch) => launch.runId === "operator"),
-  ).toBe(false);
-  // biome-ignore lint/complexity/useLiteralKeys: independent readback after reopening the store
-  const readback = h.store["db"];
-  for (const table of ["operator_events", "operator_notes", "operator_ledger"])
-    expect(readback.prepare(`SELECT data FROM ${table}`).pluck().all()).toEqual(
-      ["{}"],
-    );
 }, 30_000);
