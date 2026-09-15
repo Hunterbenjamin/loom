@@ -88,13 +88,10 @@ test("inline rename validates, cancels, reports errors and waits for native patc
           // biome-ignore lint/correctness/noChildrenProp: Provider requires typed children.
           children: createElement(Sidebar, {
             filter: "",
-            setFilter: vi.fn(),
             choose: vi.fn(),
             openGroup: vi.fn(),
             hidePanels: vi.fn(),
             copyAttach: vi.fn(),
-            hasPanels: () => false,
-            newTerminal: vi.fn(),
             openPinned: vi.fn(),
           }),
         }),

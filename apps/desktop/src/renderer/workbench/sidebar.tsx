@@ -64,21 +64,11 @@ export function Sidebar({
   selectedSpace?: string;
   selectedTab?: string;
   selected?: PaneIdentity | "main";
-  /** Accepted for compatibility; the palette owns this now. */
-  showMenu?: () => void;
   filter: string;
-  /** Accepted for compatibility; the palette owns this now. */
-  setFilter?: (value: string) => void;
   choose: (pane: PaneView, newTab?: boolean) => void;
   openGroup: (panes: PaneView[], name: string) => void;
   hidePanels: (panes: PaneView[]) => void;
-  /** Accepted for compatibility; the palette owns this now. */
-  hasPanels?: (panes: PaneView[]) => boolean;
   copyAttach: (pane: PaneView) => void;
-  /** Accepted for compatibility; the palette owns this now. */
-  newTerminal?: () => void;
-  /** Accepted for compatibility; the palette owns this now. */
-  newSpace?: () => void;
   openPinned: (target: "main") => void;
 }) {
   const store = useStoreApi();

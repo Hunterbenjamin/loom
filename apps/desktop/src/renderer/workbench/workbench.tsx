@@ -555,14 +555,6 @@ export function Workbench() {
         "",
     );
   };
-  const hasPanels = (rows: PaneView[]) =>
-    !!tabs
-      .find((tab) => tab.id === active)
-      ?.panels.some(
-        (panel) =>
-          panel.target &&
-          rows.some((pane) => sameTerminal(pane, panel.target as PaneIdentity)),
-      );
   const hidePanels = (rows: PaneView[]) => {
     for (const pane of rows) hiddenPanes.current.add(pane.id);
     // This menu closes viewers only, including human shells. Other tabs keep their clients.
@@ -959,16 +951,11 @@ export function Workbench() {
           }
           selectedSpace={openSpace ?? undefined}
           selectedTab={active}
-          showMenu={() => setPalette(true)}
           filter={filter}
-          setFilter={setFilter}
           choose={choose}
           openGroup={openGroup}
           hidePanels={hidePanels}
-          hasPanels={hasPanels}
           copyAttach={copyAttach}
-          newTerminal={() => newTab()}
-          newSpace={newSpace}
           openPinned={openPinned}
         />
         <main className="wb-main">

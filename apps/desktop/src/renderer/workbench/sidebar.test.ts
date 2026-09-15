@@ -60,13 +60,10 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
         children: createElement(Sidebar, {
           filter,
           selected: linked,
-          setFilter: vi.fn(),
           choose,
           openGroup: vi.fn(),
           hidePanels: vi.fn(),
-          hasPanels: () => false,
           copyAttach: vi.fn(),
-          newTerminal: vi.fn(),
           openPinned,
         }),
       }),
@@ -205,13 +202,10 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
           // biome-ignore lint/correctness/noChildrenProp: Provider requires typed children.
           children: createElement(Sidebar, {
             filter: "",
-            setFilter: vi.fn(),
             choose,
             openGroup: vi.fn(),
             hidePanels: vi.fn(),
-            hasPanels: () => false,
             copyAttach: vi.fn(),
-            newTerminal: vi.fn(),
             openPinned,
           }),
         }),
@@ -272,13 +266,10 @@ test("grouping changes agent order, keeps dead agents out of the list, and leave
           // biome-ignore lint/correctness/noChildrenProp: Provider requires typed children.
           children: createElement(Sidebar, {
             filter: "",
-            setFilter: vi.fn(),
             choose,
             openGroup: vi.fn(),
             hidePanels: vi.fn(),
-            hasPanels: () => false,
             copyAttach: vi.fn(),
-            newTerminal: vi.fn(),
             openPinned: vi.fn(),
           }),
         }),
@@ -366,13 +357,10 @@ test.each([false, true])(
             // biome-ignore lint/correctness/noChildrenProp: Provider requires typed children.
             children: createElement(Sidebar, {
               filter: "",
-              setFilter: vi.fn(),
               choose: vi.fn(),
               openGroup,
               hidePanels: vi.fn(),
-              hasPanels: () => false,
               copyAttach: vi.fn(),
-              newTerminal: vi.fn(),
               openPinned: vi.fn(),
             }),
           }),
