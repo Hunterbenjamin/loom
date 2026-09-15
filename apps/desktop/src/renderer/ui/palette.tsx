@@ -3,7 +3,7 @@ import { Command } from "cmdk";
 import { useEffect, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
 import { cursorRows, issueKeyFor, selectedRows } from "../store/selectors.js";
-import { VIEWS } from "../store/store.js";
+import { VIEWS } from "../store/ui-state.js";
 import { ChimeMuteCommand } from "../workbench/chime.js";
 import { STAGES, stageLabel } from "./format.js";
 import { PullRequestPaletteCommands } from "./pull-request-commands.js";

@@ -11,7 +11,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { issueDecisions } from "../store/issue-actions.js";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, taskFindings, taskRuns } from "../store/selectors.js";
-import type { TabId } from "../store/store.js";
+import type { TabId } from "../store/ui-state.js";
 import { AttentionChips } from "./bits.js";
 import {
   clock,

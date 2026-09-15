@@ -2,7 +2,7 @@ import { useState } from "react";
 import { reviewNeedsHuman } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { viewCounts } from "../store/selectors.js";
-import { VIEWS } from "../store/store.js";
+import { VIEWS } from "../store/ui-state.js";
 
 export function Sidebar() {
   const store = useStoreApi();

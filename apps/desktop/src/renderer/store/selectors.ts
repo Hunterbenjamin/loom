@@ -15,14 +15,14 @@ export const issueKeyFor = (task: Task, repos: Snapshot["repos"]): string => {
   return repo ? issueKey(repo, task) : `ISSUE-${task.number}`;
 };
 
+import type { State } from "./store.js";
 import {
   LIST_PAGE_SIZE,
   type ListSections,
   type SortKey,
-  type State,
   sectionCollapsed,
   type ViewId,
-} from "./store.js";
+} from "./ui-state.js";
 
 type TaskViewId = Exclude<ViewId, "pull-requests" | "settings">;
 
