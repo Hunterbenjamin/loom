@@ -893,40 +893,6 @@ test("each repository has a private Main, scoped tools, notes and independent re
   );
 });
 
-test("stored recipes ignore legacyCwd without changing repository recovery", async () => {
-  const { h } = await setup();
-  const target = await h.coordinator.leadFor(h.repo.id).open();
-  const saved = await recipe(h);
-  const launches = h.paneHost.launches.length;
-  await h.coordinator.stop();
-  await writeFile(
-    join(h.store.dataDirectory, `lead/${h.repo.id}/recipe.json`),
-    JSON.stringify({
-      ...saved,
-      legacyCwd: h.store.dataDirectory,
-    }),
-  );
-  const store = await openStore({
-    dataRoot: h.dataRoot,
-    instance: h.config.instance,
-    config: reconcileConfig(h.config),
-  });
-  const restarted = new Coordinator({
-    config: h.config,
-    store,
-    adapters: h.adapters,
-    serveProtocol: false,
-  });
-  cleanups.push(() => restarted.stop());
-  await restarted.start();
-  expect(restarted.leadFor(h.repo.id).sessionId).toBe(target.sessionId);
-  expect((await restarted.leadFor(h.repo.id).open()).sessionId).toBe(
-    target.sessionId,
-  );
-  expect(h.paneHost.launches).toHaveLength(launches);
-  expect(await recipe(h)).not.toHaveProperty("legacyCwd");
-});
-
 async function messagingRun(
   h: Harness,
   provider: "claude" | "codex" = "claude",

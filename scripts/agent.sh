@@ -3,7 +3,7 @@
 # and an agent told to follow the brief. Run it from anywhere; it needs no terminal of its own.
 #
 # Usage: scripts/agent.sh <name> <claude|codex> <branch> <brief|-> [--task <text>] [--model <model>] [--base <branch>] [--auto|--full]
-#   e.g. scripts/agent.sh fix-timings codex fix/timings - --task "loom task timings prints 0 for the last stage; fix it and add a test"
+#   e.g. scripts/agent.sh fix-timings codex fix/timings - --task "loom issue timings prints 0 for the last stage; fix it and add a test"
 # <brief> is relative to the repo root and must be committed: the worktree only has committed files.
 # Pass `-` and --task <text> instead for a job too small for a brief; the text is the whole job.
 # Without --model the agent uses its own default. --auto reduces approval prompts: Codex runs

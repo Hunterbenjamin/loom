@@ -141,6 +141,8 @@ describe("restart continuation", () => {
       purpose: "human",
       text: "Already queued",
       textHash: "queued",
+      when: "now",
+      pendingSince: now,
       status: "pending",
       attempts: 0,
       transportRef: null,

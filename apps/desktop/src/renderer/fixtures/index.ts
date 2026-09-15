@@ -373,6 +373,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
         provider,
         mode: role === "implementer" ? "interactive" : "headless",
         origin: "loom",
+        access: "full",
         worktreePath: path,
         round,
         attempts: index === FAILED && role === "implementer" ? 3 : 1,
@@ -394,6 +395,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
               }
             : null,
         status,
+        idleSince: status === "idle" ? minutesBefore(stageMinutes) : null,
         blockedOn,
         lastTurn: {
           id: `turn_${index}${roleIndex}`,
@@ -447,6 +449,8 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
           provider: task.providers[role],
           mode: role === "implementer" ? "interactive" : "headless",
           origin: round === 1 && role === "implementer" ? "external" : "loom",
+          access: "full",
+          idleSince: null,
           worktreePath: path,
           round,
           attempts: round + 1,
@@ -546,6 +550,8 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
       purpose: "initial",
       text: `Work the issue "${title}". Follow AGENTS.md.`,
       textHash: sha(index * 31).slice(0, 16),
+      when: "now",
+      pendingSince: minutesBefore(stageMinutes + 9),
       status: "delivered",
       attempts: 1,
       transportRef: `turn_${index}0`,
@@ -699,6 +705,7 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
         id: approvalId(`${id}-a1`),
         taskId: id,
         kind: "merge",
+        approvedBy: "human",
         headSha: sha(index * 13 + 5),
         findings: {
           hash: sha(index * 23).slice(0, 16),

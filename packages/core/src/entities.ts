@@ -295,9 +295,9 @@ export interface Run {
   model: string;
   /** Captured at creation; retries and recovery retain the same reasoning setting. */
   reasoningEffort?: string;
-  /** Captured semantic access policy; legacy rows use full. */
-  access?: import("./settings.js").AccessPreset;
-  /** Why this fresh implementer round was requested. Absent on initial and legacy runs. */
+  /** Captured semantic access policy. */
+  access: import("./settings.js").AccessPreset;
+  /** Why this fresh implementer round was requested. Absent on initial runs and old runs whose reason was never recorded. */
   fixReason?: string;
   /**
    * (ref: provider) Claude: UUIDv5 of `<runId>#<sessionEpoch>`, chosen before launch, so never null,
@@ -334,7 +334,8 @@ export interface Run {
   } | null;
   /** (cache: provider) */
   pendingRequests: ProviderRequest[];
-  /** Cached native Claude dialog, only while the provider reports waiting. Missing on legacy runs. */
+  /** Cached native Claude dialog, only while the provider reports waiting.
+   * Old dialogs cannot be reconstructed from SQLite; absence waits for a fresh provider read. */
   pendingDialog?: {
     requestId?: string;
     command?: string;
@@ -351,8 +352,8 @@ export interface Run {
   endReason: RunEndReason | null;
   seenAt?: IsoTime | null;
   unknownSince?: IsoTime | null;
-  /** Start of the current idle interval; absent on legacy runs, cleared on activity/status change. */
-  idleSince?: IsoTime | null;
+  /** Start of the current idle interval; cleared on activity/status change. */
+  idleSince: IsoTime | null;
   observedAttempt?: number;
   /** Attempts remain monotonic for action keys; human retry resets this budget offset. */
   retryBaseAttempt?: number;
@@ -415,21 +416,21 @@ export interface Message {
   runId: RunId;
   purpose: MessagePurpose;
   text: string;
-  /** Whether Loom may deliver during the current turn. Defaults to now for legacy rows. */
-  when?: "now" | "after_turn";
+  /** Whether Loom may deliver during the current turn. */
+  when: "now" | "after_turn";
   /** Coordinator-resolved local images for Codex native input. */
   images?: string[];
   /** sha256 of the text after the provider's normalization (tab → 4 spaces, CRLF → LF). */
   textHash: string;
   status: MessageStatus;
-  /** Start of the current pending interval; absent on legacy records. */
-  pendingSince?: IsoTime;
+  /** Start of the current pending interval. */
+  pendingSince: IsoTime;
   attempts: number;
   /** Codex turn ID returned by `turn/start` or `turn/steer`. (ref) */
   transportRef: string | null;
-  /** Transport completion time; legacy records may contain reconciliation time. */
+  /** Transport completion time; old reconciliation timestamps stay because actual transport timing was not recorded. */
   sentAt: IsoTime | null;
-  /** Absent on records written before executor timing was persisted. */
+  /** Absent on records written before executor timing was persisted; that timing cannot be reconstructed. */
   transportAttempt?: TransportAttempt;
   delivered: (DeliveryConfirmation & { at: IsoTime }) | null;
   via?: import("./actions.js").SendVia;
@@ -657,8 +658,8 @@ export type Approval =
       headSha: Sha;
       findings: FindingsSnapshot;
       ci: CiState;
-      /** Who authorized the exact-head approval. Legacy rows are human. */
-      approvedBy?: "human" | "policy";
+      /** Who authorized the exact-head approval. */
+      approvedBy: "human" | "policy";
       createdAt: IsoTime;
       voidedAt: IsoTime | null;
       voidReason: ApprovalVoidReason | null;

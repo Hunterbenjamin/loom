@@ -27,7 +27,6 @@ import { Coordinator } from "./coordinator.js";
 import { formatInspection, getTaskTimings, inspectTask } from "./inspect.js";
 import { createRealAdapters } from "./real-adapters.js";
 import { registerRepo } from "./repos.js";
-import { migrateSettings } from "./settings-migration.js";
 
 const USAGE = `loom — Loom's coordinator and its client
 
@@ -311,7 +310,6 @@ async function serve(config: CoordinatorConfig): Promise<void> {
     config: reconcileConfig(config),
   });
   const runtimeConfig = structuredClone(config);
-  migrateSettings(store, config, new Date().toISOString());
   applyStoredSettingsToConfig(
     runtimeConfig,
     config,
@@ -366,7 +364,6 @@ async function addRepo(
     config: reconcileConfig(config),
   });
   try {
-    migrateSettings(store, config, new Date().toISOString());
     const effective = applyStoredSettingsToConfig(
       structuredClone(config),
       config,
@@ -410,8 +407,7 @@ export async function main(argv: string[]): Promise<void> {
       throw new Error("loom repo add <root> <owner/name>");
     return addRepo(config, root, github, flag(argv, "base") ?? undefined);
   }
-  // Keep the legacy command group as an unadvertised alias.
-  if (group !== "issue" && group !== "task")
+  if (group !== "issue")
     throw new Error(`Unknown command ${group}\n\n${USAGE}`);
   const [action, ...values] = args;
   let taskId = values[0] as TaskId;

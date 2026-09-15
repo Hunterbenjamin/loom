@@ -555,6 +555,8 @@ export function human(
         }
         run.retryBaseAttempt = run.attempts;
         run.retryAt = null;
+        c.retireMessages(run, true);
+        run.idleSince = null;
         run.endedAt = c.now;
         run.endReason = "failed";
         run.observedAttempt = undefined;

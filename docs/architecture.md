@@ -147,8 +147,11 @@ timing, executable paths, Main, GitHub observation and desktop preferences are i
 Identity, storage location, authentication and listener endpoints are bootstrap configuration, not
 editable preferences. Reset resolves from the startup/environment baseline.
 
-Desktop preferences live in coordinator settings. Legacy `keybindings.json` is imported only when
-stored binding fields are absent; a private desktop startup cache is derived, not another owner.
+Desktop preferences live in coordinator settings; a private desktop startup cache is derived,
+not another owner. Store migration 0011 requires repository settings to have been imported by
+a #203 build before upgrading. It refuses old repository settings rather than dropping them.
+The migration runner backs up committed WAL data before filling missing row fields atomically.
+Pending messages begin their missing timeout interval at migration time. Reopening is a no-op.
 
 ## GitHub projections
 

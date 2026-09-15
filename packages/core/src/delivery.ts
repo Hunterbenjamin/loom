@@ -68,8 +68,6 @@ function send(c: Context, run: Run, message: Message): string | null {
 }
 
 function pendingDelivery(c: Context, run: Run, message: Message): void {
-  // Legacy records begin a durable interval on their first reconciliation.
-  message.pendingSince ??= c.now;
   const deadline = later(
     message.pendingSince,
     c.state.config.deliveryTimeoutMs,

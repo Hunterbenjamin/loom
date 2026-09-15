@@ -518,47 +518,6 @@ describe("executor timing survives delayed reconciliation", () => {
     );
   });
 
-  it("retires a legacy sent message before resuming the same run ID", () => {
-    const f = prepared("claude");
-    const old = f.state.runs.find((r) => r.id === f.run.id);
-    const original = f.state.messages[0];
-    if (!old || !original) throw Error("Missing history");
-    old.endedAt = now;
-    old.endReason = "submitted";
-    old.status = "ended";
-    original.deliveryAttention = true;
-    f.state.desiredRun = { role: old.role, round: old.round, resume: true };
-    f.state.messages.push({
-      ...original,
-      id: `${original.id}:follow` as typeof original.id,
-      purpose: "fix_round",
-      status: "pending",
-      attempts: 0,
-      sentAt: null,
-      deliveryAttention: false,
-    });
-    f.observations.inputs = [];
-    const launched = fixed(f.state, f.observations);
-    expect(launched.next.messages[0]).toMatchObject({
-      status: "failed",
-      deliveryAttention: false,
-    });
-    const action = launched.actions.find((a) => a.kind === "start_run");
-    if (!action) throw Error("Missing launch");
-    f.observations.inputs = [
-      actionInput(
-        action,
-        { sessionId: old.sessionId, codexGeneration: null, pane: null },
-        "launch-result",
-      ),
-    ];
-    const ready = fixed(launched.next, f.observations);
-    expect(
-      ready.actions.filter((a) => a.kind === "send_message"),
-    ).toMatchObject([{ messageId: `${original.id}:follow` }]);
-    expect(ready.next.task.attention.reasons).not.toContain("provider_input");
-  });
-
   it("ignores historical sent messages and their attention when a different run sends", () => {
     const f = prepared("claude");
     const old = f.state.runs.find((r) => r.id === f.run.id);
@@ -819,30 +778,6 @@ describe("bounded pending delivery", () => {
     });
     expect(released.next.task.attention.reasons).not.toContain(
       "provider_input",
-    );
-  });
-
-  it("initializes legacy pending age once and preserves it across reloads", () => {
-    const f = queuedReviewer();
-    f.observations.capacity.caps.total = 0;
-    const queued = fixed(f.state, f.observations);
-    delete queued.next.messages[0]?.pendingSince;
-    queued.next.outbox = [];
-    f.observations.now = deadline;
-    const migrated = fixed(queued.next, f.observations);
-    expect(migrated.next.messages[0]?.pendingSince).toBe(deadline);
-    expect(migrated.next.task.attention.reasons).not.toContain(
-      "provider_input",
-    );
-    const reloaded = {
-      ...migrated.next,
-      messages: JSON.parse(JSON.stringify(migrated.next.messages)),
-    };
-    f.observations.now = "2026-09-12T00:00:20.000Z" as typeof now;
-    expectAttention(
-      fixed(reloaded, f.observations),
-      f.run,
-      "no capacity for the reviewer role",
     );
   });
 });

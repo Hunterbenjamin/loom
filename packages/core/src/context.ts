@@ -268,6 +268,18 @@ export class Context {
   ): void {
     this.state.desiredRun = { role, round, resume };
   }
+  retireMessages(run: Run, preserveUnsent = false): void {
+    for (const message of this.state.messages)
+      if (
+        message.runId === run.id &&
+        (message.status === "sent" ||
+          (message.status === "pending" &&
+            (!preserveUnsent || message.attempts > 0)))
+      ) {
+        message.status = "failed";
+        message.deliveryAttention = false;
+      }
+  }
   end(
     run: Run,
     reason: RunEndReason,
@@ -278,14 +290,7 @@ export class Context {
     // For Loom-launched runs, cancel pending actions and manage capacity.
     // For external runs, skip those steps (they never counted toward capacity).
     if (run.origin === "loom") {
-      for (const message of this.state.messages)
-        if (
-          message.runId === run.id &&
-          (message.status === "pending" || message.status === "sent")
-        ) {
-          message.status = "failed";
-          message.deliveryAttention = false;
-        }
+      this.retireMessages(run);
       for (const row of this.state.outbox)
         if (
           (row.status === "pending" ||
@@ -326,6 +331,7 @@ export class Context {
         },
       );
     run.status = "ended";
+    run.idleSince = null;
     run.blockedOn = null;
     run.endedAt = this.now;
     run.endReason = reason;

@@ -94,6 +94,8 @@ export function richState(): TaskState {
       runId: required(state.runs[1]).id,
       purpose: "human",
       text: "Continue",
+      when: "now",
+      pendingSince: now,
       textHash: config.sha256("Continue"),
       status: "sent",
       attempts: 1,
