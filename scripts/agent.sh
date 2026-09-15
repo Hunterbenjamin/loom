@@ -3,9 +3,7 @@
 # and an agent told to follow the brief. Run it from anywhere; it needs no terminal of its own.
 #
 # Usage: scripts/agent.sh <name> <claude|codex> <branch> <brief|-> [--task <text>] [--model <model>] [--base <branch>] [--auto|--full]
-#   e.g. scripts/agent.sh core-design claude feat/core-design docs/briefs/phase-1a-core-design.md
-#        scripts/agent.sh ui-shell claude feat/ui-shell docs/briefs/ui-shell.md --model opus
-#        scripts/agent.sh fix-timings codex fix/timings - --task "loom task timings prints 0 for the last stage; fix it and add a test"
+#   e.g. scripts/agent.sh fix-timings codex fix/timings - --task "loom task timings prints 0 for the last stage; fix it and add a test"
 # <brief> is relative to the repo root and must be committed: the worktree only has committed files.
 # Pass `-` and --task <text> instead for a job too small for a brief; the text is the whole job.
 # Without --model the agent uses its own default. --auto reduces approval prompts: Codex runs
@@ -145,7 +143,7 @@ pane="$(tm new-window -d -P -F '#{pane_id}' -t "$session:" -n agent -c "$worktre
 tm select-window -t "$session:agent"
 
 if [ -n "$task" ]; then
-  prompt="Read AGENTS.md, then do this within its rules: $task. Work on branch $branch; run pnpm test, pnpm lint and pnpm typecheck until all three pass; open a pull request against $base with gh; wait for its check with 'gh pr checks --watch'; then squash-merge it with 'gh pr merge --squash --delete-branch'. Never push to $base directly. Stop and report once the PR is merged."
+  prompt="Read AGENTS.md, then do this within its rules: $task. Work on branch $branch; run pnpm test, pnpm lint and pnpm typecheck until all three pass; open a pull request against $base with gh. Never push to $base directly. Stop and report once the pull request is open."
 else
   prompt="Read AGENTS.md and $brief_path, then carry out the work it describes within its rules. Stop and report once the pull request the brief asks for is open."
 fi
