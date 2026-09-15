@@ -2,7 +2,7 @@ import type { TaskId } from "@loom/core";
 import { describe, expect, it } from "vitest";
 import { buildSnapshot } from "../fixtures/index.js";
 import { groupRows, rowsFor, sortRows, viewCounts } from "./selectors.js";
-import { createStore, matchesView } from "./store.js";
+import { createStore } from "./store.js";
 
 function store() {
   return createStore(buildSnapshot());
@@ -25,11 +25,7 @@ describe("views", () => {
       "awaiting-approval",
       "done",
     ] as const) {
-      expect(counts[view]).toBe(
-        snapshot.tasks.filter(
-          (task) => matchesView(task, view) && task.repoId === "repo-loom",
-        ).length,
-      );
+      expect(counts[view]).toBe(rowsFor(snapshot, view, "repo-loom").length);
     }
   });
 
@@ -172,9 +168,7 @@ it("all selectors, counts, inbox and board stay within the selected project", as
         ),
       ).toBe(true);
       expect(viewCounts(snapshot, repo.id)[view]).toBe(
-        snapshot.tasks.filter(
-          (task) => task.repoId === repo.id && matchesView(task, view),
-        ).length,
+        rowsFor(snapshot, view, repo.id).length,
       );
       for (const pane of ["list", "board"] as const) {
         api.setPane(pane);

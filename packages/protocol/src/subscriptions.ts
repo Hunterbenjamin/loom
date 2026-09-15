@@ -76,11 +76,7 @@ export function taskInView(task: Task, view: ViewName): boolean {
     case "all":
       return true;
     case "needs_you":
-      return (
-        task.attention.reasons.length > 0 ||
-        task.blocked !== null ||
-        task.failed !== null
-      );
+      return task.attention.reasons.length > 0;
     case "in_progress":
       return IN_PROGRESS.includes(task.stage);
     case "awaiting_approval":
