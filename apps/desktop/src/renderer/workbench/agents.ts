@@ -133,3 +133,44 @@ export function terminalAgents(
         a.state.priority - b.state.priority || a.name.localeCompare(b.name),
     );
 }
+
+/**
+ * Main's indicator, wherever Main appears (the Workbench sidebar and the bottom bar): the working
+ * spinner, a finished dot while its last reply is unread, a waiting dot when it needs an answer,
+ * and idle otherwise.
+ */
+export function mainIndicator(status: string, unread = false): Indicator {
+  const tone =
+    unread && status === "idle"
+      ? "finished"
+      : status === "waiting"
+        ? "waiting"
+        : status === "error"
+          ? "failed"
+          : status === "stopped"
+            ? "idle"
+            : status;
+  const icon =
+    tone === "finished"
+      ? "●"
+      : tone === "working"
+        ? "◌"
+        : tone === "waiting"
+          ? "●"
+          : tone === "idle"
+            ? "○"
+            : tone === "failed"
+              ? "!"
+              : "?";
+  return {
+    tone,
+    icon,
+    label:
+      tone === "finished"
+        ? "Finished"
+        : status === "waiting"
+          ? "Needs you"
+          : status,
+    priority: 0,
+  };
+}
