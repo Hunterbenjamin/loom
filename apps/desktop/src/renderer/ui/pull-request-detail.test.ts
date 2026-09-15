@@ -1143,9 +1143,7 @@ test("a branch before its PR reads the coordinator diff", async () => {
     taskId: task.id,
     range: { mode: "whole_branch" },
   });
-  const viewport = h.host.querySelector<HTMLElement>(
-    '[data-testid="pierre"]',
-  )!;
+  const viewport = h.host.querySelector<HTMLElement>('[data-testid="pierre"]')!;
   expect(viewport).not.toBeNull();
   const handler = createShortcutHandler(h.store);
   window.addEventListener("keydown", handler);
@@ -1181,9 +1179,7 @@ test("scroll keys use the detail body, mounted diff viewport, and body again aft
   const body = h.host.querySelector<HTMLElement>(".pr-page-body")!;
   checkScrollKeys(body);
   await h.click("Diff");
-  const viewport = h.host.querySelector<HTMLElement>(
-    '[data-testid="pierre"]',
-  )!;
+  const viewport = h.host.querySelector<HTMLElement>('[data-testid="pierre"]')!;
   body.scrollTop = 123;
   checkScrollKeys(viewport);
   expect(body.scrollTop).toBe(123);
