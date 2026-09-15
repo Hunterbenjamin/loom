@@ -2,9 +2,9 @@ import { applyPatch, stateFromSnapshot } from "@loom/protocol";
 import { expect, test, vi } from "vitest";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
+import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { attentionCount, INBOX_SECTIONS, inboxRows } from "./inbox.js";
 import { selectedRows } from "./selectors.js";
-import { createStore } from "./store.js";
 
 test("one row per supplied reason, section order then oldest first; filters do not affect the global count", () => {
   const store = createStore(buildSnapshot());
@@ -31,14 +31,13 @@ test("one row per supplied reason, section order then oldest first; filters do n
     expect(row.since).toBe(row.task.attention.reasonSince[row.reason]);
   const repo = state.snapshot.repos[0];
   if (!repo) throw new Error("missing repo");
-  store.setRepo(repo.id);
   for (const row of inboxRows(store.getState()))
     expect(row.task.repoId).toBe(repo.id);
   expect(attentionCount(store.getState())).toBe(rows.length);
 });
 
 test("detail patches preserve task-list and inbox selector identities", () => {
-  const store = createStore(buildSnapshot(), true);
+  const store = createStore(buildSnapshot());
   const { meta, body } = toSnapshot(store.getState().snapshot);
   const client = stateFromSnapshot(meta, body);
   store.applyProtocol(client);
@@ -67,7 +66,7 @@ test("detail patches preserve task-list and inbox selector identities", () => {
 });
 
 test("live actions never mutate the snapshot before the coordinator publishes", async () => {
-  const store = createStore(buildSnapshot(), true);
+  const store = createStore(buildSnapshot());
   const snapshot = store.getState().snapshot;
   const task = snapshot.tasks[0];
   if (!task) throw new Error("missing task");
@@ -89,6 +88,5 @@ test("live actions never mutate the snapshot before the coordinator publishes", 
   expect(store.getState().snapshot).toBe(snapshot);
   expect(store.getState().ui.toast).toContain("Stale approval");
   store.moveTask(task.id, "in_review");
-  store.createTask("Local mutation", "all");
   expect(store.getState().snapshot).toBe(snapshot);
 });

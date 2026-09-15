@@ -1,30 +1,27 @@
-// Native menu -> DOM capture -> real xterm, with fixture acknowledgements and
-// owned /bin/sh PTYs only. No coordinator, provider, or tmux server is contacted.
+// Native menu and xterm checks against a disposable coordinator and owned shell panes.
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
+import { startDesktopHarness } from "./desktop-harness.mjs";
 
 const temporary = await mkdtemp(join(tmpdir(), "loom-keybindings-smoke-"));
+const harness = await startDesktopHarness({ terminals: true });
 let app;
 try {
   app = await electron.launch({
     args: [
       fileURLToPath(new URL("..", import.meta.url)),
-      "--fixtures",
       `--user-data-dir=${join(temporary, "electron")}`,
     ],
     env: {
-      ...process.env,
+      ...harness.env,
       HOME: temporary,
       SHELL: "/bin/sh",
-      LOOM_DATA_ROOT: temporary,
-      LOOM_INSTANCE: "dev",
       LOOM_WINDOW_MODE: "workbench",
       ELECTRON_RENDERER_URL: "",
-      LOOM_ATTACH_PANE: "",
       LOOM_EXIT_WHEN_INTERACTIVE: "",
     },
   });
@@ -32,30 +29,12 @@ try {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.waitForSelector(".wb-sidebar");
-  await page.evaluate(() => {
-    let id = 0;
-    window.loom.store.setSender(async (command) =>
-      command.kind === "close_terminal"
-        ? {
-            ok: true,
-            result: { kind: "terminal_closed", target: command.target },
-          }
-        : {
-            ok: true,
-            result: {
-              kind: "scratch_created",
-              pane: {
-                hostGeneration: "fixture",
-                sessionName: "fixture",
-                windowId: `@${++id}`,
-                paneId: `%${id}`,
-              },
-            },
-          },
-    );
-  });
-  const path = join(temporary, "dev", "keybindings.json");
-  const config = JSON.parse(await readFile(path, "utf8"));
+  await page.waitForFunction(
+    () => window.loom?.store.getState().connection === "connected",
+  );
+  const config = await page.evaluate(() =>
+    window.loomHost.keybindings().then((state) => state.config),
+  );
   assert.equal(config.prefixTimeoutMs, 3000);
   const native = await app.browserWindow(page);
   const press = async (keyCode, modifiers = []) => {
@@ -204,14 +183,25 @@ try {
   assert.equal(page.isClosed(), false);
   assert.deepEqual(await app.evaluate(() => globalThis.keybindingMenuHits), []);
 
-  // Two windows receive file pushes; atomic replacement updates matching/help.
+  // Coordinator-owned settings reach both windows and update matching/help.
   const nextWindow = app.waitForEvent("window");
   await page.evaluate(() => window.loomHost.openWindow("workbench"));
   const other = await nextWindow;
   await other.waitForSelector(".wb-sidebar");
   config.bindings.help = ["Ctrl+Shift+H"];
-  await writeFile(`${path}.tmp`, JSON.stringify(config));
-  await rename(`${path}.tmp`, path);
+  await page.evaluate(async (bindings) => {
+    const store = window.loom.store;
+    const document = store
+      .getState()
+      .settings.find((item) => item.id === "global");
+    const outcome = await store.command({
+      kind: "update_settings",
+      scope: { kind: "global" },
+      expectedVersion: document.version,
+      patch: { appearance: { keybindings: bindings } },
+    });
+    if (!outcome.ok) throw new Error(outcome.error.message);
+  }, config.bindings);
   for (const target of [page, other]) {
     await target.waitForFunction(() =>
       window.loomHost
@@ -241,14 +231,18 @@ try {
     );
     await target.locator(".wb-help button").click();
   }
-  await writeFile(path, "{");
-  for (const target of [page, other])
-    await target.locator(".bottom-bar [role=alert]").waitFor();
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: native menu conflicts, real xterm focus, all default chords, shifted prefixes on four surfaces, expiry, two-window reload and invalid-file fallback",
+    "PASS: native menu conflicts, real xterm focus, all default chords, shifted prefixes on four surfaces, expiry, two-window settings synchronization",
   );
 } finally {
-  await app?.close();
-  await rm(temporary, { recursive: true, force: true });
+  try {
+    await app?.close();
+  } finally {
+    try {
+      await harness.close();
+    } finally {
+      await rm(temporary, { recursive: true, force: true });
+    }
+  }
 }

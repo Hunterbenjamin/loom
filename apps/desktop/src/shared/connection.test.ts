@@ -1,9 +1,8 @@
 import { expect, test } from "vitest";
-import { connectionFromEnvironment } from "./connection.js";
+import { connectionConfig, connectionFromEnvironment } from "./connection.js";
 
-test("requires explicit instance, data root and token; fixtures need no connection", () => {
-  expect(connectionFromEnvironment({}, false).mode).toBe("unconfigured");
-  expect(connectionFromEnvironment({}, true)).toEqual({ mode: "fixtures" });
+test("requires explicit instance, data root and token", () => {
+  expect(connectionFromEnvironment({}).mode).toBe("unconfigured");
   const env = {
     LOOM_INSTANCE: "dev",
     LOOM_DATA_ROOT: "/tmp/loom-test",
@@ -11,7 +10,7 @@ test("requires explicit instance, data root and token; fixtures need no connecti
     LOOM_BIND: "[::1]:47801",
     SECRET: "not exposed",
   };
-  const config = connectionFromEnvironment(env, false);
+  const config = connectionFromEnvironment(env);
   expect(config).toEqual({
     mode: "live",
     instance: "dev",
@@ -20,9 +19,11 @@ test("requires explicit instance, data root and token; fixtures need no connecti
     url: "ws://[::1]:47801",
   });
   expect(
-    connectionFromEnvironment(
-      { ...env, LOOM_BIND: "user:pass@example.com:80" },
-      false,
-    ).mode,
+    connectionFromEnvironment({ ...env, LOOM_BIND: "user:pass@example.com:80" })
+      .mode,
   ).toBe("unconfigured");
+});
+
+test("rejects the removed fixture connection mode", () => {
+  expect(connectionConfig.safeParse({ mode: "fixtures" }).success).toBe(false);
 });

@@ -16,15 +16,12 @@ pnpm install
 pnpm --filter @loom/desktop dev
 pnpm --filter @loom/desktop build
 pnpm --filter @loom/desktop start
-# No coordinator, for fixture development:
-pnpm --filter @loom/desktop exec electron-vite dev -- --fixtures
 ```
 
 `LOOM_INSTANCE`, `LOOM_DATA_ROOT`, `LOOM_TOKEN` and `LOOM_BIND` are read in Electron main and
 passed through the preload's narrow connection IPC. Instance, data root and token are required;
 only bind defaults (`127.0.0.1:47800`, like the CLI). There is no fallback to a stable instance or
-local database. `--fixtures` bypasses this connection entirely. For a built fixture window use
-`pnpm --filter @loom/desktop exec electron . --fixtures`.
+local database. Sample snapshots in `src/renderer/fixtures` are test data only.
 
 Needs you lists one row per coordinator-derived attention reason, oldest first. Its sidebar badge
 and each window's title count reasons, across all issues (the sidebar respects its repo filter).
@@ -34,14 +31,14 @@ show role/provider/mode; if several runs share a reason, the detail offers a run
 Approve/reject plan, approve merge at the displayed reviewed SHA, request changes, answer question
 and retry each send one protocol command. A human acknowledgement means **queued**, not completed;
 the detail retains the acknowledgement or rejection, and Activity reflects subsequent transitions.
-Commands are never replayed after a disconnect. Existing fixture-only comment/viewed-file controls
-and stage simulation cannot mutate the live snapshot. The live Review tab shows the reviewed SHA
+Commands are never replayed after a disconnect. The Review tab shows the reviewed SHA
 and findings; raw diffs/review-state writes remain unavailable in the coordinator's current API.
 
 Live terminals resolve the chosen run ID through `open_attach_session` in main, validate the returned
 pane/instance, and run its attach argv. A missing/dead pane shows an error. Closing the panel detaches
-only its client. In fixture mode Terminal can use a login shell or `LOOM_ATTACH_PANE` on an explicitly
-chosen private `loom-<instance>` socket; the performance scripts pass `--fixtures` themselves.
+only its client. Performance and screenshot scripts use `scripts/desktop-harness.ts` to start a
+disposable coordinator with fake providers and GitHub. Terminal measurements use owned shells on
+a private `loom-test-<pid>` tmux server. These resources are cleaned up on exit.
 
 ## Isolated live smoke check
 
@@ -62,9 +59,7 @@ are not attachable terminals; the existing isolated terminal harness covers PTY 
 |---|---|
 | `LOOM_INSTANCE`, `LOOM_DATA_ROOT` | Explicit coordinator identity and data root, matching the CLI. |
 | `LOOM_BIND`, `LOOM_TOKEN` | Coordinator host:port and authentication token; token is never in a URL. |
-| `LOOM_TASKS` | Fixture issue count; the performance harness uses 500. |
 | `LOOM_WIDTH`, `LOOM_HEIGHT` | Window size at launch. |
-| `LOOM_ATTACH_PANE`, `LOOM_TMUX_BIN` | Fixture-only terminal target and executable. |
 
 Tracker creates issues with `C`, the palette's **Create issue** command, or **+** beside the
 repository picker. The dialog defaults to the selected repository, Backlog,
@@ -74,7 +69,7 @@ one-file fixes. Escape or Cancel asks before discarding an edited draft.
 
 Live creation waits for `task_created`, then queues the human move for Todo. Rejections appear
 inline; if creation succeeded, retry sends only the move. Success selects the issue in All issues
-and shows its key. Fixture mode uses the same form with the existing local creation path.
+and shows its key.
 
 ## Keyboard
 
@@ -127,7 +122,7 @@ roughly eight times.
 src/main         Electron main: the window and the PTYs. Nothing else.
 src/preload      The contextBridge, typed by src/shared/ipc.ts
 src/renderer
-  fixtures/      the snapshot, built from @loom/core types; deterministic
+  fixtures/      deterministic sample snapshots for tests
   store/         one store, one subscription, selectors with memoized derivations
   ui/            sidebar, list, board, detail and its tabs, palette, terminal, diff
 perf/            the Playwright harness, its budgets and its last report
@@ -138,7 +133,7 @@ perf/            the Playwright harness, its budgets and its last report
 Command+Shift+W and the shared bottom-bar button toggle the current window between Tracker and
 Workbench. The palette also offers mode switching; explicit New Window commands remain separate.
 New Tracker is also available in the Tracker palette. `LOOM_WINDOW_MODE=workbench` chooses the initial
-window mode independently of live/fixture connection settings. Layouts are memory-only.
+window mode. Layouts are memory-only.
 
 The sidebar groups native spaces → tabs → panes, including dimmed dead panes and unlinked spaces.
 Issue spaces show their issue key/title; every row rolls up provider status and coordinator attention.
@@ -158,7 +153,7 @@ Home/End and Escape; clicking outside dismisses it.
 Drag panel headers to panel edges to rearrange splits.
 
 After the desktop build, `pnpm exec tsx apps/desktop/scripts/workbench-menu-smoke.ts` verifies tab-row
-split geometry, viewer-only menu closure and keyboard menu access in an isolated fixture window.
+split geometry, viewer-only menu closure and keyboard menu access in a disposable coordinator window with owned shell panes.
 
 ### Workbench keybindings
 
@@ -221,8 +216,8 @@ panels are deferred in this slice.
 Client counts mean session-group attachments, not exact pane viewers.
 
 `pnpm --filter @loom/desktop build` then `node apps/desktop/scripts/keybindings-smoke.mjs` verifies
-all default chords against native menu conflicts with real xterm and owned fixture shells, plus
-prefix handling on four focus surfaces and configuration reload in two windows.
+all default chords against native menu conflicts with real xterm and owned shells, plus
+prefix handling on four focus surfaces and coordinator settings synchronization in two windows.
 
 `pnpm --filter @loom/desktop test:workbench` runs the built Workbench smoke/performance fixture with
 30 native panes, fake provider metadata, and real attach clients on its own `loom-test-<pid>` server.

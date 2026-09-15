@@ -100,7 +100,7 @@ describe("pane transitions", () => {
   });
 
   it("publishes once per transition from the store, resets after disconnect and keeps mute window-local", () => {
-    const store = createStore(undefined, true);
+    const store = createStore();
     const listener = vi.fn();
     const stop = store.subscribePaneTransitions(listener);
     const publish = (panes: PaneView[]) =>
@@ -127,7 +127,7 @@ describe("pane transitions", () => {
   });
   it("handles pane and completed-turn patches in either order without duplicate notifications", () => {
     for (const runFirst of [true, false]) {
-      const store = createStore(undefined, true);
+      const store = createStore();
       const linked = { ...working, runId: run.id };
       const client = stateFromSnapshot(meta, {
         ...emptySnapshotBody(),

@@ -102,7 +102,7 @@ defaults, sparse global and repository documents, and environment overrides only
 | `LOOM_TOKEN`, `LOOM_MCP_TOKEN`, provider/GitHub credentials | protocol auth and private per-run recipes | Deliberately not exposed. Only configured/not-configured readiness leaves the coordinator. |
 | Repository root/GitHub identity; provider session IDs and private recipes | repository registration; provider/runtime owners | Deliberately not exposed as preferences. |
 | Shell, PATH, HOME, locale; WORKFLOW commands and fixed safe command allowlists; Main MCP boundaries; tmux isolation/status/mouse/resize/remain-on-exit behavior | process environment, workflow file, adapters | Deliberately not exposed: identity, security and observability invariants. |
-| `LOOM_TASKS`, `LOOM_WIDTH`, `LOOM_HEIGHT`, `LOOM_ATTACH_PANE`, `LOOM_TMUX_BIN`, `LOOM_EXIT_WHEN_INTERACTIVE`, `LOOM_REAL_PROVIDERS`, `LOOM_TEST_SLOW_GIT` | fixture/performance/test scripts | Out of scope: non-production controls. |
+| `LOOM_WIDTH`, `LOOM_HEIGHT`, `LOOM_EXIT_WHEN_INTERACTIVE`, `LOOM_REAL_PROVIDERS`, `LOOM_TEST_SLOW_GIT` | performance/test scripts | Out of scope: non-production controls. |
 | `LOOM_AGENT_EXEC`, `LOOM_ATTACH_AGENT`, `LOOM_NAMESPACE`, `LOOM_TMUX_CONF` | standalone `scripts/agent.sh` workflow | Out of scope: the independent development launcher is not coordinator configuration. |
 | Adapter command/paste/reconnect/process-owner timeouts, patch/frame/page caps and test loop caps | adapter/protocol implementation constants | Out of scope until a measured production requirement promotes one into the catalog. |
 

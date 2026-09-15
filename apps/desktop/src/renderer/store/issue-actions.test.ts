@@ -15,7 +15,7 @@ function setup(reason?: AttentionReason) {
         since: snapshot.now,
       }
     : { reasons: [], reasonSince: {}, since: null };
-  const store = createStore(snapshot, true, "dev");
+  const store = createStore(snapshot, "dev");
   store.setConnection("connected");
   return { snapshot, task, store };
 }

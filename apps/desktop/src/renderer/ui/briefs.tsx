@@ -82,7 +82,7 @@ export function BriefsView() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
-  const connected = connection === "connected" || connection === "fixtures";
+  const connected = connection === "connected";
   useEffect(() => {
     if (!connected) {
       setError("Waiting for the coordinator…");

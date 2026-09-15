@@ -96,7 +96,7 @@ function setup(
     suggestedImplementer: null,
     version: 9,
   };
-  const store = createStore(snapshot, true, "dev");
+  const store = createStore(snapshot, "dev");
   store.getState().inbox = [
     {
       taskId: task.id,

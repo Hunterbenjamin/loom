@@ -61,7 +61,7 @@ function DiffContent({
   const store = useStoreApi();
   const theme = useStore((s) => s.ui.theme);
   const now = useStore((s) => s.snapshot.now);
-  const disconnected = useStore((s) => s.live && s.connection !== "connected");
+  const disconnected = useStore((s) => s.connection !== "connected");
   const [tab, setTab] = useState<"files" | "commits">("files");
   const [commitSha, setCommitSha] = useState<
     PullRequestDetailRow["detail"]["headSha"] | null

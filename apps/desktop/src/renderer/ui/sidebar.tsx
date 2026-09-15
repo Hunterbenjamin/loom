@@ -120,13 +120,11 @@ export function Sidebar() {
       <div className="pad faint" role="status">
         {connection === "connected"
           ? ""
-          : connection === "fixtures"
-            ? "Fixture mode"
-            : connection === "disconnected"
-              ? "Disconnected"
-              : connection === "connecting"
-                ? "Connecting…"
-                : `Disconnected · ${connection}`}
+          : connection === "disconnected"
+            ? "Disconnected"
+            : connection === "connecting"
+              ? "Connecting…"
+              : `Disconnected · ${connection}`}
       </div>
       <div className="sidebar-foot">
         <button type="button" onClick={() => store.toggleTheme()}>

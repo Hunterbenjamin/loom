@@ -54,7 +54,7 @@ function setup(reason: AttentionReason, mode: Run["mode"] = "interactive") {
     if (other.id !== task.id)
       other.attention = { reasons: [], reasonSince: {}, since: null };
   const run = { ...originalRun, taskId: task.id, mode };
-  const store = createStore(fixture, true);
+  const store = createStore(fixture);
   const { body, meta } = toSnapshot(fixture);
   body.inbox = [
     {

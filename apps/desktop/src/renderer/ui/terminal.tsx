@@ -38,7 +38,6 @@ export function TerminalTab({
   task: Task;
   theme: "dark" | "light";
 }) {
-  const live = useStore((s) => s.live);
   const repos = useStore((s) => s.snapshot.repos);
   const runs = useStore(
     (s) => terminalsForTask(s.snapshot, task),
@@ -86,7 +85,6 @@ export function TerminalTab({
               label={`${issueKeyFor(task, repos)} · ${runLabel(run)}`}
               runId={run.id}
               theme={theme}
-              live={live}
             />
           </div>
         ))}
@@ -103,7 +101,6 @@ function TaskShellTerminal({
   theme: "dark" | "light";
 }) {
   const store = useStoreApi();
-  const live = useStore((s) => s.live);
   const repos = useStore((s) => s.snapshot.repos);
   const contextKey = useStore((s) =>
     JSON.stringify(
@@ -129,7 +126,6 @@ function TaskShellTerminal({
   const [error, setError] = useState("");
   // biome-ignore lint/correctness/useExhaustiveDependencies: Re-resolve when task/run identity changes or the human retries, without remounting for activity updates.
   useEffect(() => {
-    if (!live) return;
     let disposed = false;
     setError("");
     void store
@@ -153,7 +149,7 @@ function TaskShellTerminal({
     return () => {
       disposed = true;
     };
-  }, [store, task.id, task.stage, task.worktreePath, live, contextKey, retry]);
+  }, [store, task.id, task.stage, task.worktreePath, contextKey, retry]);
   const selected = terminal?.taskId === task.id ? terminal : null;
   return (
     <div className="terminal-tab">
@@ -164,7 +160,7 @@ function TaskShellTerminal({
             Retry terminal
           </button>
         </div>
-      ) : live && !selected ? (
+      ) : !selected ? (
         <p role="status">Opening issue terminal…</p>
       ) : null}
       {selected && (
@@ -178,13 +174,12 @@ function TaskShellTerminal({
           {selected.branch ?? "detached HEAD"}
         </div>
       )}
-      {(!live || selected) && (
+      {selected && (
         <TerminalSession
           key={task.id}
           label={issueKeyFor(task, repos)}
-          pane={selected?.target}
+          pane={selected.target}
           theme={theme}
-          live={live}
         />
       )}
     </div>
@@ -203,7 +198,6 @@ export const TerminalSession = memo(function TerminalSession({
   runId = null,
   lead,
   theme,
-  live,
 }: {
   panelId?: string;
   viewport?: PaneViewport;
@@ -215,7 +209,6 @@ export const TerminalSession = memo(function TerminalSession({
   runId?: RunId | null;
   lead?: string;
   theme: "dark" | "light";
-  live: boolean;
 }) {
   const terminalHistoryLimit = useContext(TerminalHistoryContext);
   if (panelId && window.loom) {
@@ -244,7 +237,7 @@ export const TerminalSession = memo(function TerminalSession({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    if (live && !runId && !lead && !pane && !shellKey) {
+    if (!runId && !lead && !pane && !shellKey) {
       setStatus("Select a run to attach");
       return;
     }
@@ -616,7 +609,7 @@ export const TerminalSession = memo(function TerminalSession({
       void window.loomTerminal.kill(id);
       terminal.dispose();
     };
-  }, [panelId, pane, live, runId, lead, shellKey, shellName]);
+  }, [panelId, pane, runId, lead, shellKey, shellName]);
 
   return (
     <div className="terminal-wrap">

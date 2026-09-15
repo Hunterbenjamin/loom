@@ -1,13 +1,9 @@
-// The whole app renders from this snapshot. It stands in for what the coordinator will send
-// over `packages/protocol`, so it is built out of `@loom/core`'s entity types on purpose:
-// this is the first consumer those types have.
-
+// Deterministic sample data for desktop tests.
 import type {
   Approval,
   AttentionReason,
   Finding,
   FindingStatus,
-  IsoTime,
   Message,
   Plan,
   Provider,
@@ -23,7 +19,8 @@ import type {
   Transition,
   Worktree,
 } from "@loom/core";
-import type { PullRequestRow, TaskInbox } from "@loom/protocol";
+import type { TaskInbox } from "@loom/protocol";
+import type { Comment, Snapshot } from "../store/snapshot.js";
 import { STAGE_LABELS, STAGES } from "../ui/format.js";
 import {
   approvalId,
@@ -42,39 +39,11 @@ import {
   transitionId,
   worktreePath,
 } from "./ids.js";
-import { buildPatch, type PatchFixture } from "./patch.js";
+import { buildPatch } from "./patch.js";
 import { buildPullRequests } from "./pull-requests.js";
 import { between, pick, rng } from "./rng.js";
 
-/** A human comment thread on a finding. `@loom/core` has no reply type; see the PR notes. */
-export interface Comment {
-  id: string;
-  findingId: string;
-  author: string;
-  body: string;
-  at: IsoTime;
-}
-
-export interface Snapshot {
-  now: IsoTime;
-  repos: Repo[];
-  tasks: Task[];
-  inbox: TaskInbox[];
-  pullRequests: PullRequestRow[];
-  worktrees: Worktree[];
-  runs: Run[];
-  questions: Question[];
-  messages: Message[];
-  findings: Finding[];
-  approvals: Approval[];
-  plans: Record<string, Plan & { version?: number }>;
-  testResults: TestResult[];
-  transitions: Transition[];
-  comments: Comment[];
-  /** Review-shell state the coordinator will own; Pierre has none of it (spike 04). */
-  viewedFiles: Record<string, string[]>;
-  patch: PatchFixture;
-}
+export type { Comment, Snapshot } from "../store/snapshot.js";
 
 const LONG_TITLE =
   "Reconcile Codex threads whose app-server generation changed while a blocking approval " +

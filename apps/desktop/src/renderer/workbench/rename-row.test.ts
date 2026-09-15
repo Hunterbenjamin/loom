@@ -19,7 +19,7 @@ import { Sidebar } from "./sidebar.js";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 test("inline rename validates, cancels, reports errors and waits for native patches", async () => {
-  const store = createStore(undefined, true, "test");
+  const store = createStore(undefined, "test");
   const linked = {
     ...pane,
     taskId: "t-1" as TaskId,

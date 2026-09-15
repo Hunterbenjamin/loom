@@ -98,7 +98,7 @@ function CreateIssueDialog() {
 
   const finish = async (id: TaskId, todo: boolean) => {
     if (store.getState().ui.repo !== repoId) await store.setRepo(repoId);
-    store.selectCreatedTask(id, repoId, todo);
+    store.selectCreatedTask(id, todo);
   };
   const cancel = () => {
     if (submitting.current) return;
@@ -121,51 +121,39 @@ function CreateIssueDialog() {
     try {
       let id = created;
       if (!id) {
-        if (store.getState().live) {
-          const repo = repos.find((r) => r.id === repoId);
-          if (!repo) throw new Error("Select a repository.");
-          const result = acknowledged(
-            await store.command({
-              kind: "create_task",
-              repoId: repo.id,
-              title: title.trim(),
-              name: name.trim() || null,
-              description,
-              summary: null,
-              providers: null,
-              requirePlanApproval,
-              blockedBy: [],
-              budgetMinutes,
-              size,
-            }),
-          );
-          if (result.kind !== "task_created")
-            throw new Error("Expected an issue creation acknowledgement.");
-          id = result.taskId;
-        } else {
-          id =
-            store.createTask(title.trim(), repoId, {
-              name: name.trim() || null,
-              description,
-              size,
-              requirePlanApproval,
-            }) ?? null;
-        }
+        const repo = repos.find((r) => r.id === repoId);
+        if (!repo) throw new Error("Select a repository.");
+        const result = acknowledged(
+          await store.command({
+            kind: "create_task",
+            repoId: repo.id,
+            title: title.trim(),
+            name: name.trim() || null,
+            description,
+            summary: null,
+            providers: null,
+            requirePlanApproval,
+            blockedBy: [],
+            budgetMinutes,
+            size,
+          }),
+        );
+        if (result.kind !== "task_created")
+          throw new Error("Expected an issue creation acknowledgement.");
+        id = result.taskId;
         if (!id) throw new Error("The issue could not be created.");
         setCreated(id);
       }
       if (status === "todo") {
-        if (store.getState().live) {
-          const result = acknowledged(
-            await store.command({
-              kind: "human",
-              taskId: id,
-              command: { type: "move", to: "todo" },
-            }),
-          );
-          if (result.kind !== "human")
-            throw new Error("Expected a workflow acknowledgement.");
-        } else store.moveTask(id, "todo");
+        const result = acknowledged(
+          await store.command({
+            kind: "human",
+            taskId: id,
+            command: { type: "move", to: "todo" },
+          }),
+        );
+        if (result.kind !== "human")
+          throw new Error("Expected a workflow acknowledgement.");
       }
       await finish(id, status === "todo");
     } catch (cause) {
