@@ -1,22 +1,18 @@
+import { Attachments } from "./attachments.js";
+import { briefHandlers, DailyBriefs } from "./briefs.js";
 import {
-  type ProtocolError,
-  paneIdentity,
-  pullRequestCommand,
-  pullRequestDiffRead,
-  pullRequestReviewChange,
-} from "@loom/protocol";
-import { Attachments, withAttachedFiles } from "./attachments.js";
-import { DailyBriefs } from "./briefs.js";
+  dispatchCommand,
+  type Handlers,
+  type ServedCommandKind,
+} from "./commands.js";
 import { ConversationViews } from "./conversations.js";
 import { PaneInventory, paneKey } from "./pane-inventory.js";
-import { PullRequestViews } from "./pull-requests.js";
-import { runEnvironment } from "./recipes.js";
+import { handlePullRequestCommand, PullRequestViews } from "./pull-requests.js";
 // The coordinator: one long-running process per instance. It owns the loop, the executor, the MCP
 // server agents call, and the protocol server windows connect to. Everything it talks to is
 // injected, so a test can run the whole thing against `@loom/fake-agent` and a temporary store.
 
 import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
 import type {
   Attention,
   HumanCommand,
@@ -26,7 +22,6 @@ import type {
   IsoTime,
   Observations,
   Provider,
-  ProviderRules,
   ReconcileResult,
   Repo,
   RepoId,
@@ -34,22 +29,8 @@ import type {
   Task,
   TaskId,
   TaskState,
-  WorktreePath,
 } from "@loom/core";
-import {
-  DEFAULT_SETTINGS,
-  displayName,
-  issueKey,
-  MODEL_CATALOG,
-  resolveSettings,
-  resolveTaskRef,
-  SETTINGS_CATALOG,
-  type SettingsPatch,
-  type SettingsScope,
-  type SettingsValues,
-  settingValue,
-  validateSettings,
-} from "@loom/core";
+import { displayName, issueKey, resolveTaskRef } from "@loom/core";
 import { leadCommand, serveHttp } from "@loom/mcp";
 import type { Change, Subscription } from "@loom/protocol";
 import { command as commandSchema } from "@loom/protocol";
@@ -62,10 +43,11 @@ import {
   epochOf,
   reconcileConfig,
 } from "./config.js";
-import { classify, Executor, PreconditionFailed } from "./executor.js";
+import { Executor } from "./executor.js";
 import { inspectTask } from "./inspect.js";
 import type { LaunchDeps } from "./launch.js";
 import { LeadSession } from "./lead.js";
+import { leadHandlers } from "./lead-commands.js";
 import { Loop } from "./loop.js";
 import { messageAgent } from "./main-messages.js";
 import { createMcpHost } from "./mcp-host.js";
@@ -76,12 +58,17 @@ import {
 } from "./observe.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
-import { registerRepo } from "./repos.js";
+import { repoHandlers } from "./repos.js";
 import { ProtocolServer } from "./server.js";
+import { CoordinatorSettings } from "./settings.js";
 import { migrateSettings } from "./settings-migration.js";
 import { runShell, type Shell } from "./shell.js";
+import { type CreateTaskInput, taskHandlers } from "./task-commands.js";
+
+export type { CreateTaskInput } from "./task-commands.js";
+
 import { resolveCommandTaskRefs } from "./task-refs.js";
-import { openTaskTerminal } from "./task-terminal.js";
+import { terminalHandlers } from "./terminals.js";
 import {
   changesRow,
   PublishedRows,
@@ -115,89 +102,6 @@ export interface CoordinatorOptions {
   shell?: Shell;
 }
 
-export interface CreateTaskInput {
-  repoId: RepoId;
-  title: string;
-  name?: string | null;
-  description: string;
-  summary?: string | null;
-  providers?: ProviderRules | null;
-  requirePlanApproval?: boolean | null;
-  blockedBy?: TaskId[];
-  budgetMinutes?: number | null;
-  size?: "small" | "normal" | null;
-}
-
-const settingsId = (scope: SettingsScope): string =>
-  scope.kind === "global" ? "global" : `repo:${scope.repoId}`;
-
-const mergeStored = (
-  current: SettingsPatch,
-  patch: SettingsPatch,
-): SettingsPatch => ({
-  ...current,
-  ...patch,
-  ...(patch.roles
-    ? {
-        roles: Object.fromEntries(
-          Object.entries({ ...current.roles, ...patch.roles }).map(
-            ([role, value]) => [
-              role,
-              {
-                ...current.roles?.[
-                  role as keyof NonNullable<SettingsPatch["roles"]>
-                ],
-                ...value,
-              },
-            ],
-          ),
-        ),
-      }
-    : {}),
-  ...(patch.workflow
-    ? { workflow: { ...current.workflow, ...patch.workflow } }
-    : {}),
-  ...(patch.repository
-    ? { repository: { ...current.repository, ...patch.repository } }
-    : {}),
-  ...(patch.main ? { main: { ...current.main, ...patch.main } } : {}),
-  ...(patch.runtime
-    ? { runtime: { ...current.runtime, ...patch.runtime } }
-    : {}),
-  ...(patch.appearance
-    ? { appearance: { ...current.appearance, ...patch.appearance } }
-    : {}),
-});
-
-const removeSettings = (
-  current: SettingsPatch,
-  keys: readonly string[],
-): SettingsPatch => {
-  const next = structuredClone(current) as Record<string, unknown>;
-  for (const path of keys) {
-    const parts = path.split(".");
-    let parent: Record<string, unknown> | undefined = next;
-    for (const part of parts.slice(0, -1)) {
-      const child: unknown = parent?.[part];
-      parent =
-        child && typeof child === "object"
-          ? (child as Record<string, unknown>)
-          : undefined;
-    }
-    if (parent) delete parent[parts.at(-1) ?? ""];
-  }
-  return next as SettingsPatch;
-};
-
-const changedSettings = (before: SettingsPatch, after: SettingsPatch) =>
-  SETTINGS_CATALOG.flatMap(({ key }) => {
-    const oldValue = settingValue(before, key);
-    const newValue = settingValue(after, key);
-    return JSON.stringify(oldValue) === JSON.stringify(newValue)
-      ? []
-      : [{ key, oldValue, newValue }];
-  });
-
 /** A pass whose owner reads take this long is logged, so slow owners show up in the log. */
 const SLOW_READ_MS = 2000;
 
@@ -207,6 +111,8 @@ export class Coordinator {
   readonly adapters: Adapters;
   readonly recipes: RecipeStore;
   private readonly attachments: Attachments;
+  private readonly settings: CoordinatorSettings;
+  private readonly commandHandlers: Handlers<ServedCommandKind>;
   private readonly baselineConfig: CoordinatorConfig;
   readonly briefs: DailyBriefs;
   readonly leads = new Map<string, LeadSession>();
@@ -251,68 +157,9 @@ export class Coordinator {
       },
     ];
   }
-  private effectiveSettings(repoId?: string): SettingsValues {
-    const global = this.store.settings.read({ kind: "global" }).data;
-    const repository = repoId
-      ? this.store.settings.read({ kind: "repository", repoId }).data
-      : null;
-    return resolveSettings(
-      global,
-      repository,
-      this.config.settingsEnvironment,
-      DEFAULT_SETTINGS,
-      this.config.providerEnvironment,
-    ).effective;
-  }
-  private settingsRows(): Row[] {
-    const global = this.store.settings.read({ kind: "global" });
-    const audit = this.store.settings.audit(100);
-    const scopes: SettingsScope[] = [
-      { kind: "global" },
-      ...this.store
-        .repos()
-        .map((repo) => ({ kind: "repository" as const, repoId: repo.id })),
-    ];
-    return scopes.map((scope) => {
-      const stored =
-        scope.kind === "global" ? global : this.store.settings.read(scope);
-      const resolution = resolveSettings(
-        global.data,
-        scope.kind === "repository" ? stored.data : null,
-        this.config.settingsEnvironment,
-        DEFAULT_SETTINGS,
-        this.config.providerEnvironment,
-      );
-      return {
-        collection: "settings" as const,
-        key: settingsId(scope),
-        value: {
-          id: settingsId(scope),
-          scope,
-          version: stored.version,
-          stored: stored.data,
-          defaults: DEFAULT_SETTINGS,
-          effective: resolution.effective,
-          sources: resolution.sources,
-          catalog: SETTINGS_CATALOG,
-          modelCatalog: MODEL_CATALOG,
-          credentialReadiness: {
-            codex: Boolean(
-              process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY,
-            ),
-            claude: Boolean(process.env.ANTHROPIC_API_KEY),
-            github: Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN),
-          },
-          audit: audit.filter(
-            (entry) => settingsId(entry.scope) === settingsId(scope),
-          ),
-        },
-      };
-    });
-  }
   private publishSettings(): void {
     this.protocol.publish(
-      this.published.replace("settings", null, this.settingsRows()),
+      this.published.replace("settings", null, this.settings.rows()),
     );
   }
   private applyStoredRuntime(startup: boolean): void {
@@ -330,88 +177,6 @@ export class Coordinator {
       this.resync = setInterval(() => this.resyncAll(), this.config.resyncMs);
       this.resync.unref?.();
     }
-  }
-  private saveSettings(
-    scope: SettingsScope,
-    expectedVersion: number,
-    next: SettingsPatch,
-  ): number {
-    if (
-      scope.kind === "repository" &&
-      !this.store.repos().some((repo) => repo.id === scope.repoId)
-    )
-      throw Object.assign(new Error("Unknown registered repository"), {
-        code: "invalid_input",
-      });
-    const current = this.store.settings.read(scope);
-    const changes = changedSettings(current.data, next);
-    if (!changes.length)
-      throw Object.assign(new Error("No settings changed"), {
-        code: "invalid_input",
-      });
-    const unavailable = changes
-      .map((change) => SETTINGS_CATALOG.find((item) => item.key === change.key))
-      .filter(
-        (item) => !item || item.readOnly || !item.scopes.includes(scope.kind),
-      );
-    if (unavailable.length)
-      throw Object.assign(new Error("Setting is not editable in this scope"), {
-        code: "invalid_input",
-        details: unavailable.map((item) => item?.key ?? "unknown setting"),
-      });
-    const global =
-      scope.kind === "global"
-        ? next
-        : this.store.settings.read({ kind: "global" }).data;
-    const repositories =
-      scope.kind === "repository"
-        ? [{ id: scope.repoId, data: next }]
-        : this.store.repos().map((repo) => ({
-            id: repo.id,
-            data: this.store.settings.read({
-              kind: "repository",
-              repoId: repo.id,
-            }).data,
-          }));
-    const validateResolved = (
-      repositoryData: SettingsPatch | null,
-      environment: SettingsPatch | null,
-    ) => {
-      const effective = resolveSettings(
-        global,
-        repositoryData,
-        environment,
-        DEFAULT_SETTINGS,
-        this.config.providerEnvironment,
-      ).effective;
-      return validateSettings(effective);
-    };
-    const errors = [
-      ...validateResolved(null, null),
-      ...validateResolved(null, this.config.settingsEnvironment),
-      ...repositories.flatMap((repo) =>
-        [
-          ...validateResolved(repo.data, null),
-          ...validateResolved(repo.data, this.config.settingsEnvironment),
-        ].map((message) => `${repo.id}: ${message}`),
-      ),
-    ];
-    if (errors.length)
-      throw Object.assign(new Error("Settings validation failed"), {
-        code: "invalid_input",
-        details: errors,
-      });
-    const saved = this.store.settings.update({
-      scope,
-      expectedVersion,
-      data: next,
-      actor: "desktop",
-      changedAt: this.now(),
-      changes,
-    });
-    if (scope.kind === "global") this.applyStoredRuntime(false);
-    this.publishSettings();
-    return saved.version;
   }
   private publishRepos(): void {
     this.protocol.publish([
@@ -482,8 +247,15 @@ export class Coordinator {
     this.epoch = epochOf(this.startedAt);
     this.recipes = new RecipeStore(this.store.dataDirectory);
     this.attachments = new Attachments(this.store.dataDirectory);
+    this.settings = new CoordinatorSettings({
+      store: this.store,
+      config: this.config,
+      now: () => this.now(),
+      onGlobalSaved: () => this.applyStoredRuntime(false),
+      publish: () => this.publishSettings(),
+    });
     this.store.setRoleProfilesResolver(
-      (task) => this.effectiveSettings(task.repoId).roles,
+      (task) => this.settings.effective(task.repoId).roles,
     );
     this.loop = new Loop({
       store: this.store,
@@ -510,7 +282,8 @@ export class Coordinator {
       shell: options.shell ?? runShell,
       repo: (taskId) => this.repo(taskId),
       repoById: (repoId) => this.repoById(repoId),
-      repositorySettings: (repoId) => this.effectiveSettings(repoId).repository,
+      repositorySettings: (repoId) =>
+        this.settings.effective(repoId).repository,
       schedule: (taskId, at, why) => this.schedule(taskId, at, why),
       notify: (level, title, body) => this.log(`[${level}] ${title}: ${body}`),
       now: () => this.now(),
@@ -619,6 +392,44 @@ export class Coordinator {
       },
       (operation, error) => this.reportAdapterFailure(operation, error),
     );
+    this.commandHandlers = {
+      ...briefHandlers({ store: this.store, briefs: this.briefs }),
+      ...this.settings.handlers(),
+      ...terminalHandlers({
+        store: this.store,
+        adapters: this.adapters,
+        config: this.config,
+        inventory: this.inventory,
+        repo: (id) => this.repoById(id),
+        now: () => this.now(),
+      }),
+      ...leadHandlers({
+        lead: (id) => this.leadFor(id),
+        attachments: this.attachments,
+        conversations: this.conversationViews,
+        publishLead: () => this.publishLead(),
+        refreshInventory: () => this.inventory.refresh(),
+      }),
+      ...repoHandlers({
+        store: this.store,
+        effectiveBaseBranch: () =>
+          this.settings.effective().repository.baseBranch,
+        lead: (id) => this.leadFor(id),
+        now: () => this.now(),
+        publishRepos: () => this.publishRepos(),
+        publishSettings: () => this.publishSettings(),
+        publishLead: () => this.publishLead(),
+      }),
+      ...taskHandlers({
+        store: this.store,
+        recipes: this.recipes,
+        attachments: this.attachments,
+        createTask: (input) => this.createTask(input),
+        submitHuman: (taskId, command) => this.submitHuman(taskId, command),
+        decision: (taskId, inputId) => this.decision(taskId, inputId),
+        viewDeps: () => this.viewDeps(),
+      }),
+    };
     this.protocol = new ProtocolServer({
       token: this.config.token,
       instance: this.config.instance,
@@ -796,7 +607,7 @@ export class Coordinator {
 
   createTask(input: CreateTaskInput): TaskState {
     const repo = this.repoById(input.repoId);
-    const settings = this.effectiveSettings(repo.id);
+    const settings = this.settings.effective(repo.id);
     const now = this.now();
     const id = `t-${randomUUID().slice(0, 8)}` as TaskId;
     const task: Omit<Task, "number"> = {
@@ -1115,7 +926,7 @@ export class Coordinator {
           return repo
             ? {
                 github: repo.github,
-                baseBranch: this.effectiveSettings(repo.id).repository
+                baseBranch: this.settings.effective(repo.id).repository
                   .baseBranch,
               }
             : null;
@@ -1244,7 +1055,7 @@ export class Coordinator {
     await this.ensure(scope);
     this.published.replace("lead", null, await this.leadRows());
     this.published.replace("project", null, this.projectRows());
-    this.published.replace("settings", null, this.settingsRows());
+    this.published.replace("settings", null, this.settings.rows());
     this.published.replace(
       "repos",
       null,
@@ -1282,539 +1093,16 @@ export class Coordinator {
 
   // ---------------------------------------------------------------- commands
 
-  private async command(
-    value: unknown,
-  ): Promise<
-    { ok: true; result: unknown } | { ok: false; error: ProtocolError }
-  > {
-    const review = pullRequestReviewChange.safeParse(value);
-    const diffRead = pullRequestDiffRead.safeParse(value);
-    if (review.success || diffRead.success) {
-      try {
-        if (review.success) {
-          await this.prViews.saveReview(review.data);
-          return { ok: true, result: { kind: "pull_request_review_state" } };
-        }
-        if (diffRead.success)
-          return {
-            ok: true,
-            result: await this.prViews.readDiff(diffRead.data),
-          };
-      } catch (error) {
-        return {
-          ok: false,
-          error: {
-            code: "guard_failed",
-            message:
-              error instanceof Error
-                ? error.message
-                : "Could not read review state",
-            details: [],
-          },
-        };
-      }
-    }
-    const pr = pullRequestCommand.safeParse(value);
-    if (pr.success) {
-      if (!this.store.repos().some((repo) => repo.id === pr.data.repoId))
-        return {
-          ok: false,
-          error: {
-            code: "invalid_input",
-            message: "Unknown registered repository",
-            details: [],
-          },
-        };
-      try {
-        await this.prViews.command(pr.data);
-        return {
-          ok: true,
-          result: {
-            kind: "pull_request_action",
-            command: pr.data.kind,
-            repoId: pr.data.repoId,
-            number: "number" in pr.data ? pr.data.number : null,
-          },
-        };
-      } catch (error) {
-        const classified = classify(error);
-        return {
-          ok: false,
-          error: {
-            code:
-              classified.code === "precondition"
-                ? "guard_failed"
-                : classified.code === "retryable"
-                  ? "unavailable"
-                  : "internal",
-            message: classified.message,
-            details: [],
-          },
-        };
-      }
-    }
-    const parsedCommand = commandSchema.parse(value);
-    const resolved = resolveCommandTaskRefs(parsedCommand, this.store);
+  private async command(value: unknown) {
+    const pullRequest = await handlePullRequestCommand(
+      value,
+      this.prViews,
+      (repoId) => this.store.repos().some((repo) => repo.id === repoId),
+    );
+    if (pullRequest) return pullRequest;
+    const parsed = commandSchema.parse(value);
+    const resolved = resolveCommandTaskRefs(parsed, this.store);
     if (!resolved.ok) return resolved;
-    const command = resolved.command as {
-      kind: string;
-      taskId?: TaskId;
-      runId?: string;
-      command?: HumanCommand;
-    } & Record<string, unknown>;
-    try {
-      switch (command.kind) {
-        case "update_settings": {
-          const scope = command.scope as SettingsScope;
-          const current = this.store.settings.read(scope);
-          const version = this.saveSettings(
-            scope,
-            command.expectedVersion as number,
-            mergeStored(current.data, command.patch as SettingsPatch),
-          );
-          return {
-            ok: true,
-            result: { kind: "settings_updated", scope, version },
-          };
-        }
-        case "reset_settings": {
-          const scope = command.scope as SettingsScope;
-          const keys = command.keys as string[];
-          const known = new Set(SETTINGS_CATALOG.map((item) => item.key));
-          const unknown = keys.filter((key) => !known.has(key));
-          if (unknown.length)
-            throw Object.assign(new Error("Unknown setting key"), {
-              code: "invalid_input",
-              details: unknown,
-            });
-          const current = this.store.settings.read(scope);
-          const version = this.saveSettings(
-            scope,
-            command.expectedVersion as number,
-            removeSettings(current.data, keys),
-          );
-          return {
-            ok: true,
-            result: { kind: "settings_updated", scope, version },
-          };
-        }
-        case "set_title": {
-          if (
-            !String(command.hostGeneration).startsWith(
-              `loom-${this.config.instance}#`,
-            )
-          )
-            throw new Error("Terminal belongs to another instance");
-          await this.adapters.paneHost.setTitle({
-            hostGeneration: String(command.hostGeneration),
-            target: command.target as Parameters<
-              Adapters["paneHost"]["setTitle"]
-            >[0]["target"],
-            title: String(command.title),
-          });
-          await this.inventory.refresh();
-          return { ok: true, result: { kind: "titled" } };
-        }
-        case "open_task_terminal": {
-          const taskId = command.taskId as TaskId;
-          const state = this.store.loadTaskState(taskId);
-          const repo = this.store
-            .repos()
-            .find((repo) => repo.id === state.task.repoId);
-          if (!repo) throw new Error("Task project is unavailable");
-          const terminal = await openTaskTerminal(state, repo, this.adapters);
-          await this.inventory.refresh();
-          return {
-            ok: true,
-            result: { kind: "task_terminal", taskId, ...terminal },
-          };
-        }
-        case "open_workbench_terminal":
-        case "open_pane_session": {
-          const scratchTarget =
-            command.kind === "open_workbench_terminal" && command.target
-              ? paneIdentity.parse(command.target)
-              : undefined;
-          if (
-            scratchTarget &&
-            !scratchTarget.hostGeneration.startsWith(
-              `loom-${this.config.instance}#`,
-            )
-          )
-            throw new Error("Pane belongs to another instance");
-          const scratchPane = scratchTarget
-            ? await this.adapters.paneHost.getPane(scratchTarget)
-            : null;
-          if (
-            scratchTarget &&
-            (!scratchPane ||
-              scratchPane.dead ||
-              scratchPane.ref.windowId !== scratchTarget.windowId)
-          )
-            throw new Error("Pane is missing, dead or stale");
-          if (
-            command.kind === "open_workbench_terminal" &&
-            command.split &&
-            !scratchTarget
-          )
-            throw new Error("Split requires a target pane");
-          // A new space opens at the selected project's root, so its shell is in the repo.
-          const newSpace =
-            command.kind === "open_workbench_terminal" && !scratchTarget
-              ? (command.workspace as string | undefined)
-              : undefined;
-          const selectedRepoId = newSpace ? this.store.selectedRepo() : null;
-          const spaceRoot = selectedRepoId
-            ? this.repoById(selectedRepoId).root
-            : null;
-          const ref =
-            command.kind === "open_workbench_terminal"
-              ? await this.adapters.paneHost.createScratch({
-                  workspaceId:
-                    newSpace ?? scratchPane?.workspaceId ?? "loom-workbench",
-                  target: scratchTarget,
-                  split: command.split as "right" | "below" | undefined,
-                  createWorkspace: true,
-                  key: command.key as string,
-                  label: (command.label as string | undefined) ?? "Terminal",
-                  cwd:
-                    spaceRoot ??
-                    scratchPane?.startCwd ??
-                    (homedir() as WorktreePath),
-                  executable: process.env.SHELL || "/bin/sh",
-                  args: ["-l"],
-                  env: runEnvironment(process.env, {}),
-                })
-              : paneIdentity.parse(command.target);
-          if (command.kind !== "open_pane_session")
-            await this.inventory.refresh();
-          if (!ref.hostGeneration.startsWith(`loom-${this.config.instance}#`))
-            throw new Error("Pane belongs to another instance");
-          const pane = await this.adapters.paneHost.getPane(ref);
-          if (!pane || pane.dead || pane.ref.windowId !== ref.windowId)
-            throw new Error("Pane is missing, dead or stale");
-          return {
-            ok: true,
-            result: {
-              kind: "attach_session",
-              target: {
-                identity: "pane",
-                target: pane.ref,
-                attach: {
-                  kind: "pane_host",
-                  argv: this.adapters.paneHost.attachArgs(pane.ref),
-                  cwd: pane.startCwd,
-                  env: {},
-                },
-                pane: {
-                  ...pane.ref,
-                  dead: false,
-                  exitStatus: null,
-                  attachedClients: 0,
-                  size: null,
-                  observedAt: this.now(),
-                },
-              },
-            },
-          };
-        }
-        case "close_terminal": {
-          const ref = paneIdentity.parse(command.target);
-          if (!ref.hostGeneration.startsWith(`loom-${this.config.instance}#`))
-            throw new Error("Pane belongs to another instance");
-          if (
-            ref.sessionName.startsWith("loom-lead-") ||
-            ["loom-lead", "loom-main"].includes(ref.sessionName)
-          )
-            throw new Error(
-              "Pinned agents are stopped through their agent controls",
-            );
-          // A task's supervisor would recover an unannounced terminal death. Require
-          // its normal stop control instead of reporting a close that immediately reopens.
-          const scope = command.scope ?? "pane";
-          const inScope = (pane: {
-            sessionName: string;
-            windowId: string;
-            paneId: string;
-          }) =>
-            pane.sessionName === ref.sessionName &&
-            (scope === "session" ||
-              (pane.windowId === ref.windowId &&
-                (scope === "window" || pane.paneId === ref.paneId)));
-          const active = this.store
-            .tasks()
-            .flatMap((task) => this.store.runs(task.id))
-            .find(
-              (run) =>
-                !run.endedAt &&
-                run.pane &&
-                run.pane.hostGeneration === ref.hostGeneration &&
-                inScope(run.pane),
-            );
-          if (active)
-            throw new Error(
-              "Stop the running task before closing its agent terminal",
-            );
-          if (scope === "session")
-            await this.adapters.paneHost.closeSession(ref);
-          else if (scope === "window")
-            await this.adapters.paneHost.closeWindow(ref);
-          else await this.adapters.paneHost.closeTerminal(ref);
-          if (await this.adapters.paneHost.getPane(ref))
-            throw new Error("Terminal closure was not confirmed");
-          await this.inventory.refresh();
-          return { ok: true, result: { kind: "terminal_closed", target: ref } };
-        }
-        case "create_scratch": {
-          const state = this.store.loadTaskState(command.taskId as TaskId);
-          if (!state.worktree?.paneWorkspaceId)
-            throw new Error("Task has no existing pane workspace");
-          const ref = await this.adapters.paneHost.createScratch({
-            workspaceId: state.worktree.paneWorkspaceId,
-            createWorkspace: true,
-            cwd: state.worktree.path,
-            key: command.key as string,
-            label: command.label as string | undefined,
-            executable: process.env.SHELL || "/bin/sh",
-            args: ["-l"],
-            env: runEnvironment(process.env, {}),
-          });
-          await this.inventory.refresh();
-          const pane = this.inventory.rows.find((p) => p.id === paneKey(ref));
-          if (!pane)
-            throw new Error("Scratch created but inventory unavailable");
-          return { ok: true, result: { kind: "scratch_created", pane } };
-        }
-        case "get_briefs":
-          return {
-            ok: true,
-            result: { kind: "briefs", state: this.store.briefs.state() },
-          };
-        case "get_brief": {
-          const run = this.store.briefs.get(command.id as string);
-          if (!run) throw new Error("Unknown daily brief");
-          return { ok: true, result: { kind: "brief", run } };
-        }
-        case "run_brief":
-          return {
-            ok: true,
-            result: {
-              kind: "brief",
-              run: this.briefs.run("manual", command.id as string),
-            },
-          };
-        case "set_brief_schedule":
-          this.store.briefs.setEnabled(command.enabled as boolean);
-          return {
-            ok: true,
-            result: { kind: "briefs", state: this.store.briefs.state() },
-          };
-        case "select_repo": {
-          this.store.selectRepo(command.repoId as string);
-          this.publishRepos();
-          return {
-            ok: true,
-            result: { kind: "repo_selected", repoId: command.repoId },
-          };
-        }
-        case "add_repo": {
-          const repo = await registerRepo(
-            this.store,
-            command.root as string,
-            command.github as string,
-            command.baseBranch as string | undefined,
-            this.effectiveSettings().repository.baseBranch,
-            this.now(),
-          );
-          this.store.selectRepo(repo.id);
-          const lead = this.leadFor(repo.id);
-          if (!lead.sessionId) {
-            await lead.load();
-            await lead.recover();
-          }
-          this.publishRepos();
-          this.publishSettings();
-          await this.publishLead();
-          return { ok: true, result: { kind: "repo_added", repoId: repo.id } };
-        }
-        case "open_lead_session": {
-          const target = await this.leadFor(command.repoId as string).open();
-          await this.publishLead();
-          await this.inventory.refresh();
-          return { ok: true, result: { kind: "attach_session", target } };
-        }
-        case "stop_lead_session": {
-          await this.leadFor(command.repoId as string).stop();
-          await this.publishLead();
-          return { ok: true, result: { kind: "lead_stopped" } };
-        }
-        case "steer_lead_message": {
-          const lead = this.leadFor(command.repoId as string);
-          const result = await lead.steerMessage(
-            command.clientMessageId as string,
-          );
-          this.conversationViews.hint(lead.sessionId);
-          return { ok: true, result: { kind: "lead_message", ...result } };
-        }
-        case "interrupt_lead": {
-          await this.leadFor(command.repoId as string).interrupt();
-          return { ok: true, result: { kind: "lead_interrupted" } };
-        }
-        case "stage_attachment": {
-          const attachment = await this.attachments.stage(
-            command.name as string,
-            command.mediaType as string,
-            command.dataBase64 as string,
-          );
-          return {
-            ok: true,
-            result: { kind: "attachment_staged", ...attachment },
-          };
-        }
-        case "send_lead_message": {
-          const lead = this.leadFor(command.repoId as string);
-          const attachments = await this.attachments.resolve(
-            (command.attachmentIds ?? []) as string[],
-          );
-          const result = await lead.sendMessage(
-            command.clientMessageId as string,
-            withAttachedFiles(command.text as string, attachments),
-            (command.when ?? "now") as "now" | "after_turn",
-          );
-          this.conversationViews.hint(lead.sessionId);
-          return { ok: true, result: { kind: "lead_message", ...result } };
-        }
-        case "answer_lead_prompt": {
-          const lead = this.leadFor(command.repoId as string);
-          await lead.answerPrompt(
-            command.expectedDialog as { requestId?: string; at: string },
-            command.choice as number | "enter" | "escape",
-          );
-          this.conversationViews.hint(lead.sessionId);
-          return { ok: true, result: { kind: "lead_prompt_answered" } };
-        }
-        case "create_task": {
-          const state = this.createTask({
-            repoId: command.repoId as RepoId,
-            title: command.title as string,
-            name: (command.name ?? null) as string | null,
-            description: command.description as string,
-            summary: (command.summary ?? null) as string | null,
-            providers: (command.providers ?? null) as ProviderRules | null,
-            requirePlanApproval: (command.requirePlanApproval ?? null) as
-              | boolean
-              | null,
-            blockedBy: (command.blockedBy ?? []) as TaskId[],
-            budgetMinutes: (command.budgetMinutes ?? null) as number | null,
-            size: (command.size ?? null) as "small" | "normal" | null,
-          });
-          return {
-            ok: true,
-            result: { kind: "task_created", taskId: state.task.id },
-          };
-        }
-        case "human": {
-          if (!command.taskId || !command.command)
-            return {
-              ok: false,
-              error: {
-                code: "invalid_input",
-                message: "A human command needs a task and a command",
-                details: [],
-              },
-            };
-          let human = command.command;
-          if (human.type === "send_message" && human.attachmentIds?.length) {
-            const attachments = await this.attachments.resolve(
-              human.attachmentIds,
-            );
-            const runId = human.runId;
-            const run = this.store
-              .runs(command.taskId)
-              .find((value) => value.id === runId);
-            if (!run) throw new PreconditionFailed("Choose a live Loom run");
-            const images = attachments.filter((value) =>
-              value.mediaType.startsWith("image/"),
-            );
-            const paths =
-              run.provider === "codex"
-                ? attachments.filter(
-                    (value) => !value.mediaType.startsWith("image/"),
-                  )
-                : attachments;
-            human = {
-              ...human,
-              text: withAttachedFiles(human.text, paths),
-              attachmentIds:
-                run.provider === "codex"
-                  ? images.map((value) => value.path)
-                  : [],
-            };
-          }
-          const inputId = this.submitHuman(command.taskId, human);
-          const disposition = await this.decision(command.taskId, inputId);
-          if (!disposition.accepted)
-            return { ok: false, error: disposition.error };
-          return { ok: true, result: { kind: "human", inputId } };
-        }
-        case "open_attach_session": {
-          const runId = command.runId as string;
-          const recipe = this.recipes.get(runId as never);
-          if (!recipe)
-            return {
-              ok: false,
-              error: {
-                code: "unknown_run",
-                message: `No run ${runId}`,
-                details: [],
-              },
-            };
-          const { rows } = await taskRows(this.viewDeps(), recipe.taskId);
-          const target = rows.find(
-            (r) => r.collection === "run_target" && r.key === runId,
-          );
-          if (!target)
-            return {
-              ok: false,
-              error: {
-                code: "unknown_run",
-                message: `Run ${runId} has no attach target`,
-                details: [],
-              },
-            };
-          return {
-            ok: true,
-            result: { kind: "attach_session", target: target.value },
-          };
-        }
-        default:
-          // The Workbench owns the diff and review-state requests; Phase 3 serves neither.
-          return {
-            ok: false,
-            error: {
-              code: "unavailable",
-              message: `${command.kind} is not served in this phase`,
-              details: ["The Workbench and its diff view land in Phase 4"],
-            },
-          };
-      }
-    } catch (error) {
-      const typed = error as Error & { code?: string; details?: string[] };
-      return {
-        ok: false,
-        error: {
-          code:
-            typed.code === "conflict"
-              ? "conflict"
-              : typed.code === "invalid_input"
-                ? "invalid_input"
-                : error instanceof PreconditionFailed
-                  ? "guard_failed"
-                  : "internal",
-          message: error instanceof Error ? error.message : String(error),
-          details: typed.details ?? [],
-        },
-      };
-    }
+    return dispatchCommand(resolved.command, this.commandHandlers);
   }
 }

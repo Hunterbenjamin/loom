@@ -1,7 +1,7 @@
 // The protocol server (brief §8). A fake client connects, gets a snapshot, sends a command,
 // receives the ack and the resulting patches, and detects a forced sequence gap.
 
-import type { PaneObservation, TaskId } from "@loom/core";
+import type { PaneObservation, TaskId, WorktreePath } from "@loom/core";
 import { loadScenarios } from "@loom/fake-agent";
 import { PROTOCOL_VERSION } from "@loom/protocol";
 import { afterEach, expect, test, vi } from "vitest";
@@ -873,6 +873,7 @@ test("set_title maps to the pane host and publishes authoritative titles to ever
 
 test("Workbench creation passes selected space and split identity through scratch and publishes native metadata", async () => {
   const h = await served();
+  const selectedStartCwd = "/selected/space" as WorktreePath;
   const ref = {
     hostGeneration: `loom-${h.config.instance}#1`,
     sessionName: "Selected space",
@@ -889,8 +890,9 @@ test("Workbench creation passes selected space and split identity through scratc
     exitCode: null,
     pid: 12345,
     command: "sh",
-    startCwd: h.repo.root,
-    cwd: h.repo.root,
+    workspaceId: "selected-space",
+    startCwd: selectedStartCwd,
+    cwd: selectedStartCwd,
   };
   const created = {
     ...original,
@@ -926,6 +928,7 @@ test("Workbench creation passes selected space and split identity through scratc
       kind: "open_workbench_terminal",
       key: crypto.randomUUID(),
       target: ref,
+      workspace: "ignored-new-space",
       split: "below",
       label: "Shell",
     }),
@@ -934,7 +937,12 @@ test("Workbench creation passes selected space and split identity through scratc
     result: { kind: "attach_session", target: { target: created.ref } },
   });
   expect(scratch).toHaveBeenCalledExactlyOnceWith(
-    expect.objectContaining({ target: ref, split: "below", cwd: h.repo.root }),
+    expect.objectContaining({
+      workspaceId: "selected-space",
+      target: ref,
+      split: "below",
+      cwd: selectedStartCwd,
+    }),
   );
   await vi.waitFor(() =>
     expect([...(client.state?.collections.pane.values() ?? [])]).toEqual(
