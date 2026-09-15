@@ -64,8 +64,7 @@ the review question: batch related mechanical work, separate judgment calls and 
 **Existing instruction conflict:** [prompts.ts](../../apps/coordinator/src/prompts.ts) permits Main
 to read and repair the coordinator's log/store directly when asked. [AGENTS.md](../../AGENTS.md#safety)
 requires access to a running Loom instance through the supplied MCP tools. The broad launch is
-implemented in [lead.ts](../../apps/coordinator/src/lead.ts); it is not an exception to that repository
-rule. This documentation update preserves AGENTS.md and does not resolve the permission conflict.
+implemented in [lead.ts](../../apps/coordinator/src/lead.ts). This conflict is unresolved.
 
 Internal `lead` names remain compatibility identifiers: commands such as `open_lead_session`,
 `LOOM_MODEL_LEAD`, and private `lead/<repoId>/` recipes. Each repository has its own session ID,

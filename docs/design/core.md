@@ -82,8 +82,7 @@ approval. Close/delete commands re-read GitHub and do not change a local checkou
 
 **Existing safety conflict:** normal publication can call the Git adapter with an expected remote
 head and use `--force-with-lease` on the issue branch. [AGENTS.md](../../AGENTS.md#safety) prohibits
-force-pushes. This documents current code, not permission for agents to force-push; the rule is
-unchanged. Base-branch publication is refused. See [git/index.ts](../../packages/adapters/git/src/index.ts).
+force-pushes. This conflict is unresolved. Base-branch publication is refused. See [git/index.ts](../../packages/adapters/git/src/index.ts).
 
 ### Base changes
 

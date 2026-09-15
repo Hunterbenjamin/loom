@@ -1,8 +1,9 @@
 import type { Context } from "./context.js";
 import { openBlocking } from "./helpers.js";
+import { implementationBody, latestImplementation } from "./implementation.js";
 
 /** Persist publication before approval. Retries target the same immutable SHA and outbox keys. */
-export function publishReview(c: Context, summary?: string): void {
+export function publishReview(c: Context): void {
   const { state, task, pr, git } = c;
   const head = state.review?.lastReviewedHead;
   if (
@@ -28,11 +29,11 @@ export function publishReview(c: Context, summary?: string): void {
       branch: task.branch,
       baseBranch: state.worktree.baseBranch,
       title: task.title,
-      body:
-        summary ??
-        (state.artifactContents.handoff as { summary?: string } | undefined)
-          ?.summary ??
-        "Reviewed",
+      body: implementationBody(
+        task,
+        latestImplementation(state),
+        state.issueKey,
+      ),
     });
     const row = state.outbox.find((r) => r.key === openKey);
     if (row) {

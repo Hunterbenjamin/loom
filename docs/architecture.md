@@ -172,6 +172,19 @@ Viewed-file marks belong to a PR head; a new head displays an empty set. Comment
 persisted command identity and recoverable GitHub marker. Repository PR commands re-read owner state;
 issue-owned PRs use the issue approval path described in [core workflow](design/core.md#review-and-merge).
 
+### Issue description and implementation publication
+
+The human's description remains the request. Each accepted implementer submission replaces the
+versioned `implementation` artifact: summary, recorded decisions and submitted tests at one head
+SHA. Reviewer handoffs leave it unchanged. The issue Overview and PR body use this same content;
+PR bodies include a plain-text issue reference such as `Issue: LOOM-216`.
+
+Initial PR publication waits for successful review. Later submissions enqueue `update_pr_body`
+once GitHub reports the submitted head, keyed by PR, artifact version and body hash. The executor
+checks issue ownership and submission version; the GitHub adapter checks the open PR's branch and
+head, skips identical bodies and writes literal JSON through stdin. Restart requeues uncertain
+updates through the same idempotent owner checks.
+
 ## Daily AI builder brief
 
 [coordinator/briefs.ts](../apps/coordinator/src/briefs.ts) owns one instance-wide schedule at 07:00

@@ -82,6 +82,8 @@ export interface OutboxEntry {
 /** Everything Loom owns about one task, loaded in one read transaction. */
 export interface TaskState {
   task: Task;
+  /** Derived from the registered repository and issue number when loaded. */
+  issueKey: string;
   worktree: Worktree | null;
   /** Runs that haven't ended, plus the latest ended run per role. */
   runs: Run[];

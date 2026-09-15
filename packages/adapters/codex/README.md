@@ -104,7 +104,7 @@ package's real smoke test; those paths are covered by fake traffic here.
 produced with `codex app-server generate-ts --experimental`. The generator refuses
 any version other than 0.154.0 and adds `.js` extensions for Node ESM. Regenerate with
 `pnpm --filter @loom/adapter-codex generate`. Generated files have a local Biome
-exemption; handwritten source remains checked. Nothing imports `spikes/`.
+exemption; handwritten source remains checked.
 
 Run from the repository root:
 

@@ -147,6 +147,15 @@ export type Action = ActionBase &
         body: string;
       }
     | {
+        kind: "update_pr_body";
+        repoId: RepoId;
+        prNumber: number;
+        branch: string;
+        expectedHeadSha: Sha;
+        implementationVersion: number;
+        body: string;
+      }
+    | {
         kind: "merge_pr";
         repoId: RepoId;
         prNumber: number;
@@ -217,6 +226,7 @@ export interface ActionOutputs {
   push_branch: { remoteHeadSha: Sha };
   /** An existing PR for the branch counts as success. */
   open_pr: { number: number; url: string };
+  update_pr_body: Record<string, never>;
   merge_pr: { state: "merged" | "auto_merge_enabled" };
   map_findings: {
     locations: { findingId: FindingId; location: FindingLocation }[];

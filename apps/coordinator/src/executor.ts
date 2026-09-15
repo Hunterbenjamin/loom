@@ -32,7 +32,11 @@ import type {
   TaskId,
   TaskState,
 } from "@loom/core";
-import { deriveStatus } from "@loom/core";
+import {
+  deriveStatus,
+  implementationBody,
+  latestImplementation,
+} from "@loom/core";
 import type { Store } from "@loom/store";
 import type { Adapters, ReportAdapterFailure } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
@@ -88,6 +92,7 @@ const FILE_NAMES: Record<ArtifactKind, string> = {
   findings: "findings.json",
   test_results: "test_results.json",
   handoff: "handoff.json",
+  implementation: "implementation.json",
 };
 
 export interface ExecutorDeps {
@@ -673,6 +678,34 @@ export class Executor {
         });
         this.deps.pullRequests.forget(repo.github, action.branch);
         return opened;
+      }
+      case "update_pr_body": {
+        if (
+          state.task.repoId !== action.repoId ||
+          state.task.branch !== action.branch ||
+          state.task.prNumber !== action.prNumber ||
+          ["done", "canceled"].includes(state.task.stage) ||
+          implementationBody(
+            state.task,
+            latestImplementation(state),
+            state.issueKey,
+          ) !== action.body ||
+          state.artifacts.find((artifact) => artifact.kind === "implementation")
+            ?.version !== action.implementationVersion
+        )
+          throw new PreconditionFailed(
+            "Implementation or PR ownership changed",
+          );
+        const repo = this.deps.repo(action.taskId);
+        await adapters.github.updatePullRequestBody({
+          repo: repo.github,
+          number: action.prNumber,
+          branch: action.branch,
+          expectedHeadSha: action.expectedHeadSha,
+          body: action.body,
+        });
+        this.deps.pullRequests.forget(repo.github, action.branch);
+        return {};
       }
       case "merge_pr": {
         const repo = this.deps.repo(action.taskId);

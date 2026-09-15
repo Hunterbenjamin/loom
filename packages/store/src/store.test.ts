@@ -804,6 +804,7 @@ describe("schema drift detection", () => {
       "merge_base",
       "push_branch",
       "open_pr",
+      "update_pr_body",
       "merge_pr",
       "map_findings",
       "disable_auto_merge",

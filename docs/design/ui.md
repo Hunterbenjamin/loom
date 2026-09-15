@@ -38,6 +38,8 @@ Issues, Inbox and linked Review rows open the same issue detail. Selecting a lin
 to both issue and PR; selecting an issue also subscribes to its primary PR. PR-only details and Daily
 brief reuse the common reading-column/property-rail layout.
 
+Issue Overview shows the request and “What changed” from the [implementation artifact](../architecture.md#issue-description-and-implementation-publication), omitting the duplicate GitHub body.
+
 The issue tabs are conditional:
 
 | Tab | Available when |
