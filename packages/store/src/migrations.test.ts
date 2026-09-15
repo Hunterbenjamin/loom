@@ -3,7 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { repo, required, task } from "../test/fixtures.js";
+import { now, repo, required, richState, task } from "../test/fixtures.js";
+import { outboxSchema } from "./action-schemas.js";
+import {
+  approvalSchema,
+  messageSchema,
+  runSchema,
+  taskSchema,
+} from "./entity-schemas.js";
 import { migrate, readMigrations, schemaVersion } from "./migrations.js";
 
 let root: string;
@@ -215,4 +222,264 @@ describe("numbered migrations", () => {
       migrate(db, join(root, "backups"), [...migrations, future, breaking]),
     ).resolves.toEqual([]);
   });
+});
+
+describe("current rows (0011)", () => {
+  async function seed() {
+    const db = open();
+    await migrate(db, join(root, "backups"), migrations.slice(0, 10));
+    db.prepare("INSERT INTO repos(id, data) VALUES (?, ?)").run(
+      repo.id,
+      JSON.stringify(repo),
+    );
+    return db;
+  }
+  function insert(
+    db: Database.Database,
+    table: string,
+    id: string,
+    data: unknown,
+  ) {
+    db.prepare(
+      `INSERT INTO ${table}(${table === "outbox" ? "key" : "id"}, ${table === "tasks" ? "repo_id" : "task_id"}, data) VALUES (?, ?, ?)`,
+    ).run(id, table === "tasks" ? repo.id : "t1", JSON.stringify(data));
+  }
+  function read(db: Database.Database, table: string, id: string) {
+    return JSON.parse(
+      db
+        .prepare(
+          `SELECT data FROM ${table} WHERE ${table === "outbox" ? "key" : "id"} = ?`,
+        )
+        .pluck()
+        .get(id) as string,
+    );
+  }
+  it("fills every missing field, preserves current values, and retires only attempted ended-run messages", async () => {
+    const db = await seed();
+    expect(required(migrations.at(-1)).breaking).toBe(false);
+    const state = richState();
+    const originalTask = {
+      ...task(),
+      version: 7,
+      attention: {
+        reasons: ["question", "blocked"],
+        since: now,
+        reasonSince: { question: now, blocked: null },
+      },
+    };
+    insert(db, "tasks", "t1", originalTask);
+    const originalRun = required(state.runs[0]);
+    for (const [id, status, lastActivityAt, launchedAt, idleSince] of [
+      ["activity", "idle", now, null, undefined],
+      ["launch", "idle", null, now, null],
+      ["clock", "idle", null, null, undefined],
+      ["working", "working", now, now, undefined],
+      ["ended", "ended", now, now, undefined],
+      ["current", "idle", now, now, now],
+    ] as const) {
+      insert(db, "runs", id, {
+        ...originalRun,
+        id,
+        status,
+        sessionId: id,
+        lastActivityAt,
+        launchedAt,
+        idleSince,
+        access:
+          id === "current"
+            ? "approval-gated"
+            : id === "launch"
+              ? null
+              : undefined,
+        endedAt: id === "ended" ? now : null,
+      });
+    }
+    const currentRun = read(db, "runs", "current");
+    const originalMessage = required(state.messages[0]);
+    for (const [id, status, attempts, sentAt, pendingSince] of [
+      ["sent", "sent", 1, now, undefined],
+      ["attempted", "pending", 1, null, null],
+      ["unsent", "pending", 0, now, undefined],
+      ["delivered", "delivered", 1, now, undefined],
+      ["failed", "failed", 1, null, undefined],
+      ["current", "pending", 0, null, now],
+    ] as const) {
+      insert(db, "messages", id, {
+        ...originalMessage,
+        id,
+        runId: "ended",
+        status,
+        attempts,
+        sentAt,
+        pendingSince,
+        when:
+          id === "current" ? "after_turn" : id === "sent" ? undefined : null,
+        deliveryAttention: id !== "current",
+      });
+    }
+    insert(db, "messages", "live", {
+      ...originalMessage,
+      id: "live",
+      runId: "activity",
+      status: "sent",
+      deliveryAttention: true,
+    });
+    const liveMessage = read(db, "messages", "live");
+    const currentMessage = read(db, "messages", "current");
+    const merge = {
+      ...required(state.approvals[0]),
+      kind: "merge",
+      headSha: "a".repeat(40),
+      findings: { hash: "a".repeat(64), findings: [], openBlocking: 0 },
+      ci: {
+        headSha: "a".repeat(40),
+        observedAt: now,
+        conclusion: "success",
+        checks: [],
+      },
+    };
+    for (const [id, approvedBy] of [
+      ["old", undefined],
+      ["null", null],
+      ["current", "policy"],
+    ] as const)
+      insert(db, "approvals", id, { ...merge, id, approvedBy });
+    insert(db, "approvals", "plan", required(state.approvals[0]));
+    const currentApproval = read(db, "approvals", "current");
+    for (const [id, access] of [
+      ["old", undefined],
+      ["null", null],
+      ["current", "approval-gated"],
+    ] as const)
+      insert(db, "outbox", id, {
+        key: id,
+        kind: "start_run",
+        status: "pending",
+        attempts: 0,
+        createdAt: now,
+        finishedAt: null,
+        action: {
+          key: id,
+          taskId: "t1",
+          kind: "start_run",
+          runId: "activity",
+          role: "planner",
+          provider: "codex",
+          mode: "interactive",
+          worktreePath: "/tmp/test",
+          model: "test",
+          attempt: 1,
+          sessionEpoch: 0,
+          sessionId: null,
+          resume: false,
+          access,
+        },
+      });
+    const currentOutbox = read(db, "outbox", "current");
+    const before = new Date().toISOString();
+    await migrate(db, join(root, "backups"));
+    const after = new Date().toISOString();
+    const migrationTime = read(db, "runs", "clock").idleSince;
+    expect(migrationTime >= before && migrationTime <= after).toBe(true);
+    for (const id of ["activity", "launch"])
+      expect(read(db, "runs", id)).toMatchObject({
+        access: "full",
+        idleSince: now,
+      });
+    for (const id of ["working", "ended"])
+      expect(read(db, "runs", id)).toMatchObject({
+        access: "full",
+        idleSince: null,
+      });
+    expect(read(db, "runs", "current")).toEqual(currentRun);
+    expect(read(db, "tasks", "t1")).toEqual({
+      ...originalTask,
+      attention: {
+        ...originalTask.attention,
+        reasonSince: { question: now, blocked: now },
+      },
+    });
+    for (const id of ["sent", "attempted"])
+      expect(read(db, "messages", id)).toMatchObject({
+        status: "failed",
+        deliveryAttention: false,
+        when: "now",
+      });
+    expect(read(db, "messages", "sent").pendingSince).toBe(now);
+    expect(read(db, "messages", "attempted").pendingSince).toBe(migrationTime);
+    expect(read(db, "messages", "unsent")).toMatchObject({
+      status: "pending",
+      attempts: 0,
+      pendingSince: migrationTime,
+    });
+    expect(read(db, "messages", "delivered")).toMatchObject({
+      status: "delivered",
+      pendingSince: now,
+    });
+    expect(read(db, "messages", "failed").pendingSince).toBe(migrationTime);
+    expect(read(db, "messages", "current")).toEqual(currentMessage);
+    expect(read(db, "messages", "live")).toEqual(liveMessage);
+    for (const id of ["old", "null"]) {
+      expect(read(db, "approvals", id).approvedBy).toBe("human");
+      expect(read(db, "outbox", id).action.access).toBe("full");
+    }
+    expect(read(db, "approvals", "current")).toEqual(currentApproval);
+    expect(read(db, "outbox", "current")).toEqual(currentOutbox);
+    expect(read(db, "approvals", "plan")).toEqual(required(state.approvals[0]));
+    for (const [table, schema] of Object.entries({
+      tasks: taskSchema,
+      runs: runSchema,
+      messages: messageSchema,
+      approvals: approvalSchema,
+      outbox: outboxSchema,
+    }))
+      for (const row of db.prepare(`SELECT data FROM ${table}`).pluck().all())
+        schema.parse(JSON.parse(row as string));
+    expect(db.pragma("integrity_check", { simple: true })).toBe("ok");
+    const snapshot = db.serialize();
+    expect(await migrate(db, join(root, "backups"))).toEqual([]);
+    expect(db.serialize().equals(snapshot)).toBe(true);
+    db.exec(required(migrations.at(-1)).sql);
+    expect(read(db, "messages", "unsent").pendingSince).toBe(migrationTime);
+  });
+  it.each(["baseBranch", "defaultProviders", "serialTests"])(
+    "refuses a repository with %s and rolls back all changes",
+    async (key) => {
+      const db = await seed();
+      db.prepare("UPDATE repos SET data = ?").run(
+        JSON.stringify({ ...repo, [key]: null }),
+      );
+      const snapshot = db.serialize();
+      await expect(migrate(db, join(root, "backups"))).rejects.toThrow(
+        "run_a_203_build_to_import_repository_settings",
+      );
+      expect(schemaVersion(db)).toBe(10);
+      expect(db.serialize().equals(snapshot)).toBe(true);
+    },
+  );
+  it.each([undefined, null])(
+    "fills a missing reason map (%s) including empty attention",
+    async (reasonSince) => {
+      const db = await seed();
+      for (const [id, reasons] of [
+        ["t1", ["question"]],
+        ["t2", []],
+      ] as const)
+        insert(db, "tasks", id, {
+          ...task(),
+          id,
+          number: id === "t1" ? 1 : 2,
+          attention: {
+            reasons,
+            since: reasons.length ? now : null,
+            reasonSince,
+          },
+        });
+      await migrate(db, join(root, "backups"));
+      expect(read(db, "tasks", "t1").attention.reasonSince).toEqual({
+        question: now,
+      });
+      expect(read(db, "tasks", "t2").attention.reasonSince).toEqual({});
+    },
+  );
 });

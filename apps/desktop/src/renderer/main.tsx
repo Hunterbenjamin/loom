@@ -27,47 +27,12 @@ import { WindowModeContext } from "./window-mode.js";
 import "./styles/index.css";
 import { PaneChime } from "./workbench/chime.js";
 
-let keybindingsImportChecked = false;
 let nativeFingerprint = "";
 async function synchronizeNativeSettings() {
   const document = store
     .getState()
     .settings.find((item) => item.id === "global");
   if (!document) return;
-  const stored = document.stored.appearance;
-  if (
-    !keybindingsImportChecked &&
-    (!stored ||
-      stored.keyPrefix === undefined ||
-      stored.keyTimeoutMs === undefined ||
-      stored.keybindings === undefined)
-  ) {
-    // One-time import of a hand-edited keybindings.json into settings. An untouched file
-    // matches the defaults, so there is nothing to import.
-    keybindingsImportChecked = true;
-    const legacy = await window.loomHost.keybindings();
-    if (JSON.stringify(legacy.config) !== JSON.stringify(defaultKeybindings)) {
-      await store.command({
-        kind: "update_settings",
-        scope: { kind: "global" },
-        expectedVersion: document.version,
-        patch: {
-          appearance: {
-            ...(stored?.keyPrefix === undefined
-              ? { keyPrefix: legacy.config.prefix }
-              : {}),
-            ...(stored?.keyTimeoutMs === undefined
-              ? { keyTimeoutMs: legacy.config.prefixTimeoutMs }
-              : {}),
-            ...(stored?.keybindings === undefined
-              ? { keybindings: legacy.config.bindings }
-              : {}),
-          },
-        },
-      });
-      return;
-    }
-  }
   const { appearance } = document.effective;
   const native = {
     version: 1 as const,

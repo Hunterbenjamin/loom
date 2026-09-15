@@ -30,36 +30,27 @@ import { PreconditionFailed, pressPaneChoice } from "./executor.js";
 import { leadBrief } from "./prompts.js";
 import { runEnvironment } from "./recipes.js";
 
-const recipeSchema = z.preprocess(
-  (value) => {
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      return value;
-    const current = { ...value } as Record<string, unknown>;
-    delete current.legacyCwd;
-    return current;
-  },
-  z.strictObject({
-    sessionId: z.string().uuid(),
-    token: z.string().min(16),
-    model: z.string().min(1),
-    stopped: z.boolean(),
-    launched: z.boolean(),
-    mcpPort: z.number().int().min(1).max(65535),
-    cwd: z.string().min(1),
-    executable: z.string().min(1),
-    settingsPath: z.string().min(1),
-    args: z.array(z.string()),
-    env: z.record(z.string(), z.string()),
-    pane: z
-      .strictObject({
-        hostGeneration: z.string(),
-        sessionName: z.string(),
-        windowId: z.string(),
-        paneId: z.string(),
-      })
-      .nullable(),
-  }),
-);
+const recipeSchema = z.strictObject({
+  sessionId: z.string().uuid(),
+  token: z.string().min(16),
+  model: z.string().min(1),
+  stopped: z.boolean(),
+  launched: z.boolean(),
+  mcpPort: z.number().int().min(1).max(65535),
+  cwd: z.string().min(1),
+  executable: z.string().min(1),
+  settingsPath: z.string().min(1),
+  args: z.array(z.string()),
+  env: z.record(z.string(), z.string()),
+  pane: z
+    .strictObject({
+      hostGeneration: z.string(),
+      sessionName: z.string(),
+      windowId: z.string(),
+      paneId: z.string(),
+    })
+    .nullable(),
+});
 type Recipe = z.output<typeof recipeSchema>;
 
 function leadDirectory(dataDirectory: string, repoId: string): string {

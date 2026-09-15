@@ -164,12 +164,14 @@ export function observeRuns(c: Context): void {
         run.lastActivityAt = activity;
     }
     if (run.status === "idle") {
-      run.idleSince =
-        previousStatus === "idle"
-          ? (run.idleSince ?? run.lastActivityAt ?? run.launchedAt ?? c.now)
-          : c.now;
+      // Migration 11 and each status transition establish the idle interval.
+      if (previousStatus !== "idle") run.idleSince = c.now;
       // A turn can start and stop between polls. Native activity starts a fresh grace period.
-      if (run.lastActivityAt && run.lastActivityAt > run.idleSince)
+      if (
+        run.lastActivityAt &&
+        run.idleSince &&
+        run.lastActivityAt > run.idleSince
+      )
         run.idleSince = run.lastActivityAt;
     } else run.idleSince = null;
     if (run.status === "unknown") {
@@ -255,6 +257,8 @@ export function observeRuns(c: Context): void {
       round: 0,
       attempts: 0,
       model: "",
+      access: "full",
+      idleSince: session.active ? null : c.now,
       sessionId: session.sessionId,
       sessionEpoch: 0,
       codexGeneration: null,
@@ -273,18 +277,6 @@ export function observeRuns(c: Context): void {
 }
 
 function launch(c: Context, run: Run, resume: boolean, fresh = false): void {
-  // Legacy ended runs can still carry attempted messages. Retire those before reusing
-  // the run ID, while preserving unsent follow-ups queued for this new launch.
-  if (run.endedAt)
-    for (const message of c.state.messages)
-      if (
-        message.runId === run.id &&
-        (message.status === "sent" ||
-          (message.status === "pending" && message.attempts > 0))
-      ) {
-        message.status = "failed";
-        message.deliveryAttention = false;
-      }
   const observation = c.observations.runs.find((o) => o.runId === run.id);
   // `resumable: false` only ever comes from a direct owner read (§5.2), so it rotates the session
   // even when the transcript read itself failed: a Codex thread without a rollout can't be read.
@@ -307,7 +299,7 @@ function launch(c: Context, run: Run, resume: boolean, fresh = false): void {
     worktreePath: run.worktreePath,
     model: run.model,
     ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
-    access: run.access ?? "full",
+    access: run.access,
     attempt: run.attempts,
     sessionEpoch: run.sessionEpoch,
     sessionId: run.sessionId,
@@ -566,6 +558,7 @@ export function startDesired(c: Context): void {
           lastTurn: null,
           pendingRequests: [],
           lastActivityAt: null,
+          idleSince: null,
           retryAt: null,
           launchedAt: null,
           endedAt: null,

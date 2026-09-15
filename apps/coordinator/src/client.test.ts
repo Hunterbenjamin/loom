@@ -86,7 +86,7 @@ test.each([
     client = await LoomClient.connect({ ...options, url });
     expect(
       await client.command(
-        taskCreateCommand(["task", "create", "repo", "Title"]),
+        taskCreateCommand(["issue", "create", "repo", "Title"]),
       ),
     ).toEqual({ ok: false, error });
     expect(client.lastError).toBe(error.message);
@@ -97,7 +97,7 @@ test("client surfaces invalid server-frame details to the pending command", asyn
   const { url } = await serve({ type: "ping", at: "invalid" });
   client = await LoomClient.connect({ ...options, url });
   const outcome = await client.command(
-    taskCreateCommand(["task", "create", "repo", "Title"]),
+    taskCreateCommand(["issue", "create", "repo", "Title"]),
   );
   expect(outcome).toMatchObject({
     ok: false,
@@ -109,7 +109,7 @@ test("client rejects an invalid outgoing frame locally with validator details", 
   const { url, received } = await serve(null);
   client = await LoomClient.connect({ ...options, url });
   const outcome = await client.command(
-    taskCreateCommand(["task", "create", "repo", "x".repeat(201)]),
+    taskCreateCommand(["issue", "create", "repo", "x".repeat(201)]),
   );
   expect(outcome).toMatchObject({
     ok: false,

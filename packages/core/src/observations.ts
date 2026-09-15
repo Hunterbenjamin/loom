@@ -221,7 +221,7 @@ export interface ClaudeSessionObservation {
  * and provider identity is never inferred from a pane (spike 06 §4).
  */
 export interface PaneObservation {
-  /** Original workspace key retained by sessions renamed before titles existed. */
+  /** Original workspace key retained by renamed sessions; only tmux can resolve their current names. */
   workspaceId?: string;
   sessionId?: string | null;
   windowName?: string | null;

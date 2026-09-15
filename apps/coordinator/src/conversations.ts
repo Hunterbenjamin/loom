@@ -309,11 +309,11 @@ export class ConversationViews {
                     : m.status === "sent" && m.deliveryAttention
                       ? "failed"
                       : m.status,
-                at: m.pendingSince ?? m.sentAt ?? this.deps.now(),
+                at: m.pendingSince,
                 reason:
                   m.deliveryReason ??
                   (m.deliveryAttention ? "Delivery needs attention" : null),
-                when: m.when ?? "now",
+                when: m.when,
               }))
           : [];
     this.deps.replace(`conversation:${key}`, [

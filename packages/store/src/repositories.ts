@@ -1,16 +1,11 @@
 import type { Repo } from "@loom/core";
 import type Database from "better-sqlite3";
-import { z } from "zod";
 import { repoSchema } from "./entity-schemas.js";
 import { dataRow, encodedUpdate } from "./records.js";
 import { decode } from "./schema-helpers.js";
-import type { SettingsStore } from "./settings.js";
 
 export class RepositoryStore {
-  constructor(
-    private readonly db: Database.Database,
-    private readonly settings: SettingsStore,
-  ) {}
+  constructor(private readonly db: Database.Database) {}
   /** Coordinator-owned per-instance project selection, persisted in the existing metadata table. */
   selectedRepo(): Repo["id"] | null {
     const saved = this.db
@@ -48,79 +43,6 @@ export class RepositoryStore {
               value,
             ),
           );
-      })
-      .immediate();
-  }
-  /** Legacy repository settings are read raw because Repo no longer owns these fields. */
-  legacyRepoSettings(): Array<{
-    repo: Repo;
-    baseBranch?: string;
-    defaultProviders?: Partial<
-      Record<"planner" | "implementer" | "reviewer", "codex" | "claude">
-    >;
-    serialTests?: boolean;
-  }> {
-    return this.db
-      .prepare("SELECT data FROM repos ORDER BY rowid")
-      .all()
-      .map((row) => {
-        const raw = z
-          .record(z.string(), z.unknown())
-          .parse(JSON.parse(dataRow.parse(row).data));
-        const repo = repoSchema.parse(raw);
-        return {
-          repo,
-          ...(typeof raw.baseBranch === "string"
-            ? { baseBranch: raw.baseBranch }
-            : {}),
-          ...(raw.defaultProviders && typeof raw.defaultProviders === "object"
-            ? {
-                defaultProviders: z
-                  .partialRecord(
-                    z.enum(["planner", "implementer", "reviewer"]),
-                    z.enum(["codex", "claude"]),
-                  )
-                  .parse(raw.defaultProviders),
-              }
-            : {}),
-          ...(typeof raw.serialTests === "boolean"
-            ? { serialTests: raw.serialTests }
-            : {}),
-        };
-      })
-      .filter(
-        (value) =>
-          value.baseBranch !== undefined ||
-          value.defaultProviders !== undefined ||
-          value.serialTests !== undefined,
-      );
-  }
-  /** Move legacy settings and remove their old owners as one durable operation. */
-  migrateLegacySettings(
-    globalUpdate: Parameters<SettingsStore["update"]>[0] | undefined,
-    repositories: Array<{
-      repoId: Repo["id"];
-      update?: Parameters<SettingsStore["update"]>[0];
-    }>,
-  ): void {
-    this.db
-      .transaction(() => {
-        if (globalUpdate) this.settings.update(globalUpdate);
-        for (const { repoId, update } of repositories) {
-          if (update) this.settings.update(update);
-          const row = dataRow.parse(
-            this.db.prepare("SELECT data FROM repos WHERE id = ?").get(repoId),
-          );
-          const raw = z
-            .record(z.string(), z.unknown())
-            .parse(JSON.parse(row.data));
-          delete raw.baseBranch;
-          delete raw.defaultProviders;
-          delete raw.serialTests;
-          this.db
-            .prepare("UPDATE repos SET data = ? WHERE id = ?")
-            .run(JSON.stringify(raw), repoId);
-        }
       })
       .immediate();
   }

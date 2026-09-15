@@ -261,7 +261,7 @@ export const run = z.strictObject({
   // from every client, CLI included, at the moment it needed attention (2026-09-12).
   model: z.string(),
   reasoningEffort: z.string().min(1).optional(),
-  access: z.enum(["full", "approval-gated"]).optional(),
+  access: z.enum(["full", "approval-gated"]),
   fixReason: z.string().min(1).optional(),
   sessionId: providerSessionId.nullable(),
   sessionEpoch: count,
@@ -330,7 +330,7 @@ export const run = z.strictObject({
     .nullable(),
   seenAt: isoTime.nullable().optional(),
   unknownSince: isoTime.nullable().optional(),
-  idleSince: isoTime.nullable().optional(),
+  idleSince: isoTime.nullable(),
   observedAttempt: count.optional(),
   retryBaseAttempt: count.optional(),
 });
@@ -355,7 +355,7 @@ export const message = z.strictObject({
     "human",
   ]),
   text,
-  when: z.enum(["now", "after_turn"]).optional(),
+  when: z.enum(["now", "after_turn"]),
   images: z.array(z.string()).optional(),
   textHash: z.string().min(1),
   status: z.enum(["pending", "sent", "delivered", "failed"]),
@@ -398,7 +398,7 @@ export const message = z.strictObject({
   baselineTurnId: z.string().min(1).nullable().optional(),
   deliveryAttention: z.boolean().optional(),
   deliveryReason: z.string().nullable().optional(),
-  pendingSince: isoTime.optional(),
+  pendingSince: isoTime,
 });
 
 export const question = z.strictObject({
@@ -562,7 +562,7 @@ export const approval = z.union([
     headSha: sha,
     findings: findingsSnapshot,
     ci: ciState,
-    approvedBy: z.enum(["human", "policy"]).optional(),
+    approvedBy: z.enum(["human", "policy"]),
   }),
 ]);
 

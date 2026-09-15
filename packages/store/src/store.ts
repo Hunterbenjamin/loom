@@ -60,7 +60,7 @@ export class Store {
     this.outbox = new Outbox(db);
     this.settings = new SettingsStore(db);
     this.artifacts = new ArtifactStore(db, dataDirectory);
-    this.repositories = new RepositoryStore(db, this.settings);
+    this.repositories = new RepositoryStore(db);
     this.queries = new TaskQueries(db);
     this.pullRequests = new PullRequestStore(
       db,
@@ -125,27 +125,6 @@ export class Store {
   }
   putRepo(repo: Repo): void {
     this.repositories.putRepo(repo);
-  }
-  /** Legacy repository settings are read raw because Repo no longer owns these fields. */
-  legacyRepoSettings(): Array<{
-    repo: Repo;
-    baseBranch?: string;
-    defaultProviders?: Partial<
-      Record<"planner" | "implementer" | "reviewer", "codex" | "claude">
-    >;
-    serialTests?: boolean;
-  }> {
-    return this.repositories.legacyRepoSettings();
-  }
-  /** Move legacy settings and remove their old owners as one durable operation. */
-  migrateLegacySettings(
-    globalUpdate: Parameters<SettingsStore["update"]>[0] | undefined,
-    repositories: Array<{
-      repoId: Repo["id"];
-      update?: Parameters<SettingsStore["update"]>[0];
-    }>,
-  ): void {
-    this.repositories.migrateLegacySettings(globalUpdate, repositories);
   }
   /** Inserts a new initial task. Reconcile commits are the only update path. */
   createTask(task: Omit<Task, "number">): TaskState {

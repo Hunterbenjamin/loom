@@ -132,7 +132,7 @@ function seed() {
 test("task create parses an optional summary without treating it as a description", () => {
   expect(
     taskCreateCommand([
-      "task",
+      "issue",
       "create",
       "example-repo",
       "Short title",
@@ -148,7 +148,7 @@ test("task create parses an optional summary without treating it as a descriptio
     size: "small",
   });
   expect(
-    taskCreateCommand(["task", "create", "example-repo", "Short title"]),
+    taskCreateCommand(["issue", "create", "example-repo", "Short title"]),
   ).toMatchObject({ description: "", summary: null });
 });
 
@@ -159,7 +159,7 @@ test("task create preserves a 1457-character description in the full command fra
   )}  `;
   expect(description).toHaveLength(1457);
   const value = taskCreateCommand([
-    "task",
+    "issue",
     "create",
     "example-repo",
     "Title",
@@ -179,7 +179,7 @@ test("task create preserves a 1457-character description in the full command fra
 test("task create treats text after -- literally and keeps option values out of positionals", () => {
   expect(
     taskCreateCommand([
-      "task",
+      "issue",
       "create",
       "--small",
       "--summary=--literal summary",
@@ -199,7 +199,7 @@ test("task create treats text after -- literally and keeps option values out of 
 
 test("task create rejects missing option values", () => {
   expect(() =>
-    taskCreateCommand(["task", "create", "example-repo", "--summary"]),
+    taskCreateCommand(["issue", "create", "example-repo", "--summary"]),
   ).toThrow();
 });
 
@@ -228,15 +228,12 @@ test("CLI errors preserve details for structured rejections and thrown errors", 
 test("task inspect prints a complete fixture without a coordinator", async () => {
   seed();
   const before = store.loadTaskState(taskId);
-  await main(["task", "inspect", taskId]);
-  expect(output).toMatchSnapshot();
-  const legacyOutput = output;
-  output = "";
   await main(["issue", "inspect", taskId]);
-  expect(output).toBe(legacyOutput);
+  expect(output).toMatchSnapshot();
+  const byId = output;
   output = "";
   await main(["issue", "inspect", "1"]);
-  expect(output).toBe(legacyOutput);
+  expect(output).toBe(byId);
   expect(store.loadTaskState(taskId)).toEqual(before);
 });
 
@@ -249,7 +246,7 @@ test("CLI issue references resolve for top-level commands such as attach", () =>
 
 test("task inspect --json includes histories, receipts and pending approvals", async () => {
   seed();
-  await main(["task", "inspect", taskId, "--json"]);
+  await main(["issue", "inspect", taskId, "--json"]);
   const data = JSON.parse(output);
   expect(Object.keys(data)).toEqual([
     "notes",
@@ -306,7 +303,7 @@ test("task inspect --json includes histories, receipts and pending approvals", a
 });
 
 test("empty task diagnostics omit questions and approvals in text", async () => {
-  await main(["task", "inspect", taskId]);
+  await main(["issue", "inspect", taskId]);
   expect(output).toMatchSnapshot();
   expect(output).not.toContain("Pending approvals");
 });
@@ -315,11 +312,13 @@ test("unknown and missing task IDs report errors without output", async () => {
   const stderr = vi
     .spyOn(process.stderr, "write")
     .mockImplementation(() => true);
-  await main(["task", "inspect", "missing"]);
+  await main(["issue", "inspect", "missing"]);
   expect(stderr).toHaveBeenCalledWith("unknown_task: missing\n");
   expect(process.exitCode).toBe(1);
   expect(output).toBe("");
-  await expect(main(["task", "inspect"])).rejects.toThrow("loom issue inspect");
+  await expect(main(["issue", "inspect"])).rejects.toThrow(
+    "loom issue inspect",
+  );
 });
 
 test.each(["plan_approval", "awaiting_approval"] as const)(
@@ -329,7 +328,7 @@ test.each(["plan_approval", "awaiting_approval"] as const)(
     state.task.stage = stage;
     state.approvals = [];
     expect(store.commit(taskId, result(state), 0).ok).toBe(true);
-    await main(["task", "inspect", "--json", taskId]);
+    await main(["issue", "inspect", "--json", taskId]);
     expect(JSON.parse(output).pendingApprovals).toEqual([
       stage === "plan_approval"
         ? { kind: "plan", planVersion: 1 }
@@ -343,21 +342,29 @@ test("answer-request CLI command requires correct arguments", async () => {
     .spyOn(process.stderr, "write")
     .mockImplementation(() => true);
 
-  await expect(main(["task", "answer-request", taskId])).rejects.toThrow(
+  await expect(main(["issue", "answer-request", taskId])).rejects.toThrow(
     /loom issue answer-request/,
   );
 
   await expect(
-    main(["task", "answer-request", taskId, "run-id", "request-id", "invalid"]),
+    main([
+      "issue",
+      "answer-request",
+      taskId,
+      "run-id",
+      "request-id",
+      "invalid",
+    ]),
   ).rejects.toThrow("decision must be accept, decline, or cancel");
 });
 
-test("help advertises issue commands and keeps the legacy alias hidden", async () => {
+test("help advertises issue commands", async () => {
   await main(["--help"]);
   expect(output).toContain("loom issue create");
   expect(output).toContain("loom issue inspect <issue>");
   expect(output).not.toMatch(/\btasks?\b/i);
-  expect(
-    taskCreateCommand(["issue", "create", "example-repo", "Title"]),
-  ).toEqual(taskCreateCommand(["task", "create", "example-repo", "Title"]));
+});
+
+test("rejects the retired task command group", async () => {
+  await expect(main(["task", "list"])).rejects.toThrow("Unknown command task");
 });
