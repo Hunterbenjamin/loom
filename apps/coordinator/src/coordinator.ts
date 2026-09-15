@@ -22,7 +22,6 @@ import type {
   IsoTime,
   Observations,
   Provider,
-  ProviderRules,
   ReconcileResult,
   Repo,
   RepoId,
@@ -64,7 +63,11 @@ import { ProtocolServer } from "./server.js";
 import { CoordinatorSettings } from "./settings.js";
 import { migrateSettings } from "./settings-migration.js";
 import { runShell, type Shell } from "./shell.js";
-import { taskHandlers } from "./task-commands.js";
+import {
+  type CreateTaskInput,
+  taskHandlers,
+} from "./task-commands.js";
+export type { CreateTaskInput } from "./task-commands.js";
 import { resolveCommandTaskRefs } from "./task-refs.js";
 import { terminalHandlers } from "./terminals.js";
 import {
@@ -98,19 +101,6 @@ export interface CoordinatorOptions {
   serveProtocol?: boolean;
   /** Runs a repository's WORKFLOW `setup` command in a new worktree. Injected in tests. */
   shell?: Shell;
-}
-
-export interface CreateTaskInput {
-  repoId: RepoId;
-  title: string;
-  name?: string | null;
-  description: string;
-  summary?: string | null;
-  providers?: ProviderRules | null;
-  requirePlanApproval?: boolean | null;
-  blockedBy?: TaskId[];
-  budgetMinutes?: number | null;
-  size?: "small" | "normal" | null;
 }
 
 /** A pass whose owner reads take this long is logged, so slow owners show up in the log. */

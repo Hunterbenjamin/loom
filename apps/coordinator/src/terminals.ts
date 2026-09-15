@@ -83,13 +83,11 @@ export function terminalHandlers(deps: TerminalDeps): Handlers<TerminalKind> {
       if (command.split && !scratchTarget)
         throw new Error("Split requires a target pane");
       // A new space opens at the selected project's root, so its shell is in the repo.
-      const selectedRepoId = command.workspace
-        ? deps.store.selectedRepo()
-        : null;
+      const newSpace = !scratchTarget ? command.workspace : undefined;
+      const selectedRepoId = newSpace ? deps.store.selectedRepo() : null;
       const spaceRoot = selectedRepoId ? deps.repo(selectedRepoId).root : null;
       const ref = await deps.adapters.paneHost.createScratch({
-        workspaceId:
-          command.workspace ?? scratchPane?.workspaceId ?? "loom-workbench",
+        workspaceId: newSpace ?? scratchPane?.workspaceId ?? "loom-workbench",
         target: scratchTarget,
         split: command.split,
         createWorkspace: true,

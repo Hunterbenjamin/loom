@@ -13,7 +13,7 @@ import type { Handlers } from "./commands.js";
 import type { RecipeStore } from "./recipes.js";
 import { taskRows, type ViewDeps } from "./views.js";
 
-interface CreateTaskInput {
+export interface CreateTaskInput {
   repoId: RepoId;
   title: string;
   name?: string | null;
