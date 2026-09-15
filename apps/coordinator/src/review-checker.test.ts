@@ -89,6 +89,11 @@ test.each(["reviewer-checker", "reviewer-inline", "reviewer-dirty"])(
         .filter((row) => row.kind === "push_branch");
       expect(pushes).toHaveLength(1);
       expect(pushes.every((row) => row.status === "succeeded")).toBe(true);
+      const bodyUpdates = h.store.outbox
+        .list(task.task.id)
+        .filter((row) => row.kind === "update_pr_body");
+      expect(bodyUpdates).toHaveLength(1);
+      expect(bodyUpdates[0]?.status).toBe("succeeded");
       h = await h.restart();
       await h.coordinator.settle();
       expect(latestImplementation(h.store.loadTaskState(task.task.id))).toEqual(
