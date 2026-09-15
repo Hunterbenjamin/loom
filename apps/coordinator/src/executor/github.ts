@@ -30,9 +30,7 @@ export class GitHubActions {
             task.id.toLowerCase() === command.taskKey.toLowerCase(),
         );
       if (!task)
-        throw new PreconditionFailed(
-          "No issue with that key in this repository",
-        );
+        throw new PreconditionFailed("No issue with that key in this repository");
       this.deps.store.setPullRequestPreferences(repo.id, command.number, {
         taskId: task.id,
       });
@@ -114,7 +112,7 @@ export class GitHubActions {
           | "disable_auto_merge"
           | "map_findings"
           | "refresh";
-      },
+      }
     >,
     state: TaskState,
   ): Promise<unknown> {

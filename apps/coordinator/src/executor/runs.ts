@@ -41,7 +41,7 @@ export class RunActions {
           | "answer_pane_prompt"
           | "answer_provider_request"
           | "stop_run";
-      },
+      }
     >,
     state: TaskState,
   ): Promise<unknown> {
@@ -85,9 +85,7 @@ export class RunActions {
         // merge, say) can target a run a newer one of its role has replaced. Stop that one too.
         const run =
           state.runs.find((r) => r.id === action.runId) ??
-          this.deps.store
-            .runs(action.taskId)
-            .find((r) => r.id === action.runId) ??
+          this.deps.store.runs(action.taskId).find((r) => r.id === action.runId) ??
           this.run(state, action.runId);
         if (action.retire) {
           // The run has ended and its role is done: kill the pane, keep the session resumable.
@@ -109,8 +107,7 @@ export class RunActions {
               try {
                 return await codex.readThread(sessionId);
               } catch (error) {
-                if ((await codex.checkResumable(sessionId)) === false)
-                  return null;
+                if ((await codex.checkResumable(sessionId)) === false) return null;
                 throw error;
               }
             };
@@ -178,9 +175,7 @@ export class RunActions {
         }
         if (!run.sessionId) return {};
         if (run.provider === "codex")
-          await (await adapters.codex(action.taskId)).unsubscribe(
-            run.sessionId,
-          );
+          await (await adapters.codex(action.taskId)).unsubscribe(run.sessionId);
         else if (run.mode === "headless") {
           // Closing terminates the subprocess directly; an interrupt RPC can hang after exit.
           // Let failures reach the outbox so cleanup can be retried.
@@ -204,12 +199,7 @@ export class RunActions {
   ): Promise<ActionOutputs["send_message"]> {
     const { adapters } = this.deps;
     const run = this.run(state, action.runId);
-    const decision = await checkSendGate(
-      adapters,
-      this.deps.now(),
-      run,
-      action,
-    );
+    const decision = await checkSendGate(adapters, this.deps.now(), run, action);
     if (!decision.ok)
       throw new PreconditionFailed(`Refusing to send: ${decision.reason}`);
     const sessionId = run.sessionId;
@@ -365,5 +355,4 @@ export class RunActions {
 
     return {};
   }
-
 }

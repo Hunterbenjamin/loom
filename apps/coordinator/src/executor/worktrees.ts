@@ -29,7 +29,7 @@ export class WorktreeActions {
           | "remove_worktree"
           | "write_task_files"
           | "merge_base";
-      },
+      }
     >,
     state: TaskState,
   ): Promise<unknown> {
