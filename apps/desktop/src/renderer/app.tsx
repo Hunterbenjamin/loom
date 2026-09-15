@@ -5,6 +5,7 @@ import { useStore, useStoreApi } from "./store/react.js";
 import { selectedRows } from "./store/selectors.js";
 import { VIEWS } from "./store/store.js";
 import { BoardView } from "./ui/board.js";
+import { BriefsView } from "./ui/briefs.js";
 import { CreateIssue } from "./ui/create-issue.js";
 import { Detail } from "./ui/detail.js";
 import { InboxView } from "./ui/inbox.js";
@@ -106,34 +107,40 @@ export function App() {
       <div className="main">
         <header className="topbar">
           <h1>
-            {view === "settings"
-              ? "Settings"
-              : view === "pull-requests"
-                ? "Reviews"
-                : VIEWS.find((item) => item.id === view)?.label}
+            {view === "briefs"
+              ? "Daily brief"
+              : view === "settings"
+                ? "Settings"
+                : view === "pull-requests"
+                  ? "Reviews"
+                  : VIEWS.find((item) => item.id === view)?.label}
           </h1>
-          {view === "pull-requests" || view === "settings" ? null : (
+          {view === "pull-requests" ||
+          view === "settings" ||
+          view === "briefs" ? null : (
             <span className="faint nums">{count}</span>
           )}
           <span className="spacer" />
-          {view !== "pull-requests" && view !== "settings" && (
-            <div className="segmented">
-              <button
-                type="button"
-                aria-pressed={pane === "list"}
-                onClick={() => store.setPane("list")}
-              >
-                List
-              </button>
-              <button
-                type="button"
-                aria-pressed={pane === "board"}
-                onClick={() => store.setPane("board")}
-              >
-                Board
-              </button>
-            </div>
-          )}
+          {view !== "pull-requests" &&
+            view !== "settings" &&
+            view !== "briefs" && (
+              <div className="segmented">
+                <button
+                  type="button"
+                  aria-pressed={pane === "list"}
+                  onClick={() => store.setPane("list")}
+                >
+                  List
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={pane === "board"}
+                  onClick={() => store.setPane("board")}
+                >
+                  Board
+                </button>
+              </div>
+            )}
         </header>
 
         <div
@@ -145,7 +152,9 @@ export function App() {
             flexDirection: "column",
           }}
         >
-          {view === "settings" ? (
+          {view === "briefs" ? (
+            <BriefsView />
+          ) : view === "settings" ? (
             <SettingsView />
           ) : waiting ? (
             <div className="pad faint">Waiting for the coordinator…</div>

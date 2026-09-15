@@ -668,3 +668,37 @@ Newly observed merges in either PR lists or detail are hints to invalidate the m
 branch's observation cache and enqueue reconciliation immediately, regardless of a manual issue
 reference. GitHub's task observation alone supplies the merged fact that makes the task Done.
 Cache invalidation generations prevent pre-hint reads from restoring a stale conditional body.
+
+### Daily AI builder brief
+
+The coordinator owns one instance-wide daily research schedule (07:00 Asia/Makassar),
+run records and validated brief artifacts in SQLite metadata. It is independent of repositories,
+Main conversations and issue stages. The desktop's Daily brief page reads history and individual
+results over authenticated protocol commands, can pause the schedule, and can request a new run.
+Renderer state is only a disposable read cache and current selection. History shows the latest
+30 runs; older records remain stored and addressable by ID.
+
+A coordinator timer checks every 30 seconds and on startup. After wake/restart it catches up only
+today's missed edition, without replaying a backlog of days. The scheduled date is persisted before
+launch and allows at most one automatic attempt per local date. A manual run after 07:00 also
+satisfies that day's scheduled edition. Manual refreshes remain available after completion or failure,
+even with scheduling paused. An active run coalesces concurrent requests; a repeated run ID returns
+its existing record. Failed jobs retain their error and require an explicit manual retry or the next
+day's schedule. Closing the window does not stop research; the host must be awake with its coordinator
+running. This does not install a second operating-system cron job.
+
+Research runs in a dedicated instance-data workspace with a provider session UUID saved before
+launch. The existing Claude Agent SDK supplies a web-only session (WebSearch/WebFetch), with no
+repository tools, inherited settings or MCP servers, using Sonnet and a $3 budget/30-turn limit.
+The adapter observes native SDK messages and validates structured output with zod; at least one
+successful live web lookup is required. Source relevance and evidence classification are research
+judgments, not independently verified guarantees. The final brief is a coordinator-owned artifact;
+the provider continues to own its transcript. Shutdown aborts the owned query; a record still running
+at startup is marked interrupted rather than inventing a successful brief or automatically repeating
+an uncertain run. No issue, branch, pane, Main message or workflow transition is created.
+
+Editorial instructions prioritize agent development workflows, usable capabilities, practical
+research implications and business opportunities for a software builder. Each item includes original
+sources, publication date when known, evidence strength, limitations and a next step. Opportunity
+analysis distinguishes technical feasibility from customer demand. Previous successful coverage is
+provided to reduce repetition. Thin news days produce fewer items rather than filler.

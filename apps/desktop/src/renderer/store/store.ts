@@ -51,7 +51,8 @@ export type ViewId =
   | "awaiting-approval"
   | "done"
   | "pull-requests"
-  | "settings";
+  | "settings"
+  | "briefs";
 type Pane = "list" | "board";
 export type TabId = "overview" | "plan" | "terminal";
 export type SortKey =
@@ -131,7 +132,11 @@ export interface State {
 }
 
 /** The Tracker's three destinations. Other view ids remain reachable by keyboard and palette. */
-export const VIEWS: { id: ViewId; label: string; hint: string }[] = [
+export const VIEWS: {
+  id: Exclude<ViewId, "settings" | "briefs">;
+  label: string;
+  hint: string;
+}[] = [
   {
     id: "needs-you",
     label: "Inbox",
