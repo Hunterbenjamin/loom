@@ -795,6 +795,108 @@ test("the overview is one reading column and one rail: Markdown, PR-style activi
   ).not.toBeNull();
 });
 
+test("activity shows the latest three entries until expanded, and settled findings start collapsed", () => {
+  const h = setup("plan");
+  h.snapshot.transitions = h.snapshot.transitions.filter(
+    (transition) => transition.taskId !== h.task.id,
+  );
+  const source = h.snapshot.transitions[0] ?? {
+    id: transitionId("seed"),
+    taskId: h.task.id,
+    at: h.snapshot.now,
+    from: "backlog",
+    to: "todo",
+    flags: {},
+    trigger: { kind: "human", command: "move", inputId: inputId("seed") },
+    reason: "seed",
+    taskVersion: 1,
+  };
+  const stages = [
+    "backlog",
+    "todo",
+    "planning",
+    "plan_approval",
+    "in_progress",
+  ] as const;
+  for (const [index, to] of stages.slice(1).entries())
+    h.snapshot.transitions.push({
+      ...source,
+      id: transitionId(`activity-${index}`),
+      taskId: h.task.id,
+      at: new Date(
+        Date.parse(h.snapshot.now) - (10 - index) * 60_000,
+      ).toISOString() as never,
+      from: stages[index] as never,
+      to: to as never,
+      trigger: { kind: "reconcile", fact: "test" },
+      reason: `move ${index}`,
+    });
+  const finding = (id: string, status: "resolved" | "escalate") => ({
+    id: id as never,
+    taskId: h.task.id,
+    round: 1,
+    source: "reviewer" as const,
+    externalId: null,
+    createdByRunId: null,
+    severity: "minor" as const,
+    blocking: true,
+    title: `Finding ${id}`,
+    body: "Body",
+    status,
+    reopenCount: 0,
+    anchor: null,
+    location: null,
+    resolution: null,
+    createdAt: h.snapshot.now,
+    updatedAt: h.snapshot.now,
+  });
+  h.snapshot.findings = h.snapshot.findings.filter(
+    (f) => f.taskId !== h.task.id,
+  );
+  h.snapshot.findings.push(finding("settled", "resolved"));
+  h.store.open(h.task.id);
+  h.render();
+  const activity = h.host.querySelector(".pr-story .pr-activity");
+  const entries = () =>
+    [...(activity?.querySelectorAll("li[data-activity='stage']") ?? [])].map(
+      (item) => item.textContent ?? "",
+    );
+  expect(entries()).toHaveLength(3);
+  expect(entries().at(-1)).toContain("Plan approval → In progress");
+  const more = [...(activity?.querySelectorAll("button") ?? [])].find(
+    (button) => button.textContent?.startsWith("Show "),
+  );
+  expect(more?.textContent).toMatch(/^Show \d+ earlier/);
+  act(() => more?.click());
+  expect(entries()).toHaveLength(4);
+
+  // Nothing blocking: the findings section and its finding start collapsed.
+  const findings =
+    h.host.querySelector<HTMLDetailsElement>(".overview-findings");
+  expect(findings?.open).toBe(false);
+  expect(findings?.querySelector("summary")?.textContent).toContain(
+    "all settled",
+  );
+  h.snapshot.findings.push(finding("blocking", "escalate"));
+  h.store.open(null);
+  h.store.open(h.task.id);
+  h.render();
+  const reopened =
+    h.host.querySelector<HTMLDetailsElement>(".overview-findings");
+  expect(reopened?.open).toBe(true);
+  const blocking = [
+    ...(reopened?.querySelectorAll<HTMLDetailsElement>(".issue-finding") ?? []),
+  ];
+  expect(
+    blocking.find((item) => item.textContent?.includes("Finding blocking"))
+      ?.open,
+  ).toBe(true);
+  expect(
+    blocking.find((item) => item.textContent?.includes("Finding settled"))
+      ?.open,
+  ).toBe(false);
+});
+
 test("backlog exposes editing and Move to Todo; absent plan and branch omit their tabs", async () => {
   const h = setup();
   h.task.stage = "backlog";

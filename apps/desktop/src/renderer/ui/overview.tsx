@@ -180,45 +180,54 @@ function Findings({ task }: { task: Task }) {
   const blocking = findings.filter(
     (f) => f.blocking && !settled(f.status),
   ).length;
+  const open = findings.filter((f) => !settled(f.status)).length;
+  if (!findings.length) return null;
+  // Collapsed unless something still blocks the issue; each finding opens on its own.
   return (
-    <section className="pr-description">
-      <h3>
-        Findings{findings.length ? ` · ${blocking} open and blocking` : ""}
-      </h3>
-      {sorted.length ? (
-        sorted.map((f) => (
-          <div
-            className={`panel issue-finding ${settled(f.status) ? "settled" : ""}`}
-            key={f.id}
-          >
-            <div className="detail-meta">
-              <strong>{f.title}</strong>
-              <span
-                className={`chip ${f.severity === "blocker" || f.severity === "major" ? "danger" : ""}`}
-              >
-                {f.severity}
-              </span>
-              <span className="chip">{f.status}</span>
-              {f.blocking && !settled(f.status) ? (
-                <span className="chip danger">blocking</span>
-              ) : null}
-              <span className="spacer" />
-              <span className="faint">
-                {f.source} · round {f.round}
-              </span>
-            </div>
-            {f.location?.path ? (
-              <div className="mono faint">
-                {f.location.path}:{f.location.startLine ?? "?"}
-              </div>
+    <details className="overview-findings" open={blocking > 0}>
+      <summary>
+        <h3>Findings</h3>
+        <span className="faint">
+          {blocking
+            ? `${blocking} blocking`
+            : open
+              ? `${open} open`
+              : "all settled"}
+          {" · "}
+          {findings.length} total
+        </span>
+      </summary>
+      {sorted.map((f) => (
+        <details
+          className={`panel issue-finding ${settled(f.status) ? "settled" : ""}`}
+          key={f.id}
+          open={f.blocking && !settled(f.status)}
+        >
+          <summary className="detail-meta">
+            <strong>{f.title}</strong>
+            <span
+              className={`chip ${f.severity === "blocker" || f.severity === "major" ? "danger" : ""}`}
+            >
+              {f.severity}
+            </span>
+            <span className="chip">{f.status}</span>
+            {f.blocking && !settled(f.status) ? (
+              <span className="chip danger">blocking</span>
             ) : null}
-            <PrMarkdown body={f.body} />
-          </div>
-        ))
-      ) : (
-        <div className="faint">No findings.</div>
-      )}
-    </section>
+            <span className="spacer" />
+            <span className="faint">
+              {f.source} · round {f.round}
+            </span>
+          </summary>
+          {f.location?.path ? (
+            <div className="mono faint">
+              {f.location.path}:{f.location.startLine ?? "?"}
+            </div>
+          ) : null}
+          <PrMarkdown body={f.body} />
+        </details>
+      ))}
+    </details>
   );
 }
 
