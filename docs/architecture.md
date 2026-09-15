@@ -428,6 +428,10 @@ cannot confirm them. Retry replies wait for the reconciler's acceptance or expli
 
 Agents hand off through artifacts, not transcripts. Each issue's artifacts live in the coordinator's data directory.
 Agents reach them through `get_task_context`, and as files in `<worktree>/.task/`, which is kept out of git via `.git/info/exclude`.
+The first context read in each run session epoch returns the complete role-filtered view. Later reads
+return the current header, actionable findings and only sections changed since that session's last
+read; `{full: true}` requests the complete view again. Read markers are coordinator memory only, so
+a coordinator restart safely causes another full read.
 
 - `brief.md`
 - `plan.md`: goal, non-goals, steps, areas, acceptance criteria, test plan, risks, open questions

@@ -58,7 +58,10 @@ export type McpResult<T> =
 
 // ---------------------------------------------------------------- get_task_context
 
-export type GetTaskContextInput = Record<string, never>;
+export interface GetTaskContextInput {
+  /** Return the complete role view even when this session has read it before. */
+  full?: boolean;
+}
 
 export interface FindingView {
   id: FindingId;
@@ -80,28 +83,39 @@ export interface FindingView {
   snippet: string | null;
 }
 
-export interface GetTaskContextOutput {
-  task: {
-    id: TaskId;
-    title: string;
-    description: string;
-    summary: string | null;
-    stage: Stage;
-    reviewRound: number;
-    reviewRoundCap: number;
-  };
+export interface TaskContextTask {
+  id: TaskId;
+  title: string;
+  description: string;
+  summary: string | null;
+  stage: Stage;
+  reviewRound: number;
+  reviewRoundCap: number;
+}
+
+export interface TaskContextRun {
+  id: RunId;
+  round: number;
+  attempts: number;
+}
+
+export interface TaskContextWorktree {
+  path: WorktreePath;
+  branch: string;
+  baseBranch: string;
+  baseSha: Sha;
+  headSha: Sha | null;
+  /** The head this review round reviews, and the one the previous round reviewed. */
+  roundHead?: Sha | null | undefined;
+  lastReviewedHead?: Sha | null | undefined;
+}
+
+export interface GetTaskContextFullOutput {
+  view: "full";
+  task: TaskContextTask;
   role: Role;
-  run: { id: RunId; round: number; attempts: number };
-  worktree: {
-    path: WorktreePath;
-    branch: string;
-    baseBranch: string;
-    baseSha: Sha;
-    headSha: Sha | null;
-    /** The head this review round reviews, and the one the previous round reviewed. */
-    roundHead?: Sha | null | undefined;
-    lastReviewedHead?: Sha | null | undefined;
-  };
+  run: TaskContextRun;
+  worktree: TaskContextWorktree;
   brief: string;
   plan: (Plan & { version: number }) | null;
   /** The full append-only decisions log. */
@@ -114,6 +128,47 @@ export interface GetTaskContextOutput {
   /** Commands from the repo's WORKFLOW.md: setup, test, lint, dev server, teardown. */
   workflow: Record<string, string>;
 }
+
+export interface TaskContextMustAct {
+  id: FindingId;
+  title: string;
+  status: FindingStatus;
+}
+
+/** The stable, small part repeated with every changes view. */
+export interface TaskContextHeader {
+  task: Pick<TaskContextTask, "stage" | "reviewRound">;
+  run: TaskContextRun;
+  worktree: Pick<
+    TaskContextWorktree,
+    "baseSha" | "headSha" | "roundHead" | "lastReviewedHead"
+  >;
+}
+
+export interface GetTaskContextChangesOutput {
+  view: "changes";
+  header: TaskContextHeader;
+  mustAct: TaskContextMustAct[];
+  /** Non-header task fields changed; the full task section is included. */
+  task?: TaskContextTask;
+  /** Non-header worktree fields changed; the full worktree section is included. */
+  worktree?: TaskContextWorktree;
+  brief?: string;
+  plan?: (Plan & { version: number }) | null;
+  /** The appended suffix, or the whole log when it was rewritten. */
+  decisions?: string;
+  handoff?: Handoff | null;
+  findings?: { changed: FindingView[]; noLongerVisible: FindingId[] };
+  /** The appended suffix, or the whole list when it was rewritten. */
+  testResults?: TestResult[];
+  /** Questions newly answered since the previous read. */
+  answeredQuestions?: { id: QuestionId; question: string; answer: string }[];
+  workflow?: Record<string, string>;
+}
+
+export type GetTaskContextOutput =
+  | GetTaskContextFullOutput
+  | GetTaskContextChangesOutput;
 
 // ---------------------------------------------------------------- submit_plan
 

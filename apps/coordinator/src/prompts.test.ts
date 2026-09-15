@@ -76,6 +76,11 @@ test("plans are short and record decisions; acceptance criteria are the bar impl
     "CI is the check: don't run lint, the typecheck, the whole suite",
   );
   expect(brief("reviewer")).toContain("Work in few steps");
+  expect(brief("implementer")).toContain("later calls return the changes");
+  expect(brief("implementer")).toContain("{ full: true }");
+  expect(brief("implementer")).not.toContain(
+    "the only source that stays current",
+  );
   expect(brief("reviewer")).toContain(
     "a fix that hides a bug instead of removing its cause, or a second definition",
   );

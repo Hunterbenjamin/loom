@@ -6,7 +6,8 @@
 import type {
   FindingAnchor,
   FindingLocationInput,
-  FindingView,
+  GetTaskContextFullOutput,
+  GetTaskContextInput,
   GetTaskContextOutput,
   InputDisposition,
   Repo,
@@ -15,6 +16,7 @@ import type {
   TaskId,
   TaskState,
 } from "@loom/core";
+import { taskContextChanges, taskContextFull } from "@loom/core";
 import { McpGuardError, type McpHost, type McpInput } from "@loom/mcp";
 import type { Store } from "@loom/store";
 import type { Adapters, ReportAdapterFailure } from "./adapters.js";
@@ -43,38 +45,6 @@ export interface McpHostDeps {
   reportAdapterFailure?: ReportAdapterFailure;
 }
 
-const findingViews = (
-  state: TaskState,
-  role: string,
-  round: number,
-): FindingView[] =>
-  state.findings
-    .filter((f) =>
-      role === "reviewer"
-        ? f.round < round || f.source !== "reviewer"
-        : ["open", "escalate", "addressed", "disputed"].includes(f.status),
-    )
-    .map((f) => ({
-      id: f.id,
-      round: f.round,
-      source: f.source,
-      severity: f.severity,
-      blocking: f.blocking,
-      status: f.status,
-      title: f.title,
-      body: f.body,
-      location: f.location
-        ? {
-            path: f.location.path,
-            side: f.location.side,
-            startLine: f.location.startLine,
-            endLine: f.location.endLine,
-            mapping: f.location.status,
-          }
-        : null,
-      snippet: f.anchor?.selectedText ?? null,
-    }));
-
 export function createMcpHost(deps: McpHostDeps): {
   host: McpHost;
   resolveToken(
@@ -86,6 +56,10 @@ export function createMcpHost(deps: McpHostDeps): {
     location: FindingLocationInput;
   }): Promise<FindingAnchor>;
 } {
+  const contextReads = new Map<
+    RunId,
+    { sessionEpoch: number; context: GetTaskContextFullOutput }
+  >();
   const taskOf = (runId: RunId): TaskId => {
     const recipe = deps.recipes.get(runId);
     if (!recipe) throw new Error(`No launch recipe for run ${runId}`);
@@ -106,7 +80,10 @@ export function createMcpHost(deps: McpHostDeps): {
       }
       throw new Error(`The task did not consume input ${input.id}`);
     },
-    async context(runId: RunId): Promise<GetTaskContextOutput> {
+    async context(
+      runId: RunId,
+      input: GetTaskContextInput,
+    ): Promise<GetTaskContextOutput> {
       const taskId = taskOf(runId);
       const state = deps.store.loadTaskState(taskId);
       const run = state.runs.find((r) => r.id === runId);
@@ -122,51 +99,27 @@ export function createMcpHost(deps: McpHostDeps): {
           );
           return null;
         });
-      return {
-        task: {
-          id: state.task.id,
-          title: state.task.title,
-          description: state.task.description,
-          summary: state.task.summary,
-          stage: state.task.stage,
-          reviewRound: state.task.reviewRound,
-          reviewRoundCap: state.task.reviewRoundCap,
-        },
-        role: run.role,
-        run: { id: run.id, round: run.round, attempts: run.attempts },
-        worktree: {
-          path: worktree.path,
-          branch: worktree.branch,
-          baseBranch: worktree.baseBranch,
-          baseSha: worktree.baseSha,
-          headSha: git?.headSha ?? null,
-          roundHead: state.review?.headSha ?? null,
-          lastReviewedHead: state.review?.lastReviewedHead ?? null,
-        },
+      const current = taskContextFull({
+        state,
+        runId,
+        headSha: git?.headSha ?? null,
         brief:
           typeof state.artifactContents.brief === "string"
             ? state.artifactContents.brief
             : taskBrief(state.task),
-        plan: state.plan
-          ? (({ accepted: _accepted, ...plan }) => plan)(state.plan)
-          : null,
-        decisions:
-          typeof state.artifactContents.decisions === "string"
-            ? state.artifactContents.decisions
-            : "",
-        handoff: (state.artifactContents.handoff ??
-          null) as GetTaskContextOutput["handoff"],
-        findings: findingViews(state, run.role, run.round),
-        testResults: (state.artifactContents.test_results ??
-          []) as GetTaskContextOutput["testResults"],
-        answeredQuestions: state.questions.flatMap((q) =>
-          q.answer
-            ? [{ id: q.id, question: q.question, answer: q.answer }]
-            : [],
-        ),
         // Design note 13.3: loaded and validated here, never a reconcile input.
         workflow: await deps.workflow.read(repo.root),
-      };
+      });
+      const previous = contextReads.get(runId);
+      contextReads.set(runId, {
+        sessionEpoch: run.sessionEpoch,
+        context: current,
+      });
+      return input.full ||
+        !previous ||
+        previous.sessionEpoch !== run.sessionEpoch
+        ? current
+        : taskContextChanges(previous.context, current);
     },
   };
 

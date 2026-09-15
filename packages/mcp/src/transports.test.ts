@@ -131,7 +131,9 @@ test("HTTP tokens isolate separate runs sharing one endpoint", async () => {
       const result = resultSchema(outputSchemas.get_task_context).parse(
         r.structuredContent,
       );
-      return result.ok ? result.value.role : null;
+      return result.ok && result.value.view === "full"
+        ? result.value.role
+        : null;
     }),
   ).toEqual(["implementer", "planner"]);
 });

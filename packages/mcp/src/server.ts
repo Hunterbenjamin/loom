@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   FindingAnchor,
   FindingLocationInput,
+  GetTaskContextInput,
   GetTaskContextOutput,
   Input,
   InputDisposition,
@@ -41,7 +42,10 @@ export interface McpHost {
   /** Persist the input, serialize a reconcile pass for its task, commit, then return its disposition. */
   submit(input: McpInput): Promise<InputDisposition>;
   /** Read the current, role-filtered context without writing an inbox record. */
-  context(runId: RunId): GetTaskContextOutput | Promise<GetTaskContextOutput>;
+  context(
+    runId: RunId,
+    input: GetTaskContextInput,
+  ): GetTaskContextOutput | Promise<GetTaskContextOutput>;
 }
 export interface McpServerOptions {
   host: McpHost;
@@ -70,7 +74,7 @@ const failure = (
 const names = Object.keys(inputSchemas) as McpToolName[];
 const descriptions: Record<McpToolName, string> = {
   get_task_context:
-    "Read this run's task, plan, findings and workflow commands.",
+    "Read this run's context. The first call returns the full view; later calls return changes unless full is true.",
   submit_plan: "Submit the planner's structured plan for code validation.",
   report_progress: "Record progress, decisions and test results.",
   ask_human:
@@ -112,7 +116,10 @@ async function invoke(
     return {
       ok: true,
       value: outputSchemas.get_task_context.parse(
-        await options.host.context(runId),
+        await options.host.context(
+          runId,
+          inputSchemas.get_task_context.parse(raw),
+        ),
       ),
     };
   // Re-parse in each enriched branch to preserve the discriminated core contract.
