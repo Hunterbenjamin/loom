@@ -46,11 +46,7 @@ export function branchActions(run: GhRunner) {
   };
 }
 
-async function branchExists(
-  run: GhRunner,
-  repo: string,
-  branch: string,
-) {
+async function branchExists(run: GhRunner, repo: string, branch: string) {
   const result = response(
     await run([
       "api",

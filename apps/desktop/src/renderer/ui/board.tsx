@@ -10,7 +10,7 @@ import {
   ProviderLabel,
   RunDot,
 } from "./bits.js";
-import { age, since, STAGES, stageLabel } from "./format.js";
+import { age, STAGES, since, stageLabel } from "./format.js";
 
 function BoardViewComponent() {
   const rows = useStore(selectedRows);
