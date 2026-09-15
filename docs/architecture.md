@@ -729,3 +729,23 @@ The `edit_task` human command updates title, description, size and plan-approval
 Backlog, with an expected task version. It uses the existing input and reconciliation transaction.
 Direct repository PR merge commands reject issue-owned PRs, including explicit links; those require
 the issue's reviewed-head approval and normal CI/finding guards.
+
+### Issue description and implementation publication
+
+The human's issue description remains the request; agent submissions never rewrite it. A versioned
+`implementation` artifact owns the latest accepted implementer summary, its recorded decisions and
+its submitted test results at one head SHA. Every submission replaces it, including fix rounds;
+reviewer handoffs do not touch it. The issue Overview projects this artifact as “What changed” below
+the request and omits the duplicate GitHub body. PR-only Overview continues to render GitHub's body.
+
+Core builds the PR body from that same request and implementation content, the human-readable issue
+reference and the submission's tests. Initial publication still waits for successful review. Each subsequent submission
+reconciles an `update_pr_body` outbox action once GitHub reports its head. The action is keyed by PR,
+artifact version and body hash. The executor checks current issue ownership and submission version;
+the GitHub adapter checks the open PR branch and head, skips an identical body, and writes literal
+JSON through stdin. Restart requeues uncertain updates through that same idempotent owner check.
+
+PR bodies identify local issues by the same repository key and issue number used in the UI
+(for example `Issue: LOOM-216`). The store derives this key from the registered repository when
+loading task state. Local issues have no GitHub-accessible URL, so the reference is plain text;
+Loom does not register an operating-system URL protocol for this feature.

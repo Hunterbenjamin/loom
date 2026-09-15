@@ -61,9 +61,10 @@ export function Overview({
             <PrMarkdown body={task.description.trim() || "No description."} />
           </section>
         ) : null}
-        {pr ? (
+        {task ? <WhatChanged task={task} /> : null}
+        {pr && !task ? (
           <section className="pr-description">
-            <h3>{task ? "Pull request description" : "Description"}</h3>
+            <h3>Description</h3>
             <PrMarkdown body={pr.body || "No description."} />
           </section>
         ) : null}
@@ -120,6 +121,18 @@ function IssueActivity({
     <ActivityList
       items={row ? [...events, ...prActivity(row.detail)] : events}
     />
+  );
+}
+
+function WhatChanged({ task }: { task: Task }) {
+  const body = useStore(
+    (state) => state.inbox.find((row) => row.taskId === task.id)?.whatChanged,
+  );
+  return (
+    <section className="pr-description">
+      <h3>What changed</h3>
+      <PrMarkdown body={body || "No implementation submission yet."} />
+    </section>
   );
 }
 
