@@ -146,7 +146,7 @@ for (const reason of [
     expect(h.store.getState().ui.tab).toBe("overview");
   });
 
-test("merge approval sends the full displayed reviewed SHA once and shows rejection", async () => {
+test("keyboard merge approval sends the full displayed reviewed SHA once and shows rejection", async () => {
   const h = setup("needs_approval");
   act(() => h.host.querySelector<HTMLButtonElement>("[data-reason]")?.click());
   const sender = vi.fn(async () => ({
@@ -160,9 +160,7 @@ test("merge approval sends the full displayed reviewed SHA once and shows reject
   h.store.setSender(sender);
   h.render(createElement(Detail, { task: h.task, key: "actions" }));
   await act(async () => {
-    [...h.host.querySelectorAll("button")]
-      .find((b) => b.textContent === "Approve merge")
-      ?.click();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
   });
   expect(sender).not.toHaveBeenCalled();
   // The confirmation shows the full reviewed SHA it will approve.

@@ -980,7 +980,7 @@ test("whitespace setting reads coordinator-filtered patches and keeps native exp
   });
 });
 
-test("Cmd+Enter opens exact-head confirmation from Overview inputs and Diff without submitting", async () => {
+test("Cmd+Enter ignores Overview inputs and opens exact-head confirmation outside inputs and in Diff", async () => {
   const h = setup();
   const comment = h.host.querySelector<HTMLTextAreaElement>(
     '[aria-label="PR comment"]',
@@ -988,15 +988,16 @@ test("Cmd+Enter opens exact-head confirmation from Overview inputs and Diff with
   if (!comment) throw new Error("Missing comment box");
   comment.focus();
   press("Enter", comment, { metaKey: true });
+  expect(h.host.querySelector("dialog")).toBeNull();
+  expect(h.sender).not.toHaveBeenCalled();
+  comment.blur();
+  press("Enter", window, { metaKey: true });
   expect(h.host.querySelector("dialog")?.open).toBe(true);
   expect(h.host.querySelector("dialog")?.textContent).toContain(
     h.row.detail.headSha,
   );
   expect(h.sender).not.toHaveBeenCalled();
-  press("Enter", comment, { metaKey: true });
-  expect(h.sender).not.toHaveBeenCalled();
   await h.click("Cancel");
-  expect(document.activeElement).toBe(comment);
   await act(async () => {
     await import("./pull-request-diff.js");
   });
