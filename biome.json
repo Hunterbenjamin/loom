@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!spikes", "!apps/desktop/perf/report.json"]
+    "includes": ["**", "!apps/desktop/perf/report.json"]
   },
   "formatter": {
     "enabled": true,

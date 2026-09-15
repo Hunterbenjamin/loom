@@ -16,8 +16,7 @@ published protocol examples and the generated 0.154.0 types. It supplies an acti
 turn, normalized input, a pending command approval and exhausted quota windows for
 offline coverage. It is not a claim that quota exhaustion or the wrong-turn error
 wording was measured against a real account. Session/item IDs, command paths and
-input text are test values. See `spikes/01-codex-shared-thread/FINDINGS.md` for the
-original bounded observations. No spike implementation is imported.
+input text are test values.
 
 `fake-cli.mjs` is a Node-only fake executable for process ownership tests. It reports
 the pinned version and handles initialization on its own temporary socket; it

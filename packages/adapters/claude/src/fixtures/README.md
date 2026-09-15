@@ -6,4 +6,4 @@
   entry is spike 02's (§7), which is the only recording of a `--bg` session's extra `id` and
   `state` fields.
 - `payload-samples.json` — one sample of every hook event spike 02 observed, copied verbatim from
-  `spikes/02-claude-hooks/evidence/payload-samples.json` (Claude Code 2.1.268).
+  its recorded evidence (Claude Code 2.1.268).
