@@ -1,4 +1,11 @@
-import type { RepoId } from "@loom/core";
+import {
+  isPrefixBinding,
+  KEYBINDING_ACTIONS,
+  type KeybindingAction,
+  matchesChord,
+  parseChord,
+  type RepoId,
+} from "@loom/core";
 import type {
   AckResult,
   ConversationTarget,
@@ -26,15 +33,12 @@ import {
 import {
   defaultKeybindingsState,
   formatBindings,
-  isPrefixBinding,
   type KeybindingsState,
-  matchesChord,
-  parseChord,
 } from "../../shared/keybindings.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { LeadBar } from "../ui/lead.js";
 import { TerminalSession } from "../ui/terminal.js";
-import { type Action, actions, bindingMatcher } from "./actions.js";
+import { bindingMatcher } from "./actions.js";
 import {
   agentName,
   attentionPanes,
@@ -745,7 +749,7 @@ export function Workbench() {
         setTabs([]);
       });
   };
-  const dispatch = (action: Action) => {
+  const dispatch = (action: KeybindingAction) => {
     const tab = tabs.find((t) => t.id === active);
     if (action === "commands") {
       setPalette((v) => !v);
@@ -1055,7 +1059,7 @@ export function Workbench() {
               <Command.List>
                 <DevControlCommands close={() => setPalette(false)} />
                 <ChimeMuteCommand close={() => setPalette(false)} />
-                {actions.map((a) => (
+                {KEYBINDING_ACTIONS.map((a) => (
                   <Command.Item
                     key={a.id}
                     onSelect={() => {
@@ -1144,7 +1148,7 @@ export function Workbench() {
         <div className="scrim">
           <div className="wb-help">
             <h2>Workbench shortcuts</h2>
-            {actions.map((a) => (
+            {KEYBINDING_ACTIONS.map((a) => (
               <p key={a.id}>
                 <kbd>{formatBindings(bindings.config, a.id)}</kbd> {a.label}
               </p>

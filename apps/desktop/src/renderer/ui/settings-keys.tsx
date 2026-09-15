@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import {
-  type Action,
-  actions,
   bindingChord,
-  defaultKeybindings,
   isPrefixBinding,
-  keybindingsConfig,
+  KEYBINDING_ACTIONS,
+  type KeybindingAction,
   matchesChord,
   parseChord,
+} from "@loom/core";
+import {
+  defaultKeybindings,
+  keybindingsConfig,
 } from "../../shared/keybindings.js";
 import {
   type FieldContext,
@@ -17,7 +19,7 @@ import {
   useField,
 } from "./settings-fields.js";
 
-const GROUPS: { title: string; actions: Action[] }[] = [
+const GROUPS: { title: string; actions: KeybindingAction[] }[] = [
   {
     title: "Panels",
     actions: [
@@ -37,7 +39,10 @@ const GROUPS: { title: string; actions: Action[] }[] = [
       "new",
       "next",
       "previous",
-      ...Array.from({ length: 9 }, (_, i) => `tab-${i + 1}` as Action),
+      ...Array.from(
+        { length: 9 },
+        (_, i) => `tab-${i + 1}` as KeybindingAction,
+      ),
     ],
   },
   {
@@ -45,19 +50,27 @@ const GROUPS: { title: string; actions: Action[] }[] = [
     actions: [
       "new-space",
       "close-space",
-      ...Array.from({ length: 9 }, (_, i) => `space-${i + 1}` as Action),
+      ...Array.from(
+        { length: 9 },
+        (_, i) => `space-${i + 1}` as KeybindingAction,
+      ),
     ],
   },
   {
     title: "Agents",
     actions: [
       "jump",
-      ...Array.from({ length: 9 }, (_, i) => `agent-${i + 1}` as Action),
+      ...Array.from(
+        { length: 9 },
+        (_, i) => `agent-${i + 1}` as KeybindingAction,
+      ),
     ],
   },
   { title: "App", actions: ["commands", "help", "literal"] },
 ];
-const LABELS = new Map<string, string>(actions.map((a) => [a.id, a.label]));
+const LABELS = new Map<string, string>(
+  KEYBINDING_ACTIONS.map((action) => [action.id, action.label]),
+);
 const SYMBOLS: Record<string, string> = {
   Cmd: "⌘",
   Ctrl: "⌃",
@@ -142,7 +155,10 @@ function Binding({
   );
 }
 
-type Recording = { target: Action | "prefix"; afterPrefix: boolean };
+type Recording = {
+  target: KeybindingAction | "prefix";
+  afterPrefix: boolean;
+};
 
 export function KeyboardSettings({ context }: { context: FieldContext }) {
   const prefixField = useField(context, "appearance.keyPrefix");
@@ -153,7 +169,7 @@ export function KeyboardSettings({ context }: { context: FieldContext }) {
   const bindings = {
     ...defaultKeybindings.bindings,
     ...(bindingsField.value as Record<string, string[]>),
-  } as Record<Action, string[]>;
+  } as Record<KeybindingAction, string[]>;
   const [recording, setRecording] = useState<Recording | null>(null);
   const [problem, setProblem] = useState<{
     target: string;
@@ -163,7 +179,7 @@ export function KeyboardSettings({ context }: { context: FieldContext }) {
 
   const apply = (
     target: string,
-    next: Record<Action, string[]>,
+    next: Record<KeybindingAction, string[]>,
     nextPrefix: string | null = prefix,
   ) => {
     const parsed = keybindingsConfig.safeParse({
@@ -185,8 +201,10 @@ export function KeyboardSettings({ context }: { context: FieldContext }) {
     bindingsField.save(next, extra);
   };
 
-  const add = (action: Action, binding: string) => {
-    const taken = (Object.entries(bindings) as [Action, string[]][]).find(
+  const add = (action: KeybindingAction, binding: string) => {
+    const taken = (
+      Object.entries(bindings) as [KeybindingAction, string[]][]
+    ).find(
       ([, list]) => list.some((item) => identity(item) === identity(binding)),
     );
     if (taken) {
@@ -250,7 +268,7 @@ export function KeyboardSettings({ context }: { context: FieldContext }) {
     };
   });
 
-  const recorder = (target: Action | "prefix", label: string) =>
+  const recorder = (target: KeybindingAction | "prefix", label: string) =>
     recording?.target === target ? (
       <span className="settings-recording" role="status">
         {recording.afterPrefix && prefix ? (

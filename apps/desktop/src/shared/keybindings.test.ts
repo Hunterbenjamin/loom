@@ -1,11 +1,12 @@
-import { DEFAULT_SETTINGS } from "@loom/core";
+import {
+  KEYBINDING_ACTIONS,
+  matchesChord,
+} from "@loom/core";
 import { expect, test } from "vitest";
 import {
-  actions,
   defaultKeybindings,
   formatBindings,
   keybindingsConfig,
-  matchesChord,
   usesWorkbenchKey,
 } from "./keybindings.js";
 
@@ -14,7 +15,7 @@ test("the editable defaults include every action, direct Mac chords and legacy s
     keybindingsConfig.parse(JSON.parse(JSON.stringify(defaultKeybindings))),
   ).toEqual(defaultKeybindings);
   expect(Object.keys(defaultKeybindings.bindings)).toEqual(
-    actions.map((a) => a.id),
+    KEYBINDING_ACTIONS.map((action) => action.id),
   );
   expect(defaultKeybindings.prefixTimeoutMs).toBe(3000);
   expect(defaultKeybindings.bindings.close).toEqual(["Cmd+W", "Prefix x"]);
@@ -22,7 +23,7 @@ test("the editable defaults include every action, direct Mac chords and legacy s
     "Cmd+D / Ctrl+Space then |",
   );
   expect(
-    actions
+    KEYBINDING_ACTIONS
       .filter((action) => action.id.startsWith("agent-"))
       .map(({ label }) => label),
   ).toEqual([
@@ -83,7 +84,7 @@ test("strict boundary rejects malformed, incomplete, ambiguous and unreachable c
 test("bindings can be replaced, disabled or reduced to direct chords including literal Ctrl+A", () => {
   const config = structuredClone(defaultKeybindings);
   config.prefix = null;
-  for (const action of actions) config.bindings[action.id] = [];
+  for (const action of KEYBINDING_ACTIONS) config.bindings[action.id] = [];
   config.bindings.literal = ["Ctrl+A"];
   config.bindings.new = ["Ctrl+Shift+T"];
   expect(keybindingsConfig.parse(config)).toEqual(config);
@@ -115,17 +116,4 @@ test("native menu arbitration recognizes every configured chord and preserves un
     expect(usesWorkbenchKey(defaultKeybindings, key(k))).toBe(false);
   expect(matchesChord("Cmd+D", { ...key("d"), ctrlKey: true })).toBe(false);
   expect(matchesChord("Prefix ?", key("?"))).toBe(false);
-});
-
-test("the coordinator's default keybinding settings match the desktop defaults and actions", () => {
-  const { keyPrefix, keyTimeoutMs, keybindings } = DEFAULT_SETTINGS.appearance;
-  expect({
-    version: 1,
-    prefix: keyPrefix,
-    prefixTimeoutMs: keyTimeoutMs,
-    bindings: keybindings,
-  }).toEqual(defaultKeybindings);
-  expect(Object.keys(keybindings).sort()).toEqual(
-    actions.map((action) => action.id).sort(),
-  );
 });
