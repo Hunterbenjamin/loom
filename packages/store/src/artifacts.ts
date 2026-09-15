@@ -20,7 +20,7 @@ import { assertSame } from "./records.js";
 import { decode, encode, text } from "./schema-helpers.js";
 
 const rowSchema = z.object({ data: text, content: text });
-interface StoredArtifact {
+export interface StoredArtifact {
   artifact: Artifact;
   content: unknown;
 }
