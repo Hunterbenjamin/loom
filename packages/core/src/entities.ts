@@ -24,8 +24,10 @@ import type {
 
 import type { SubmitReviewInput } from "./mcp.js";
 
-export type Provider = "codex" | "claude";
-export type Role = "planner" | "implementer" | "reviewer";
+export const PROVIDER_VALUES = ["codex", "claude"] as const;
+export type Provider = (typeof PROVIDER_VALUES)[number];
+export const ROLE_VALUES = ["planner", "implementer", "reviewer"] as const;
+export type Role = (typeof ROLE_VALUES)[number];
 
 // ---------------------------------------------------------------- Repo
 
@@ -39,18 +41,20 @@ export interface Repo {
 
 // ---------------------------------------------------------------- Task
 
-export type Stage =
-  | "backlog"
-  | "todo"
-  | "planning"
-  | "plan_approval"
-  | "in_progress"
-  | "ci"
-  | "in_review"
-  | "awaiting_approval"
-  | "merging"
-  | "done"
-  | "canceled";
+export const STAGE_VALUES = [
+  "backlog",
+  "todo",
+  "planning",
+  "plan_approval",
+  "in_progress",
+  "ci",
+  "in_review",
+  "awaiting_approval",
+  "merging",
+  "done",
+  "canceled",
+] as const;
+export type Stage = (typeof STAGE_VALUES)[number];
 
 export type BlockedReason =
   /** A `blockedBy` task isn't merged yet. */
@@ -75,13 +79,15 @@ export interface BlockedFlag {
   questionId: QuestionId | null;
 }
 
-export type FailedReason =
+export const FAILED_REASON_VALUES = [
   /** A run failed `maxAttempts` times. */
-  | "retries_exhausted"
+  "retries_exhausted",
   /** The provider reported an error that retrying won't fix (for example, unsupported model). */
-  | "non_retryable_error"
+  "non_retryable_error",
   /** An action (push, open PR, merge, create worktree) failed with a non-retryable error. */
-  | "action_failed";
+  "action_failed",
+] as const;
+export type FailedReason = (typeof FAILED_REASON_VALUES)[number];
 
 export interface FailedFlag {
   reason: FailedReason;
@@ -202,7 +208,8 @@ export interface Worktree {
 
 // ---------------------------------------------------------------- Run
 
-export type RunMode = "headless" | "interactive";
+export const RUN_MODE_VALUES = ["headless", "interactive"] as const;
+export type RunMode = (typeof RUN_MODE_VALUES)[number];
 
 export type RunStatus =
   /** Launch requested; no provider observation yet. */
@@ -217,26 +224,40 @@ export type RunStatus =
   /** No authoritative live channel right now. Never read as idle or failed. */
   | "unknown";
 
-export type RunBlockedOn = "permission" | "input" | "rate_limit";
+export const RUN_BLOCKED_ON_VALUES = [
+  "permission",
+  "input",
+  "rate_limit",
+] as const;
+export type RunBlockedOn = (typeof RUN_BLOCKED_ON_VALUES)[number];
 
-export type TurnOutcome = "completed" | "interrupted" | "failed";
+export const TURN_OUTCOME_VALUES = [
+  "completed",
+  "interrupted",
+  "failed",
+] as const;
+export type TurnOutcome = (typeof TURN_OUTCOME_VALUES)[number];
 
-export type RunEndReason =
-  | "submitted"
-  | "superseded"
-  | "canceled"
+export const RUN_END_REASON_VALUES = [
+  "submitted",
+  "superseded",
+  "canceled",
   /** A headless run's process died. Retried automatically. */
-  | "crashed"
+  "crashed",
   /** An interactive run's session disappeared: a crash and a human closing the pane look the same. */
-  | "vanished"
-  | "failed"
-  | "task_done";
+  "vanished",
+  "failed",
+  "task_done",
+] as const;
+export type RunEndReason = (typeof RUN_END_REASON_VALUES)[number];
 
-export type ProviderRequestKind =
-  | "command_approval"
-  | "file_approval"
-  | "permission"
-  | "question";
+export const PROVIDER_REQUEST_KIND_VALUES = [
+  "command_approval",
+  "file_approval",
+  "permission",
+  "question",
+] as const;
+export type ProviderRequestKind = (typeof PROVIDER_REQUEST_KIND_VALUES)[number];
 
 /** A request the provider is waiting on. Cleared when the provider says it's resolved. */
 export interface ProviderRequest {
@@ -380,13 +401,15 @@ export function sumTokenUsage(
 
 // ---------------------------------------------------------------- Messages and questions
 
-export type MessagePurpose =
-  | "initial"
-  | "fix_round"
-  | "answer"
-  | "plan_feedback"
-  | "restart_continuation"
-  | "human";
+export const MESSAGE_PURPOSE_VALUES = [
+  "initial",
+  "fix_round",
+  "answer",
+  "plan_feedback",
+  "restart_continuation",
+  "human",
+] as const;
+export type MessagePurpose = (typeof MESSAGE_PURPOSE_VALUES)[number];
 
 export type MessageStatus =
   /** Recorded; no send action has succeeded yet. */
@@ -455,14 +478,16 @@ export interface Question {
 
 // ---------------------------------------------------------------- Artifacts
 
-export type ArtifactKind =
-  | "brief"
-  | "plan"
-  | "decisions"
-  | "findings"
-  | "test_results"
-  | "handoff"
-  | "implementation";
+export const ARTIFACT_KIND_VALUES = [
+  "brief",
+  "plan",
+  "decisions",
+  "findings",
+  "test_results",
+  "handoff",
+  "implementation",
+] as const;
+export type ArtifactKind = (typeof ARTIFACT_KIND_VALUES)[number];
 
 /** Metadata. The content is a file in the coordinator's data directory, mirrored to `.task/`. */
 export interface Artifact {
@@ -496,7 +521,13 @@ export interface Plan {
   suggestedImplementer: Provider | null;
 }
 
-export type TestOutcome = "passed" | "failed" | "skipped" | "errored";
+export const TEST_OUTCOME_VALUES = [
+  "passed",
+  "failed",
+  "skipped",
+  "errored",
+] as const;
+export type TestOutcome = (typeof TEST_OUTCOME_VALUES)[number];
 
 export interface TestResult {
   command: string;
@@ -522,8 +553,16 @@ export interface Handoff {
 
 // ---------------------------------------------------------------- Findings
 
-export type FindingSource = "reviewer" | "human" | "github" | "ci" | "system";
-export type Severity = "blocker" | "major" | "minor" | "nit";
+export const FINDING_SOURCE_VALUES = [
+  "reviewer",
+  "human",
+  "github",
+  "ci",
+  "system",
+] as const;
+export type FindingSource = (typeof FINDING_SOURCE_VALUES)[number];
+export const SEVERITY_VALUES = ["blocker", "major", "minor", "nit"] as const;
+export type Severity = (typeof SEVERITY_VALUES)[number];
 /** Agent- and human-facing state. Kept apart from `MappingStatus`. */
 export type FindingStatus =
   | "open"
@@ -539,8 +578,15 @@ export type FindingStatus =
   /** A human accepted it as is. */
   | "waived";
 /** Where the anchor points on the current head. `outdated` never resolves a finding. */
-export type MappingStatus = "exact" | "moved" | "ambiguous" | "outdated";
-export type Side = "old" | "new";
+export const MAPPING_STATUS_VALUES = [
+  "exact",
+  "moved",
+  "ambiguous",
+  "outdated",
+] as const;
+export type MappingStatus = (typeof MAPPING_STATUS_VALUES)[number];
+export const SIDE_VALUES = ["old", "new"] as const;
+export type Side = (typeof SIDE_VALUES)[number];
 
 /** Immutable once written (spike 04). Coordinates are in the exact blob, not a patch row. */
 export interface FindingAnchor {
@@ -615,7 +661,13 @@ export interface FindingsSnapshot {
   openBlocking: number;
 }
 
-export type CiConclusion = "success" | "pending" | "failure" | "none";
+export const CI_CONCLUSION_VALUES = [
+  "success",
+  "pending",
+  "failure",
+  "none",
+] as const;
+export type CiConclusion = (typeof CI_CONCLUSION_VALUES)[number];
 
 export interface CiCheck {
   name: string;
@@ -634,12 +686,14 @@ export interface CiState {
   observedAt: IsoTime;
 }
 
-export type ApprovalVoidReason =
-  | "new_commit"
-  | "ci_failed"
-  | "findings_changed"
-  | "plan_changed"
-  | "stage_left";
+export const APPROVAL_VOID_REASON_VALUES = [
+  "new_commit",
+  "ci_failed",
+  "findings_changed",
+  "plan_changed",
+  "stage_left",
+] as const;
+export type ApprovalVoidReason = (typeof APPROVAL_VOID_REASON_VALUES)[number];
 
 export type Approval =
   | {
