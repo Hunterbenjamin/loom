@@ -125,36 +125,21 @@ test.each([false, true])(
         const git = await h.adapters.git.readWorktree(worktree.path, "main", [
           base,
         ]);
-        expect(git.reachableCommits, h.logs.join("\n")).toContain(base);
-        expect(git.remoteHeadSha).toBe(git.headSha);
-        expect(
-          after.runs.filter((r) => r.role === "implementer").map((r) => r.id),
-        ).toEqual(
-          before.runs.filter((r) => r.role === "implementer").map((r) => r.id),
-        );
-        expect(["ci", "in_review"]).toContain(after.task.stage);
-        const merges = h.store.outbox
-          .list(task.id)
-          .filter((r) => r.kind === "merge_base");
-        expect(merges).toHaveLength(1);
-        expect(merges[0]?.status).toBe("succeeded");
-        expect(
-          h.store.outbox
-            .list(task.id)
-            .find(
-              (row) =>
-                row.action?.kind === "push_branch" &&
-                row.action.expectedHeadSha === git.headSha,
-            )?.action,
-        ).toMatchObject({ nonForce: true });
-        h = await h.restart();
-        await h.coordinator.settle();
+        expect(git.reachableCommits, h.logs.join("\n")).not.toContain(base);
+        expect(git.headSha).toBe(before.review?.lastReviewedHead);
+        expect(after.task.stage).toBe("awaiting_approval");
+        expect(after.task.reviewRound).toBe(before.task.reviewRound);
+        expect(after.review).toEqual(before.review);
+        expect(after.runs.map((r) => r.id)).toEqual(before.runs.map((r) => r.id));
         expect(
           h.store.outbox.list(task.id).filter((r) => r.kind === "merge_base"),
-        ).toHaveLength(1);
-        expect(h.store.loadTaskState(task.id).review?.baseSyncRounds).toBe(
-          after.review?.baseSyncRounds,
-        );
+        ).toHaveLength(0);
+        h = await h.restart();
+        await h.coordinator.settle();
+        const restarted = h.store.loadTaskState(task.id);
+        expect(restarted.task.stage).toBe("awaiting_approval");
+        expect(restarted.task.reviewRound).toBe(before.task.reviewRound);
+        expect(restarted.review).toEqual(before.review);
       }
     } finally {
       await h.close();

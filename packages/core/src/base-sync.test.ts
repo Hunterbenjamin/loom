@@ -59,18 +59,17 @@ test("PR-only conflicts route before CI launches a reviewer, while old PR heads 
   expect(fixed(f.state, f.observations).next.task.stage).toBe("in_review");
 });
 
-test("unknown mergeability waits without an agent when local evidence is unavailable", () => {
+test("unknown mergeability does not freeze green CI when local evidence is unavailable", () => {
   const f = setup("ci");
   f.pr.mergeable = "unknown";
   f.git.conflictsWithBase = null;
   const r = fixed(f.state, f.observations);
-  expect(r.next.task.stage).toBe("ci");
-  expect(r.next.task.reviewRound).toBe(f.state.task.reviewRound);
-  expect(r.actions.some((a) => a.kind === "start_run")).toBe(false);
+  expect(r.next.task.stage).toBe("in_review");
+  expect(r.next.task.reviewRound).toBe(f.state.task.reviewRound + 1);
 });
 
-test("a clean base merge waits for retirement, pushes without force, and gates the new head on CI", () => {
-  const f = setup("in_review");
+test("a clean base merge before review pushes without force and gates the new head on CI", () => {
+  const f = setup("ci");
   f.git.currentBaseSha = base;
   f.git.behindBase = 1;
   // GitHub can still describe the previous mergeability while local git proves a clean merge.
@@ -99,6 +98,16 @@ test("a clean base merge waits for retirement, pushes without force, and gates t
     nonForce: true,
   });
   expect(merged.actions.some((a) => a.kind === "start_run")).toBe(false);
+
+  f.pr.headSha = newHead;
+  f.pr.ci.headSha = newHead;
+  f.git.remoteHeadSha = newHead;
+  f.observations.inputs = [];
+  const green = fixed(merged.next, f.observations);
+  expect(green.next.task.stage).toBe("in_review");
+  expect(green.next.task.reviewRound).toBe(f.state.task.reviewRound + 1);
+  expect(green.next.review?.headSha).toBe(newHead);
+  expect(green.next.review?.baseSyncRounds).toBe(0);
 });
 
 test("base movement does not consume the review cap, but a subsequent substantive round does", () => {
@@ -127,19 +136,21 @@ test("base movement does not consume the review cap, but a subsequent substantiv
   ).toBe(3);
 });
 
-test("approval is refused while a clean base merge is pending", () => {
+test("clean base movement preserves the reviewed head and permits approval", () => {
   const f = setup("awaiting_approval");
   f.git.currentBaseSha = base;
   f.git.behindBase = 1;
   f.observations.inputs = [command({ type: "approve", headSha: head })];
   const r = fixed(f.state, f.observations);
-  expect(r.next.task.stage).toBe("ci");
-  expect(r.inputs[0]?.accepted).toBe(false);
-  expect(r.actions.some((a) => a.kind === "merge_pr")).toBe(false);
+  expect(r.next.task.stage).toBe("merging");
+  expect(r.inputs[0]?.accepted).toBe(true);
+  expect(r.next.review?.lastReviewedHead).toBe(head);
+  expect(r.next.task.reviewRound).toBe(f.state.task.reviewRound);
+  expect(r.actions.some((a) => a.kind === "merge_base")).toBe(false);
 });
 
 test("a conflict found by the merge executor starts a fix run without changing the cap", () => {
-  const f = setup("in_review");
+  const f = setup("ci");
   f.git.currentBaseSha = base;
   f.git.behindBase = 1;
   const r = fixed(f.state, f.observations);
@@ -164,4 +175,69 @@ test("a checkout on another branch cannot schedule a base merge or retire its ru
     r.actions.some((a) => a.kind === "merge_base" || a.kind === "stop_run"),
   ).toBe(false);
   expect(r.next.task.stage).toBe("in_review");
+});
+
+test.each(["in_review", "awaiting_approval"] as const)(
+  "clean base movement preserves %s without restarting review",
+  (stage) => {
+    const f = setup(stage);
+    f.git.currentBaseSha = base;
+    f.git.behindBase = 1;
+    const r = fixed(f.state, f.observations);
+    expect(r.next.task.stage).toBe(stage);
+    expect(r.next.review).toEqual(f.state.review);
+    expect(r.next.task.reviewRound).toBe(f.state.task.reviewRound);
+    expect(
+      r.next.runs.find((run) => run.role === "reviewer")?.endedAt,
+    ).toBeNull();
+    expect(
+      r.actions.some((a) => a.kind === "merge_base" || a.kind === "stop_run"),
+    ).toBe(false);
+  },
+);
+
+test.each(["external", "missing", "different_branch", "dirty_behind", "unknown"])(
+  "%s does not suppress head-change or CI reconciliation",
+  (condition) => {
+    for (const stage of ["ci", "awaiting_approval"] as const) {
+      const f = setup(stage);
+      if (condition === "external") f.state.runs[0]!.origin = "external";
+      if (condition === "missing") f.git.exists = false;
+      if (condition === "different_branch") f.git.branch = "main";
+      if (condition === "dirty_behind") {
+        f.git.dirty = true;
+        f.git.dirtyPaths = ["edited.txt"];
+        f.git.currentBaseSha = base;
+        f.git.behindBase = 1;
+      }
+      if (condition === "unknown") {
+        f.pr.mergeable = "unknown";
+        f.git.conflictsWithBase = null;
+      }
+      if (stage === "awaiting_approval") f.pr.headSha = base;
+      const r = fixed(f.state, f.observations);
+      expect(r.next.task.stage).toBe("in_review");
+      expect(r.next.task.reviewRound).toBe(f.state.task.reviewRound + 1);
+      expect(r.actions.some((a) => a.kind === "merge_base")).toBe(false);
+    }
+  },
+);
+
+test("an external session does not suppress publication or reviewed-head CI failure", () => {
+  const publishing = setup("in_review");
+  publishing.state.runs[0]!.origin = "external";
+  publishing.state.review!.publicationPending = true;
+  publishing.git.currentBaseSha = base;
+  publishing.git.behindBase = 1;
+  const published = fixed(publishing.state, publishing.observations);
+  expect(published.next.task.stage).toBe("awaiting_approval");
+  expect(published.next.review?.publicationPending).toBe(false);
+  expect(published.next.task.reviewRound).toBe(publishing.state.task.reviewRound);
+
+  const failing = setup("awaiting_approval");
+  failing.state.runs[0]!.origin = "external";
+  failing.pr.ci.conclusion = "failure";
+  const failed = fixed(failing.state, failing.observations);
+  expect(failed.next.task.stage).toBe("in_progress");
+  expect(failed.next.findings.some((f) => f.source === "ci")).toBe(true);
 });

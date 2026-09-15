@@ -8,7 +8,7 @@ export function baseSyncPending(c: Context): boolean {
   );
 }
 
-/** One owner for base movement, before review launch, publication, or approval. */
+/** Resolve conflicts in every review stage; merge clean base movement only before review. */
 export function reconcileBaseSync(c: Context): boolean {
   const { state, task, git, pr } = c;
   if (!["ci", "in_review", "awaiting_approval", "merging"].includes(task.stage))
@@ -26,7 +26,7 @@ export function reconcileBaseSync(c: Context): boolean {
         git.branch !== task.branch)) ||
     state.runs.some((run) => run.origin === "external" && !run.endedAt)
   )
-    return true;
+    return false;
   // A fetched local merge-tree result is newer than GitHub's asynchronously recomputed
   // mergeability after a push. Use GitHub only when that local proof is unavailable.
   const conflict =
@@ -35,16 +35,12 @@ export function reconcileBaseSync(c: Context): boolean {
       pr.headSha === head &&
       pr.mergeable === "conflicting" &&
       (!git?.currentBaseSha || git.conflictsWithBase == null));
-  const behind = !!git?.currentBaseSha && git.behindBase > 0;
-  if (!conflict && !behind) {
-    // Unknown mergeability is uncertainty, never a reason to spend an implementer turn.
-    return (
-      pr?.headSha === head &&
-      pr.mergeable === "unknown" &&
-      git?.conflictsWithBase == null
-    );
-  }
-  if (!conflict && (git?.dirty || git?.dirtyPaths.length)) return true;
+  // A clean base update must not retire an active reviewer or invalidate a passed
+  // review. Synchronize at the CI gate, where a review is already due to start.
+  const mergeBeforeReview =
+    task.stage === "ci" && !!git?.currentBaseSha && git.behindBase > 0;
+  if (!conflict && !mergeBeforeReview) return false;
+  if (!conflict && (git?.dirty || git?.dirtyPaths.length)) return false;
   c.voidApprovals("stage_left");
   if (state.review) {
     if (task.stage !== "ci") {

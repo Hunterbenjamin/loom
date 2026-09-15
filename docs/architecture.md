@@ -410,12 +410,16 @@ tmux owns terminal processes, on a private server `-L loom-<instance>`, chosen i
     that fetched SHA, using the local base only for repositories without a remote tracking ref.
     `git merge-tree --write-tree` owns textual conflict detection; a matching GitHub conflict is
     used when local evidence is unavailable. Unknown mergeability alone never starts a fix run.
-  - Base movement retires the active reviewer before further work. Real conflicts start a fresh
-    implementer session to merge base, resolve conflicts and run affected tests. Clean merges use
-    an owner-checked `merge_base` executor action keyed by task/head/base, without an agent turn.
-    It constructs a two-parent commit and updates only a clean task checkout; replay adopts only
-    that exact parent pair. Automatic publication pushes without force and gates the resulting SHA
-    on fresh CI before review. Approvals are voided and review publication waits during this work.
+  - Actual conflicts retire the active reviewer and start a fresh implementer session to merge
+    base, resolve conflicts and run affected tests. Clean base movement is merged only at the CI
+    gate before the planned review starts, using an owner-checked `merge_base` executor action
+    keyed by task/head/base, without an agent turn. It constructs a two-parent commit and updates
+    only a clean task checkout; replay adopts only that exact parent pair. Automatic publication
+    pushes without force and gates the resulting SHA on fresh CI before that review.
+    Clean base movement during or after review leaves the reviewed head, publication and approvals
+    intact; it never creates a replacement review. Busy or unavailable checkouts suppress automatic
+    merging, not unrelated head-change, CI-failure, publication or approval reconciliation.
+    Unknown mergeability alone neither starts a fix run nor stops stage reconciliation.
   - Review run numbers remain monotonic for unique session IDs. Durable `baseSyncRounds` credits
     exclude replacement reviews caused by base movement from the cap; interrupted convergence
     comparisons are cleared. Ordinary review fix rounds still consume the cap.
