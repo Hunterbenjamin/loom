@@ -45,10 +45,14 @@ test("submission keeps request intact and replaces implementation independently 
   const first = latestImplementation(c.state);
   if (!first) throw new Error("Missing implementation");
   expect(first.summary).toBe(call.input.summary);
-  expect(implementationBody(c.task, first)).toContain(whatChanged(first));
-  expect(implementationBody(c.task, first)).toContain("3 passed");
-  expect(implementationBody(c.task, first)).toContain(
-    `loom://issue/${c.task.id}`,
+  expect(implementationBody(c.task, first, c.state.issueKey)).toContain(
+    whatChanged(first),
+  );
+  expect(implementationBody(c.task, first, c.state.issueKey)).toContain(
+    "3 passed",
+  );
+  expect(implementationBody(c.task, first, c.state.issueKey)).toContain(
+    "Issue: LOOM-1",
   );
   c.artifact("handoff", { from: "reviewer", summary: "Checked round one" });
   expect(latestImplementation(c.state)).toEqual(first);
@@ -59,7 +63,11 @@ test("submission keeps request intact and replaces implementation independently 
   expect(c.task.description).toBe(request);
   expect(latestImplementation(c.state)?.summary).toBe(call.input.summary);
   expect(
-    implementationBody(c.task, latestImplementation(c.state)),
+    implementationBody(
+      c.task,
+      latestImplementation(c.state),
+      c.state.issueKey,
+    ),
   ).not.toContain("3 passed");
   expect(
     c.state.artifacts.find((a) => a.kind === "implementation")?.version,
@@ -78,7 +86,11 @@ test("first PR body uses implementation content even after reviewer replaces the
   const result = fixed(f.state, f.observations);
   const action = result.actions.find((a) => a.kind === "open_pr");
   expect(action).toMatchObject({
-    body: implementationBody(f.state.task, latestImplementation(c.state)),
+    body: implementationBody(
+      f.state.task,
+      latestImplementation(c.state),
+      f.state.issueKey,
+    ),
   });
   expect(result.next.artifactContents.handoff).toMatchObject({
     from: "reviewer",

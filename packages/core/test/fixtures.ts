@@ -99,6 +99,7 @@ export function fixture(stage: Stage = "in_progress"): {
   observations: Observations;
 } {
   const state: TaskState = {
+    issueKey: "LOOM-1",
     task: {
       id: taskId,
       repoId: "repo" as RepoId,

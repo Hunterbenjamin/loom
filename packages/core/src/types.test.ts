@@ -89,6 +89,7 @@ const run: Run = {
 };
 
 const state: TaskState = {
+  issueKey: "LOOM-1",
   task,
   worktree: null,
   runs: [run],

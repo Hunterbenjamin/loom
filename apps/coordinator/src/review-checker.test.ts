@@ -62,7 +62,7 @@ test.each(["reviewer-checker", "reviewer-inline", "reviewer-dirty"])(
         state.task.prNumber,
       );
       expect(published.body).toBe(
-        implementationBody(state.task, implementation),
+        implementationBody(state.task, implementation, state.issueKey),
       );
       const client = await LoomClient.connect({
         url: h.coordinator.protocol.url as string,

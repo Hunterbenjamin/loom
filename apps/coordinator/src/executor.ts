@@ -641,8 +641,11 @@ export class Executor {
           state.task.branch !== action.branch ||
           state.task.prNumber !== action.prNumber ||
           ["done", "canceled"].includes(state.task.stage) ||
-          implementationBody(state.task, latestImplementation(state)) !==
-            action.body ||
+          implementationBody(
+            state.task,
+            latestImplementation(state),
+            state.issueKey,
+          ) !== action.body ||
           state.artifacts.find((artifact) => artifact.kind === "implementation")
             ?.version !== action.implementationVersion
         )

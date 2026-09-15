@@ -34,6 +34,7 @@ export function whatChanged(implementation: Implementation): string {
 export function implementationBody(
   task: Task,
   implementation: Implementation | null,
+  issueKey: string,
 ): string {
   return [
     "## Description",
@@ -42,7 +43,7 @@ export function implementationBody(
     implementation
       ? whatChanged(implementation)
       : "No implementation submission recorded.",
-    `Issue: [${task.id}](loom://issue/${encodeURIComponent(task.id)})`,
+    `Issue: ${issueKey}`,
     "## Tests",
     implementation?.testResults.length
       ? implementation.testResults
@@ -67,7 +68,7 @@ export function publishImplementation(c: Context): void {
     ["done", "canceled"].includes(c.task.stage)
   )
     return;
-  const body = implementationBody(c.task, implementation);
+  const body = implementationBody(c.task, implementation, c.state.issueKey);
   c.emit(
     `update_pr_body:${c.task.id}:${c.pr.number}:${version}:${c.state.config.sha256(body)}`,
     {

@@ -15,6 +15,7 @@ import type {
   TaskState,
   Transition,
 } from "@loom/core";
+import { issueKey } from "@loom/core";
 import { pullRequestReviewChange, viewedFile } from "@loom/protocol";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -382,6 +383,8 @@ export class Store {
   loadTaskState(taskId: TaskId): TaskState {
     return this.db.transaction(() => {
       const task = this.readTask(taskId);
+      const repo = this.repos().find((repo) => repo.id === task.repoId);
+      if (!repo) throw new Error("Unknown registered repository");
       const contextRow = dataRow
         .extend({ artifact_versions: text })
         .parse(
@@ -466,6 +469,7 @@ export class Store {
       );
       return {
         task,
+        issueKey: issueKey(repo, task),
         worktree,
         runs,
         messages: readEntities(

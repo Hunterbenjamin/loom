@@ -722,15 +722,14 @@ its submitted test results at one head SHA. Every submission replaces it, includ
 reviewer handoffs do not touch it. The issue Overview projects this artifact as “What changed” below
 the request and omits the duplicate GitHub body. PR-only Overview continues to render GitHub's body.
 
-Core builds the PR body from that same request and implementation content, the issue link and the
-submission's tests. Initial publication still waits for successful review. Each subsequent submission
+Core builds the PR body from that same request and implementation content, the human-readable issue
+reference and the submission's tests. Initial publication still waits for successful review. Each subsequent submission
 reconciles an `update_pr_body` outbox action once GitHub reports its head. The action is keyed by PR,
 artifact version and body hash. The executor checks current issue ownership and submission version;
 the GitHub adapter checks the open PR branch and head, skips an identical body, and writes literal
 JSON through stdin. Restart requeues uncertain updates through that same idempotent owner check.
 
-Issue links use `loom://issue/<task-id>` and open a Tracker window on macOS. The desktop registers
-the scheme; the development Electron bundle declares it during installation. The renderer waits
-for the coordinator snapshot before selecting the issue. This is navigation only, with no mutation
-or durable renderer state. These local app links require Loom to be installed; GitHub clients that
-filter custom URL schemes may require copying the link into the operating system's Open URL action.
+PR bodies identify local issues by the same repository key and issue number used in the UI
+(for example `Issue: LOOM-216`). The store derives this key from the registered repository when
+loading task state. Local issues have no GitHub-accessible URL, so the reference is plain text;
+Loom does not register an operating-system URL protocol for this feature.

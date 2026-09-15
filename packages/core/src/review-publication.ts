@@ -41,7 +41,11 @@ export function publishReview(c: Context): void {
       branch: task.branch,
       baseBranch: state.worktree.baseBranch,
       title: task.title,
-      body: implementationBody(task, latestImplementation(state)),
+      body: implementationBody(
+        task,
+        latestImplementation(state),
+        state.issueKey,
+      ),
     });
     const row = state.outbox.find((r) => r.key === openKey);
     if (row) {

@@ -20,7 +20,6 @@ import {
   type WindowMode,
   windowMode,
 } from "../shared/ipc.js";
-import { issueFromLink } from "../shared/issue-link.js";
 import { usesWorkbenchKey } from "../shared/keybindings.js";
 import { resolveAttach } from "./attach.js";
 import { devControls, syncSummary } from "./dev-control.js";
@@ -401,10 +400,7 @@ function wire(): void {
   );
 }
 
-async function createWindow(
-  mode: WindowMode,
-  issue?: string,
-): Promise<BrowserWindow> {
+async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
   const window = new BrowserWindow({
     show: true,
     width: Number(process.env.LOOM_WIDTH ?? 1440),
@@ -469,10 +465,9 @@ async function createWindow(
   });
 
   // The performance harness asks for a longer list; nothing else sets this.
-  const query = new URLSearchParams();
-  if (process.env.LOOM_TASKS) query.set("tasks", process.env.LOOM_TASKS);
-  if (issue) query.set("issue", issue);
-  const search = query.toString();
+  const search = process.env.LOOM_TASKS
+    ? `tasks=${process.env.LOOM_TASKS}`
+    : "";
   const devServer = process.env.ELECTRON_RENDERER_URL;
   if (devServer)
     await window.loadURL(search ? `${devServer}?${search}` : devServer);
@@ -485,17 +480,7 @@ async function createWindow(
 
 app.setAboutPanelOptions({ applicationName: "Loom" });
 
-let pendingIssue: string | undefined;
-app.on("open-url", (event, url) => {
-  const issue = issueFromLink(url);
-  if (!issue) return;
-  event.preventDefault();
-  if (app.isReady()) void createWindow("tracker", issue);
-  else pendingIssue = issue;
-});
-
 app.whenReady().then(async () => {
-  app.setAsDefaultProtocolClient("loom");
   // Electron's default File menu binds Cmd+W to Close Window, which quits a one-window app and
   // steals the Workbench's own Cmd+W. Close Window stays in the menu, without an accelerator.
   Menu.setApplicationMenu(
@@ -559,12 +544,9 @@ app.whenReady().then(async () => {
   );
   wire();
   await createWindow(
-    pendingIssue
-      ? "tracker"
-      : process.env.LOOM_WINDOW_MODE === "workbench"
-        ? "workbench"
-        : (startupSettings?.windowMode ?? "tracker"),
-    pendingIssue,
+    process.env.LOOM_WINDOW_MODE === "workbench"
+      ? "workbench"
+      : (startupSettings?.windowMode ?? "tracker"),
   );
 });
 
