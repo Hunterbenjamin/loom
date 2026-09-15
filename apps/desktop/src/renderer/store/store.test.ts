@@ -39,16 +39,17 @@ describe("views", () => {
 });
 
 describe("the list", () => {
-  it("sorts by age and reverses", () => {
+  it("sorts by work time either way, keeping issues without one at the bottom", () => {
     const rows = rowsFor(buildSnapshot(), "all", "repo-loom");
-    const oldest = sortRows(rows, "age", false);
-    const newest = sortRows(rows, "age", true);
-    expect(must(oldest[0]).ageMinutes).toBeGreaterThanOrEqual(
-      must(oldest.at(-1)).ageMinutes,
-    );
-    expect(must(newest[0]).ageMinutes).toBeLessThanOrEqual(
-      must(newest.at(-1)).ageMinutes,
-    );
+    for (const descending of [false, true]) {
+      const sorted = sortRows(rows, "time", descending);
+      const timed = sorted.filter((row) => row.workMinutes !== null);
+      expect(timed.length).toBeGreaterThan(1);
+      expect(sorted.slice(0, timed.length)).toEqual(timed);
+      const minutes = timed.map((row) => row.workMinutes as number);
+      const ordered = [...minutes].sort((a, b) => (descending ? b - a : a - b));
+      expect(minutes).toEqual(ordered);
+    }
   });
 
   it("groups by stage without losing or duplicating a row", () => {

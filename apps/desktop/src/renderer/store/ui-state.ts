@@ -23,7 +23,7 @@ export type SortKey =
   | "attention"
   | "provider"
   | "round"
-  | "age";
+  | "time";
 export type Theme = "dark" | "light";
 
 /** Initial limit and each subsequent page for terminal list sections. */

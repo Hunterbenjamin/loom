@@ -61,6 +61,7 @@ function setup(reason: AttentionReason, mode: Run["mode"] = "interactive") {
       taskId: task.id,
       reasonRuns: { [reason]: [run] },
       planVersion: 7,
+      workTime: { startedAt: null, readyAt: null },
       reviewedHead: "a".repeat(40) as never,
     },
   ];

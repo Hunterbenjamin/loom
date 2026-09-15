@@ -136,6 +136,7 @@ describe("validation at the boundary", () => {
         reasonRuns: {},
         reviewedHead: null,
         planVersion: 1,
+        workTime: { startedAt: null, readyAt: null },
         ci: {
           headSha: "a".repeat(40),
           since: "2026-09-12T06:00:00.000Z",

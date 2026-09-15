@@ -1033,6 +1033,7 @@ test("issue detail opens durable explicit PR links without a PR list cache and d
             reasonRuns: {},
             reviewedHead: null,
             planVersion: null,
+            workTime: { startedAt: null, readyAt: null },
             linkedPrNumbers: [42, 43],
           },
         ],

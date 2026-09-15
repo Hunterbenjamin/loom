@@ -340,7 +340,7 @@ describe("list section paging", () => {
       const sections = store.getState().ui.listSections;
       const rows = rowsFor(store.getState().snapshot, "all", "repo-loom");
       const before = [...rows];
-      for (const sort of ["title", "age", "stage"] as const) {
+      for (const sort of ["title", "time", "stage"] as const) {
         for (const descending of [false, true]) {
           const items = groupRows(sortRows(rows, sort, descending), sections);
           expect(items[0]).toEqual({

@@ -323,6 +323,21 @@ export function buildSnapshot(taskCount = SEEDS.length): Snapshot {
       reasonRuns: {},
       reviewedHead: null,
       planVersion: stage === "backlog" || stage === "todo" ? null : 1,
+      workTime: [
+        "in_progress",
+        "ci",
+        "in_review",
+        "awaiting_approval",
+        "merging",
+        "done",
+      ].includes(stage)
+        ? {
+            startedAt: minutesBefore(ageMinutes - 10),
+            readyAt: ["awaiting_approval", "merging", "done"].includes(stage)
+              ? minutesBefore(stageMinutes + 5)
+              : null,
+          }
+        : { startedAt: null, readyAt: null },
       ci:
         stage === "ci"
           ? {

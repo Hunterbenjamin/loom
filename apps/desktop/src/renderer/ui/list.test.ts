@@ -89,6 +89,7 @@ function setup() {
       reasonRuns: {},
       reviewedHead: null,
       planVersion: 1,
+      workTime: { startedAt: null, readyAt: null },
       ci: {
         headSha: "a".repeat(40) as never,
         since: minutesBefore(8),
@@ -290,7 +291,7 @@ test("uses shared list primitives with sortable column headings and an inline is
   ];
   expect(
     headings.map((button) => button.textContent?.replace(/ [↑↓]$/, "")),
-  ).toEqual(["Issue", "Stage", "Attention", "Agent", "Round", "Age"]);
+  ).toEqual(["Issue", "Stage", "Attention", "Agent", "Round", "Time"]);
   act(() => headings[0]?.click());
   expect(h.store.getState().ui.sort).toBe("title");
   // Each row has one cell per heading after the issue, so values line up under them.
@@ -301,4 +302,35 @@ test("uses shared list primitives with sortable column headings and an inline is
   const line = row?.querySelector(".issue-line");
   expect(line?.firstElementChild?.classList.contains("id")).toBe(true);
   expect(line?.children[1]?.classList.contains("task-copy")).toBe(true);
+});
+
+test("the Time column shows work from In progress to ready to merge, still counting while in progress", () => {
+  const h = setup();
+  const noWork = { reasonRuns: {}, reviewedHead: null, planVersion: 1 };
+  h.store.getState().inbox = [
+    ...h.store.getState().inbox,
+    {
+      ...noWork,
+      taskId: taskId("active"),
+      workTime: { startedAt: minutesBefore(25), readyAt: null },
+      ci: null,
+    },
+    {
+      ...noWork,
+      taskId: taskId("done-0"),
+      workTime: { startedAt: minutesBefore(120), readyAt: minutesBefore(40) },
+      ci: null,
+    },
+  ];
+  h.render(false);
+  h.render();
+  const time = (id: string) =>
+    h.host.querySelector(`[data-task="${id}"] .list-row-age > span`);
+  expect(time("done-0")?.textContent).toBe("1h 20m");
+  expect(time("done-0")?.getAttribute("title")).toContain(
+    "from In progress to ready to merge",
+  );
+  expect(time("active")?.textContent).toBe("25m");
+  expect(time("active")?.classList.contains("work-running")).toBe(true);
+  expect(time("done-1")?.textContent).toBe("—");
 });

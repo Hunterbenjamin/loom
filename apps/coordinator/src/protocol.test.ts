@@ -510,6 +510,7 @@ test("list clients receive plan version and core-derived inbox metadata without 
     reasonRuns: {},
     reviewedHead: null,
     planVersion: null,
+    workTime: { startedAt: null, readyAt: null },
     ci: null,
   });
   expect(client.state?.collections.run.size).toBe(0);
@@ -535,9 +536,16 @@ test("inbox carries the reviewed SHA and plan version from the completed fake re
   expect(state.task.stage).toBe("awaiting_approval");
   expect(state.review?.lastReviewedHead).toBeTruthy();
   const client = await connect(h, "review-inbox-window");
-  expect(client.state?.collections.inbox.get(created.task.id)).toMatchObject({
+  const inbox = client.state?.collections.inbox.get(created.task.id);
+  expect(inbox).toMatchObject({
     reviewedHead: state.review?.lastReviewedHead,
     planVersion: state.plan?.version,
+  });
+  // Work time runs from In progress to Awaiting approval, from the issue's own transitions.
+  const transitions = h.store.transitions(created.task.id);
+  expect(inbox?.workTime).toEqual({
+    startedAt: transitions.find((t) => t.to === "in_progress")?.at,
+    readyAt: transitions.findLast((t) => t.to === "awaiting_approval")?.at,
   });
 }, 30_000);
 
