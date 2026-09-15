@@ -333,8 +333,18 @@
   border-radius: 4px;
   padding: 6px;
 }
-.pr-checks summary {
+.pr-checks > summary {
   cursor: pointer;
+  list-style: none;
+}
+.pr-checks > summary::-webkit-details-marker {
+  display: none;
+}
+.rail-icon {
+  flex-shrink: 0;
+}
+.rail-icon.faint {
+  color: var(--text-faint);
 }
 .pr-checks .pr-data {
   font-size: 12px;
