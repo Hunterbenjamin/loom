@@ -3,7 +3,7 @@
 // it cannot validate. Nothing here is durable state: it is rebuilt from the store on demand.
 
 import type { Sha, Task, TaskId, TaskState } from "@loom/core";
-import { deriveAttention } from "@loom/core";
+import { deriveAttention, workTime } from "@loom/core";
 import type { Change, CollectionName, Entities } from "@loom/protocol";
 import { changesKey, collections, keyOf } from "@loom/protocol";
 import type { Store } from "@loom/store";
@@ -122,6 +122,7 @@ export async function taskRows(
   const now = deps.now();
   const derived = attentionFor(state, now);
   const notes = deps.store.mainMessages.notes(taskId);
+  const transitions = deps.store.transitions(taskId);
   const rows: Row[] = [
     row("task", { ...state.task, attention: derived.attention }),
     row("inbox", {
@@ -136,6 +137,7 @@ export async function taskRows(
       ),
       reviewedHead: state.review?.lastReviewedHead ?? null,
       planVersion: state.plan?.version ?? null,
+      workTime: workTime(transitions, state.task.stage),
       ci: state.ciGate
         ? {
             headSha: state.ciGate.headSha,
@@ -182,7 +184,7 @@ export async function taskRows(
           now,
       }),
     );
-  for (const transition of deps.store.transitions(taskId))
+  for (const transition of transitions)
     rows.push(row("transition", transition));
   // Comment threads and the review shell's state are the Workbench's, in Phase 4; nothing here
   // owns them yet, so the collections stay empty rather than being faked.

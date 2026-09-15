@@ -224,7 +224,7 @@ export function createStore(
       setUi(
         state.ui.sort === sort
           ? { descending: !state.ui.descending }
-          : { sort, descending: sort === "age" },
+          : { sort, descending: sort === "time" },
       );
     },
     setCursor: (cursor: number | null) => setUi({ cursor }),

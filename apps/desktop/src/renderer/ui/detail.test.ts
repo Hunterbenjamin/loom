@@ -103,6 +103,7 @@ function setup(
       reasonRuns: {},
       reviewedHead: kind === "merge" ? ("b".repeat(40) as never) : null,
       planVersion: kind === "plan" ? 9 : null,
+      workTime: { startedAt: null, readyAt: null },
       ci:
         kind === "ci"
           ? {
@@ -394,6 +395,7 @@ test("Change plan refuses a plan version that changed while the modal was open",
       reasonRuns: {},
       reviewedHead: null,
       planVersion: 10,
+      workTime: { startedAt: null, readyAt: null },
     },
   ];
   await act(async () => {
@@ -640,6 +642,7 @@ test("merge confirmation refuses a reviewed head that changed while open", async
       reasonRuns: {},
       reviewedHead: "c".repeat(40) as never,
       planVersion: null,
+      workTime: { startedAt: null, readyAt: null },
     },
   ];
   await act(async () => h.store.setConnection("connected"));

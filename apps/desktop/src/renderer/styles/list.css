@@ -159,6 +159,13 @@
   width: 38px;
   text-align: right;
 }
+.issues-list .list-row-age {
+  width: auto;
+}
+/* Work time still counting reads as a running figure, not a finished total. */
+.work-running {
+  font-style: italic;
+}
 
 .list-row-meta {
   display: flex;
@@ -169,7 +176,7 @@
   white-space: nowrap;
 }
 .issues-list {
-  --issue-cols: minmax(0, 1fr) 110px 190px 150px 52px 38px;
+  --issue-cols: minmax(0, 1fr) 110px 190px 150px 52px 64px;
 }
 .issues-list .list-row {
   display: grid;
@@ -219,7 +226,7 @@
 }
 @container (max-width: 850px) {
   .issues-list {
-    --issue-cols: minmax(0, 1fr) 110px 190px 38px;
+    --issue-cols: minmax(0, 1fr) 110px 190px 64px;
   }
   .issues-list .issues-col-provider,
   .issues-list .issues-col-round {
@@ -228,7 +235,7 @@
 }
 @container (max-width: 620px) {
   .issues-list {
-    --issue-cols: minmax(0, 1fr) 190px 38px;
+    --issue-cols: minmax(0, 1fr) 190px 64px;
   }
   .issues-list .issues-col-stage,
   .issues-list .task-summary {
