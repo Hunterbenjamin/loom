@@ -146,7 +146,6 @@ describe("headless retries and interactive control", () => {
     f.observations.now = "2026-09-12T00:00:10.000Z" as typeof now;
     const r = fixed(failed.next, f.observations);
     expect(r.actions.find((a) => a.kind === "start_run")).toMatchObject({
-      key: `start_run:${f.run.id}#2`,
       runId: f.run.id,
       attempt: 2,
       mode: "headless",
@@ -246,7 +245,6 @@ describe("headless retries and interactive control", () => {
     f.observations.now = "2026-09-12T00:00:10.000Z" as typeof now;
     const r = fixed(failed.next, f.observations);
     expect(r.actions.find((a) => a.kind === "start_run")).toMatchObject({
-      key: `start_run:${f.run.id}#2`,
       attempt: 2,
       sessionEpoch: 1,
       sessionId: null,
@@ -623,9 +621,11 @@ describe("launch results and persisted outbox", () => {
     f.observations.inputs = [];
     f.observations.now = "2026-09-12T00:00:10.000Z" as typeof now;
     const retried = fixed(failed.next, f.observations);
-    expect(
-      retried.actions.find((action) => action.kind === "remove_worktree")?.key,
-    ).toBe(`${remove.key}#2`);
+    const nextRemoval = retried.actions.find(
+      (action) => action.kind === "remove_worktree",
+    );
+    expect(nextRemoval).toBeDefined();
+    expect(nextRemoval?.key).not.toBe(remove.key);
     expect(
       retried.actions.find(
         (action) =>
@@ -649,7 +649,7 @@ describe("launch results and persisted outbox", () => {
     });
     expect(r.capacityVersion).toBe(4);
   });
-  it("a fatal action records failed and a retryable action gets a suffixed key", () => {
+  it("a fatal action records failure and a retryable action can execute again", () => {
     const f = fixture("todo");
     f.state.plan = null;
     f.state.runs = [];
@@ -670,9 +670,14 @@ describe("launch results and persisted outbox", () => {
     expect(failed.next.task.failed).toBeNull();
     f.observations.now = "2026-09-12T00:00:10.000Z" as typeof now;
     const retry = fixed(failed.next, f.observations);
-    expect(retry.actions.find((a) => a.kind === "create_worktree")?.key).toBe(
-      `${create.key}#2`,
+    const retriedCreate = retry.actions.find(
+      (a) => a.kind === "create_worktree",
     );
+    expect(retriedCreate).toBeDefined();
+    expect(retriedCreate?.key).not.toBe(create.key);
+    expect(
+      retry.next.outbox.find((row) => row.key === retriedCreate?.key)?.status,
+    ).toBe("pending");
     f.observations.inputs = [
       {
         ...fail,

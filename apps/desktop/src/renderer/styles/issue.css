@@ -149,3 +149,17 @@
 .issue-overview .task-description .pr-markdown > :last-child {
   margin-bottom: 0;
 }
+
+.backlog-editor form {
+  display: grid;
+  gap: 16px;
+}
+.backlog-editor label:not(.issue-toggle) {
+  display: grid;
+  gap: 6px;
+}
+.backlog-editor input:not([type="checkbox"]),
+.backlog-editor textarea,
+.backlog-editor select {
+  width: 100%;
+}

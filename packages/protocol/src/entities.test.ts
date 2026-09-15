@@ -30,7 +30,7 @@ import {
   finding,
   type findingAnchor,
   type findingLocation,
-  type humanCommand,
+  humanCommand,
   type message,
   type plan,
   type providerRequest,
@@ -209,4 +209,25 @@ describe("validation at the boundary", () => {
     expect(providerRequestKey(request)).toBe("-:req_88");
     expect(providerRequestKey({ ...request, generation: 4 })).toBe("4:req_88");
   });
+});
+
+test("backlog edit validates fields at the protocol boundary", () => {
+  const edit = {
+    type: "edit_task",
+    expectedVersion: 1,
+    title: "Title",
+    description: "",
+    size: "normal",
+    requirePlanApproval: true,
+  };
+  expect(humanCommand.safeParse(edit).success).toBe(true);
+  for (const invalid of [
+    { title: " " },
+    { title: "x".repeat(201) },
+    { description: "x".repeat(20001) },
+    { size: "huge" },
+    { expectedVersion: -1 },
+    { requirePlanApproval: "yes" },
+  ])
+    expect(humanCommand.safeParse({ ...edit, ...invalid }).success).toBe(false);
 });

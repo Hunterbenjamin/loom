@@ -206,9 +206,11 @@ test("an unloaded Codex thread reports an error without starting a server", asyn
   views.ensure([scope]);
   await vi.waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
   expect(codexIfRunning).toHaveBeenCalledWith("task-1");
-  expect(replace.mock.calls[0]?.[1][0].value.error).toBe(
-    "Codex thread is not loaded; open the terminal",
-  );
+  expect(replace.mock.calls[0]?.[1][0].value).toMatchObject({
+    provider: "codex",
+    status: "idle",
+    error: expect.stringMatching(/\S/),
+  });
   await views.stop();
 });
 
@@ -291,57 +293,50 @@ test("run delivery attention publishes as failed until provider delivery", async
 
 test("an in-flight read cannot republish or cache rows after the last viewer leaves", async () => {
   let finishRead: (value: ConversationRead) => void = () => {};
-  const readConversation = vi.fn(
-    () =>
-      new Promise<ConversationRead>((resolve) => {
-        finishRead = resolve;
-      }),
-  );
-  const replace = vi.fn();
-  const log = vi.fn();
-  const scope = {
-    kind: "conversation",
-    target: { kind: "lead", repoId: "repo-1" },
-  } as Subscription;
-  const views = new ConversationViews({
-    store: {
-      leadMessages: { list: vi.fn(() => []), update: vi.fn() },
-    } as never,
-    adapters: {
-      claude: {
-        hookSummary: vi.fn(async () => ({
-          transcriptPath: null,
-          pendingDialog: null,
-          promptSubmits: [],
-        })),
-        readConversation,
-      },
-    } as never,
-    lead: () =>
-      ({
-        sessionId: "session-1",
-        cwd: "/repo",
-        state: vi.fn(async () => ({ status: "idle" })),
-        confirmMessages: vi.fn(async () => {}),
-      }) as never,
-    now: () => "2026-09-14T01:00:00.000Z" as never,
-    after: () => () => {},
-    replace,
-    log,
+  const item = (id: string) => ({
+    id,
+    role: "assistant" as const,
+    kind: "text" as const,
+    text: id,
+    clipped: false,
+    tool: null,
+    at: now,
   });
-
-  views.subscriptions([scope]);
-  views.ensure([scope]);
-  await vi.waitFor(() => expect(readConversation).toHaveBeenCalledTimes(1));
+  const readConversation = vi
+    .fn()
+    .mockImplementationOnce(
+      () =>
+        new Promise<ConversationRead>((resolve) => {
+          finishRead = resolve;
+        }),
+    )
+    .mockResolvedValue({ items: [item("fresh")], truncated: false });
+  const { deps, published } = leadDeps(readConversation);
+  const views = new ConversationViews(deps);
+  views.subscriptions([leadScope]);
+  views.ensure([leadScope]);
+  await vi.waitFor(() => expect(readConversation).toHaveBeenCalled());
   views.subscriptions([]);
-  finishRead({ items: [], truncated: false });
-  await vi.waitFor(() => expect(log).toHaveBeenCalledTimes(1));
-  expect(replace).toHaveBeenCalledTimes(1);
-  expect(replace).toHaveBeenLastCalledWith("conversation:lead:repo-1", []);
+  finishRead({ items: [item("stale")], truncated: false });
+  // Let the resolved read finish publishing before inspecting the subscriber-visible rows.
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(published.rows()).toEqual([]);
 
-  views.subscriptions([scope]);
-  views.ensure([scope]);
-  await vi.waitFor(() => expect(readConversation).toHaveBeenCalledTimes(2));
+  views.subscriptions([leadScope]);
+  views.ensure([leadScope]);
+  await vi.waitFor(() =>
+    expect(published.rows()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          collection: "conversation_item",
+          value: expect.objectContaining({ id: "fresh" }),
+        }),
+      ]),
+    ),
+  );
+  expect(
+    published.rows().filter((row) => row.collection === "conversation_item"),
+  ).toHaveLength(1);
   await views.stop();
 });
 

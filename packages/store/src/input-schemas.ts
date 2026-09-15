@@ -1,4 +1,5 @@
 import type { Input, InputDisposition } from "@loom/core";
+import { editTask } from "@loom/protocol";
 import { z } from "zod";
 import { actionResultSchema } from "./action-schemas.js";
 import { anchorSchema, planSchema } from "./entity-schemas.js";
@@ -100,6 +101,7 @@ const callSchema = z.discriminatedUnion("tool", [
   }),
 ]);
 const commandSchema = z.discriminatedUnion("type", [
+  editTask,
   z.object({ type: z.literal("push_branch"), headSha: sha }),
   z.object({ type: z.literal("open_pr"), headSha: sha }),
   z.object({ type: z.literal("move"), to: z.enum(["backlog", "todo"]) }),

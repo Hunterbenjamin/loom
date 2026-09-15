@@ -608,8 +608,18 @@ export const transition = z.strictObject({
 
 // ---------------------------------------------------------------- human commands
 
+export const editTask = z.strictObject({
+  type: z.literal("edit_task"),
+  expectedVersion: count,
+  title: z.string().trim().min(1).max(200),
+  description: z.string().max(20000),
+  size: z.enum(["small", "normal"]),
+  requirePlanApproval: z.boolean(),
+});
+
 /** `HumanCommand` from `packages/core/src/observations.ts`, validated at the window's edge. */
 export const humanCommand = z.union([
+  editTask,
   z.object({ type: z.literal("push_branch"), headSha: sha }),
   z.object({ type: z.literal("open_pr"), headSha: sha }),
   z.strictObject({
