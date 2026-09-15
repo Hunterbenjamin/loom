@@ -47,6 +47,7 @@ vi.mock("@xterm/xterm", () => ({
     input(data: string) {
       this.data(data);
     }
+    scrollToBottom() {}
     onResize() {}
     write() {}
     focus() {
@@ -257,6 +258,40 @@ test("live reload changes help and matching together, disarms the old prefix, an
       h.element.querySelector(".bottom-bar [role=alert]")?.textContent,
     ).toContain("Invalid keybindings.json");
     expect(help?.textContent).toContain("Cmd+T");
+  } finally {
+    await h.close();
+  }
+});
+
+test("Prefix [ enters the focused terminal's scroll mode and can be rebound", async () => {
+  const h = await harness();
+  try {
+    await h.press(h.terminal, " ", { ctrlKey: true });
+    await h.press(h.terminal, "[");
+    expect(h.element.querySelector(".terminal-bar")?.textContent).toContain(
+      "SCROLL",
+    );
+    await h.press(h.terminal, "x");
+    expect(window.loomTerminal.write).not.toHaveBeenCalled();
+    await h.press(h.terminal, "q");
+    expect(h.element.querySelector(".terminal-bar")?.textContent).not.toContain(
+      "SCROLL",
+    );
+    const config = structuredClone(defaultKeybindings);
+    config.bindings["scroll-mode"] = ["Ctrl+Shift+S"];
+    await h.push({ config, path: "/fixture/keybindings.json", error: null });
+    await h.press(h.terminal, "S", { ctrlKey: true, shiftKey: true });
+    expect(h.element.querySelector(".terminal-bar")?.textContent).toContain(
+      "SCROLL",
+    );
+    await h.press(h.terminal, " ", { ctrlKey: true });
+    await h.press(h.terminal, "?", { shiftKey: true });
+    expect(h.element.querySelector(".wb-help")?.textContent).toContain(
+      "Ctrl+Shift+S",
+    );
+    expect(h.element.querySelector(".wb-help")?.textContent).toContain(
+      "Scroll terminal history",
+    );
   } finally {
     await h.close();
   }

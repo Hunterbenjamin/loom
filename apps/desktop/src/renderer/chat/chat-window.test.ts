@@ -501,3 +501,58 @@ test("a run conversation sends through the existing human command", async () => 
     },
   });
 });
+
+test("composer page keys scroll the conversation and Cmd+Down restores following", async () => {
+  const conversation = header();
+  const { host, store } = mount(conversation, [item()]);
+  const scroller = host.querySelector<HTMLDivElement>(".chat-conversation");
+  const input = host.querySelector<HTMLTextAreaElement>("textarea");
+  if (!scroller || !input) throw new Error("Chat missing");
+  Object.defineProperties(scroller, {
+    scrollHeight: { configurable: true, value: 1000 },
+    clientHeight: { configurable: true, value: 300 },
+    scrollTop: { configurable: true, writable: true, value: 600 },
+  });
+  const press = async (key: string, init: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent("keydown", {
+      key,
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    await act(async () => {
+      input.dispatchEvent(event);
+      // happy-dom doesn't emit the browser's scroll event on scrollTop assignment.
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    expect(event.defaultPrevented).toBe(true);
+  };
+  await act(async () => enter(input, "draft"));
+  scroller.scrollTop = 600;
+  input.setSelectionRange(2, 2);
+  await press("PageUp");
+  expect(scroller.scrollTop).toBe(330);
+  expect(input.selectionStart).toBe(2);
+  expect(host.querySelector(".chat-jump-latest")).not.toBeNull();
+  const stream = (text: string) =>
+    act(async () =>
+      store.applyProtocol(
+        stateFromSnapshot(meta, {
+          ...snapshot(),
+          conversations: [conversation],
+          conversationItems: [item({ role: "assistant", text })],
+        }),
+      ),
+    );
+  await stream("new output");
+  expect(scroller.scrollTop).toBe(330);
+  await press("PageDown");
+  expect(scroller.scrollTop).toBe(600);
+  await press("PageUp");
+  await press("ArrowDown", { metaKey: true });
+  expect(scroller.scrollTop).toBe(1000);
+  expect(host.querySelector(".chat-jump-latest")).toBeNull();
+  scroller.scrollTop = 600;
+  await stream("more output");
+  expect(scroller.scrollTop).toBe(1000);
+});
