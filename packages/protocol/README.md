@@ -53,3 +53,17 @@ Owner/cache semantics belong to [architecture](../../docs/architecture.md), not 
 
 Colocated tests verify JSON round trips, core type equality, ordered patch replay, gap detection
 and scope filtering. Desktop fixture tests parse generated snapshots with these same schemas.
+
+## Entity schemas
+
+Core owns entity types and closed value lists. [entities.ts](src/entities.ts) owns their zod
+shapes, including artifact metadata and stored task context. The schema factory defines fields
+once and exports strict wire schemas plus `storedEntities` for persistence. Store and MCP derive
+their entity schemas from these exports; type-equality tests check them against core.
+
+The storage policy preserves historical reads: objects strip unknown keys, IDs need only be
+nonempty, paths may be noncanonical, task summaries default to null, and budgets may be zero or
+fractional. Stored hashes still require their full hex format; stored review caps and location/plan
+versions remain positive. Wire checks retain their existing strictness, including attention
+invariants. Stored message reads still omit the derived `deliveryReason`. These boundary rules
+are intentional; sharing a field must not silently tighten old-row validation or weaken wire checks.

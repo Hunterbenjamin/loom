@@ -206,3 +206,16 @@ the latest 30 runs; older runs remain addressable. Shutdown aborts the owned que
 unfinished records interrupted. Failures require Run now or the next scheduled date, with no
 uncertain automatic replay. Closing a window does not stop research; the coordinator must be running
 on an awake host. Briefs create no issue, branch, pane or Main message.
+
+## Data shape ownership
+
+Core owns entity TypeScript types and closed value lists as `as const` arrays; union types derive
+from those arrays. Core remains free of runtime dependencies. Protocol owns entity zod shapes,
+including artifact metadata and task context. Its schema factory defines each field once and
+selects explicit wire or storage validation rules. Store and MCP compose protocol schemas.
+
+Wire schemas keep strict objects and wire-specific invariants. Storage schemas preserve legacy
+scalar rules, defaults and unknown-key stripping, including omission of derived message delivery
+reasons. MCP keeps agent-only input rules locally. Sharing a shape never silently changes which
+existing rows or wire frames can be read. Type-equality and boundary compatibility tests enforce
+these contracts.
