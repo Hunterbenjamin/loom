@@ -9,7 +9,7 @@ export default defineConfig({
     build: { rollupOptions: { input: "src/main/index.ts" } },
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: ["@loom/core"] })],
     build: { rollupOptions: { input: "src/preload/index.ts" } },
   },
   renderer: {
