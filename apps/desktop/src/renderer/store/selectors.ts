@@ -349,7 +349,11 @@ export function selectedRows(state: State): Row[] {
     state.ui.repo,
     state.inbox,
   );
-  return sortRows(rows, state.ui.sort, state.ui.descending);
+  return filterTaskRows(
+    sortRows(rows, state.ui.sort, state.ui.descending),
+    state.ui.filterQuery,
+    state.snapshot.repos,
+  );
 }
 
 export function taskRuns(snapshot: Snapshot, task: Task): Run[] {
@@ -383,4 +387,22 @@ export function terminalsForTask(snapshot: Snapshot, task: Task): Run[] {
 
 export function taskFindings(snapshot: Snapshot, task: Task): Finding[] {
   return snapshot.findings.filter((finding) => finding.taskId === task.id);
+}
+
+const filterTaskRows = memo1(
+  (rows: Row[], query: string, repos: Snapshot["repos"]) => {
+    const needle = query.trim().toLowerCase();
+    return needle
+      ? rows.filter((row) => taskMatches(row.task, query, repos))
+      : rows;
+  },
+);
+export function taskMatches(
+  task: Task,
+  query: string,
+  repos: Snapshot["repos"],
+): boolean {
+  return `${issueKeyFor(task, repos)} ${task.title} ${task.description} ${task.stage}`
+    .toLowerCase()
+    .includes(query.trim().toLowerCase());
 }

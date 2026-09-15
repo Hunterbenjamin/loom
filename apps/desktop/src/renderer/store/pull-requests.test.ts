@@ -139,7 +139,7 @@ test("readiness follows GitHub patches and the selected repository, independent 
   ];
   const store = createStore(fixture);
   expect(readyToMergeCount(store.getState())).toBe(2);
-  store.setPrQuery("nothing matches");
+  store.setFilterQuery("nothing matches");
   store.setPrTab("created");
   expect(readyToMergeCount(store.getState())).toBe(2);
   const wire = toSnapshot(fixture);

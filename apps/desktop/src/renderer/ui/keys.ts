@@ -1,14 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { selectedDetailTask } from "../store/detail-selection.js";
 import { inboxRows, reasonTab } from "../store/inbox.js";
 import { selectedPullRequests } from "../store/pull-requests.js";
 import { cursorRows, selectedRows } from "../store/selectors.js";
 import type { Store } from "../store/store.js";
 import { STAGES } from "./format.js";
+import { hasTrackerAction, runTrackerAction } from "./tracker-actions.js";
 import {
-  pullRequestShortcut,
-  requestPullRequestAction,
-} from "./pull-request-commands.js";
+  eventKey,
+  type TrackerActionId,
+  trackerKeymap,
+} from "./tracker-keymap.js";
 
 const TYPING = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 
@@ -22,13 +24,150 @@ export function typing(target: EventTarget | null): boolean {
   );
 }
 
-/** Routes shortcuts to the active surface; text editing and modal dialogs own their keys. */
+export function runTrackerCommand(
+  store: Store,
+  id: TrackerActionId,
+  showHelp: () => void = () => {},
+) {
+  const state = store.getState();
+  const { ui } = state;
+  if (id.startsWith("go-")) {
+    const view = id.slice(3) as typeof ui.view;
+    store.setView(view);
+    return;
+  }
+  if (id === "help") return showHelp();
+  if (id === "palette") return store.setPalette(!ui.palette);
+  if (id === "create") return store.setCreateIssue(true);
+  if (id === "close") {
+    if (ui.palette) return store.setPalette(false);
+    if (ui.stagePicker) return store.setStagePicker(false);
+    if (ui.openPr) return store.openPullRequest(null);
+    if (ui.openBrief) return store.openBrief(null);
+    return store.open(null);
+  }
+  if (id === "stage") return store.setStagePicker(true);
+  if (id === "view") {
+    if (ui.view === "all" || ui.view === "needs-you")
+      store.setPane(ui.pane === "list" ? "board" : "list");
+    return;
+  }
+  if (runTrackerAction(store, id)) return;
+  if (id === "next-issue" || id === "previous-issue") {
+    const direction = id === "next-issue" ? 1 : -1;
+    if (ui.openPr) {
+      const rows = selectedPullRequests(state);
+      const index = rows.findIndex(
+        (row) =>
+          row.repoId === ui.openPr?.repoId && row.number === ui.openPr.number,
+      );
+      const row = rows[index + direction];
+      if (index >= 0 && row)
+        store.openPullRequest({ repoId: row.repoId, number: row.number });
+    } else {
+      const rows =
+        ui.view === "needs-you" && ui.pane === "list"
+          ? inboxRows(state)
+          : cursorRows(state);
+      const unique = rows.filter(
+        (row, index) =>
+          rows.findIndex((other) => other.task.id === row.task.id) === index,
+      );
+      const index = unique.findIndex((row) => row.task.id === ui.openTask);
+      const row = unique[index + direction];
+      if (index >= 0 && row) {
+        const tab = ui.tab;
+        store.open(row.task.id);
+        store.setTab(tab);
+      }
+    }
+    return;
+  }
+  if (
+    ui.openTask ||
+    ui.openPr ||
+    ui.openBrief ||
+    ui.view === "settings" ||
+    ui.view === "briefs"
+  )
+    return;
+  const inbox =
+    ui.view === "needs-you" && ui.pane === "list" ? inboxRows(state) : null;
+  const review = ui.view === "pull-requests";
+  const rows = review
+    ? selectedPullRequests(state)
+    : (inbox ?? cursorRows(state));
+  const cursor = review ? ui.prCursor : ui.cursor;
+  const setCursor = review ? store.setPrCursor : store.setCursor;
+  const board = ui.pane === "board" && !review && !inbox;
+  if (id === "open") {
+    if (review) {
+      const pr = selectedPullRequests(state)[cursor ?? -1];
+      if (pr) store.openPullRequest({ repoId: pr.repoId, number: pr.number });
+    } else {
+      const attention = inbox?.[cursor ?? -1];
+      if (attention) {
+        const run = attention.runs[0] ?? null;
+        store.openAttention(
+          attention.task.id,
+          attention.reason,
+          reasonTab(attention.reason, run),
+          run?.id ?? null,
+        );
+      } else {
+        const row = cursorRows(state)[cursor ?? -1];
+        if (row) store.open(row.task.id);
+      }
+    }
+    return;
+  }
+  if (board) {
+    if (
+      [
+        "next-row",
+        "previous-row",
+        "left-column",
+        "right-column",
+        "first-row",
+        "last-row",
+      ].includes(id)
+    )
+      setCursor(boardCursor(selectedRows(state), cursor, id));
+  } else if (
+    ["next-row", "previous-row", "first-row", "last-row"].includes(id)
+  ) {
+    setCursor(
+      !rows.length
+        ? null
+        : id === "first-row"
+          ? 0
+          : id === "last-row"
+            ? rows.length - 1
+            : cursor === null
+              ? 0
+              : Math.max(
+                  0,
+                  Math.min(
+                    rows.length - 1,
+                    cursor + (id === "next-row" ? 1 : -1),
+                  ),
+                ),
+    );
+  }
+}
+
+/** A single listener resolves scope before dispatch, independent of React effect order. */
 export function createShortcutHandler(
   store: Store,
   showHelp: () => void = () => {},
+  onPending: (pending: boolean) => void = () => {},
 ) {
-  let pendingUntil = 0;
-  const onKeyDown = (event: KeyboardEvent) => {
+  let pending = false;
+  const setPending = (value: boolean) => {
+    pending = value;
+    onPending(value);
+  };
+  const handler = (event: KeyboardEvent) => {
     const { ui } = store.getState();
     if (
       event.defaultPrevented ||
@@ -36,281 +175,118 @@ export function createShortcutHandler(
       document.querySelector("dialog[open]") ||
       ui.createIssue
     ) {
-      pendingUntil = 0;
+      setPending(false);
       return;
     }
-    if (typing(event.target)) {
-      pendingUntil = 0;
-      if (event.key === "Escape" && (ui.palette || ui.stagePicker)) {
-        store.setPalette(false);
-        store.setStagePicker(false);
-      }
+    if (typing(event.composedPath()[0] ?? event.target)) {
+      setPending(false);
       return;
     }
-
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    const key = eventKey(event);
+    if (pending && key === "Escape") {
+      setPending(false);
       event.preventDefault();
-      store.setPalette(!ui.palette);
       return;
     }
-
-    if (event.key === "Escape") {
-      pendingUntil = 0;
-      if (ui.palette) return store.setPalette(false);
-      if (ui.stagePicker) return store.setStagePicker(false);
-      if (ui.openPr) return store.openPullRequest(null);
-      if (ui.openBrief) return store.openBrief(null);
-      if (ui.openTask) return store.open(null);
-      return;
-    }
-
     if (ui.palette || ui.stagePicker) {
-      pendingUntil = 0;
-      return;
-    }
-    if (
-      ui.openPr &&
-      event.metaKey &&
-      event.key === "Enter" &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.shiftKey &&
-      !event.repeat
-    ) {
-      pendingUntil = 0;
-      event.preventDefault();
-      requestPullRequestAction({ ...ui.openPr, action: "merge" });
-      return;
-    }
-
-    if (event.metaKey || event.ctrlKey || event.altKey) {
-      pendingUntil = 0;
-      return;
-    }
-
-    if (pendingUntil > Date.now()) {
-      pendingUntil = 0;
-      event.preventDefault();
-      if (event.key === "g" && (ui.openTask || ui.openPr || ui.openBrief)) {
-        const body = document.querySelector<HTMLElement>(
-          ".detail .pr-page-body",
-        );
-        if (body) body.scrollTop = 0;
-        return;
+      setPending(false);
+      if (key === "Escape") {
+        event.preventDefault();
+        runTrackerCommand(store, "close");
       }
-      if (event.key === "i") return store.setPane("list");
-      if (event.key === "b") return store.setPane("board");
-      const views = {
-        a: "all",
-        n: "needs-you",
-        r: "pull-requests",
-        d: "briefs",
-        s: "settings",
-      } as const;
-      const view = views[event.key as keyof typeof views];
-      if (view) store.setView(view);
       return;
     }
-    if (event.key === "g") {
-      pendingUntil = Date.now() + 900;
-      return;
-    }
-    if (event.key === "?") {
+    let sequence = key;
+    if (pending) {
+      sequence = `g ${key}`;
+      setPending(false);
       event.preventDefault();
-      showHelp();
-      return;
-    }
-    if (event.key === "c" || event.key === "C") {
+    } else if (key === "g") {
+      setPending(true);
       event.preventDefault();
-      if (!event.repeat) store.setCreateIssue(true);
       return;
     }
-    // Native activation must keep working for controls reached with Tab.
+    const detail = !!(ui.openTask || ui.openPr || ui.openBrief);
+    const issue = detail
+      ? !!selectedDetailTask(store.getState())
+      : !["pull-requests", "briefs", "settings"].includes(ui.view);
+    const candidates = trackerKeymap.filter((entry) =>
+      (entry.keys as readonly string[]).includes(sequence),
+    );
+    // Registered diff actions own these keys even when no file/hunk is available.
+    const diff = candidates.find((entry) => entry.scope === "diff");
+    if (detail && diff && hasTrackerAction(store, diff.id)) {
+      event.preventDefault();
+      if (!event.repeat) runTrackerAction(store, diff.id);
+      return;
+    }
+    const entry = candidates.find(
+      (entry) =>
+        entry.scope === "global" ||
+        (entry.scope === "detail" && detail) ||
+        (entry.scope === "issue" && issue) ||
+        (entry.scope === "list" && !detail && ui.view !== "settings") ||
+        (entry.scope === "board" && !detail && ui.pane === "board" && issue),
+    );
+    if (!entry) return;
     if (
-      event.key === "Enter" &&
+      entry.id === "open" &&
       event.target instanceof Element &&
       event.target.closest("button, a, summary")
     )
       return;
-
-    if (ui.openTask || ui.openPr || ui.openBrief) {
-      const detail = document.querySelector<HTMLElement>(".detail");
-      const click = (selector: string) => {
-        if (!event.repeat)
-          detail?.querySelector<HTMLElement>(selector)?.click();
-        event.preventDefault();
-      };
-      const tabs = ["overview", "plan", "diff", "terminal"];
-      const tab = tabs[Number(event.key) - 1];
-      if (tab) return click(`[data-tab="${tab}"]`);
-      const actions: Record<string, string> = {
-        a: '[data-issue-action="approve-plan"], [data-issue-action="approve-merge"]',
-        A: '[data-issue-action="change-plan"], [data-issue-action="request-changes"]',
-        E: '[data-issue-action="edit"]',
-        t: '[data-issue-action="todo"]',
-        z: ".activity-more",
-        f: ".overview-findings > summary",
-        F: "[data-detail-fullscreen]",
-      };
-      const selector = actions[event.key];
-      if (selector) return click(selector);
-      if (["j", "k", "J", "K", "G"].includes(event.key)) {
-        event.preventDefault();
-        const body = detail?.querySelector<HTMLElement>(".pr-page-body");
-        if (body)
-          body.scrollTop =
-            event.key === "G"
-              ? body.scrollHeight
-              : body.scrollTop +
-                (event.key.toLowerCase() === "j" ? 1 : -1) *
-                  (event.shiftKey ? body.clientHeight / 2 : 60);
-        return;
-      }
-      if (event.key === "e" && selectedDetailTask(store.getState())) {
-        event.preventDefault();
-        store.setStagePicker(true);
-        return;
-      }
-      if (ui.openPr) {
-        const action = pullRequestShortcut(event.key);
-        if (action && !event.repeat) {
-          event.preventDefault();
-          requestPullRequestAction({ ...ui.openPr, action });
-        }
-      }
-      return;
-    }
-    if (ui.view === "settings") return;
-    // Roving row navigation leaves a previously tabbed control. Otherwise Enter
-    // would activate that old control instead of opening the newly selected row.
+    event.preventDefault();
+    const repeatable = [
+      "next-row",
+      "previous-row",
+      "left-column",
+      "right-column",
+      "scroll-down",
+      "scroll-up",
+      "page-down",
+      "page-up",
+    ];
+    if (event.repeat && !repeatable.includes(entry.id)) return;
     if (
-      (event.key === "j" ||
-        event.key === "k" ||
-        (ui.pane === "board" &&
-          ui.view !== "needs-you" &&
-          ui.view !== "pull-requests" &&
-          ui.view !== "briefs" &&
-          (event.key === "h" || event.key === "l"))) &&
+      !detail &&
+      (repeatable.includes(entry.id) ||
+        entry.id === "first-row" ||
+        entry.id === "last-row") &&
       event.target instanceof HTMLElement
     )
       event.target.blur();
-    if (ui.view === "briefs") {
-      const rows = [...document.querySelectorAll<HTMLElement>("[data-brief]")];
-      if (event.key === "j" || event.key === "k") {
-        event.preventDefault();
-        store.moveCursor(event.key === "j" ? 1 : -1, rows.length);
-        rows[store.getState().ui.cursor ?? 0]?.scrollIntoView({
-          block: "nearest",
-        });
-      }
-      if (event.key === "Enter") {
-        event.preventDefault();
-        rows[ui.cursor ?? -1]?.click();
-      }
-      return;
-    }
-    if (
-      ui.pane === "board" &&
-      ui.view !== "needs-you" &&
-      ui.view !== "pull-requests" &&
-      ["h", "j", "k", "l"].includes(event.key)
-    ) {
-      event.preventDefault();
-      store.setCursor(
-        boardCursor(selectedRows(store.getState()), ui.cursor, event.key),
-      );
-      return;
-    }
-
-    if (ui.view === "pull-requests" && !ui.openTask) {
-      const rows = selectedPullRequests(store.getState());
-      if (event.key === "j" || event.key === "k") {
-        event.preventDefault();
-        if (rows.length === 0) return;
-        store.setPrCursor(
-          ui.prCursor === null
-            ? 0
-            : Math.max(
-                0,
-                Math.min(
-                  rows.length - 1,
-                  ui.prCursor + (event.key === "j" ? 1 : -1),
-                ),
-              ),
-        );
-        return;
-      }
-      if (event.key === "/") {
-        event.preventDefault();
-        document.querySelector<HTMLInputElement>("[data-pr-search]")?.focus();
-        return;
-      }
-      if (event.key === "Enter") {
-        event.preventDefault();
-        const pr = ui.prCursor === null ? undefined : rows[ui.prCursor];
-        if (pr) store.openPullRequest({ repoId: pr.repoId, number: pr.number });
-        return;
-      }
-      // Task stage actions do not apply to repository PRs.
-      if (event.key === "e") return;
-    }
-
-    const inbox = ui.view === "needs-you" ? inboxRows(store.getState()) : null;
-    const rows = inbox ?? cursorRows(store.getState());
-    switch (event.key) {
-      case "j":
-        event.preventDefault();
-        return store.moveCursor(1, rows.length);
-      case "k":
-        event.preventDefault();
-        return store.moveCursor(-1, rows.length);
-      case "Enter": {
-        event.preventDefault();
-        const attention = ui.cursor === null ? undefined : inbox?.[ui.cursor];
-        if (attention) {
-          const run = attention.runs[0] ?? null;
-          store.openAttention(
-            attention.task.id,
-            attention.reason,
-            reasonTab(attention.reason, run),
-            run?.id ?? null,
-          );
-          return;
-        }
-        const row = ui.cursor === null ? undefined : rows[ui.cursor];
-        if (row) store.open(row.task.id);
-        return;
-      }
-      case "e":
-        event.preventDefault();
-        store.setStagePicker(true);
-        return;
-      default:
-        return;
-    }
+    runTrackerCommand(store, entry.id, showHelp);
   };
-
-  return onKeyDown;
+  return Object.assign(handler, { cancel: () => setPending(false) });
 }
-
 const noHelp = () => {};
-
 export function useShortcuts(
   store: Store,
   showHelp: () => void = noHelp,
-): void {
+): boolean {
+  const [pending, setPending] = useState(false);
   useEffect(() => {
-    const handler = createShortcutHandler(store, showHelp);
+    const handler = createShortcutHandler(store, showHelp, setPending);
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    const cancel = handler.cancel;
+    window.addEventListener("blur", cancel);
+    window.addEventListener("pointerdown", cancel);
+    window.addEventListener("focusin", cancel);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      window.removeEventListener("blur", cancel);
+      window.removeEventListener("pointerdown", cancel);
+      window.removeEventListener("focusin", cancel);
+    };
   }, [store, showHelp]);
+  return pending;
 }
 
 /** Board cursor indices use the same rows as the cards and stage picker. */
 export function boardCursor(
   rows: ReturnType<typeof selectedRows>,
   cursor: number | null,
-  key: string,
+  action: TrackerActionId,
 ): number | null {
   const columns = STAGES.map((stage) =>
     rows
@@ -321,21 +297,32 @@ export function boardCursor(
   const columnIndex = columns.findIndex((column) =>
     column.some((item) => item.index === cursor),
   );
-  if (columnIndex < 0) return columns[0]?.[0]?.index ?? null;
+  if (columnIndex < 0) {
+    const first = columns[0];
+    return (action === "last-row" ? first?.at(-1) : first?.[0])?.index ?? null;
+  }
   const column = columns[columnIndex]!;
+  if (action === "first-row") return column[0]!.index;
+  if (action === "last-row") return column[column.length - 1]!.index;
   const rowIndex = column.findIndex((item) => item.index === cursor);
-  if (key === "j" || key === "k")
+  if (action === "next-row" || action === "previous-row")
     return column[
       Math.max(
         0,
-        Math.min(column.length - 1, rowIndex + (key === "j" ? 1 : -1)),
+        Math.min(
+          column.length - 1,
+          rowIndex + (action === "next-row" ? 1 : -1),
+        ),
       )
     ]!.index;
   const next =
     columns[
       Math.max(
         0,
-        Math.min(columns.length - 1, columnIndex + (key === "l" ? 1 : -1)),
+        Math.min(
+          columns.length - 1,
+          columnIndex + (action === "right-column" ? 1 : -1),
+        ),
       )
     ]!;
   return next[Math.min(rowIndex, next.length - 1)]!.index;

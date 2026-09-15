@@ -12,11 +12,13 @@ import { InboxView } from "./ui/inbox.js";
 import { useShortcuts } from "./ui/keys.js";
 import { LeadBar } from "./ui/lead.js";
 import { ListView } from "./ui/list.js";
+import { TrackerFilter } from "./ui/list-rows.js";
 import { Palette, StagePicker } from "./ui/palette.js";
 import { PullRequestsView } from "./ui/pull-requests.js";
 import { SettingsView } from "./ui/settings.js";
 import { OpenRepository, Sidebar } from "./ui/sidebar.js";
-import { TrackerHelp } from "./ui/tracker-help.js";
+import { TrackerHelp, WhichKey } from "./ui/tracker-help.js";
+import { keyHint } from "./ui/tracker-keymap.js";
 
 const PullRequestDetail = lazy(() =>
   import("./ui/pull-request-detail.js").then((m) => ({
@@ -28,7 +30,7 @@ export function App() {
   const store = useStoreApi();
   const [help, setHelp] = useState(false);
   const showHelp = useCallback(() => setHelp(true), []);
-  useShortcuts(store, showHelp);
+  const pendingKey = useShortcuts(store, showHelp);
   useEffect(() => {
     store.setTrackerVisible(true);
     return () => store.setTrackerVisible(false);
@@ -108,6 +110,7 @@ export function App() {
   return (
     <div className="shell">
       {help ? <TrackerHelp onClose={() => setHelp(false)} /> : null}
+      {pendingKey ? <WhichKey /> : null}
       <Sidebar />
       <div className="main">
         <header className="topbar">
@@ -129,7 +132,7 @@ export function App() {
           <button
             type="button"
             onClick={showHelp}
-            title="Keyboard shortcuts (?)"
+            {...keyHint("help")}
             aria-label="Keyboard shortcuts"
           >
             ?
@@ -140,6 +143,7 @@ export function App() {
               <div className="segmented">
                 <button
                   type="button"
+                  {...keyHint("view")}
                   aria-pressed={pane === "list"}
                   onClick={() => store.setPane("list")}
                 >
@@ -147,6 +151,7 @@ export function App() {
                 </button>
                 <button
                   type="button"
+                  {...keyHint("view")}
                   aria-pressed={pane === "board"}
                   onClick={() => store.setPane("board")}
                 >
@@ -165,6 +170,9 @@ export function App() {
             flexDirection: "column",
           }}
         >
+          {view !== "settings" && view !== "pull-requests" ? (
+            <TrackerFilter />
+          ) : null}
           {view === "briefs" ? (
             <BriefsView />
           ) : view === "settings" ? (
@@ -175,7 +183,7 @@ export function App() {
             <OpenRepository />
           ) : view === "pull-requests" ? (
             <PullRequestsView />
-          ) : view === "needs-you" ? (
+          ) : view === "needs-you" && pane === "list" ? (
             <InboxView />
           ) : pane === "list" ? (
             <ListView />

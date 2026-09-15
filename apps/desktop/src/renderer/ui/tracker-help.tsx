@@ -1,49 +1,7 @@
 import { useEffect, useRef } from "react";
+import { useStore } from "../store/react.js";
 
-export const TRACKER_KEYS = [
-  [
-    "Navigation",
-    "g a · Issues; g n · Inbox; g r · Review; g d · Daily brief; g s · Settings",
-  ],
-  ["View", "g i · List; g b · Board (preserves the current section)"],
-  [
-    "Lists, Inbox and briefs",
-    "j / k · Next / previous row; Enter · Open; / · Review filter",
-  ],
-  [
-    "Board",
-    "h / l · Previous / next populated column; j / k · Card in column; Enter · Open",
-  ],
-  ["Issues", "c · Create; e · Move selected or open issue (Backlog / Todo)"],
-  [
-    "Detail tabs",
-    "1 · Overview; 2 · Plan; 3 · Diff; 4 · Terminal (when available)",
-  ],
-  [
-    "Issue detail",
-    "a · Approve plan / merge; A · Change plan / request changes; E · Edit; t · Move to Todo",
-  ],
-  [
-    "Reading details",
-    "j / k · Scroll; Shift+J / Shift+K · Half page; g g · Top; G · Bottom; z · Toggle earlier activity; f · Toggle findings; F · Fullscreen",
-  ],
-  [
-    "Pull requests",
-    "m or ⌘Enter · Merge; d · Delete branch; o · Open on GitHub; r · Refresh",
-  ],
-  [
-    "Everywhere",
-    "? · This map; ⌘K / Ctrl+K · Command palette; Esc · Close overlay or detail",
-  ],
-  [
-    "Other controls",
-    "Tab / Shift+Tab · Focus controls, menus, settings and links; Enter / Space · Activate. F6 returns focus from terminal input to detail controls.",
-  ],
-  [
-    "Typing",
-    "Tracker shortcuts pause in inputs, editors and terminals. Dialogs handle their own keys.",
-  ],
-] as const;
+import { formatKeys, trackerKeymap } from "./tracker-keymap.js";
 
 export function TrackerHelp({ onClose }: { onClose(): void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -69,18 +27,56 @@ export function TrackerHelp({ onClose }: { onClose(): void }) {
     >
       <h2 id="tracker-keys-title">Tracker keyboard shortcuts</h2>
       <dl>
-        {TRACKER_KEYS.map(([label, keys]) => (
-          <div key={label}>
+        {trackerKeymap.map((entry) => (
+          <div key={entry.id} data-key-id={entry.id}>
             <dt>
-              <strong>{label}</strong>
+              <strong>
+                {entry.group}: {entry.label}
+              </strong>
             </dt>
-            <dd>{keys}</dd>
+            <dd>{formatKeys(entry.id)}</dd>
           </div>
         ))}
       </dl>
+      <p>
+        All tracker keys, including ⌘Enter, pause in inputs, editors and
+        terminals. Dialogs own their keys. Tab / Shift+Tab focus controls; Enter
+        / Space activate them.
+      </p>
       <button type="button" onClick={onClose}>
         Close
       </button>
     </dialog>
+  );
+}
+
+export function WhichKey() {
+  const detail = useStore(
+    (s) => !!(s.ui.openTask || s.ui.openPr || s.ui.openBrief),
+  );
+  const list = useStore((s) => s.ui.view !== "settings");
+  return (
+    <aside
+      className="tracker-which-key"
+      aria-label="Go to shortcuts"
+      role="status"
+    >
+      <strong>g — Go to</strong>
+      {trackerKeymap
+        .filter(
+          (entry) =>
+            entry.keys.some((key) => key.startsWith("g ")) &&
+            (entry.scope === "global" ||
+              (detail
+                ? entry.scope === "detail"
+                : list && entry.scope === "list")),
+        )
+        .map((entry) => (
+          <div key={entry.id}>
+            <kbd>{formatKeys(entry.id)}</kbd> {entry.label}
+          </div>
+        ))}
+      <small>Esc or another key cancels</small>
+    </aside>
   );
 }

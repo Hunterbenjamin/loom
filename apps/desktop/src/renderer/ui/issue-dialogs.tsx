@@ -259,3 +259,54 @@ export function ConfirmIssueApproval({
     </dialog>
   );
 }
+
+export function ConfirmPlanApproval({
+  version,
+  disabled,
+  onCancel,
+  onConfirm,
+}: {
+  version: number;
+  disabled: boolean;
+  onCancel(): void;
+  onConfirm(): void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    const element = dialog.current;
+    element?.showModal();
+    return () => {
+      element?.close();
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus();
+    };
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="create-issue-dialog pr-confirm"
+      aria-labelledby="confirm-plan-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onCancel();
+      }}
+    >
+      <h2 id="confirm-plan-title">Approve plan</h2>
+      <p>Approve plan version {version} and start implementation?</p>
+      {disabled ? (
+        <p role="alert">
+          Approval is unavailable. Review the current plan before confirming.
+        </p>
+      ) : null}
+      <div className="pr-actions">
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" disabled={disabled} onClick={onConfirm}>
+          Confirm plan approval
+        </button>
+      </div>
+    </dialog>
+  );
+}

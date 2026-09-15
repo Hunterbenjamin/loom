@@ -14,6 +14,8 @@ import type { z } from "zod";
 import { useStore, useStoreApi } from "../store/react.js";
 import { since } from "./format.js";
 import { ChangeCounts, groupPrFiles } from "./pull-request-overview.js";
+import { useTrackerActions } from "./tracker-actions.js";
+import { keyHint } from "./tracker-keymap.js";
 
 type CommitDiff = z.output<typeof pullRequestCommitDiff>;
 type File = PullRequestDetailRow["detail"]["files"][number];
@@ -260,63 +262,62 @@ function DiffContent({
     ],
   );
 
-  useEffect(() => {
-    const keydown = (event: KeyboardEvent) => {
-      const target = event.composedPath()[0];
-      if (
-        event.defaultPrevented ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.repeat ||
-        document.querySelector("dialog[open], [cmdk-root]") ||
-        (target instanceof HTMLElement &&
-          (target.matches("input, textarea, select") ||
-            target.isContentEditable)) ||
-        (tab === "commits" && !commitSha)
-      )
-        return;
-      const path = active ?? files[0]?.path;
-      if (!path) return;
-      if (event.key === "j" || event.key === "k") {
-        const index = files.findIndex((f) => f.path === path);
-        const next =
-          files[
-            Math.max(
-              0,
-              Math.min(files.length - 1, index + (event.key === "j" ? 1 : -1)),
-            )
-          ];
-        if (next) jump(next.path);
-      } else if (event.key === "v") void toggle(path);
-      else if (event.key === "[" || event.key === "]") {
-        const item = items.find((i) => i.id === path);
-        if (item?.type !== "diff" || item.collapsed) return;
-        hunkCursor.current = Math.max(
-          0,
-          Math.min(
-            item.fileDiff.hunks.length - 1,
-            hunkCursor.current + (event.key === "]" ? 1 : -1),
-          ),
-        );
-        const hunk = item.fileDiff.hunks[hunkCursor.current];
-        if (hunk)
-          handle.current?.scrollTo({
-            type: "line",
-            id: path,
-            lineNumber: Math.max(
-              1,
-              hunk.additionCount ? hunk.additionStart : hunk.deletionStart,
+  const navigate = (
+    action:
+      | "next-file"
+      | "previous-file"
+      | "reviewed"
+      | "next-hunk"
+      | "previous-hunk",
+  ) => {
+    if (tab === "commits" && !commitSha) return;
+    const path = active ?? files[0]?.path;
+    if (!path) return;
+    if (action === "next-file" || action === "previous-file") {
+      const index = files.findIndex((f) => f.path === path);
+      const next =
+        files[
+          Math.max(
+            0,
+            Math.min(
+              files.length - 1,
+              index + (action === "next-file" ? 1 : -1),
             ),
-            side: hunk.additionCount ? "additions" : "deletions",
-            align: "start",
-          });
-      } else return;
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", keydown);
-    return () => window.removeEventListener("keydown", keydown);
-  }, [active, files, items, jump, toggle, tab, commitSha]);
+          )
+        ];
+      if (next) jump(next.path);
+    } else if (action === "reviewed") void toggle(path);
+    else if (action === "previous-hunk" || action === "next-hunk") {
+      const item = items.find((i) => i.id === path);
+      if (item?.type !== "diff" || item.collapsed) return;
+      hunkCursor.current = Math.max(
+        0,
+        Math.min(
+          item.fileDiff.hunks.length - 1,
+          hunkCursor.current + (action === "next-hunk" ? 1 : -1),
+        ),
+      );
+      const hunk = item.fileDiff.hunks[hunkCursor.current];
+      if (hunk)
+        handle.current?.scrollTo({
+          type: "line",
+          id: path,
+          lineNumber: Math.max(
+            1,
+            hunk.additionCount ? hunk.additionStart : hunk.deletionStart,
+          ),
+          side: hunk.additionCount ? "additions" : "deletions",
+          align: "start",
+        });
+    } else return;
+  };
+  useTrackerActions({
+    "next-file": () => navigate("next-file"),
+    "previous-file": () => navigate("previous-file"),
+    reviewed: () => navigate("reviewed"),
+    "next-hunk": () => navigate("next-hunk"),
+    "previous-hunk": () => navigate("previous-hunk"),
+  });
 
   async function selectCommit(sha: PullRequestDetailRow["detail"]["headSha"]) {
     const version = ++selectionVersion.current;
@@ -559,6 +560,7 @@ function FileHeader({
       >
         <input
           type="checkbox"
+          {...keyHint("reviewed")}
           aria-label={`Reviewed ${file.path}`}
           checked={reviewed}
           disabled={disabled}

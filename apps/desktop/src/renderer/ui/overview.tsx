@@ -17,6 +17,8 @@ import {
   PrMarkdown,
   prActivity,
 } from "./pull-request-overview.js";
+import { useTrackerActions } from "./tracker-actions.js";
+import { keyHint } from "./tracker-keymap.js";
 import { useHumanCommand } from "./use-human-command.js";
 import { useTaskEvents } from "./use-task-events.js";
 
@@ -179,6 +181,12 @@ function CiProgress({ task }: { task: Task }) {
 }
 
 function Findings({ task }: { task: Task }) {
+  const details = useRef<HTMLDetailsElement>(null);
+  useTrackerActions({
+    findings: () => {
+      if (details.current) details.current.open = !details.current.open;
+    },
+  });
   const findings = useStore(
     (state) => taskFindings(state.snapshot, task),
     shallowArray,
@@ -197,8 +205,8 @@ function Findings({ task }: { task: Task }) {
   if (!findings.length) return null;
   // Collapsed unless something still blocks the issue; each finding opens on its own.
   return (
-    <details className="overview-findings" open={blocking > 0}>
-      <summary>
+    <details ref={details} className="overview-findings" open={blocking > 0}>
+      <summary {...keyHint("findings")}>
         <h3>Findings</h3>
         <span className="faint">
           {blocking
