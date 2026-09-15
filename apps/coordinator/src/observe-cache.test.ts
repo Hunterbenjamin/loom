@@ -1,7 +1,33 @@
 import type { PullRequestObservation } from "@loom/core";
 import { expect, test, vi } from "vitest";
+import { now, run } from "../../../packages/core/test/fixtures.js";
 import type { Adapters } from "./adapters.js";
-import { PullRequestCache } from "./observe.js";
+import { observeRun, PullRequestCache } from "./observe.js";
+
+test("run observation distinguishes failed supplemental reads from empty answers", async () => {
+  const owner = {
+    readThread: vi.fn().mockResolvedValue(null),
+    checkResumable: vi.fn().mockRejectedValue(new Error("rollout unreadable")),
+    activityAt: vi.fn(() => {
+      throw new Error("events unavailable");
+    }),
+  };
+  const observation = await observeRun(
+    {
+      codex: vi.fn().mockResolvedValue(owner),
+      paneHost: { getPane: vi.fn().mockResolvedValue(null) },
+    } as unknown as Adapters,
+    now,
+    run(),
+  );
+
+  expect(observation.resumable).toBeNull();
+  expect(observation.activityAt).toBeNull();
+  expect(observation.readFailures).toEqual({
+    resumable: "rollout unreadable",
+    activityAt: "events unavailable",
+  });
+});
 
 test("a pre-merge read cannot refill a cache invalidated by a merge observation", async () => {
   const cache = new PullRequestCache();

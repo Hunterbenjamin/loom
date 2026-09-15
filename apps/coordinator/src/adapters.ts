@@ -35,6 +35,9 @@ export interface Adapters {
   close(): Promise<void>;
 }
 
+/** Reports a failed adapter operation without changing its result semantics. */
+export type ReportAdapterFailure = (operation: string, error: unknown) => void;
+
 export type CodexFactory = (
   taskId: TaskId,
   taskDirectory: string,

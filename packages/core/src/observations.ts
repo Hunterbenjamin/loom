@@ -256,6 +256,11 @@ export interface RunObservation {
   resumable: boolean | null;
   /** Provider adapter: latest known activity time; null = no activity evidence, not fetch time. */
   activityAt: IsoTime | null;
+  /** Failed supplemental owner reads, kept separate from valid false/null answers. */
+  readFailures: {
+    resumable: string | null;
+    activityAt: string | null;
+  };
 }
 
 /** A session in this task's worktree that Loom didn't launch. Observe-only. */

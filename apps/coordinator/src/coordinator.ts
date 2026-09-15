@@ -558,6 +558,7 @@ export class Coordinator {
   private readonly timers = new Set<() => void>();
   private readonly diffScopes = new Set<string>();
   private readonly publishFailures = new Map<TaskId, Set<string>>();
+  private readonly reportedAdapterFailures = new Set<string>();
   private readonly workflow = createWorkflowReader((message) =>
     this.log(message),
   );
@@ -619,6 +620,8 @@ export class Coordinator {
       now: () => this.now(),
       nextInputId: () => randomUUID() as InputId,
       onResult: (taskId) => this.loop.enqueue(taskId),
+      reportAdapterFailure: (operation, error) =>
+        this.reportAdapterFailure(operation, error),
     });
     this.prViews = new PullRequestViews({
       viewedFiles: (repo, number, head) =>
@@ -716,6 +719,7 @@ export class Coordinator {
           ]),
         );
       },
+      (operation, error) => this.reportAdapterFailure(operation, error),
     );
     this.protocol = new ProtocolServer({
       token: this.config.token,
@@ -739,6 +743,14 @@ export class Coordinator {
 
   log(message: string): void {
     this.logger(message);
+  }
+
+  private reportAdapterFailure(operation: string, error: unknown): void {
+    const reason = error instanceof Error ? error.message : String(error);
+    const message = `${operation} failed: ${reason}`;
+    if (this.reportedAdapterFailures.has(message)) return;
+    this.reportedAdapterFailures.add(message);
+    this.log(`${message} (further identical failures suppressed)`);
   }
 
   /** A run's MCP token, resolved against current run state. Null means an unknown token. */
@@ -997,6 +1009,8 @@ export class Coordinator {
       workflow: this.workflow,
       repo: (taskId) => this.repo(taskId),
       log: (message) => this.log(message),
+      reportAdapterFailure: (operation, error) =>
+        this.reportAdapterFailure(operation, error),
     });
     return {
       host,
@@ -1168,6 +1182,8 @@ export class Coordinator {
             : null;
         },
         now: () => this.now(),
+        reportAdapterFailure: (operation, error) =>
+          this.reportAdapterFailure(operation, error),
       },
       state,
     );
@@ -1231,6 +1247,8 @@ export class Coordinator {
       recipes: this.recipes,
       config: this.config,
       now: () => this.now(),
+      reportAdapterFailure: (operation, error) =>
+        this.reportAdapterFailure(operation, error),
     };
   }
 

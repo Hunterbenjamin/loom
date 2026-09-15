@@ -7,7 +7,7 @@ import { deriveAttention } from "@loom/core";
 import type { Change, CollectionName, Entities } from "@loom/protocol";
 import { changesKey, collections, keyOf } from "@loom/protocol";
 import type { Store } from "@loom/store";
-import type { Adapters } from "./adapters.js";
+import type { Adapters, ReportAdapterFailure } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
 import type { RecipeStore } from "./recipes.js";
 
@@ -54,6 +54,7 @@ export interface ViewDeps {
   recipes: RecipeStore;
   config: CoordinatorConfig;
   now(): string;
+  reportAdapterFailure?: ReportAdapterFailure;
 }
 
 /** Where a human attaches to a run, and what the pane host says about its pane. */
@@ -69,10 +70,16 @@ export async function runTargetRow(
   if (run.pane) {
     const observation = await deps.adapters.paneHost
       .getPane(run.pane)
-      .catch(() => null);
+      .catch((error) => {
+        deps.reportAdapterFailure?.(`Pane read for ${run.id}`, error);
+        return null;
+      });
     const clients = await deps.adapters.paneHost
       .listClients(run.pane)
-      .catch(() => []);
+      .catch((error) => {
+        deps.reportAdapterFailure?.(`Pane clients read for ${run.id}`, error);
+        return [];
+      });
     if (observation)
       pane = {
         hostGeneration: run.pane.hostGeneration,
@@ -94,7 +101,8 @@ export async function runTargetRow(
         cwd: run.worktreePath,
         env: {},
       };
-    } catch {
+    } catch (error) {
+      deps.reportAdapterFailure?.(`Pane attach target for ${run.id}`, error);
       attach = null;
     }
   }
@@ -191,7 +199,10 @@ export async function changesRow(
   if (!worktree) return null;
   const observation = await deps.adapters.git
     .readWorktree(worktree.path, worktree.baseBranch)
-    .catch(() => null);
+    .catch((error) => {
+      deps.reportAdapterFailure?.(`Diff worktree read for ${taskId}`, error);
+      return null;
+    });
   const headSha = observation?.headSha ?? null;
   if (!headSha) return null;
   const lastReviewedHead = state.review?.lastReviewedHead ?? null;
@@ -200,7 +211,10 @@ export async function changesRow(
     mode === "since_last_review" ? (lastReviewedHead as Sha) : worktree.baseSha;
   const changes = await deps.adapters.git
     .changedFiles({ repoRoot: worktree.path, fromSha: baseSha, toSha: headSha })
-    .catch(() => null);
+    .catch((error) => {
+      deps.reportAdapterFailure?.(`Changed files read for ${taskId}`, error);
+      return null;
+    });
   if (!changes) return null;
   const files = changes.map((change) => {
     const path = change.newPath ?? change.oldPath ?? "";
