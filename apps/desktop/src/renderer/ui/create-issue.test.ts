@@ -486,10 +486,12 @@ test("the project picker has no All option and keeps add/select errors inline", 
 
 test("the project picker clears the shared titlebar inset and remains interactive", () => {
   const style = document.createElement("style");
-  style.textContent = readFileSync(
-    join(import.meta.dirname, "../theme.css"),
-    "utf8",
-  ).replaceAll("-webkit-app-region", "--test-app-region");
+  style.textContent = [
+    readFileSync(join(import.meta.dirname, "../styles/theme.css"), "utf8"),
+    readFileSync(join(import.meta.dirname, "../styles/shell.css"), "utf8"),
+  ]
+    .join("\n")
+    .replaceAll("-webkit-app-region", "--test-app-region");
   document.head.append(style);
   try {
     const h = setup({ open: false });

@@ -1,0 +1,77 @@
+.board {
+  flex: 1;
+  display: flex;
+  gap: 1px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--line);
+}
+
+.column {
+  flex: 0 0 272px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  min-height: 0;
+}
+
+.column[data-over="true"] {
+  background: var(--bg-hover);
+}
+
+.column-head {
+  height: var(--row);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+}
+
+.column-body {
+  flex: 1;
+  overflow: auto;
+  padding: 6px;
+  contain: strict;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: 7px 9px;
+  margin-bottom: 6px;
+  display: grid;
+  gap: 5px;
+}
+
+.card[data-cursor="true"] {
+  border-color: var(--accent);
+}
+
+.card .card-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card .card-summary {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card .card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-faint);
+  font-size: 11px;
+}

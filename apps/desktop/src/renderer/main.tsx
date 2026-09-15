@@ -24,7 +24,7 @@ import { StoreProvider, useStore } from "./store/react.js";
 import { createStore } from "./store/store.js";
 import { TerminalHistoryContext } from "./ui/terminal.js";
 import { WindowModeContext } from "./window-mode.js";
-import "./theme.css";
+import "./styles/index.css";
 import { PaneChime } from "./workbench/chime.js";
 
 let keybindingsImportChecked = false;
