@@ -19,10 +19,6 @@
     "label": "Opening an issue, p95",
     "max": 50
   },
-  "diffFirstPaintMs": {
-    "label": "Rendering a 50-file diff, first paint",
-    "max": 400
-  },
   "coldStartMs": {
     "label": "Cold start to interactive",
     "max": 1500

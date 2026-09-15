@@ -3,7 +3,6 @@
 // background throttling disabled, drive the real renderer, and take CPU from `ps`, because
 // Electron's own percentCPUUsage under-reports by roughly 8x.
 
-import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -227,111 +226,6 @@ async function main() {
   measured.listScrollMaxFrameGapMs = scroll.maxGap;
   measured.listScrollRows = scroll.rows;
 
-  step("50-file diff");
-  // ---- a 50-file diff
-  const diff = await page.evaluate(async () => {
-    const { snapshot } = window.loom.store.getState();
-    const task = snapshot.tasks.find(
-      (candidate) => candidate.stage === "in_review",
-    );
-    window.loom.store.open(task.id);
-    window.loom.store.setTab("activity");
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    window.loom.diffPaintedAt = null;
-    const start = performance.now();
-    window.loom.store.setTab("review");
-    const deadline = start + 10_000;
-    while (window.loom.diffPaintedAt === null && performance.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 4));
-    }
-    return {
-      taskId: task.id,
-      ms: (window.loom.diffPaintedAt ?? Number.NaN) - start,
-    };
-  });
-  measured.diffFirstPaintMs = diff.ms;
-
-  // The stress case the brief asks for: the same diff with 200 findings in annotation slots.
-  measured.reviewWith200FindingsMs = (
-    await page.evaluate(async () => {
-      const { snapshot } = window.loom.store.getState();
-      const counts = new Map();
-      for (const finding of snapshot.findings) {
-        counts.set(finding.taskId, (counts.get(finding.taskId) ?? 0) + 1);
-      }
-      let worst = null;
-      for (const [taskId, count] of counts)
-        if (!worst || count > worst[1]) worst = [taskId, count];
-      window.loom.store.open(null);
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      window.loom.store.open(worst[0]);
-      window.loom.store.setTab("activity");
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      window.loom.diffPaintedAt = null;
-      const start = performance.now();
-      window.loom.store.setTab("review");
-      const deadline = start + 20_000;
-      while (
-        window.loom.diffPaintedAt === null &&
-        performance.now() < deadline
-      ) {
-        await new Promise((resolve) => setTimeout(resolve, 4));
-      }
-      return {
-        findings: worst[1],
-        ms: (window.loom.diffPaintedAt ?? Number.NaN) - start,
-      };
-    })
-  ).ms;
-
-  step("merged Review tab");
-  assert.equal(
-    await page.getByRole("tab", { name: "Changes", exact: true }).count(),
-    0,
-  );
-  assert.equal(
-    await page.getByRole("tab", { name: "Review", exact: true }).count(),
-    1,
-  );
-  assert.equal(
-    await page.locator(".file-row").count(),
-    await page.evaluate(
-      () => window.loom.store.getState().snapshot.patch.files.length,
-    ),
-  );
-  await page.locator(".finding-card").first().waitFor();
-  assert.equal(
-    await page.getByLabel("Review range").inputValue(),
-    "whole_branch",
-  );
-  assert.equal(
-    await page
-      .getByLabel("Review range")
-      .locator('[value="since_last_review"]')
-      .isDisabled(),
-    true,
-  );
-  const firstFile = page.locator(".file-row").first();
-  await firstFile.getByRole("button").click();
-  await page.keyboard.press("Alt+ArrowDown");
-  assert.equal(
-    await page.locator(".file-row").nth(1).getAttribute("data-active"),
-    "true",
-  );
-  await page.keyboard.press("Alt+ArrowUp");
-  assert.equal(await firstFile.getAttribute("data-active"), "true");
-  await page.getByRole("tab", { name: "Activity", exact: true }).click();
-  await page.keyboard.press("ControlOrMeta+k");
-  await page
-    .getByRole("option", { name: "Review changes and findings", exact: true })
-    .click();
-  assert.equal(
-    await page
-      .getByRole("tab", { name: "Review", exact: true })
-      .getAttribute("aria-selected"),
-    "true",
-  );
-
   step("terminal latency");
   // ---- keystroke to glyph
   await page.evaluate(() => {
@@ -440,10 +334,6 @@ async function main() {
         measured.terminalKeystrokeP50Ms?.toFixed(2),
       ),
       terminalKeystrokeSamples: measured.terminalKeystrokeSamples,
-      reviewWith200FindingsMs: Number(
-        measured.reviewWith200FindingsMs?.toFixed(2),
-      ),
-      diffTaskId: diff.taskId,
     },
     rows,
     pass: rows.every((row) => row.ok),

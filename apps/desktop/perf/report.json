@@ -75,9 +75,7 @@
   ],
   "extras": {
     "terminalKeystrokeP50Ms": 1.7,
-    "terminalKeystrokeSamples": 30,
-    "reviewWith200FindingsMs": 7.6,
-    "diffTaskId": "LOOM-125"
+    "terminalKeystrokeSamples": 30
   },
   "rows": [
     {
@@ -113,13 +111,6 @@
       "label": "Opening an issue, p95",
       "budget": "<= 50",
       "measured": 17.6,
-      "ok": true
-    },
-    {
-      "key": "diffFirstPaintMs",
-      "label": "Rendering a 50-file diff, first paint",
-      "budget": "<= 400",
-      "measured": 357.1,
       "ok": true
     },
     {

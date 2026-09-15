@@ -74,7 +74,7 @@ async function harness(
     keybindings: async () => defaultKeybindingsState,
     onKeybindingsChanged: () => () => {},
   } as unknown as typeof window.loomHost;
-  window.loom = { store, ready: true, diffPaintedAt: null, term: null };
+  window.loom = { store, ready: true, term: null };
   const send = vi.fn(async (command): Promise<AckOutcome> => {
     if (command.kind === "close_terminal") {
       native.delete(

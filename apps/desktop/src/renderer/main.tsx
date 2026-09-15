@@ -203,8 +203,6 @@ declare global {
     loom: {
       store: typeof store;
       ready: boolean;
-      /** Set by Pierre's post-render callback; the harness times the first diff paint. */
-      diffPaintedAt: number | null;
       /** The live xterm instance, so the harness can time keystroke to glyph. */
       term: unknown;
       terms?: Record<string, unknown>;
@@ -212,4 +210,4 @@ declare global {
     };
   }
 }
-window.loom = { store, ready: true, diffPaintedAt: null, term: null };
+window.loom = { store, ready: true, term: null };

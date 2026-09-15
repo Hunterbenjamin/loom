@@ -120,7 +120,7 @@ function renderTerminal(snapshot: Snapshot) {
     onExit: vi.fn(),
     off: vi.fn(),
   };
-  window.loom = { store, ready: true, diffPaintedAt: null, term: null };
+  window.loom = { store, ready: true, term: null };
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
