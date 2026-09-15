@@ -2,7 +2,7 @@
 
 `@loom/store` persists the coordinator's owned state with better-sqlite3, WAL,
 foreign keys and full synchronous commits. It never launches agents or makes
-workflow decisions. Runtime dependencies are core's types, better-sqlite3 and zod;
+workflow decisions. Runtime dependencies include core/protocol, better-sqlite3 and zod;
 the Claude adapter is a development dependency used only for its `HookLog` types.
 
 ```ts
@@ -27,7 +27,6 @@ hash/session-ID functions. It is never serialized. Use a supported Node LTS runt
 `commit(taskId, result, expectedVersion)` requires the version originally loaded.
 `ReconcileResult` has no old-version field, and a fixed-point result keeps its
 version, so subtracting one from `result.next.task.version` would be incorrect.
-This is a store API addition; no core contracts change.
 
 One immediate transaction compares task and optional capacity versions, saves
 entities and context, consumes exactly `result.inputs`, appends audit transitions,
@@ -46,7 +45,7 @@ uniqueness, immutable finding anchors and versioned finding locations are retain
 
 Loads use one read transaction. They include live runs and the latest ended run
 per role, pending/sent messages, unanswered questions, non-void approvals, all
-findings, required Phase 1b context, latest artifact metadata/content, all consumed
+findings, required task context, latest artifact metadata/content, all consumed
 receipts, and all retained outbox rows. Outbox history is conservatively retained;
 there is no premature pruning of retry or dependency receipts. Historical entity
 rows remain stored when omitted from the active snapshot. Missing context or an
@@ -110,13 +109,9 @@ an unknown migration marked `-- breaking` prevents an older build from opening.
 Do not edit merged migrations. Removal migrations must be marked breaking and ship
 at least one release after the last reader is removed.
 
-The SQL in the design is a sketch. This implementation uses validated entity JSON
-plus relational ownership/index columns, and a separate artifact version manifest.
-The sketch's unused GitHub cache is deferred; GitHub remains its owner and no core
-state field requires persisting it. Phase 1b optional fields retain their absent
-versus explicit-null semantics. The migration from v1 initializes context only for
-version-0 backlog tasks; it refuses to silently fabricate context for older active
-rows by leaving them unloadable.
+The schema uses validated entity JSON plus relational ownership/index columns and an artifact
+version manifest. [migrations/](migrations/) is the schema history; optional fields preserve absent
+versus explicit-null semantics. Loading never fabricates missing context for an active task.
 
 Task JSON includes a positive per-repository `number` and nullable one-line `name`. Creation assigns
 the next number inside the existing immediate transaction; the `tasks_repo_number` expression index
@@ -130,7 +125,6 @@ attention queries read the stored derived fields without recomputing decisions.
 
 ## Verification
 
-Run `pnpm test`, `pnpm lint`, and `pnpm typecheck` at the repository root. Store tests
-use temporary database files, separate connections, real WAL, backups and artifact
+Colocated store tests use temporary database files, separate connections, real WAL, backups and artifact
 files; no real agents or shared daemons are started. Fixtures cover owned core
 state and synthetic hook receipts, not copied production data.

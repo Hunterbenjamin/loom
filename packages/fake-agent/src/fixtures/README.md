@@ -1,8 +1,8 @@
 # Scenario fixtures
 
-These are authored scripts, not recordings of real agent executions. The eight JSON files cover
-core design §9's example and every fault in the Phase 2 brief. Each file is a scenario set, matched
-on provider/role/mode and optional attempt; matching scripts with the same selector are consumed
+These are authored scripts, not recordings of real agent executions. The JSON files cover
+workflow, review guards and provider faults; [scenario.ts](../scenario.ts) defines their schema.
+Each file is a scenario set, matched on provider/role/mode and optional attempt; matching scripts with the same selector are consumed
 in file order (for example, successive review rounds).
 
 Native observation values follow the existing adapter recordings:

@@ -1,150 +1,55 @@
 # @loom/protocol
 
-The typed API between the coordinator and its windows: a full snapshot on connect, then ordered
-patches, with per-client subscriptions so a window showing one task isn't sent every diff of every
-task. Schemas are zod; the types are inferred from them, so there is one definition of each shape
-and it is the one that validates. This package defines the contract and the client-side patch
-semantics. It builds no server and opens no socket.
-
-Designed for several windows at once from the start (`docs/design/ui.md`): a Tracker and a Workbench
-side by side, plus a CLI, all clients of the same snapshot.
+Zod schemas and inferred types for coordinator clients: windows and CLI. This package defines
+frames and patch semantics; it opens no socket. [coordinator/server.ts](../../apps/coordinator/src/server.ts)
+implements the server, and [client.ts](../../apps/coordinator/src/client.ts) the shared client.
 
 ## Transport
 
-One WebSocket per client on the coordinator's bind address, loopback by default and configurable, so
-a phone inbox or an always-on host can follow later without a rewrite.
-
-- **Framing.** One JSON object per WebSocket text message, UTF-8. No framing of our own, no batching
-  across messages, no binary messages. A message that fails `clientFrame` / `serverFrame` is a
-  protocol error, never a partial read. `MAX_FRAME_BYTES` is checked before parsing.
-- **Handshake.** The client sends `hello` with the protocol version, its token and what it wants to
-  watch; the coordinator answers `welcome`, then a `snapshot`, then patches. The token goes in that
-  frame or in an `Authorization: Bearer` header, never in the URL, because query strings reach logs
-  and `ps`. Any other frame first is `not_authenticated`; a second `hello` is
-  `already_authenticated`. Failures send one `error` frame and close with a code from `CLOSE`.
-- **Heartbeat.** `ping` / `pong` at `welcome.heartbeatMs`. A client that misses three is dropped; it
-  reconnects and takes a fresh snapshot, which costs nothing because it holds no durable state.
-
-```ts
-import {
-  applyPatch,
-  decodeServerFrame,
-  encodeFrame,
-  PROTOCOL_VERSION,
-  stateFromSnapshot,
-} from "@loom/protocol";
-
-socket.send(
-  encodeFrame({
-    type: "hello",
-    protocolVersion: PROTOCOL_VERSION,
-    token,
-    client: { id: windowId, kind: "tracker", name: "Loom", version },
-    subscriptions: [{ kind: "views", views: ["needs_you"], repoIds: null }],
-  }),
-);
-
-socket.onmessage = (event) => {
-  const decoded = decodeServerFrame(event.data as string);
-  if (!decoded.ok) return fail(decoded.error);
-  const frame = decoded.frame;
-  if (frame.type === "snapshot") client = stateFromSnapshot(frame, frame.body);
-  if (frame.type === "patch" && client) {
-    const applied = applyPatch(client, frame);
-    // A gap means frames were lost. Ask for a snapshot; never apply half a stream.
-    if (!applied.ok && applied.reason === "sequence_gap") resync(applied.expected);
-  }
-};
-```
+One JSON object per WebSocket text message. Size is checked before parsing; both incoming and
+outgoing frames validate against [frames.ts](src/frames.ts). The client sends `hello` with version,
+identity, token and subscriptions; the server returns `welcome`, snapshot, then patches. Tokens
+travel in a frame or Authorization header, never in a URL. Invalid handshake/version frames close
+with a typed error. Ping/pong uses the negotiated heartbeat; three misses disconnect a client.
 
 ## Snapshot and patches
 
-`snapshotBody` holds one collection per entity; `patchBody` carries ordered upserts and deletes of
-rows of those same collections, keyed by the field `collections` names. There is no generic JSON
-patch: a per-entity upsert is small enough, and it can be validated.
+[snapshot.ts](src/snapshot.ts) names entity collections and keys. [patch.ts](src/patch.ts) applies
+ordered upserts/deletes. Sequence numbers are contiguous per connection, after subscription
+filtering. Replayed older sequences are ignored; gaps require a fresh snapshot, never a partial
+stream. A delete carries enough scope to determine which subscribers lose the row.
 
-- **Sequence numbers are per connection and contiguous.** A patch applies only when its `seq` is
-  exactly the next one, so a gap always means loss. A coordinator-wide counter would leave holes
-  wherever a subscription filtered something out, and a client could not tell those from dropped
-  frames. An earlier `seq` is a replay and is ignored.
-- **The only recovery from a gap is a fresh snapshot.** `resync` asks for one; the snapshot names the
-  `seq` the stream continues from.
-- **A delete carries its task**, because a key alone cannot be matched against a client's
-  subscriptions. A `task` delete means "no longer yours": the task was removed, or it left the views
-  this client subscribed to.
-
-## Subscriptions
-
-Every client receives the repo list and its task list. Everything larger follows a subscription:
-`{ kind: "task" }` for one task's detail, `{ kind: "diff" }` for one task's changed files in one
-range, `{ kind: "run" }` for a terminal panel's attach target and pane state. `taskInView`,
-`scopeOf`, `inScope` and `filterChanges` are the shared definition of "in scope", so a window and
-the coordinator cannot disagree about it.
+[subscriptions.ts](src/subscriptions.ts) owns scope/filter semantics for tasks, views, runs, diffs,
+native panes, repository PRs and conversations. Repository/task-list metadata is small; selected
+content follows subscriptions. [views.ts](src/views.ts) carries core-derived inbox attribution and
+review/CI metadata, so renderers do not recreate workflow decisions.
 
 ## Commands
 
-`{ kind: "human" }` wraps `HumanCommand` from `@loom/core` for one task: the coordinator validates
-it, records it as an input and acknowledges it with that input ID. It has not run yet — reconcile
-decides what happens, and the result arrives as patches and a transition (principle 3). The UI-only
-requests are `open_attach_session`, `fetch_diff` and `save_review_state`. Every request gets exactly
-one `ack`: an `ackResult` or a typed `protocolError` whose codes include `McpErrorCode`, so a
-rejection reads the same whether it came from a window or an agent.
+[commands.ts](src/commands.ts) is the command and acknowledgement catalog. Every request receives
+one result or typed error. Human commands return their committed disposition according to
+[instant-command semantics](../../docs/design/core.md#instant-human-commands); an accepted command
+can still have pending external effects. Reconnect does not replay commands.
 
-## What the protocol adds over `@loom/core`'s entities
+Command families cover task creation/edits and workflow, repository selection, terminal attach and
+lifecycle, Main/chat, PR actions/content/review state, settings and daily briefs. A schema's presence
+does not imply every target is implemented: task `fetch_diff` and task `save_review_state` return
+`unavailable`; PR diffs and PR viewed state are supported.
 
-Each of these is a gap the fixture shell found (PR #18) and `docs/design/ui.md` asked for:
+Issue-targeted commands resolve canonical `t-…` IDs, case-insensitive repository keys and bare
+numbers at the coordinator boundary. Unknown references return `unknown_task`; ambiguity or foreign
+repository references return `invalid_input`. Subscriptions use canonical IDs.
 
-| View | Why |
-|---|---|
-| `Attention.reasonSince` (in core) | An inbox sorts by how long *each* reason has waited, not by the set |
-| `taskMessage`, `taskTestResults` | The task key the UI joins on, so nobody parses a run ID |
-| `runTarget` | Where a human attaches, and what the pane host says about the pane |
-| `taskChanges` / `changedFile` | Path, previous path, status, binary, counts, stable file ID and a monotonic version, from Git metadata: Pierre ignores a changed file whose version didn't change |
-| `reviewRange` | Whether the whole branch or only the changes since the last reviewed head is under review |
-| `commentThread` | Review is a conversation, and it has to survive a restart |
-| `reviewState` | Viewed files, the current file and unsent drafts, all coordinator-owned |
+## Source map
 
-`ids.ts` is the one place a string becomes a branded `@loom/core` ID. Consumers parse; they never
-cast.
+- [entities.ts](src/entities.ts), [ids.ts](src/ids.ts): validated domain projections and branded IDs.
+- [pull-requests.ts](src/pull-requests.ts): PR lists, details, immutable ranges and reviewed files.
+- [briefs.ts](src/briefs.ts), [settings.ts](src/settings.ts): research and preference contracts.
+- [views.ts](src/views.ts): native panes, conversation rows and derived task-list metadata.
 
-## Tests
+Native pane identity includes host generation and pane ID. Public attach targets omit private run
+credentials. UI close versus detach behavior is documented in [Workbench](../../docs/design/ui.md#workbench).
+Owner/cache semantics belong to [architecture](../../docs/architecture.md), not a second schema here.
 
-`src/*.test.ts`. Every schema round-trips through JSON; a type-level test keeps each mirror equal to
-the core type it mirrors; a fake client applies a snapshot and a patch stream and ends where a fresh
-snapshot would; a sequence gap is detected and applies nothing; subscriptions filter. The shell's
-fixture store is converted to a protocol snapshot and parsed with the real schemas in
-`apps/desktop/src/renderer/fixtures/protocol.test.ts`, so the fixtures and the contract can't drift.
-
-## Tracker inbox (protocol version 2)
-
-The `inbox` collection is small task-list metadata keyed by task ID: `reasonRuns` contains the runs
-attributed by core's attention derivation, `planVersion` identifies the plan an approval names, and
-`reviewedHead` is the last reviewed SHA (never an inferred current head). It reaches every window,
-so an inbox and title badge need no subscription per task. Full plans, questions and Activity still
-follow the selected task subscription. Reasons and `reasonSince` remain on the task; renderers do
-not derive them. Several runs may contribute to a single reason, but the inbox still has one row
-per task/reason. Version 2 explicitly rejects old clients rather than sending them an unknown
-collection. Pane attach targets already existed; their public environment is now empty, since an
-attach client does not need the run recipe's MCP credentials.
-
-### Native panes
-
-Subscribe with `{kind: "panes"}` for `panes` and `paneInventory` snapshot arrays and keyed `pane` /
-`pane_inventory` patches. The physical key is JSON encoding of `[hostGeneration, paneId]`. Labels,
-nullable task/run links, attention and status are coordinator-derived; command, title, native IDs,
-start cwd and dead/exit state come from the host. Counts are session-group client counts. Unavailable
-observations retain rows and publish health, including for an empty inventory; recovery and removals
-are semantic patches. No observation timestamp churn is emitted.
-
-`open_pane_session` accepts only `target: {hostGeneration, sessionName, windowId, paneId}` and returns
-an `attach_session` with `identity: "pane"`, the validated target, attach argv and current pane state.
-Run and Main requests retain their existing forms. `create_scratch` accepts `taskId` and a UUID `key`;
-the coordinator resolves cwd/session and returns `scratch_created` with the published pane. Clients
-must not replay scratch commands on reconnect. A terminal detaches when closed; it does not close its
-underlying pane.
-
-Commands that name an issue through `taskId`, and `create_task.blockedBy`, accept the canonical
-`t-…` ID, a case-insensitive repository key such as `LOOM-12`, or a bare number such as `12`.
-The coordinator resolves these once at the command boundary. Unknown references return
-`unknown_task`; ambiguous or out-of-repository references return `invalid_input` and name the
-candidate issues. Subscription frames continue to use canonical task IDs.
+Colocated tests verify JSON round trips, core type equality, ordered patch replay, gap detection
+and scope filtering. Desktop fixture tests parse generated snapshots with these same schemas.

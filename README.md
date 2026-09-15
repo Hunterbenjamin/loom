@@ -1,93 +1,42 @@
 # Loom
 
-Terminology: an “issue” in the UI is a “task” in the code; internal identifiers and MCP tool names retain `task`.
+Loom is a local desktop app and background coordinator for coding agents. It runs issues through
+planning, implementation, CI, review and approval, with live terminals and GitHub PR review.
+GitHub, tmux, Codex and Claude Code remain independent tools.
 
-A local, Linear-style control surface for coding agents. Loom moves issues through
-Backlog → Todo → In progress → In review → Awaiting approval → Done, and runs Codex and
-Claude Code agents at each stage. It sits on top of GitHub, tmux, the Codex app-server and
-Claude Code, and every one of those keeps working on its own.
+The UI calls a unit of work an **issue**; code and MCP tool names call it a **task**.
 
-**Status:** pre-alpha. Phase 2 (adapters) is complete; the coordinator is next (see `docs/build-plan.md`).
+## Start here
 
-- `docs/architecture.md`: the design and the principles behind it
-- `docs/build-plan.md`: the build phases, and how Loom starts building itself
-- `spikes/`: throwaway experiments that answer open integration questions
-- `apps/desktop/`: the window (Phase 1 shell, rendered from fixtures)
-- `AGENTS.md`: instructions for agents working in this repo
-
-## Main
-
-Main is the conversation agent behind the bottom-bar toggle (⌘J) and **Open Main** in the
-command palette. It introduces itself and waits for you, turns longer work into Loom issues,
-and summarizes Needs-you escalations. It has only Loom MCP tools and read-only file tools in
-its instance directory, with no shell or terminal attach capability. Its `set_note` tool keeps
-up to 2,000 characters in the instance's `main-notes` document across session restarts and rotation.
+- [AGENTS.md](AGENTS.md): repository principles, safety and contribution rules.
+- [Architecture](docs/architecture.md): ownership, integrations, recovery and settings.
+- [Core workflow](docs/design/core.md): stages, guards and reconciliation.
+- [Agents](docs/design/agents.md): Main and issue-agent responsibilities.
+- [UI](docs/design/ui.md): Tracker, Workbench and detail pages.
+- [Coordinator](apps/coordinator/README.md) and [desktop](apps/desktop/README.md): setup and source maps.
 
 ## Development
 
-Run the dev instance (coordinator and desktop app) with the launcher; both live in windows on the
-instance's private tmux server, so they survive your terminal and restart independently:
+Use the Node version in [.node-version](.node-version) and pnpm version in
+[package.json](package.json), then `pnpm install --frozen-lockfile`.
+The launcher reads `~/.loom/dev/env`, which must export `LOOM_INSTANCE`, `LOOM_DATA_ROOT` and
+`LOOM_TOKEN`. Coordinator and desktop run independently on the instance's private tmux server.
 
 ```sh
-pnpm dev:sync               # the one safe command: start what is down, restart what is stale
-pnpm dev                    # start both (running ones are left alone)
-pnpm dev:restart            # restart both, coordinator first
-scripts/dev.sh restart app  # just the app
-scripts/dev.sh status       # what is running, whether it is stale, and one app-server per task
-scripts/dev.sh logs         # follow the coordinator log
-scripts/dev.sh install-launcher   # "Loom Dev.app" in ~/Applications with the same buttons;
-                                  # Status shows a dialog, the rest run detached and notify when done
+pnpm dev:sync                    # start missing processes; restart stale ones
+pnpm dev                        # start both, leaving running processes alone
+pnpm dev:restart                 # restart both, coordinator first
+scripts/dev.sh restart app      # restart only the desktop
+scripts/dev.sh status
+scripts/dev.sh logs
+scripts/dev.sh install-launcher  # install Loom Dev.app in ~/Applications
 ```
 
-The same controls are available in the Workbench when running from a development checkout:
-right-click Coordinator or Desktop for its restart action and **Sync dev instance**, or use
-**Dev: sync instance**, **Dev: restart coordinator**, and **Dev: restart app** in the command palette.
-They run the checkout's `scripts/dev.sh` in a detached session on the instance's private tmux server;
-output stays in its tmux window and the pinned rows show process status.
+After source changes or a merge, use `pnpm dev:sync`. Source fingerprints detect stale coordinator
+and Electron main/preload builds; the renderer hot-reloads. The Workbench and command palette
+also expose these dev controls when running from a checkout.
 
-Each start records a fingerprint of the sources that process was built from: the coordinator and
-`packages/*` for the coordinator; Electron's main, preload and shared code plus `packages/*` for
-the app. The renderer hot-reloads and is not part of it. `status` reports STALE when the working
-tree differs from the record, and `sync` restarts exactly those. After a merge or an edit, run
-`pnpm dev:sync` and nothing else.
-
-It reads `~/.loom/dev/env`, which must export `LOOM_INSTANCE`, `LOOM_DATA_ROOT` and `LOOM_TOKEN`.
-
-
-```sh
-pnpm install
-pnpm test
-pnpm lint
-pnpm typecheck
-```
-
-### Continuous Integration
-
-A GitHub Actions workflow (`.github/workflows/ci.yml`) automatically runs lint, typecheck, and tests on every pull request and push to the main branch. The workflow:
-
-- Installs Node.js 22.13.0 and pnpm 10.0.0 (from `.npmrc` and `package.json`)
-- Caches the pnpm store for faster builds
-- Installs tmux for tests that require it
-- Runs `pnpm lint`, `pnpm typecheck`, and `pnpm test`
-- Skips real provider tests and desktop performance tests in CI
-
-To require these checks before merging to main, enable branch protection rules in GitHub:
-
-1. Go to repository **Settings → Branches**
-2. Under "Branch protection rules", click "Add rule"
-3. Set "Branch name pattern" to `main`
-4. Enable "Require status checks to pass before merging"
-5. Select the `lint-typecheck-test` job as a required check
-
-### The window
-
-```sh
-pnpm --filter @loom/desktop dev     # Electron + Vite, on fixture data
-pnpm --filter @loom/desktop build
-pnpm --filter @loom/desktop perf    # the Playwright performance harness
-```
-
-It renders from an in-memory fixture store and talks to nothing. The Terminal tab runs a real
-PTY; set `LOOM_ATTACH_PANE=<session>:<window-id>` to attach it to a pane on Loom's tmux server instead of a shell. See
-`apps/desktop/README.md` for the keyboard map, the environment variables and the performance
-budgets.
+[CI](.github/workflows/ci.yml) runs lint, typecheck and tests on every branch push, so submitted
+commits get checks before a PR exists. For local checks, see [AGENTS.md](AGENTS.md) and the
+repository commands in [WORKFLOW.md](WORKFLOW.md). Issue agents follow their
+[role-specific check policy](docs/design/agents.md#issue-agents).

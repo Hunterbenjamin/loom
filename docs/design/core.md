@@ -1,1015 +1,199 @@
-# Core design
+# Core workflow
 
-Current contract, updated with the Phase 1b implementation and PR #12 review corrections.
-The types and pure implementation live in [`packages/core/src`](../../packages/core/src).
-Phase 2 adapters and the future store/executor must implement this contract. PR #12 retains the
-original deviations list as the history of what changed and why.
-Built on [`docs/architecture.md`](../architecture.md) and the findings of spikes 01–05.
+`reconcile(state, observations)` is pure: the same inputs produce the same next state, actions,
+transitions and input dispositions. It performs no I/O and reads no clock. Types are defined in
+[core/src](../../packages/core/src); this document explains the rules rather than copying those types.
+[Architecture](../architecture.md) owns integration boundaries; [agent layers](agents.md) owns role duties.
 
-Ownership marks in the entity tables: **A** authoritative in Loom · **R** a reference to a fact another
-tool owns · **C** a cache of another owner's fact, stored with its read time and never used to decide
-without a fresh read · **D** derived by every reconcile, stored only so queries and snapshots are cheap.
+## Contract map
 
-## 1. Entities
-
-Types: [`entities.ts`](../../packages/core/src/entities.ts), [`ids.ts`](../../packages/core/src/ids.ts).
-
-### Task
-
-| Field | Own | Notes |
-|---|---|---|
-| `id`, `repoId`, `title`, `description` | A | `id` remains the internal join key. |
-| `number` | A | Positive sequence assigned atomically per repository; display only and never reused. |
-| `name` | A | Optional one-line human name, at most 32 characters, set at creation. Displays a truncated title fallback when null. |
-| `stage` | A | §2. Changes only in a reconcile commit. |
-| `stageEnteredAt` | A | |
-| `version` | A | Compare-and-set counter; +1 when the returned owned state changes, once per committed reconcile pass. |
-| `blocked` | A | `{reason, since, detail, until, questionId}` or null. §3. |
-| `failed` | A | `{reason, since, detail, runId}` or null. §3. |
-| `requirePlanApproval` | A | Defaults from the repo; forced on for tasks labeled `core`. |
-| `reviewRound`, `reviewRoundCap` | A | Rounds started so far; cap defaults to 3 and only a human raises it. |
-| `providers` | A | Planner, implementer, reviewer. Rule default plus human override. |
-| `blockedBy` | A | Task IDs that must be merged first. |
-| `budgetMinutes` | A | Exceeding it adds attention; nothing else. |
-| `size` | A | `'small'` or `'normal'` (default). Small tasks skip the planning stage and reduce reviewer scope. |
-| `worktreePath` | R git | The join key (realpath). Null until created. |
-| `branch` | R git/GitHub | Loom picks the name (`loom/<taskId>-<slug>`); git and GitHub own the branch. |
-| `prNumber` | R GitHub | |
-| `attention` | D | §3. |
-
-### Run
-
-One run of one agent in one role, one row per (task, role, round). A retry relaunches that same row
-(`attempts + 1`) and keeps its session; a fix round reuses the implementer's run and session. Only a
-human relaunches an interactive run (§3).
-
-| Field | Own | Notes |
-|---|---|---|
-| `id` | A | Deterministic: `<taskId>/<role>/<round>`. Stable across attempts. |
-| `taskId`, `role`, `provider`, `mode`, `model` | A | All roles default to `interactive` (visible in panes). `LOOM_RUN_MODES` may override individual roles for new rows only; existing runs, retries/resumes, and external sessions retain their recorded mode and identity. |
-| `origin` | A | `loom`, or `external` for a session started by hand in the worktree (observe-only). |
-| `worktreePath`, `round` | A | |
-| `attempts` | A | Launches of this run so far. A retry bumps it and keeps the row. |
-| `sessionId` | R provider | Claude: UUIDv5 of `<runId>#<sessionEpoch>`, set when the row is inserted, before launch, and reused by every attempt of that epoch. Codex: thread ID from `thread/start`, recorded before the first `turn/start`. |
-| `sessionEpoch` | A | Starts at 0. +1 only when the provider can no longer resume the session, which derives a fresh Claude session ID (for Codex, a new `thread/start`). |
-| `codexGeneration` | R Codex | App-server connection generation; scopes request IDs. |
-| `pane` | R pane host | `{hostGeneration, sessionName, windowId, paneId}` for interactive runs. `hostGeneration` scopes the pane ID: tmux restarts them at `%0` after a server death. |
-| `status`, `blockedOn` | D | From provider observations; §4. |
-| `lastTurn` | C provider | `{id, outcome, error}`. Kept apart from `status`. |
-| `inFlightTurnId` | D provider | Native Codex turn ID or Claude prompt ID while a fresh observation proves it is in flight. Unknown reads preserve the last value for restart recovery. |
-| `restartInterruption` | A | `{turnId, recordedAt, outcome, decidedAt}` records whether a restart-interrupted turn was continued, completed meanwhile, or no longer needed. |
-| `pendingRequests` | C provider | Approvals and questions the provider is waiting on. |
-| `lastActivityAt` | A | Latest provider activity evidence from `RunObservation.activityAt` (or Claude hook activity), not the timestamp of a no-change poll. Drives stall detection. |
-| `retryAt` | A | Backoff: `min(10s·2^(n−1), cap)`. |
-| `launchedAt`, `endedAt`, `endReason` | A | `submitted`, `superseded`, `canceled`, `crashed`, `vanished`, `failed`, `task_done`. |
-
-The following lifecycle fields are written by core and retained by the store whenever present.
-They follow the original fields in `Run`; their optional representation has these explicit initial defaults:
-
-| Field | Own | Meaning / initial value |
-|---|---|---|
-| `seenAt` | A | First authoritative evidence of this session; absent/null means never seen. Required to distinguish a not-yet-present Claude start from a vanished session after restart. |
-| `unknownSince` | A | Start of the current unknown-status interval; absent/null means no such interval. Repeated unavailable reads do not reset it. |
-| `idleSince` | A | Start of the current idle interval. Resets on a status change or new native activity, survives unchanged polls and restart. Legacy idle runs fall back to last activity or launch time. |
-| `observedAttempt` | A | Attempt whose failure was already scheduled; absent means no failure handled for this attempt. |
-| `retryBaseAttempt` | A | Monotonic attempt offset at the last human retry reset; absent means 0. Attempts themselves never reset, so action keys cannot be reused. |
-
-A launch clears `launchedAt` until its matching `start_run` result commits. Old snapshots do not
-unlock messages while that launch is pending. The provider adapter supplies explicit resumability
-(§5.2); only a fresh `resumable: false` can cause a new session epoch. Provider recovery cancels a
-scheduled run retry. Automatic headless retries require fresh provider and git evidence and capacity;
-interactive failure recovery remains a human action.
-
-### Worktree
-
-| Field | Own | Notes |
-|---|---|---|
-| `path` | A | Primary key. Canonical realpath (`/private/var/…`, never `/var/…`). |
-| `taskId`, `repoId`, `branch`, `baseBranch`, `baseSha` | A | `baseSha` is the base when the worktree was created. |
-| `portSlot` | A | Null until ports land (Phase 5). |
-| `paneWorkspaceId` | R pane host | The task's pane-host session; one window per run lives in it. |
-| `createdAt`, `removedAt` | A | |
-| `git` | C git | `{headSha, dirty, aheadOfBase, at}`. |
-
-### Artifact
-
-Metadata and versioned content are committed durably together (§8), then materialized as files in
-the data directory and mirrored to `<worktree>/.task/` by the executor.
-
-| Field | Own | Notes |
-|---|---|---|
-| `id`, `taskId`, `kind` | A | `brief`, `plan`, `decisions`, `findings`, `test_results`, `handoff`. |
-| `version` | A | Monotonic per (task, kind). `decisions` is append-only. |
-| `path`, `sha256` | A | Relative to the data directory. |
-| `createdBy`, `createdAt` | A | `human`, `coordinator` or a run. |
-
-`findings.json` is a projection of the findings table, written for agents; the table is the source.
-Plan content is the `Plan` type (goal, non-goals, steps, areas, acceptance criteria, test plan, risks,
-open questions, suggested implementer). Core serializes versioned contents as JSON and hashes those
-bytes with the injected SHA-256 function. Decisions and test evidence accumulate. A test record
-includes `runId`, `ranAt` and `headSha`; nonempty progress test reports require a fresh git HEAD.
-Every findings mutation updates its artifact projection. Object key order alone is not a mutation.
-
-### Finding
-
-| Field | Own | Notes |
-|---|---|---|
-| `id`, `taskId`, `round` | A | |
-| `source` | A | `reviewer`, `human`, `github`, `ci`, `system`. |
-| `externalId` | R GitHub | Comment ID or check-run ID; dedupes imports. |
-| `createdByRunId` | A | |
-| `severity` | A | `blocker`, `major`, `minor`, `nit`. Chosen by the agent or human. |
-| `blocking` | A | Decided by code: reviewer reports block only with `escalate`; `fixed` never blocks. Human/system severity and the GitHub rule in §2 are unchanged. |
-| `title`, `body` | A | |
-| `status`, `reopenCount` | A | `open`, `addressed`, `disputed`, `resolved`, `fixed`, `escalate`, `waived`. |
-| `anchor` | A | Immutable, from spike 04: base/head SHA, old/new path, old/new blob OID, side, line range, optional columns, selected text and its hash, context-before/after hashes, normalization. Null for task-level findings. |
-| `location` | A | Current mapping: `{headSha, path, blobOid, side, startLine, endLine, status, version, mappedAt}`; status is `exact`, `moved`, `ambiguous` or `outdated`. |
-| `resolution` | A | `{by, note, commitSha, at}`. |
-
-Finding status and mapping status are separate. `outdated` never resolves a finding, and mapping never
-picks the nearest duplicate. Mapping runs through Git hunks and verified renames (the `map_findings`
-action); the same head always gives the same mapping.
-
-### Approval
-
-| Field | Own | Notes |
-|---|---|---|
-| `id`, `taskId`, `kind` | A | `plan` or `merge`. |
-| `planVersion` | A | Plan approvals: the plan version approved. |
-| `headSha` | A | Merge approvals: the exact commit. |
-| `findings` | A | Snapshot: `(id, status, severity)` of every finding, its hash, and the open blocking count. |
-| `ci` | C GitHub | CI state at approval time: head SHA, conclusion, checks. |
-| `voidedAt`, `voidReason` | A | `new_commit`, `ci_failed`, `findings_changed`, `plan_changed`, `stage_left`. |
-
-### Transition (audit log)
-
-Append-only; one row per committed stage change or flag change.
-
-| Field | Own | Notes |
-|---|---|---|
-| `id`, `taskId`, `at` | A | |
-| `from`, `to` | A | Equal for a flag-only change. |
-| `flags` | A | `{blocked?: {from, to}, failed?: {from, to}}`. |
-| `trigger` | A | `human` (command, inputId), `mcp` (tool, runId, inputId) or `reconcile` (the fact). |
-| `reason`, `taskVersion` | A | Version after the change. |
-
-### Supporting records
-
-| Entity | Fields | Notes |
-|---|---|---|
-| Message | `id, runId, purpose, text, textHash, status, attempts, transportRef, sentAt, delivered`, plus delivery metadata below | Status `pending → sent → delivered` (or `failed`). `restart_continuation` uses the normal delivery path. §5.5. |
-| Question | `id, taskId, runId, question, options, blocking, askedAt, answer, answeredAt` | From `ask_human`. |
-| Repo | `id, root, github, baseBranch, defaultProviders, serialTests` | |
-
-Delivery metadata follows the original `Message` fields. Core writes it and the store must retain it:
-`via` identifies the transport path (absent before send), `expectedTurnId` identifies a steered turn,
-`baselineTurnId` identifies the last observed turn before sending (absent/null means none), and
-`deliveryAttention` defaults to false. `pendingSince` records the start of the current pending
-interval; legacy pending records initialize it on their first reconciliation and persist it.
-`transportAttempt` records executor start/completion times
-and session/run identity (§5.5), and is absent on legacy records. These fields are never
-reconstructed from a terminal.
-
-`CiCheck.id` is required: the GitHub adapter supplies the stringified stable check-run ID. Core uses
-it as the CI finding's external identity; name/head fallbacks are no longer permitted. The ID remains
-part of the CI snapshot captured in a merge approval.
-
-### IDs
-
-Reconcile is pure, so it can't draw random IDs. IDs it creates are derived from stable keys: run IDs
-from `(task, role, round)` (explicit replacements append `/restart/<inputId>`), Claude session IDs as UUIDv5 of `<runId>#<sessionEpoch>`, message IDs from
-`(run, purpose, sequence)`, action keys from the intent (§5.5). IDs that arrive with an input (finding
-IDs, question IDs) are assigned by the I/O layer when the input is persisted.
-
-The coordinator injects pure `deriveClaudeSessionId(runId, epoch)` (UUIDv5 in a stable Loom namespace)
-and `sha256(text)` functions through `ReconcileConfig`. SHA-256 covers normalized message text,
-serialized artifact content, and sorted finding snapshot triples. The namespace and hash implementation
-must be stable across restarts. These functions are runtime configuration, never serialized store data.
-The same config also supplies `worktreeRoot`, `baseBranch`, and `models` by provider in addition to
-retry/timing thresholds. `githubPollMs` is the coordinator's polling policy; core does not perform polling.
-
-## 2. Stage rules
-
-| Stage | Who works | Notes |
-|---|---|---|
-| `backlog` | nobody | Parked. |
-| `todo` | nobody | Queued for capacity and dependencies. |
-| `planning` | planner (interactive, in a pane) | |
-| `plan_approval` | nobody | Only when `requirePlanApproval`. |
-| `in_progress` | implementer (interactive, in a pane) | |
-| `ci` | nobody | The implementer's session stays alive, but owes no work while checks run. |
-| `in_review` | reviewer (interactive by default, with worktree write/commit access) | The implementer's session stays alive for fix rounds. An ended interactive run's pane is closed (`stop_run` with `retire`) once its role is no longer needed: a planner's after the plan is settled, a reviewer's after its round, an implementer's when the task ends; sessions stay resumable by ID. |
-| `awaiting_approval` | nobody | Human reviews the diff. |
-| `merging` | nobody | Merge requested; waiting to see it on GitHub. |
-| `done`, `canceled` | nobody | Terminal (`canceled` can be reopened). |
-
-The table shows the default modes. `LOOM_RUN_MODES` can select headless mode per role for new runs.
-
-Triggers: **H** human command, **M** MCP tool call from the task's *current* run for that role, **R** a fact
-found by reconcile. "Start X" means insert the run row (with its session ID for Claude), then `start_run`,
-then the first `send_message` once the session ID is recorded. "Resume X" reuses the existing run row and
-its session, with `start_run` carrying `resume: true` when it is resumable. Missing worktrees are
-created before constructing run rows. `TaskState.desiredRun` durably holds a role/round/resume intent
-when setup, flags or capacity defer its start. Claude IDs exist before launch; both providers require
-a committed launch/session result and an authoritative usable reading before the first prompt.
-
-| # | From | To | Trigger | Guard | Actions |
-|---|---|---|---|---|---|
-| 1 | backlog | todo | H `move todo` | — | — |
-| 2 | todo | backlog | H `move backlog` | — | — |
-| 3 | todo | planning | R | All `blockedBy` merged; no accepted plan; capacity CAS for the planner's provider; provider not cooling down; no flags; **task.size = 'normal'** | `create_worktree` (if none), `open_workspace`, `write_task_files`, start planner |
-| 3b | todo | in_progress | R | **Small task (task.size = 'small') fast path:** All `blockedBy` merged; no plan yet; capacity CAS for the implementer's provider; provider not cooling down; no flags | Auto-generate plan from task title (goal) and description (steps); mark as accepted; `create_worktree` (if none), `open_workspace`, `write_task_files`, start implementer |
-| 4 | todo | in_progress | R | As #3, but an accepted plan exists (task was parked after planning) | `write_task_files`, resume the implementer's session if it has one, else start implementer |
-| 5 | planning | plan_approval | M `submit_plan` | Plan passes schema; `requirePlanApproval` | Store plan vN; `stop_run` planner; `notify` attention; overlap warning (Phase 5) |
-| 6 | planning | in_progress | M `submit_plan` | Plan passes schema; not `requirePlanApproval`; capacity CAS | Store plan vN; `stop_run` planner; `write_task_files`; start implementer |
-| 7 | plan_approval | in_progress | H `approve_plan(v)` | `v` is the latest plan version; capacity CAS | Insert plan Approval; `write_task_files`; start implementer |
-| 8 | plan_approval | planning | H `reject_plan(feedback)` | — | Resume the planner's session; `send_message` feedback |
-| 9a | in_progress | ci | M `submit_for_review` | `headSha` = worktree HEAD; tree clean; ahead of base | Store handoff and `ciGate`; `push_branch(headSha)` |
-| 9b | ci | in_review | R CI gate | CI for exactly the gate head is green, or no check was reported within `CI_START_GRACE_MS` of the successful push; worktree head unchanged | Resolve earlier `ci` findings; clear gate; `reviewRound += 1`; start reviewer for the round |
-| 9c | ci | in_progress | R CI gate | CI for exactly the gate head is red | One blocking `ci` finding per failed check; clear gate; `send_message` fix round to the implementer |
-| 9d | ci | in_progress | R worktree head changed | Worktree head differs from the gate head | Clear gate; submission withdrawn |
-| 9e | in_progress | ci | R legacy gate | A stored pre-`ci` task still has `ciGate` | Migrate it, then apply the same gate edges |
-| 10 | in_review | awaiting_approval | M `submit_review`, then R publication | Clean task-branch HEAD is the round head; no `reviewerCommits` and no `fixed` statuses (the reviewer is a checker); verdicts for addressed/disputed and open blocking findings; 0 open blocking; published PR head = reviewed head, positively `mergeable`, CI for that head not failing | Store submission, findings and verdicts; end reviewer; `push_branch(reviewedSha)` before `open_pr` (if none); wait in_review for publication; `notify` attention |
-| 11 | in_review | in_progress | M `submit_review` | Same clean HEAD, ancestry, commit-list and verdict guards; explicit `escalate` with reason and open blocking > 0; `reviewRound < reviewRoundCap`; converging | Store findings and escalation reasons; end reviewer; `send_message` fix round to the implementer (resume it if it ended) |
-| 12 | in_review | in_review, flag | M `submit_review` | Escalated open blocking > 0 and `reviewRound ≥ cap` → `blocked: review_round_cap`. A finding re-escalated, or escalated open blocking ≥ last round's → `blocked: review_not_converging` | Store findings; `stop_run` reviewer; `notify` attention |
-| 13 | in_review (blocked by #12) | in_progress | H `grant_review_round` | — | For `review_round_cap`, `reviewRoundCap += 1`; clear flag; `send_message` fix round to the implementer (resuming its run if it ended) |
-| 14 | in_review (blocked by #12) | awaiting_approval | H `waive_finding` × n | 0 open blocking afterwards; reviewed head publication as #10 | Clear flag; publish reviewed head before approval; `notify` |
-| 15 | awaiting_approval | merging | H `approve(headSha)` | `headSha` = PR head = last reviewed head; 0 open blocking; CI for that head `success`, `pending` or `none`; PR positively `mergeable` | Insert merge Approval (head, findings snapshot, CI); `merge_pr(matchHeadSha, auto = CI pending)` |
-| 16 | awaiting_approval, merging | in_review | R new commit: PR head ≠ last reviewed head | — | Void approval (`new_commit`); `disable_auto_merge` if enabled; `map_findings` to the new head; `reviewRound += 1`; start reviewer |
-| 17 | awaiting_approval, merging | in_progress | R CI `failure` on the head | — | One blocking `ci` finding per failed check (deduped by check-run ID); void approval (`ci_failed`); `disable_auto_merge` if enabled; `send_message` fix round to the implementer (resuming its run if it ended) |
-| 17b | in_review (publication pending), awaiting_approval, merging | in_progress | R PR `conflicting` with base (or `merge-tree` conflicts) | 0 open blocking | Void approval (`stage_left`); `send_message` rebase fix round to the implementer (no findings: rebase onto base, resolve, re-run tests, submit for review again); the rebased head gets a new review round (#9). Without this a reviewed branch that conflicts after a merge waits forever for a mergeable PR. |
-| 18 | awaiting_approval | in_progress | H `request_changes(findings)` | At least one finding | Store them as blocking `human` findings; `send_message` fix round to the implementer (resuming its run if it ended). Doesn't count against the cap. |
-| 19 | in_review | in_progress | H `request_changes(findings)` | At least one finding | Store them as blocking `human` findings; void approval (`stage_left`); clear review state (end current reviewer round); `send_message` fix round to the implementer (resuming its run if it ended). Doesn't count against the cap. |
-| 20 | merging | awaiting_approval | R `merge_pr` failed with `precondition` (head moved, not mergeable) | — | Void approval; `notify`. If the head moved, #16 applies instead. |
-| 21 | any but done | done | R PR `merged` | — | Void open approvals; end all runs (`task_done`): `stop_run` headless runs, leave interactive panes to the human; `notify` |
-| 22 | any but done, canceled | canceled | H `cancel` | — | `interrupt_run` working runs, `stop_run` headless runs, end runs (`canceled`); void approvals; `disable_auto_merge` if enabled. The PR and branch stay as they are. This includes `ci`. |
-| 23 | canceled | backlog | H `reopen` | PR not merged | Runs stay ended; the next start is a new attempt. |
-| 24 | planning … awaiting_approval (including ci) | backlog | H `move backlog` | — | `interrupt_run` working runs; `stop_run` headless runs; void approvals (`stage_left`). Plan and findings are kept. |
-
-Notes on the rules:
-
-- **Precedence.** An observed merge wins over all commands. For `awaiting_approval`/`merging`, a new
-  PR head wins over old-head CI failures or a merge-precondition failure. `mergeable: unknown` is
-  insufficient for #10/#15. If GitHub is unavailable when a merge precondition fails, retain the
-  failed outbox result and apply #16 or #19 after a fresh read.
-- **Deferred work and capacity.** The stage can change while its desired run or fix message waits.
-  Capacity and executor ordering are defined in §5.4. The executor must honor persisted dependencies
-  and canceled intents, rather than treating an action array as freely parallelizable work.
-- **Review evidence.** `review.headSha` is the round's immutable target; `lastReviewedHead` advances
-  only on a valid review submission. `verdictIds` captures addressed/disputed findings at round start.
-  The prior completed round's blocking count is used for convergence. The MCP boundary verifies blob
-  existence and line bounds before constructing drafts; core verifies each anchor's head, path, side,
-  range and blob identity against the submission.
-- **Review contract.** `review.headSha` stays immutable, and since reviewers are checkers `submit_review` refuses any reviewed SHA other than it and any reviewer commit; the commit-range evidence below remains for validation and older stored submissions. Git's optional `reviewCommits`
-  observation is `{baseSha, headSha, commits[]}` for the requested round base and exact HEAD, or
-  null if the base is not an ancestor. Missing evidence refuses a descendant submission. The list
-  includes every reachable commit in the range, including merged side history, oldest first in
-  topological order. The authenticated reviewer explicitly attributes this exact list to its run.
-  No terminal parsing or Git author/email inference is used.
-- **Finding dispositions.** New reviewer findings may have status `open` (also the default,
-  non-blocking regardless of severity) or `escalate` (requires nonblank `reason`). Verdicts are
-  `resolved`, `reopened` or `escalate`; a reopened report alone is non-blocking. `fixed` is refused:
-  reviewers don't commit. Every existing open blocker also needs a verdict. Escalations store their
-  reason in `resolution.note`; CI findings a later green CI settles carry `resolution.by: ci`. Implementers may resolve `escalate` through the existing
-  addressed/disputed path. Explicit re-escalation keeps the nonconvergence guard.
-- **Publication and persistence.** The versioned handoff's optional `reviewerSubmission` is
-  `{runId, round, input: SubmitReviewInput}`. `review.reviewerCommits` and
-  `review.publicationPending` are additive persisted fields. Older stored inputs default a missing
-  reviewer commit list to empty; fresh MCP calls must supply it. Convergence (including waivers)
-  emits an idempotent push for the reviewed SHA, then opens a missing PR with a push dependency.
-  A submission may return `next: in_review` while the coordinator waits for fresh matching PR/CI
-  evidence; the reviewer has completed its work and must not submit again. An existing matching
-  published PR can advance immediately. The implementer's transition 9 push stays unchanged.
-- **CI display cache.** `ciGate.ci` optionally caches the latest matching GitHub reading without
-  check-run IDs: conclusion, check names/statuses/conclusions/URLs, and `observedAt`. The inbox
-  projection publishes it while the gate exists. Polls compare conclusion and checks but ignore
-  `observedAt`, so an identical reading does not bump the task version. Older rows without the cache
-  remain valid.
-- **Clean tree.** The git adapter excludes ignored files, including `.task/` and ignored build output,
-  and supplies all offending paths in `dirtyPaths` for actionable `guard_failed` details.
-
-- **Plan-approval gate.** Its own stage (#5, #7, #8), so "waiting for the human" is a visible state with its
-  own CAS and audit row. The board may draw it inside the Planning column.
-- **Round cap.** The round counter counts reviewer runs. The cap limits going *back* to `in_progress`
-  (#11 against #12). A re-review after a new commit (#16) always runs, because nothing merges unreviewed,
-  and counts as a round. A human's `request_changes` (#18) is not capped.
-- **Done only when the merge is observed.** `merge_pr` succeeding moves nothing; #20 fires only when a
-  GitHub read shows `state: merged`. That covers merges made on github.com, from any stage.
-- **Approval voiding.** Any change to the head, CI failing, or leaving the stage voids a merge approval.
-  Voiding is a new column value, never a delete. An approval with auto-merge enabled is disarmed
-  (`disable_auto_merge`) before anything else happens.
-- **GitHub comments.** Human PR comments are imported as findings (source `github`, deduped by
-  comment ID). They block only when their review's state is `changes_requested`; otherwise they're `minor`.
-- **Moving a card by hand.** Only the moves in the table are allowed. Anything else is rejected with
-  `wrong_stage`, rather than guessed at.
-
-- **Small task fast path.** Tasks with `size: 'small'` auto-generate a plan from the task title (goal) and description (steps) and skip the planning stage entirely, routing directly from `todo` to `in_progress`. The auto-generated plan has `accepted: true`, so no plan approval is needed. This path reduces latency for docs, typos, and single-file fixes (target: ≤5 minutes). Small tasks are created with the `--small` CLI flag or via Main tools with `size: 'small'`.
-
-## 3. Flags and attention
-
-Flags never change the stage. While `blocked` or `failed` is set, reconcile starts no runs and schedules
-no retries for the task. MCP submissions from the current run and human commands still go through.
-
-| Flag | Set when | Cleared when |
-|---|---|---|
-| `blocked: dependencies` | In `todo` with an unmerged `blockedBy` task | All of them are merged |
-| `blocked: question` | `ask_human` with `blocking: true` | Human `answer_question` (the answer is sent as a message) |
-| `blocked: review_round_cap` / `review_not_converging` | #12 | #13, #14, or cancel |
-| `blocked: provider_cooling_down` | Codex: `usageAllowed: false` or a `rateLimitExceeded`/`usageLimitExceeded` error. Claude: StopFailure with a rate-limit error. Only for a run that needs to start or continue. | `until` passes and a fresh snapshot allows usage |
-| `blocked: pr_closed` | PR read as `closed` without merge | PR reopened (read), or cancel |
-| `failed: retries_exhausted` | A run failed `maxAttempts` (3) times | Human `retry` (new monotonic attempt, retry-budget offset resets) |
-| `failed: non_retryable_error` | Provider error with no retry (for example, Codex `willRetry: false` with an unsupported model) | Human `retry` |
-| `failed: action_failed` | An action returned `fatal` | Human `retry` |
-
-**Retrying automatically is for headless runs only.** A failed or crashed headless run keeps its row,
-gets `retryAt` and a `schedule` action, and relaunches as `attempts + 1` against the same session ID
-(§1 "Run"): `start_run` with `resume: true` while the provider still has the session, otherwise
-`sessionEpoch + 1` and a fresh one. An explicit human retry of a still-active run (including
-`unknown`) instead records a terminating `stop_run`, waits for its successful receipt, and starts
-a fresh session on the same run row with a higher epoch and attempt count. The durable desired
-run carries `fresh: true` across retirement, capacity waits and coordinator restarts. Pending
-messages receive new delivery identities; sent messages remain historical and are not replayed.
-Retries within `retry.maxAttempts` (3) set no flag; exhausting them
-sets `failed: retries_exhausted`.
-
-**Explicit replacement.** Human `restart_run {runId}` applies only to the current planning,
-implementation, or review run. It preserves stage, worktree, artifacts and review round, captures
-current provider/model/reasoning in `desiredRun.replacement`, and supersedes the old run. Retirement
-must succeed before launching the fresh run/session. The replacement ID is stable for the input
-receipt; stale run IDs are rejected. Normal retry and later fix rounds select the latest run for
-that role/round, preserving its captured settings. Provider transcripts stay with their old sessions.
-
-**An interactive run is never relaunched automatically.** From outside, a human closing the pane and a
-crash look identical: the `claude agents` entry disappears with no SessionEnd (spike 02). Reopening a
-terminal someone deliberately closed is worse than asking, so the run ends with `vanished`, the task gets
-`run_vanished` attention, and the human's `retry` relaunches it (resuming the session when the provider
-still has it). Closing a Codex pane is different: it only detaches, and the thread keeps running (§4).
-
-**Attention** is derived on every reconcile by `deriveAttention`, which `packages/core` exports as a
-pure function so the UI renders the same rule instead of re-implementing it. A task needs the human
-while any of these reasons holds:
-
-| Reason | Condition |
+| Definition | Source |
 |---|---|
-| `plan_needs_approval` | Stage `plan_approval` |
-| `needs_approval` | Stage `awaiting_approval` |
-| `question` | An unanswered `ask_human` question (blocking or not) |
-| `provider_permission` / `provider_input` | A live run's `blockedOn` is `permission` / `input`; implementer permission waits use `provider_input` so unhandled requests reach the human directly |
-| `blocked` | `blocked` is set, except for `dependencies` and `provider_cooling_down`, which just wait |
-| `failed` | `failed` is set |
-| `run_vanished` | An interactive run's session disappeared. Loom won't relaunch it; the human does. |
-| `stalled` | A run is `working` with no provider activity for `stallAfterMs`. Nothing is killed. |
-| `idle_without_submission` | A live Loom run stays idle for `stallAfterMs` (15 minutes by default; `fixRoundStallAfterMs`, 5 minutes, once a `fix_round` message to it has been delivered) while its role owes a submission: planner in `planning`, implementer in `in_progress`, reviewer in `in_review`. This includes a final provider turn reported `completed` or `interrupted`: only an accepted Loom submission ends the run. Suppressed while the task is blocked/failed, a message to that run is pending/sent, or its question is unanswered. Nothing is killed or relaunched. |
-| `status_unknown` | A run has been `unknown` for longer than `unknownGraceMs` |
-| `over_budget` | Time in stages `planning` through `awaiting_approval`, including `ci`, exceeds `budgetMinutes` |
+| Entities and IDs | [entities.ts](../../packages/core/src/entities.ts), [ids.ts](../../packages/core/src/ids.ts) |
+| State, result and injected config | [reconcile.ts](../../packages/core/src/reconcile.ts) |
+| Owner readings and human commands | [observations.ts](../../packages/core/src/observations.ts) |
+| Outbox intents/results | [actions.ts](../../packages/core/src/actions.ts), [results.ts](../../packages/core/src/results.ts) |
+| MCP input/output types | [mcp.ts](../../packages/core/src/mcp.ts) |
+| Pass ordering | [engine.ts](../../packages/core/src/engine.ts) |
 
-`Attention` keeps a `since` per reason: `reasonSince` has exactly one entry per current reason, each
-the time that reason first appeared and has held since, and `since` is the earliest of them. A queue
-sorts by how long each thing has waited, which a single timestamp for the whole set cannot answer
-once a second reason appears. `reasonSince` is additive, so a row written before it existed falls
-back to the set's `since`.
+Task stage, run status and attention stay separate. `blocked` means waiting on an outside decision
+or condition; `failed` means the automatic path exhausted its options. Flags stop automatic work,
+not valid submissions or human commands. Terminal tasks suppress attention while retaining history.
 
-Terminal tasks (`done`, `canceled`) suppress attention while retaining historical questions and failures.
-Uncertain delivery uses `provider_input` attention plus a notification. `activeElapsedMs` accumulates
-only time in `planning`, `plan_approval`, `in_progress`, `ci`, `in_review`, and `awaiting_approval`; parked,
-queued, merging and terminal time do not count. The store must reload this counter and its accounting
-timestamp instead of recomputing elapsed time from `stageEnteredAt`.
+## Stage rules
 
-## 4. Run status
+[stages.ts](../../packages/core/src/stages.ts), [human.ts](../../packages/core/src/human.ts) and
+[submissions.ts](../../packages/core/src/submissions.ts) implement the guarded transitions.
 
-Status comes from the provider's own channel. The terminal is never parsed. The pane host supplies no
-agent state at all — it has none to give — so an unavailable provider reading leaves the run `unknown`
-no matter what the pane looks like. Its one contribution is a native fact: a pane that is `dead` before
-any provider evidence proves the launch failed, which turns `starting` into `ended` / `vanished`.
-`status` and `lastTurn.outcome` are separate: an idle thread can have a failed last turn.
-
-### Codex (spike 01)
-
-Input: a `thread/read` or `thread/resume` snapshot on the coordinator's own app-server. Notifications
-(`turn/*`, `item/*`, `thread/status/changed`, `serverRequest/resolved`) are hints to take a new snapshot.
-
-| Snapshot | `status` / `blockedOn` | Notes |
-|---|---|---|
-| `active`, no flags, turn `inProgress` | `working` | |
-| `active` + `waitingOnApproval` | `blocked` / `permission` | Keep request ID and generation until the provider resolves it. |
-| `active` + `waitingOnUserInput` | `blocked` / `input` | Keep `isBlocking` as reported; attention either way. |
-| `idle`, last turn `completed` | `idle` | |
-| `idle`, last turn `interrupted` | `idle` | A running subprocess may still be alive. |
-| last error `willRetry: true` | `working` | Keep the error detail. |
-| `systemError`, or last turn `failed` with `willRetry: false` | `failed` | Retry policy; a non-retryable kind sets `failed` straight away. |
-| `rateLimitExceeded`/`usageLimitExceeded`, or `usageAllowed: false` | `blocked` / `rate_limit` | Sets `provider_cooling_down`. A bare `account/rateLimits/updated` only triggers `refresh`. |
-| Reading unavailable (socket closed) | `unknown` | Never `idle` or `failed`. Reconnect, then `thread/resume`. |
-| `notLoaded` on our server | `unknown` | `thread/resume` hydrates it. **Provisional (spike 05).** |
-
-A thread Loom didn't start on its own server (plain `codex` in the worktree) is an external session.
-It is observe-only: Loom never resumes it on a second server or derives its status from disk.
-
-Closing an interactive Codex pane only detaches the attach client; the thread keeps running on the
-coordinator's app-server, so the run continues and Loom offers to reattach rather than relaunching. If
-the thread itself is gone (absent from the server and not resumable), the run ends with `vanished` and
-raises attention instead of retrying.
-
-### Claude (spike 02)
-
-Input: the session's `claude agents --json` entry (owner of live status), refined by folded hooks. Poll
-`claude agents` on every hook and every 1–2 s while a Loom-launched session is busy or waiting.
-
-| `claude agents` | Hooks | `status` / `blockedOn` | Notes |
-|---|---|---|---|
-| `busy` | — | `working` | Also covers approval: no hook fires when a permission is approved. |
-| `waiting` | Pending AskUserQuestion | `blocked` / `input` | |
-| `waiting` | Anything else | `blocked` / `permission` | Don't wait for the Notification; it's 6 s late. |
-| `idle` | — | `idle` | An Esc interrupt shows only here. |
-| absent (after being present) | SessionEnd seen | `ended` | |
-| absent, headless | no SessionEnd | `failed` (crash) | Retried automatically: `claude --resume <id> --settings …`. |
-| absent, interactive | no SessionEnd | `ended`, reason `vanished` | Indistinguishable from a human closing the pane, so Loom never relaunches it: attention `run_vanished`, and the human's `retry` relaunches (§3). |
-| absent (never present) | — | `starting` | Unless the run's pane is dead, which proves the launch failed: `ended` / `vanished`. A folder-trust dialog is indistinguishable from a slow start; the stall attention surfaces it. |
-| any | StopFailure | `failed`; a rate-limit error → `blocked` / `rate_limit` | StopFailure is untested (spike 02). |
-| reading unavailable | — | `unknown` | |
-
-Subagent events with an empty `agent_type` are ignored. Headless (Agent SDK) runs add the process's
-exit: an error exit is `failed`; a clean exit after the run submitted is `ended`. Sessions with
-`kind: background` are external and observe-only.
-
-## 5. Reconciler contract
-
-Types: [`reconcile.ts`](../../packages/core/src/reconcile.ts),
-[`observations.ts`](../../packages/core/src/observations.ts), [`actions.ts`](../../packages/core/src/actions.ts).
-
-```ts
-type Reconcile = (state: TaskState, observations: Observations) => ReconcileResult;
-
-interface ReconcileResult {
-  next: TaskState;               // task, worktree, runs, messages, questions, findings, approvals, artifacts
-  actions: Action[];
-  transitions: Transition[];     // new audit rows
-  inputs: InputDisposition[];    // one per consumed input: accepted (with the MCP reply) or rejected
-  capacityVersion?: number;      // CAS required for capacity reservations/releases; absent otherwise
-}
-```
-
-It is pure: no clock (`observations.now`), no randomness (§1 "IDs"), no I/O.
-
-### 5.0 Required TaskState context
-
-The store loads all original entity collections plus **every** field below in the same read transaction.
-None may be omitted. Null is a known lifecycle state, not a substitute for missing persisted data.
-The coordinator initializes a new task with the initial values shown, core updates them, and the store
-persists/reloads each returned value. `config` is supplied separately by the coordinator at runtime.
-
-| Field | Type / initial value | Meaning and supplier |
-|---|---|---|
-| `consumedInputIds` | `InputId[]`, initially `[]` | Store supplies consumed inbox receipt IDs, including rejected inputs. Replay protection must survive restart; only archive when those IDs can no longer be replayed. |
-| `plan` | `(Plan & {version, accepted}) \| null`, initially null | Store supplies latest submitted plan content and its acceptance state; accepted plans survive parking. It must agree with plan artifact version/content. |
-| `review` | `{headSha, lastReviewedHead, previousBlocking, verdictIds} \| null`, initially null | Store supplies current round context. `lastReviewedHead: null` means no completed review; `previousBlocking: null` means no prior completed round. `verdictIds: []` means no findings require verdicts. |
-| `desiredRun` | `{role, round, resume, replacement?} \| null`, initially null | Store supplies a deferred launch/resume intent. An explicit replacement captures `{runId, previousRunId, provider, model, reasoningEffort?}` before retiring the previous agent. Null means none is pending; it is not inferred from the board stage. |
-| `activeElapsedMs` | `number`, initially 0 | Store supplies accumulated active-stage budget time in milliseconds. |
-| `budgetObservedAt` | `IsoTime`, initially `task.createdAt` | Store supplies the last accounting time, used with this pass's `observations.now`; never reset on reload. |
-| `progress` | `{runId, summary, stepIndex, at} \| null`, initially null | Store supplies latest accepted progress report; `stepIndex: null` means not tied to a plan step. |
-| `artifactContents` | `Partial<Record<ArtifactKind, unknown>>`, initially `{}` | Store supplies contents matching the loaded latest artifact metadata. A missing kind means no artifact of that kind exists; missing content for an existing artifact is a load error. Validate each kind at the boundary. |
-
-Collections in `TaskState` must include every row the next reconcile can reference: latest artifacts
-and matching contents, current/deferred runs, outstanding messages/questions, input receipts, and
-outbox payloads/dependencies/retry receipts. Returned ended runs, answered questions, failed messages
-and voided approvals are durable updates even when a later snapshot filters them from active views.
-Do not prune an outbox receipt while a live intent/dependency or a replayable result can reference it.
-
-### 5.1 One pass
-
-1. `reconcile(taskId)` is enqueued by hints, new inputs, `schedule` timers and a full resync about every
-   60 s. At most one pass per task runs at a time, and passes for different tasks run concurrently;
-   enqueues during a pass coalesce into one more pass.
-2. Load `TaskState` in one read transaction.
-3. Read observations from the owners, outside any transaction: the worktree, the PR (conditional
-   request), every run that hasn't ended, external sessions in the worktree, capacity, dependencies and
-   unconsumed inputs.
-4. Call `reconcile`.
-5. Commit in one write transaction (§5.4). If the compare-and-set fails, drop the result and go back
-   to step 2 (up to 3 times, then re-enqueue).
-6. The executor runs eligible pending outbox actions after dependency success and cancellation checks,
-   one at a time per task and tasks concurrently, and only for a task whose latest commit came from
-   a pass in this process (§5.1a). Each result is persisted as an `action_result` input, which
-   enqueues step 1.
-
-### 5.1a Human commands without an owner read
-
-A human command should change the board in milliseconds, and a pass takes seconds of owner reads.
-So when a task's first pending input is a human command that `decidableFromLastReadings` accepts
-(move, cancel, approve_plan, approve, waive_finding), the coordinator reconciles it at once against
-the observations the task's last pass committed with, refreshed only with the clock, capacity and
-the input itself, and commits that result. This is sound by §5.4 rule 2: those readings already
-produced the stored state, so the only new fact is the command, judged on what the human was shown.
-
-- **Accept only.** A refusal is not committed; a pass with fresh readings decides the command, since
-  an old reading may be the only reason for the refusal.
-- **No side effect on old readings.** Until a pass with fresh readings commits for the task, the
-  executor claims none of its actions. That pass re-applies every guard; observed head, CI or
-  merge changes void an approval and cancel its merge as usual.
-- **Not for agent-facing commands.** Commands that message or answer an agent stay on the normal
-  path: delivery in the same reconcile would act on the agent's old status.
-- **No readings yet** (a task not passed since the coordinator started) means the normal path.
-
-The protocol acknowledgement for a human command waits for its disposition, so `ok` means accepted.
-
-### 5.2 Observations
-
-| Observation | Owner and read | Used for |
-|---|---|---|
-| `git: Reading<GitWorktreeObservation>` | git: HEAD, branch, dirty, ahead/behind, `merge-tree` conflicts, remote head | Guards #9, #10, #15; new-commit detection |
-| `github: Reading<PullRequestObservation \| null>` | GitHub, conditional GET with ETag | PR head, state, mergeability, CI, reviews and human comments |
-| `runs[].provider` | Codex thread snapshot or Claude session (agents entry + hooks + headless exit) | §4 status, pending requests, delivery confirmation |
-| `runs[].pane` | Pane host (interactive runs) | Native pane facts only: pid, command name, `dead`, exit status, start path. Never run status |
-| `externalSessions` | `claude agents --json`, Codex thread list, both joined on realpath `cwd` | Recorded as `origin: external` runs |
-| `capacity` | Coordinator (across tasks) | Global and per-provider caps, cooling-down providers; `version` for CAS |
-| `dependencies` | Coordinator (other tasks) | `blockedBy` |
-| `inputs: Input[]` | Coordinator inbox | Human commands, validated MCP calls, action results |
-
-`Reading.ok: false` means the owner couldn't be read. Reconcile treats that fact as unknown: no
-transition whose guard needs it, and runs whose provider can't be read become `unknown`. Codex
-connection replacement resumes and hydrates every previously subscribed recorded thread before
-retrying its read; a successful native snapshot clears `unknownSince`, while persistent failure
-reaches `observability_failure` at `unknownGraceMs`.
-
-Required evidence is appended after the original fields in each observation interface:
-
-| Field | Type / empty or null semantics | Who supplies it |
-|---|---|---|
-| `RunObservation.resumable` | `boolean \| null`: true means provider-confirmed resumability, false means confirmed unable to resume, null means no authoritative determination yet | Provider adapter/integration boundary, assembled by the coordinator. After a missing Codex reading, perform a native resume/existence check; do not leave null indefinitely or infer false from socket failure or pane disappearance. An unavailable read remains `unknown` regardless of this field. |
-| `RunObservation.activityAt` | `IsoTime \| null`: latest known provider activity timestamp, or null if there is no evidence | Provider adapter, from native events/state changes; never use a no-change poll's fetch time. The coordinator persists receipt evidence across observer restarts. Claude's folded `lastEventAt` remains an additional source when this field is null. |
-| `GitWorktreeObservation.dirtyPaths` | Required `string[]`: all tracked/non-ignored untracked dirty paths; `[]` means clean | Git adapter from git status metadata, consistent with `dirty`. Failed status collection means a failed `Reading`, not an empty array. |
-| `GitWorktreeObservation.reachableCommits` | Required `Sha[]`: commits verified reachable from this reading's HEAD; `[]` means none verified | Git adapter/boundary must cover every non-null fixing commit in pending `resolve_finding` inputs, or return full HEAD ancestry. The coordinator must not submit a guard check with unqueried candidates silently represented as an empty list. Collection failure means a failed git `Reading`. HEAD itself is accepted directly. |
-| `CiCheck.id` | Required `string`: stable GitHub check-run ID, including in approval CI snapshots | GitHub adapter, stringifying the native ID. Missing identity invalidates the reading; never synthesize it from a name or head SHA. |
-
-The boundary validates both field presence and these semantics before core sees a typed value. A
-store/adapter must not manufacture empty arrays/nulls to paper over missing data. `resumable: null`
-is intentionally uncertainty and must trigger further owner reads when recovery needs it.
-
-### 5.3 Actions and how results come back
-
-Every action result comes back the same way: the executor writes an `action_result` input keyed by the
-action key, and the next pass consumes it. Reconcile never assumes an action worked just because it
-asked for it.
-
-| Action | Executor | Success output → what the next pass does |
-|---|---|---|
-| `create_worktree` | git | `{path, headSha, baseSha}` → Worktree row; `task.worktreePath` |
-| `write_task_files` | git | — |
-| `open_workspace` | pane host | `{workspaceId}` → `worktree.paneWorkspaceId` |
-| `start_run` | by provider and mode (below) | Carries `{runId, attempt, sessionEpoch, sessionId, resume}`. `resume: true` reuses the session (Claude `--resume <id>`, Codex `thread/resume`); `resume: false` starts a fresh one (Claude `--session-id <derived>`, Codex `thread/start`, which assigns the ID). Returns `{sessionId, codexGeneration, pane}` → run row. For Codex, this is what unlocks the first `send_message` (principle 7). |
-| `send_message` | by provider and mode | `{transportRef}` → message `sent`. `delivered` comes only from observation (§5.5). |
-| `interrupt_run` | by provider and mode | — (the run's status confirms it) |
-| `answer_provider_request` | Codex `answerRequest` (current generation only) | — (`serverRequest/resolved` and a new snapshot confirm it) |
-| `stop_run` | Codex `unsubscribe`; SDK close | Optional `terminate: true` retires a superseded Loom run before replacement: interrupt and confirm inactive Codex, close headless Claude, and close its recorded pane. Failure blocks replacement launch. |
-| `push_branch` | git | `{remoteHeadSha}` |
-| `open_pr` | GitHub | `{number}` → `task.prNumber` |
-| `merge_pr` | GitHub | `merged` or `auto_merge_enabled`. Neither moves the task; #20 waits for the merge to be observed. |
-| `disable_auto_merge` | GitHub | — |
-| `map_findings` | git (hunks, renames, blobs) and core's pure mapper | New `FindingLocation` versions |
-| `refresh` | the named owner | — (the fresh read is in the next pass's observations) |
-| `schedule` | coordinator timer | — (the timer enqueues a pass) |
-| `notify` | desktop notification or UI | — |
-
-A failed result carries `retryable`, `precondition` or `fatal`. `retryable` gets a new attempt after
-backoff (`<key>#<n>`). `precondition` means the world moved: re-read and decide again. `fatal` sets
-`failed: action_failed`.
-
-Provider answers are independent intents keyed by `(runId, generation, requestId)`, with no action
-dependencies. A fresh, hydrated Codex observation cancels pending/running answers and scheduled
-retries whose exact request is no longer pending, including after a generation change. Request IDs
-are opaque: concurrent requests remain answerable; a larger ID alone does not supersede another.
-Unavailable, wrong-session, pre-launch, and `notLoaded` readings cannot retire answers. Cancellation
-also removes obsolete dependencies from previously persisted pending answers. Late receipts are
-consumed without resurrecting canceled work, including when the provider resolved an answer before
-its executor receipt reached reconcile.
-
-The adapter's `StaleCodexRequestError` (missing pending request or changed generation) is a terminal
-`precondition`, never an automatic retry. Reconcile requests another provider observation. Transient
-answer failures use `retry.maxAttempts` (3 by default); the final failed attempt immediately sets
-`failed: action_failed` and Needs-you error attention, even if another task flag prevents retries.
-
-| | Codex headless | Codex interactive | Claude headless | Claude interactive |
-|---|---|---|---|---|
-| start | `thread/start` (read-only sandbox for planners; reviewers use implementer write access) | `thread/start` with the role sandbox, then a pane running `codex resume <thread> --remote unix://…` | Agent SDK with Loom's session ID | A pane: `claude --session-id <id> --settings <per-run> --mcp-config <per-run>`; planners disallow Edit, Write and NotebookEdit; reviewers use the same permissions as implementers |
-| send | `turn/start`, or `turn/steer` with `expectedTurnId` | the same, through the app-server, not the pane | SDK | `pasteText`, gated on provider status |
-| interrupt | `turn/interrupt` | `turn/interrupt` | SDK interrupt | `sendKey Escape` |
-| resume | `thread/resume` | `thread/resume`, then reattach the pane | SDK resume | A pane: `claude --resume <id> --settings <per-run> --mcp-config <per-run>` |
-
-#### Outbox record and execution rules
-
-In addition to `key`, `kind`, `status`, `attempts`, `createdAt`, and nullable `finishedAt`, retain:
-
-| Field | Supplier / meaning |
+| Stage | Exit |
 |---|---|
-| `action` | Core emits the full payload; executor/store must retain it for result routing and retry. Its type permits omission only for receipt rows no future result/retry needs; a result without a matching payload is rejected. |
-| `retryAt` | Core's backoff deadline; absent means no action retry scheduled. |
-| `dependsOn` | Core's ordered intent dependencies; absent/empty means none. Execute only after all dependency keys succeeded. This enforces push-before-PR/reviewer launch and disarm-before-new work, including across passes. |
-| `retriedBy` | Core's replacement retry key; absent means not replaced. Pending dependents are rewired to that key. |
-| `retryBaseAttempt` | Core's retry-budget offset after a human retry; absent means 0. Attempt numbers stay monotonic. |
-| `error` | Executor error retained by core on failed results, including preconditions that need later fresh evidence; absent means no recorded error. |
+| Backlog | Human queues Todo; version-checked edits can change title, description, size and plan-approval policy |
+| Todo | Dependencies must be Done, capacity available and provider ready; start planning or accepted implementation |
+| Planning | Valid plan goes to Plan approval when required, otherwise In progress |
+| Plan approval | Approve the current plan version, or reject with feedback for the planner |
+| In progress | Clean committed submission ahead of base goes to CI |
+| CI | Matching successful checks start review; failure starts implementation fixes; changed HEAD withdraws submission |
+| In review | Explicit blocking escalation starts fixes; clear review waits for publication, then Awaiting approval |
+| Awaiting approval | Approval names the reviewed head and passes merge guards |
+| Merging | Wait for GitHub to report the PR merged |
+| Done | GitHub has reported the workflow PR merged |
+| Canceled | Work stops; branch and PR remain; the human can reopen |
 
-Status is `pending`, `running`, `succeeded`, `failed`, or `canceled`. The store persists all changes
-atomically with task state. Before side effects the executor rechecks eligibility and current intent;
-never launch superseded/canceled work. Cancellation retires pending start/send/request actions, and
-parking/cancel/Done retires obsolete task work. Already-running work may finish, but canceled rows'
-late results cannot resurrect state. A canceled generic intent requested anew receives a suffixed key
-instead of reusing the old receipt. These guarantees do not undo an external side effect already made.
+Small tasks generate an accepted plan from their title/description and skip planning. This is a
+routing choice, not a promise of completion within a fixed duration. Capacity and dependency guards
+still apply. Accepted plans survive parking in Backlog.
 
-### 5.4 Idempotency and compare-and-set
+### CI gate
 
-1. **Deterministic.** The same state and observations give the same result.
-2. **Fixed point.** Running reconcile again on `next` with the same owner readings (and the inputs now
-   consumed) produces no transitions, and only actions whose keys are already in the outbox.
-3. **Action keys name the intent**: `start_run:<runId>#<attempt>`, `send_message:<messageId>`,
-   `push_branch:<taskId>:<sha>`, `open_pr:<taskId>:<branch>`, `merge_pr:<approvalId>`,
-   `map_findings:<taskId>:<headSha>`, `schedule:<taskId>:<why>:<at>`. The outbox's key is unique, so
-   emitting the same intent twice is a no-op.
-4. **Actions run at least once.** After a crash, pending outbox rows run again. So every executor checks
-   the owner before acting: an existing worktree on the branch, an existing PR for the branch, a session
-   already live under that ID, a remote head already equal to the SHA. Merges are safe through
-   `--match-head-commit`. A run's session ID is fixed for its epoch, so a repeated `start_run` finds that
-   same session and adopts it instead of starting a second one.
-5. **Inputs are consumed exactly once**, in the same transaction as the compare-and-set. A pass that
-   loses the race consumes nothing.
-6. **Stage CAS**: `UPDATE tasks SET …, version = version + 1 WHERE id = ? AND version = ?`.
-   Core bumps the version once when owned state changes. No-op detection compares plain records
-   structurally, ignoring object key insertion order while preserving array order and primitive values.
-   It short-circuits equal references/first differences and does not serialize the entire state or findings
-   projection. Worst-case structural comparison is still linear in the compared data; there is no claim
-   of constant-time reconciliation. The same equality rule prevents unnecessary findings artifact versions.
-7. **Capacity CAS (resolved note 13.1).** The coordinator supplies global/per-provider counts of
-   `starting`/`working`/`blocked` runs and pending work reservations, excluding idle implementers.
-   Idle implementers keep their sessions through review/approval without holding a slot. Sending work
-   to an idle run re-acquires a slot; its pending fix message waits when full. Count a queued launch or
-   accepted send reservation exactly once until native status confirms it, rather than freeing it during
-   the transport gap. An ending active planner can transfer its slot in the same commit.
-   A result with `capacityVersion` requires CAS on that version for starts, idle-run sends and ends;
-   the coordinator also bumps its version when authoritative observation reconciliation changes these
-   counts. Pure reads of capacity do not reserve a slot. Two tasks cannot take the last slot concurrently.
-8. **Caches never decide.** Guards use this pass's readings. Cached fields (C) are for the UI and for
-   diffing (for example, "the head changed since the last pass"). The one exception is §5.1a, which
-   accepts a human command on the readings the last pass committed with and holds every resulting
-   action until a fresh pass confirms it.
-9. **Crashes don't prove a command didn't run** (spike 01). Before a new attempt after a crash or
-   interrupt, re-read the worktree and include what's there in the attempt's first message.
+`submit_for_review` checks the current worktree branch and HEAD, a clean tree (including non-ignored
+untracked files), and commits ahead of base. It saves a handoff and `ciGate`, then publishes that
+immutable head. [ci-gate.ts](../../packages/core/src/ci-gate.ts) reads checks/statuses by commit SHA,
+so a PR is not required. No reported checks count as no CI after five minutes from a successful push.
 
-### 5.5 When a message counts as delivered
+Failure creates blocking CI evidence and starts a fresh fix round. Later passing CI resolves earlier
+CI findings. A changed worktree HEAD withdraws the old submission; the implementer must submit the
+new commit. An idle implementer owes no work while waiting in CI.
 
-Never on the pane host's `"written"`, and never on a transport response alone.
-The launch prompt is a normal queued message for every role. For an interactive run, it cannot be
-sent until both provider identity and pane identity are recorded and the provider-status gate below
-permits the paste.
+### Review and merge
 
-| Path | `sent` when | `delivered` when |
-|---|---|---|
-| Codex `turn/start` | the response returns a turn ID | `turn/started` for that turn, or a snapshot containing it (resume doesn't replay `turn/started`) |
-| Codex `turn/steer` | the response returns the expected turn ID | a user-message item with the message's text hash appears in that turn. **Provisional**: seen in spike 01, not a documented guarantee. |
-| Claude (interactive or headless) | `pasteText` returns `"written"`, or the SDK accepts it | `UserPromptSubmit` for the session whose normalized `prompt` hash matches (tabs → 4 spaces, CRLF → LF) |
+Review counts use monotonic run rounds. Explicit escalation is subject to the review cap and
+convergence checks; human requests for changes retain their own path. Findings reopened or no longer
+decreasing can require a human decision. The [agent contract](agents.md#issue-agents) defines which
+review findings block and which verdicts reviewers owe.
 
-Several prompts can join one Claude turn and share a `prompt_id`; each is still matched by its own
-`UserPromptSubmit`. A pending message schedules a check at `pendingSince + deliveryTimeoutMs`,
-including messages waiting for capacity, another message, provider readiness, an expected Codex
-turn, or an outbox transport result. At that deadline it raises `provider_input` on its run and
-notifies once per message with the current blocker. Reconciliation and restarts do not reset the
-interval. Attention remains until delivery is confirmed or the message/run is retired; timeout
-does not authorize replay of an outbox-owned send. An allowed resend starts a new pending interval.
+A clear submission remains In review while its reviewed head is pushed and its PR opened/refreshed.
+Awaiting approval requires the published reviewed head, positive mergeability and non-failing CI
+for that head. Old PR data during publication must not start a spurious review round.
 
-If a sent message is still not delivered after `deliveryTimeoutMs`: when the provider is
-idle and shows no new turn, resend once under the same message ID; otherwise add attention. **A paste is
-gated on the provider's status**: in spike 06 a paste into a pending permission dialog approved the
-command instead of delivering a prompt, so `pasteText` is only called for a run the provider reports as
-idle or working, and the state-check/input race is treated as uncertain delivery, never auto-retried.
-Loom never generates text that starts with `/` or `!`, and the pane host refuses it anyway (the message
-fails and the human is notified).
+A merge approval names the head, findings snapshot and CI state. The approved head must equal both
+the PR head and last reviewed head, with no open blockers and positive mergeability. Human approval
+can accept pending CI using GitHub auto-merge. New commits, failing CI or changed findings void
+approval; enabled auto-merge is disarmed before superseding work. Merge success alone never means
+Done: only an observed GitHub merge does.
 
-The timeout resend keeps the message ID but uses `send_message:<id>#2`, since the first action key
-already succeeded. Transport failures separately use bounded action retries with suffixed keys.
-Persist `via`, expected/baseline turn IDs and delivery attention; confirmation must match the session
-and cannot use a receipt older than the transport attempt's start. The executor persists
-`transportAttempt` (start/completion times, session ID/epoch and run attempt) in the action result
-and message; `sentAt` is its completion time, never the later reconciliation time. A matching hook
-may precede transport completion or result consumption. Legacy messages without attempt metadata
-retain their `sentAt` lower bound; legacy results use their persisted receipt time. Serialize
-outstanding messages per run until native
-delivery is known. Ending a run retires its undelivered messages, so stale prompts cannot block a
-resumed attempt. Historical messages on ended runs do not contribute delivery attention, and
-attempt metadata prevents an old session or run attempt's send from being confirmed or replayed
-into its replacement. For ambiguous timeout delivery, notify and set existing `provider_input` attention.
-Native executor idempotence checks remain necessary: core never infers delivery from transport success.
+Captured merge policy is `require-human`, `auto-small` or `auto-all`. Automatic policy creates an attributed
+approval only for eligible size, clear findings, the published reviewed head, fresh successful/no-check
+CI and an open mergeable PR. It uses the same guarded merge path.
 
-## 6. Adapter interfaces
+Independent repository PR merges re-read the named head, reject drafts, unknown/conflicting
+mergeability and pending/failed CI, and allow zero checks. They squash without auto-merge or override.
+Issue-owned PRs, including explicit issue links, are refused on that direct path and require issue
+approval. Close/delete commands re-read GitHub and do not change a local checkout.
 
-The TypeScript is in [`adapters.ts`](../../packages/core/src/adapters.ts). It has only the methods
-that the observations in §5.2 and the actions in §5.3 need. Shared rules: every adapter validates external
-output with zod before returning a core type; `subscribe` delivers hints (`{source, worktreePath,
-sessionId}`) that only enqueue passes; nothing parses terminal output.
+**Existing safety conflict:** normal publication can call the Git adapter with an expected remote
+head and use `--force-with-lease` on the issue branch. [AGENTS.md](../../AGENTS.md#safety) prohibits
+force-pushes. This documents current code, not permission for agents to force-push; the rule is
+unchanged. Base-branch publication is refused. See [git/index.ts](../../packages/adapters/git/src/index.ts).
 
-| Adapter | Reads (observations) | Writes (actions) |
-|---|---|---|
-| `GitAdapter` | `realpath`, `readWorktree`, `changedFiles` (NUL-delimited metadata, renames, hunks), `readBlob` | `createWorktree`, `push` (refuses any head except the expected one; forces only with a lease on the remote head Loom last observed, for rebased branches), `writeTaskFiles` (and `.git/info/exclude`) |
-| `GitHubAdapter` | `findPullRequest` (conditional, ETag) | `openPullRequest` (idempotent), `mergePullRequest` (squash, `--match-head-commit`, optional `--auto`), `disableAutoMerge` |
-| `PaneHost` | `getPane`, `listPanes`, `listClients`, `subscribe` | `ensureWorkspace`, `ensurePane` (allowlisted environment, no shell), `pasteText` (refuses `/` and `!`; returns only `"written"`), `sendKey` (Escape), `attachArgs`, `closePane` |
-| `CodexAdapter` | `readThread`, `resumeThread`, `readRateLimits`, `generation`, `subscribe` | `startThread`, `startTurn`, `steerTurn`, `interruptTurn`, `answerRequest` (rejects a stale generation), `unsubscribe`, `attachArgs` |
-| `ClaudeAdapter` | `listSessions` (`claude agents --json`), `hookSummary`, `headlessState`, `subscribe` | `interactiveArgs`, `startHeadless`, `sendHeadless`, `interruptHeadless` |
+### Base changes
 
-Deliberately missing: attach and takeover for the embedded terminal (`apps/desktop` owns them; spike 03),
-Codex `review/start`, and anything that reads a pane's screen.
+[base-sync.ts](../../packages/core/src/base-sync.ts) reads fetched-base Git evidence, preferring
+local `merge-tree` conflict results to GitHub's asynchronously updated mergeability. Unknown
+mergeability is not proof of a conflict.
 
-## 7. Loom MCP tools
+Clean base movement is merged automatically only at the CI gate, before review, in a clean owned
+checkout. The executor creates an exact two-parent merge, pushes without force and gates the new
+SHA on CI. Clean movement during/after review does not invalidate an already reviewed head.
+Actual conflicts retire the current reviewer and start a fresh implementer to merge base and resolve
+conflicts. Replacement reviews caused by base movement do not consume the ordinary review cap.
 
-Types: [`mcp.ts`](../../packages/core/src/mcp.ts). `packages/mcp` will hold the zod schemas, with a
-type-level test that they equal these types.
+## Reconciliation
 
-**Identity.** Each run gets its own MCP endpoint token in its per-run config. Claude ignores
-`mcpServers` in a `--settings` file (2.1.269), so the token goes in the run's MCP config —
-`--mcp-config <per-run>` for an interactive run, `mcpServers` passed to the Agent SDK for a headless
-one — beside, not inside, the settings file that carries the hooks. Codex takes it with `-c`. The token
-maps to the run, and through the run to the task, so no tool takes a task or run ID, and an agent can't
-act on another task.
+### One pass
 
-**Flow.** Validate the input against the schema → resolve the token to a run → persist it as an `mcp`
-input (assigning finding and question IDs, and building each finding's full anchor from the reviewed
-blobs) → run a reconcile pass for the task → answer with that input's disposition. `get_task_context` is
-read-only and never becomes an input.
+[coordinator/loop.ts](../../apps/coordinator/src/loop.ts) runs one pass per task at a time; different
+tasks read owners concurrently. Hints, inputs and timers enqueue work; hints arriving during a pass
+coalesce into another pass.
 
-| Tool | Role and stage | Input | Output | Guards (else `guard_failed`) |
-|---|---|---|---|---|
-| `get_task_context` | any run | `{full?: boolean}` | First read, epoch change or `full`: `view: "full"` with task, role, run, worktree, brief, plan, decisions, handoff, role-filtered findings, test results, answered questions and WORKFLOW commands. Otherwise `view: "changes"` with the current header, must-act findings and only changed sections. | — |
-| `submit_plan` | planner / `planning` | `{plan: Plan}` | `{planVersion, next}` | Plan has a goal, at least one step and one acceptance criterion |
-| `report_progress` | any current run | `{summary, stepIndex, decisions[], testResults[]}` | `{recorded}` | `stepIndex` null or within the plan; nonempty test results need a fresh git HEAD |
-| `ask_human` | any current run | `{question, options[], blocking}` | `{questionId, delivery: "message"}` | — |
-| `submit_for_review` | implementer / `in_progress` | `{headSha, summary, testResults[], handoff}` | `{round}` | `headSha` = HEAD; clean tree; ahead of base; every finding `addressed` in this round names a commit |
-| `submit_review` | reviewer / `in_review` | `{reviewedSha, reviewerCommits[], summary, findings[], verdicts[], testResults[]}` | `{round, openBlocking, next}` | `reviewedSha` = clean task-branch HEAD, round head or descendant; exact complete reviewer commit list; locations exist in that commit; verdicts for addressed/disputed and open blocking findings; fixed commits and escalation reasons required. `testResults` is usually empty: the reviewer reads the implementer's results and CI is the gate |
-| `resolve_finding` | implementer / `in_progress` | `{findingId, resolution: fixed \| disputed, note, commitSha}` | `{status}` | Finding is `open` or `escalate` and belongs to the task; `fixed` needs a commit reachable from HEAD |
+1. Load state and pending inputs in a read transaction (normally one input per pass).
+2. Read owners outside the transaction; inject the current time, capacity and dependencies.
+3. Reconcile, then commit with task-version and, when requested, capacity-version compare-and-set.
+4. On a conflict reload and retry, up to three attempts, then re-enqueue.
+5. Execute eligible outbox actions; persist each result as a new input.
 
-Liveness is read from the store on every call: the launch recipe maps a token to its run and nothing
-more, so a stale answer always names a stored fact (ended, superseded, task done or canceled). A task
-state that fails to load is a host error the agent retries, never a `stale_run`.
+Actions are serialized per task, with tasks executing concurrently. Git operations that write shared
+repository refs are serialized per repository. Reconciliation against its own result and unchanged
+readings reaches a fixed point; object key ordering alone is not a change.
 
-Errors: `invalid_input`, `unknown_run`, `stale_run` (the run was superseded or ended), `wrong_stage`,
-`guard_failed`. Each has `details`: one line per failed check, written for the agent to act on.
-`ask_human` answers arrive later as a user message quoting the question ID, and in `get_task_context`.
+### Instant human commands
 
-## 8. Storage
+`decidableFromLastReadings` selects edit, move, cancel, plan/merge approval and finding waiver.
+The coordinator can accept these immediately against the readings of the last committed pass,
+refreshed with local time, capacity and the command. A refusal waits for a fresh pass, because old
+evidence may be the reason for rejection. Without previous readings, the normal pass decides.
 
-SQLite in WAL mode (better-sqlite3), one database per instance data directory (`LOOM_INSTANCE`).
-Artifact content is committed with its metadata (the schema sketch below uses `artifacts.content`),
-then materialized beside the database at `tasks/<taskId>/<kind>/v<N>.json`. JSON columns are validated
-with zod when read. Times are ISO-8601 text. The schema is a contract sketch for the future store,
-not a migration already shipped in Phase 1b.
+The fast commit marks the task unverified: no action executes until a fresh owner-read pass commits
+and rechecks the guards. Commands that send messages or answer agents always take the fresh path.
+A human-command acknowledgement waits for its disposition; success means accepted, while external
+side effects may still be pending.
 
-```sql
-CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- schema_version, capacity_version
-CREATE TABLE repos (id TEXT PRIMARY KEY, root TEXT NOT NULL UNIQUE, github TEXT NOT NULL,
-  base_branch TEXT NOT NULL, default_providers TEXT NOT NULL, serial_tests INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE tasks (id TEXT PRIMARY KEY, repo_id TEXT NOT NULL REFERENCES repos(id),
-  title TEXT NOT NULL, description TEXT NOT NULL,
-  stage TEXT NOT NULL, stage_entered_at TEXT NOT NULL, version INTEGER NOT NULL,
-  blocked TEXT, failed TEXT,                                   -- JSON flag or NULL
-  require_plan_approval INTEGER NOT NULL, review_round INTEGER NOT NULL,
-  review_round_cap INTEGER NOT NULL, providers TEXT NOT NULL, budget_minutes INTEGER,
-  worktree_path TEXT UNIQUE, branch TEXT, pr_number INTEGER,
-  attention TEXT NOT NULL,                                     -- derived
-  created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-CREATE TABLE task_context (task_id TEXT PRIMARY KEY REFERENCES tasks(id),
-  plan TEXT, review TEXT, desired_run TEXT, progress TEXT,        -- JSON; SQL NULL maps to explicit null
-  active_elapsed_ms INTEGER NOT NULL DEFAULT 0,
-  budget_observed_at TEXT NOT NULL);                            -- initialize to task.created_at
-CREATE TABLE task_dependencies (task_id TEXT NOT NULL REFERENCES tasks(id),
-  blocked_by TEXT NOT NULL REFERENCES tasks(id), PRIMARY KEY (task_id, blocked_by));
-CREATE TABLE worktrees (path TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
-  repo_id TEXT NOT NULL, branch TEXT NOT NULL, base_branch TEXT NOT NULL, base_sha TEXT NOT NULL,
-  port_slot INTEGER UNIQUE, pane_workspace_id TEXT, git_cache TEXT,
-  created_at TEXT NOT NULL, removed_at TEXT);
-CREATE TABLE runs (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
-  role TEXT NOT NULL, provider TEXT NOT NULL, mode TEXT NOT NULL, origin TEXT NOT NULL,
-  worktree_path TEXT NOT NULL, round INTEGER NOT NULL, attempts INTEGER NOT NULL, model TEXT NOT NULL,
-  session_id TEXT, session_epoch INTEGER NOT NULL DEFAULT 0, codex_generation INTEGER, pane TEXT,
-  status TEXT NOT NULL, blocked_on TEXT, last_turn TEXT, pending_requests TEXT NOT NULL,
-  last_activity_at TEXT, retry_at TEXT, launched_at TEXT, ended_at TEXT, end_reason TEXT,
-  seen_at TEXT, unknown_since TEXT, observed_attempt INTEGER, retry_base_attempt INTEGER DEFAULT 0,
-  UNIQUE (provider, session_id));
-CREATE INDEX runs_live ON runs(task_id) WHERE ended_at IS NULL;
-CREATE TABLE messages (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), purpose TEXT NOT NULL,
-  text TEXT NOT NULL, text_hash TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL,
-  transport_ref TEXT, sent_at TEXT, delivered TEXT,
-  via TEXT, expected_turn_id TEXT, baseline_turn_id TEXT, delivery_attention INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE questions (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT NOT NULL, question TEXT NOT NULL,
-  options TEXT NOT NULL, blocking INTEGER NOT NULL, asked_at TEXT NOT NULL, answer TEXT, answered_at TEXT);
-CREATE TABLE artifacts (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, kind TEXT NOT NULL, version INTEGER NOT NULL,
-  path TEXT NOT NULL, sha256 TEXT NOT NULL, content TEXT NOT NULL, -- JSON bytes hashed by core
-  created_by TEXT NOT NULL, created_at TEXT NOT NULL,
-  UNIQUE (task_id, kind, version));
-CREATE TABLE findings (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, round INTEGER NOT NULL,
-  source TEXT NOT NULL, external_id TEXT, created_by_run_id TEXT,
-  severity TEXT NOT NULL, blocking INTEGER NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
-  status TEXT NOT NULL, reopen_count INTEGER NOT NULL DEFAULT 0,
-  anchor TEXT,                                                 -- JSON, written once
-  resolution TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-  UNIQUE (task_id, source, external_id));
-CREATE TABLE finding_locations (finding_id TEXT NOT NULL REFERENCES findings(id),
-  version INTEGER NOT NULL, head_sha TEXT NOT NULL, path TEXT, blob_oid TEXT, side TEXT NOT NULL,
-  start_line INTEGER, end_line INTEGER, status TEXT NOT NULL, mapped_at TEXT NOT NULL,
-  PRIMARY KEY (finding_id, version));
-CREATE TABLE approvals (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, kind TEXT NOT NULL,
-  plan_version INTEGER, head_sha TEXT, findings_snapshot TEXT, ci TEXT,
-  created_at TEXT NOT NULL, voided_at TEXT, void_reason TEXT);
-CREATE TABLE transitions (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, at TEXT NOT NULL,
-  from_stage TEXT NOT NULL, to_stage TEXT NOT NULL, flags TEXT NOT NULL, trigger TEXT NOT NULL,
-  reason TEXT NOT NULL, task_version INTEGER NOT NULL);
-CREATE TABLE inbox (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, received_at TEXT NOT NULL,
-  type TEXT NOT NULL, payload TEXT NOT NULL, consumed_at TEXT, disposition TEXT);
-CREATE TABLE outbox (key TEXT PRIMARY KEY, task_id TEXT NOT NULL, kind TEXT NOT NULL,
-  payload TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, result_input_id TEXT,
-  retry_at TEXT, depends_on TEXT NOT NULL DEFAULT '[]', retried_by TEXT,
-  retry_base_attempt INTEGER NOT NULL DEFAULT 0, error TEXT);
-CREATE TABLE claude_hooks (seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
-  event TEXT NOT NULL, prompt_id TEXT, received_at TEXT NOT NULL, payload TEXT NOT NULL);
-CREATE TABLE github_cache (repo_id TEXT NOT NULL, branch TEXT NOT NULL, etag TEXT,
-  pr TEXT, fetched_at TEXT NOT NULL, PRIMARY KEY (repo_id, branch));
-```
+### State and action durability
 
-The store reconstructs required `TaskState` fields explicitly: `task_context` supplies plan/review/
-desired run/progress and budget counters; latest `artifacts` rows supply `artifactContents`; consumed
-`inbox` rows supply `consumedInputIds` (including rejected dispositions). Empty values are only valid
-for their documented initial/absent states. Missing rows or version/content disagreement must fail
-loading, rather than silently falling back to `{}`, `[]`, zero or null. Materialization must read the
-exact artifact version named by an action even when a newer version now exists. Retain outbox
-payloads/error/retry/dependency receipts according to §5.3 and replayable inbox receipts according to §5.0.
+The caller validates external data and injects stable pure hashes/session-ID derivation. Failed
+readings remain failed; missing data must not be converted into a clean tree, absent request or
+ended session. Fresh evidence supplies dirty paths, reachable fixing commits and resumability.
 
-`claude_hooks` is a receipt log, not a second owner: hooks can't be re-read from Claude, so the
-coordinator keeps them to fold into `ClaudeHookSummary` after a restart. It's pruned after 7 days.
+[Store transactions](../../packages/store/README.md#atomic-commits-and-receipts) atomically persist
+owned state, input dispositions, transitions, artifacts and outbox changes. Action keys identify
+intents; dependencies enforce ordering. Actions run at least once, so the executor checks the owner
+and current claim before side effects. Late receipts cannot resurrect canceled work. `precondition`
+means re-read and decide, `retryable` uses bounded backoff, and `fatal` raises failure.
 
-**Migration policy**
+Capacity counts active/starting/blocked runs and pending reservations. Idle implementers release a
+slot; new work reacquires it. Capacity compare-and-set prevents two tasks taking the last slot.
+Deferred launch intentions remain durable until capacity, retirement and setup allow them to run.
 
-- Numbered files in `packages/store/migrations/NNNN_<name>.sql`. Each runs in its own transaction at
-  startup and bumps `meta.schema_version`. A merged migration is never edited.
-- A migration only adds: tables, indexes, and columns that are nullable or have a default. Nothing is
-  renamed, retyped or dropped in the release that stops using it.
-- Removal is a later migration, at least one release after no code reads the old column or table.
-  That migration is marked `breaking`.
-- Because changes are additive, an older build can open a newer database, which is what makes
-  `loom release` rollback work. A build refuses to start only when the database has a `breaking`
-  migration it doesn't know.
-- Back up the database (SQLite backup API) before applying migrations.
-- Migrations get the `core` label and its review rules. Dev and prod never share a data directory.
+## Status and message delivery
 
-## 9. fake-agent
+[status.ts](../../packages/core/src/status.ts) derives run state from providers;
+[lifecycle.ts](../../packages/core/src/lifecycle.ts) handles resumability/retry, and
+[flags.ts](../../packages/core/src/flags.ts) derives attention. A poll timestamp is not activity.
+Unknown reads preserve uncertainty until native evidence resolves it; timeouts raise attention.
+Recovery is described in [architecture](../architecture.md#recovery).
 
-`packages/fake-agent` implements the provider side of `CodexAdapter`, `ClaudeAdapter` and `PaneHost`
-in memory, plus a fake `GitHubAdapter`, all driven by scenarios. Its agents call the real Loom MCP
-server. Tests run the real core, store and executor against it with a fake clock, and never start a
-real agent.
+[delivery.ts](../../packages/core/src/delivery.ts) separates transport acceptance from native delivery:
 
-```ts
-interface Scenario {
-  name: string;
-  /** Which run this script plays: matched on provider, role and mode when Loom starts one. */
-  agent: { provider: "codex" | "claude"; role: Role; mode: RunMode; attempt?: number };
-  steps: Step[];                                  // run in order; each waits for the one before
-}
-
-type Step =
-  | { expect: "message"; match?: string; timeoutMs?: number } // wait for Loom's prompt; confirm it the provider's way
-  | { status: "working" | "idle" }                            // native events (turn/started, busy/idle)
-  | { request: "approval" | "question"; summary: string; expect: "accept" | "decline" | "answer" }
-  | { tool: McpToolName; input: unknown; expectError?: McpErrorCode }
-  | { git: "commit"; files: Record<string, string>; message: string }
-  | { turn: "completed" | "interrupted" | "failed"; error?: { willRetry: boolean; kind: string } }
-  | { rateLimit: { resetsInMs: number } }
-  | { crash: true }                                           // Claude: entry vanishes, no SessionEnd; Codex: socket closes
-  | { stall: number }                                         // no events for this many ms (fake clock)
-  | { dropDelivery: true }                                    // transport says ok; the provider never confirms
-  | { duplicate: "last_event" }                               // replay the last event, to test idempotency
-  | { github: "ci"; conclusion: "success" | "failure" | "pending" }
-  | { github: "push"; files: Record<string, string> }         // a human pushes to the branch
-  | { github: "comment"; body: string; path?: string; line?: number; changesRequested?: boolean }
-  | { github: "merge" | "close" };
-```
-
-Scenarios are JSON files next to the tests. For example, an implementer with one fix round is:
-`expect message` → `status working` → `git commit` → `tool submit_for_review` → `status idle` →
-`expect message /findings/` → `git commit` → `tool resolve_finding` → `tool submit_for_review`.
-Inputs may use `$HEAD`, `$FINDING_<n>` and `$QUESTION_<n>`, which are replaced at run time. Scenarios are
-validated with zod when loaded, and a scenario with steps left over when its run ends fails the test.
-
-## 10. Restart recovery
-
-Verified in [spike 05](../../spikes/05-restart-matrix/FINDINGS.md) and re-measured on tmux in
-[spike 06](../../spikes/06-tmux-pane-host/FINDINGS.md), with spikes 01 and 02 for the provider sides.
-
-| Fault | What happens | Reconcile |
-|---|---|---|
-| Coordinator restart | Provider processes may be interrupted when their coordinator-owned server or pane exits. Recovery uses the provider-native in-flight turn ID from the last committed pass; shutdown does not risk starting new actions with an extra reconcile. | Before any post-restart observation, enqueue one deterministic `coordinator/restart_interrupted` input for each stored in-flight turn. Resume the same session/thread, then core waits for a fresh provider read and records `continued`, `completed`, or `not_needed`. A needed idle interrupted turn gets exactly one `restart_continuation` through normal message delivery. Then recover outbox actions, poll providers, and reconcile every non-terminal task. |
-| A client detaches | Nothing: same PIDs, same IDs, turns finish. Other clients stay attached. | None. |
-| Pane host stop, crash or kill | Every pane process dies. The host has no restore feature, and needs none. Pane IDs restart at `%0`, so every stored `PaneRef` from the old generation names nothing. | Interactive runs go `unknown`, then are relaunched from stored state: `ensureWorkspace` + `ensurePane` with the full stored command line and environment (Claude `--resume <id> --settings … --model …`; Codex `resume <thread> --remote <sock>`). Claude's in-flight turn is lost: re-send the message. A Codex turn completed meanwhile because its app-server is outside the host: read it with `thread/read`. About 30 s to a fresh reply from both. |
-| Codex app-server restart | Generation + 1; older request IDs are dropped, never answered. The unfinished turn reads `interrupted`. | Runs `unknown` until `thread/resume`; the interrupted turn is a failed attempt and is re-sent. |
-| Claude process dies, host fine | The `claude agents` entry vanishes with no SessionEnd; the pane reads `dead`. | Headless: retry with `--resume`. Interactive: `vanished` and attention; the human relaunches (§3). |
-
-Rules that follow: one Codex app-server per task, as a Loom child process outside the pane host; no
-decision is ever derived from a pane; the intended command line and environment of every interactive run
-are Loom state, never inferred from a pane's argv.
-
-The inbox accepts human commands, MCP calls, action results, and coordinator-owned
-`restart_interrupted` inputs. Restart inputs are keyed by run and native turn ID, so duplicate recovery
-and consecutive restarts cannot recreate a delivered continuation. A later interrupted continuation
-turn has a different native ID and can therefore receive its own continuation.
-
-Still placeholders: `unknownGraceMs` 60 s, `deliveryTimeoutMs` 10 s, `stallAfterMs` 15 min, `fixRoundStallAfterMs` 5 min. `claude agents
---json` took up to about 5 s to list a relaunched session, so the grace period must exceed that. Untested:
-a machine restart, a Claude permission prompt across a restart, and spooling hooks while the
-coordinator is down.
-
-Resume attempts remain bounded by `retry.maxAttempts` (3 by default).
-
-## 11. Out of v1
-
-- Stacked PRs, tasks that span repos, more than one machine, webhooks (polling only).
-- Removing worktrees automatically. Loom shows which are safe to remove; the human removes them.
-- Taking control of external sessions (hand-started or `claude --bg`); they stay observe-only.
-- Pre-trusting worktrees for Claude; the human answers the trust dialog.
-- Answering an interactive Claude permission prompt from Loom's UI. It's answered in the terminal;
-  Codex approvals can be answered from Loom.
-- Switching provider for a run that has started; Codex `review/start` second opinions.
-- Cost budgets (only a wall-clock budget, which adds attention); GitHub App identity for agents.
-- Phase 5 items: ports and dev servers, overlap warnings, the rebase queue, issue import.
-
-## 12. Decisions
-
-| # | Decision | Why |
-|---|---|---|
-| 1 | Plan approval is its own stage, `plan_approval`. | "Waiting on the human" gets its own CAS, audit row and attention reason. The board can still show it under Planning. |
-| 2 | Exhausted retries set `failed`, not `blocked` (also reflected in `architecture.md`). | `blocked` means waiting on something outside Loom; `failed` means Loom's automatic path gave up. The human acts differently on each. |
-| 3 | `reviewRound` counts reviewer runs. The cap limits going back to `in_progress`; a re-review after a new commit always runs; `request_changes` isn't capped. | Nothing merges unreviewed, and the human stays in charge of their own requests. |
-| 4 | `blocker` and `major` findings block. GitHub comments block only under a `changes_requested` review. A failed CI check becomes a blocking `ci` finding. | Agents choose severity and code chooses what it means (architecture: code decides guards). |
-| 5 | CI failing after approval goes to `in_progress`; a new commit goes to `in_review`. | A CI failure needs a fix; a new commit needs a review. |
-| 6 | A voided approval disarms auto-merge first (`disable_auto_merge`). | `--auto` could otherwise merge a head the human never approved. |
-| 7 | `merge_pr` succeeding never moves a task; only an observed merge does. | Done is derived from GitHub. |
-| 8 | Cancel leaves the PR and branch alone. | GitHub owns them. The human closes the PR if they want it closed. |
-| 9 | The git adapter creates worktrees; the pane host only opens a session on the path. | Git owns branches, and headless runs shouldn't need a terminal at all. |
-| 10 | IDs are derived: run ID `<task>/<role>/<round>`, Claude session = UUIDv5 of `<runId>#<sessionEpoch>`. A retry keeps the row. Automatic retries preserve the session unless the provider cannot resume it; a human retry of an active run explicitly retires it and bumps the epoch. | Keeps reconcile pure, preserves resumable history, and makes `start_run` idempotent: a repeat targets the same session. |
-| 11 | `ReconcileResult` also returns `transitions` and `inputs`. | The audit log and MCP replies must commit atomically with the state. |
-| 12 | Inbox and outbox tables. | Inputs are consumed exactly once; actions run at least once and survive a crash. |
-| 13 | Capacity is compare-and-set on a global version. | Reconcile is per task, but caps are global. |
-| 14 | MCP identity comes from a per-run token; tools take no IDs. | An agent can't act on another task, or as a superseded run. |
-| 15 | `ask_human` returns immediately; the answer comes as a message. | No tool call held open for hours; it works the same for both providers. |
-| 16 | Codex steer counts as delivered on the user-message item (provisional). | `turn/steer` joins an existing turn, so there's no `turn/started`. |
-| 17 | The pane host supplies no run status, only native pane facts. | Principle 4: anything else would be read off a screen. |
-| 18 | Claude hooks are kept as a receipt log. | They can't be re-read; `claude agents` still owns status. |
-| 19 | `packages/core` has no runtime dependencies and compiles with `types: []`. Zod schemas live in `packages/mcp` and `packages/protocol`, tested equal to the core types. | Node APIs can't be imported into core by accident, and core stays exhaustively testable. |
-| 20 | Flags stop automatic starts and retries, not submissions or human commands. | A submission is still valid work; the human always has control. |
-| 21 | Interactive runs are never relaunched automatically. They end as `vanished` and raise attention. | A human closing the pane and a crash are indistinguishable, and reopening a terminal someone just closed is worse than asking. Headless retries are unaffected. |
-| 22 | External runs (origin='external') record `model: ''` (empty string). | External runs represent sessions Loom did not launch—a developer ran Claude or Codex in the worktree by hand. Since Loom never chose the model, an empty string records that it is unknown. Preserve it through protocol serialization. |
-
-## 13. Phase 1b review notes and resolution
-
-These notes were raised during design review. Resolutions below are part of the current contract.
-
-| # | Note |
+| Path | Delivery evidence |
 |---|---|
-| 1 | **Resolved:** exclude idle implementers from capacity and re-acquire a reservation on their next message. Pending fix messages are the wait state; starts, sends and releases use capacity CAS (§5.4). |
-| 2 | **Resolved:** clean means no tracked or non-ignored untracked changes; `dirtyPaths` is required and appears in failed-guard details (§5.2). |
-| 3 | **Assigned to the future coordinator/MCP boundary:** load and validate `WORKFLOW.md` for `get_task_context` and exact permission automation. The coordinator supplies commands as observations; core performs no I/O. Missing/malformed files expose no commands. |
-| 4 | **`packages/protocol` is still undrafted.** It's Phase 1's fifth deliverable, and the Phase 4 UI work depends on it. Its snapshot is mostly these entities plus derived views: attention, and the review shell state from spike 04. |
+| Codex turn start | Native started turn or a snapshot containing that turn |
+| Codex steer | Matching user message in the expected turn |
+| Claude | Matching normalized prompt receipt for the session |
 
-### Coordinator automation
+Launch results must commit provider identity before the first message; interactive delivery also
+requires its pane. Sends are gated on fresh provider readiness, never into a pending permission or
+question. A paste returning written is not delivery. Pending messages retain their timeout across
+polls/restarts; an uncertain send raises attention rather than authorizing blind replay. Request
+answers are tied to native occurrence/generation; resolved requests cancel obsolete actions.
 
-The Operator was removed by user decision on 2026-09-13. Two narrow behaviours remain in
-plain core code, using fresh provider/git observations and the existing guarded outbox:
+## Findings, evidence and work time
 
-- A Loom-launched implementer's native permission request is accepted for an exact command
-  from its registered repository's validated `WORKFLOW.md`, or a conservative simple `git add`,
-  `git commit -m` or `pnpm install` command. Extra install flags require an exact workflow entry.
-  Claude requires a waiting native Bash PermissionRequest with an occurrence ID; Codex requires
-  a command approval on the current connection generation. Questions, trust dialogs and all
-  other commands retain `provider_input` attention for the human. Actions are deduplicated by
-  request identity and revalidated immediately before execution.
-- A vanished Loom-launched interactive implementation with no accepted submission, review,
-  replacement or live run can have its clean committed branch pushed through `push_branch`.
-  The exact recorded HEAD must be ahead of base and its remote (or the remote branch absent);
-  git proves remote ancestry and the executor rechecks worktree, branch and HEAD. Push is never
-  forced. The coordinator retains `run_vanished` attention, never opens a PR automatically and
-  never fabricates a submission or changes the stage. Reconciliation and recovery reuse the
-  same commit-keyed outbox intent.
+Findings have an immutable original anchor and a current mapped location. Git hunks, renames and
+blob evidence map anchors across heads; mapping is exact, moved, ambiguous or outdated. Missing
+lines do not resolve findings, and ambiguous duplicates are never silently picked. The findings
+table owns truth; its artifact is a projection.
 
-Existing headless retry limits and human plan/merge approvals remain unchanged. Runtime failures
-are logged for the human; no agent files bugs or resets retry budgets automatically.
+Test reports record command, outcome, summary, run, timestamp and commit SHA. Nonempty progress
+test reports require a fresh Git head. Reports accumulate as evidence rather than defining what
+the implementation must do. Full shapes live in [entities.ts](../../packages/core/src/entities.ts).
 
-### Retired persistence (2026-09-13)
+[work-time.ts](../../packages/core/src/work-time.ts) derives work time from transitions: first entry
+into In progress to the latest entry into Awaiting approval, or Done if merged without that stage.
+Leaving the ready stages clears the end time until ready again. It excludes initial planning and
+post-readiness approval waiting, but includes intervening CI/review/fix time. This elapsed span is
+separate from `activeElapsedMs`, the active-stage budget counter.
 
-Migration `0010_drop_operator_tables.sql` removes the unused `operator_events`, `operator_notes`,
-`operator_ledger` and `operator_filings` tables introduced by migration `0003_operator.sql`.
-Legacy Operator recipes, tokens and settings are ignored; startup neither launches nor manages that
-session. Task `signature` remains optional for older records but is no longer populated by a filing
-agent. Migration `0006_main_messages.sql` added `main_message_notes` and `main_message_receipts` for
-Main's remaining message path; it does not copy or read retired Operator data.
+## Coordinator automation
 
-### Main messages (2026-09-13)
+[automation.ts](../../packages/core/src/automation.ts) implements two narrow behaviors:
 
-Main's `message_agent` accepts an exact task/run or task/role, 1–4,000 characters, and an optional
-idempotency key scoped to its repository. Replays return the persisted result; different payloads
-with the same key are refused. Authenticated Main messages are recorded as notes in Activity.
-The coordinator checks the native send gate, then atomically stores the note, receipt and guarded
-`send_message` input. Core rechecks the run epoch/attempt and owns provider-confirmed delivery.
-Waiting, unavailable, ended, ambiguous and foreign targets are refused promptly. Main never waits
-for replies. Operator destinations and the `read_agent_replies` tool no longer exist.
+- Accept an implementer's native command approval when it exactly matches a validated repository
+  workflow command or the conservative built-in `git add`, `git commit -m` and plain `pnpm install`
+  forms. Claude requires a waiting Bash permission occurrence; Codex requires the current request
+  generation. Questions and trust dialogs remain human input.
+- Push clean committed work from a vanished interactive implementer when no submission, review,
+  replacement or live run supersedes it and remote ancestry permits it. The executor rechecks the
+  exact branch/head. This rescue retains attention and neither opens a PR nor invents a submission or stage change.
+  It uses the shared publication path described under Review and merge.
+
+[WORKFLOW parsing](../../apps/coordinator/README.md#workflowmd) supplies the command allowlist.
+Failures do not cause an agent to file bugs or reset retry budgets automatically.
