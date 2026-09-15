@@ -25,6 +25,13 @@ If a change needs to break one, update `docs/architecture.md` in the same PR and
 6. **The worktree path is the join key** between a task, its sessions, its panes and its branch.
 7. **Record provider session IDs before launch**, so any run can be resumed.
 
+## Fixing problems
+
+Fix the cause, not the symptom: prefer changing or deleting code over adding a layer on top. A new
+fallback, retry, timeout, special case or `catch` that discards an error needs a comment naming the
+bug it covers and why that bug can't be fixed at its source. Keep one definition per concept: when
+two places answer the same question, make one the owner and delete the other.
+
 ## Checks
 
 `pnpm test`, `pnpm lint` and `pnpm typecheck` must pass before a PR. `packages/core` stays free of

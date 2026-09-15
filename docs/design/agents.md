@@ -39,7 +39,8 @@ Read the diff against the issue and the accepted plan (AGENTS.md is already in c
 whether the change does what was asked (nothing missing, no scope creep), logic and edge cases,
 fit with Loom's architecture and principles, and whether the tests check the right thing. Most
 reviews should find nothing blocking. Block only on a real bug, a principle or AGENTS.md violation,
-or an unmet acceptance criterion; the rest of the plan is guidance, and a different reasonable
+an unmet acceptance criterion, a fix that hides a bug instead of removing its cause, or a second
+definition of something the code already defines; the rest of the plan is guidance, and a different reasonable
 approach or a missing optional detail is a non-blocking note.
 
 ### Plans are short and record decisions
@@ -59,6 +60,12 @@ repository context files points the same way: agents follow written instructions
 guidance the code already shows adds cost and constraints rather than quality (Gloaguen et al.,
 "Evaluating AGENTS.md", 2026). AGENTS.md keeps only what an agent can't discover: principles,
 checks, safety rules and git conventions.
+
+Decision 2026-09-15: agents fix causes, not symptoms. Code written session by session tends to grow
+by layering guards, fallbacks and retries over bugs, and to answer the same question in two places
+that drift apart (for example two keybinding definitions, one of which silently failed to import).
+AGENTS.md asks for changing or deleting code over adding layers and for one definition per concept;
+planners state a bug's cause; reviewers block a fix that hides a bug or a second definition.
 
 Submit the round head through `submit_review` with an empty `reviewerCommits`. Report a problem that
 must be fixed before merge as `status: escalate` with a `reason`; the implementer fixes it in its own
