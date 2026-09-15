@@ -68,6 +68,13 @@ test("plans are short and record decisions; acceptance criteria are the bar impl
   expect(brief("planner")).toContain("at most eight acceptance criteria");
   expect(brief("planner")).toContain("don't add requirements beyond it");
   expect(brief("implementer")).toContain("acceptance criteria are the bar");
+  expect(brief("planner")).toContain(
+    "the fix must remove that cause, not hide it",
+  );
+  expect(brief("implementer")).toContain("Fix causes, not symptoms");
+  expect(brief("reviewer")).toContain(
+    "a fix that hides a bug instead of removing its cause, or a second definition",
+  );
   expect(brief("reviewer")).toContain("an unmet acceptance criterion");
   expect(brief("reviewer")).toContain("The rest of the plan is guidance");
   expect(brief("reviewer")).not.toContain("AGENTS.md, and judge");
