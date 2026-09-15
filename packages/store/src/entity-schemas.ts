@@ -185,6 +185,7 @@ export const runSchema = contract<Run>()(
     model: text,
     reasoningEffort: text.min(1).optional(),
     access: z.enum(["full", "approval-gated"]).optional(),
+    fixReason: text.min(1).optional(),
     sessionId: id.nullable(),
     sessionEpoch: count,
     tokenUsage: z
@@ -549,6 +550,8 @@ export const contextSchema = contract<TaskContext>()(
         role,
         round: count,
         resume: z.boolean(),
+        retireRunId: id.optional(),
+        fixReason: text.min(1).optional(),
         fresh: z.boolean().optional(),
         replacement: z
           .object({

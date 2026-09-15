@@ -310,21 +310,10 @@ describe("idle runs awaiting submission", () => {
     );
   });
 
-  it("a delivered fix round shortens the idle window: the run already knows what to do", () => {
+  it("a fresh fix-round run uses the shorter idle window", () => {
     const f = idleFixture();
     f.state.config.fixRoundStallAfterMs = 60_000;
-    f.state.messages.push({
-      id: `${f.run.id}/fix_round/1` as never,
-      runId: f.run.id,
-      purpose: "fix_round",
-      text: "Address the findings and submit for review.",
-      textHash: "hash",
-      status: "delivered",
-      attempts: 1,
-      transportRef: null,
-      sentAt: now,
-      delivered: null,
-    });
+    f.run.round = 1;
     f.observations.now = at(60_000 - 1);
     const before = fixed(f.state, f.observations);
     expect(before.next.task.attention.reasons).not.toContain(reason);

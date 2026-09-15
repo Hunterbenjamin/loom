@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  actionInput,
   finding,
   fixed,
   fixture,
@@ -40,12 +41,17 @@ const ci = (
 });
 
 /** An implementer submission in CI, before any reviewer exists for the round. */
-function submitted() {
+function submitted(provider?: "codex" | "claude") {
   const f = fixture("in_progress");
   f.state.task.reviewRound = 0;
   f.state.task.prNumber = null;
   f.state.review = null;
   f.state.runs = f.state.runs.filter((r) => r.role !== "reviewer");
+  const implementer = f.state.runs.find((r) => r.role === "implementer");
+  if (provider && implementer) {
+    implementer.provider = provider;
+    f.state.task.providers.implementer = provider;
+  }
   if (f.observations.github?.ok) f.observations.github.value = null;
   f.observations.inputs = [mcp(submit())];
   const r = fixed(f.state, f.observations);
@@ -75,7 +81,7 @@ describe("CI gate before review", () => {
     expect(r.next.ciGate?.ci?.conclusion).toBe("pending");
   });
 
-  it("red CI goes straight back to the same implementer with the failing checks, not to review", () => {
+  it("red CI requests a fresh implementer round with the failing checks, not review", () => {
     const { next, obs } = submitted();
     const r = fixed(next, { ...obs, ci: ci("failure") });
     expect(r.next.task.stage).toBe("in_progress");
@@ -88,13 +94,63 @@ describe("CI gate before review", () => {
       title: "lint-typecheck-test",
     });
     expect(failure?.body).toContain("https://example.test/check/9001");
+    expect(r.next.messages.some((m) => m.purpose === "fix_round")).toBe(false);
+    expect(r.next.desiredRun).toMatchObject({
+      role: "implementer",
+      round: 1,
+      resume: false,
+      retireRunId: "t1/implementer/0",
+      fixReason: expect.stringContaining("lint-typecheck-test"),
+    });
     expect(
-      r.next.messages.some(
-        (m) => m.purpose === "fix_round" && m.runId.includes("implementer"),
+      r.actions.some(
+        (a) => a.kind === "stop_run" && a.runId === "t1/implementer/0",
       ),
     ).toBe(true);
     expect(r.next.outbox.some((a) => a.kind === "start_run")).toBe(false);
     expect(r.transitions.at(-1)?.reason).toContain("lint-typecheck-test");
+  });
+
+  it("records a distinct fix-round session only after the previous run retires", () => {
+    const { next, obs } = submitted("claude");
+    const previous = next.runs.find((run) => run.role === "implementer");
+    const red = fixed(next, { ...obs, ci: ci("failure") });
+    const stop = red.actions.find(
+      (action) => action.kind === "stop_run" && action.terminate,
+    );
+    if (!stop) throw new Error("Missing implementer retirement");
+    expect(red.actions.some((action) => action.kind === "start_run")).toBe(
+      false,
+    );
+
+    const started = fixed(red.next, {
+      ...obs,
+      inputs: [actionInput(stop, {})],
+    });
+    const launch = started.actions.find(
+      (action) => action.kind === "start_run",
+    );
+    expect(launch).toMatchObject({
+      runId: "t1/implementer/1",
+      provider: "claude",
+      sessionId: "uuid:t1/implementer/1#0",
+      resume: false,
+      attempt: 1,
+    });
+    const current = started.next.runs.at(-1);
+    expect(current?.sessionId).toBe(launch?.sessionId);
+    expect(current?.sessionId).not.toBe(previous?.sessionId);
+    expect(started.next.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "t1/implementer/1",
+          purpose: "initial",
+          text: expect.stringContaining(
+            "fresh implementer fix-round session 1",
+          ),
+        }),
+      ]),
+    );
   });
 
   it("green CI settles earlier CI failures and starts a review round that owes them no verdict", () => {
@@ -258,16 +314,19 @@ describe("the reviewer is a checker", () => {
     expect(JSON.stringify(r.inputs[0])).toContain("Reviewers don't fix");
   });
 
-  it("a blocking finding sends a fix round to the implementer", () => {
+  it("a blocking finding requests a fresh implementer round", () => {
     const f = review();
     f.observations.inputs = [mcp(reviewCall([finding("f1")]), "reviewer")];
     const r = fixed(f.state, f.observations);
     expect(r.inputs[0]?.accepted).toBe(true);
     expect(r.next.task.stage).toBe("in_progress");
-    expect(
-      r.next.messages.some(
-        (m) => m.purpose === "fix_round" && m.runId.includes("implementer"),
-      ),
-    ).toBe(true);
+    expect(r.next.messages.some((m) => m.purpose === "fix_round")).toBe(false);
+    expect(r.next.desiredRun).toMatchObject({
+      role: "implementer",
+      round: 1,
+      resume: false,
+      retireRunId: "t1/implementer/0",
+      fixReason: expect.stringContaining("Review round"),
+    });
   });
 });

@@ -1,7 +1,5 @@
 import { describe, expect, test } from "vitest";
 import {
-  actionInput,
-  base,
   finding,
   fixed,
   fixture,
@@ -84,14 +82,19 @@ test("a reviewed branch that conflicts with base goes back to the implementer to
   const rebased = fixed(result.next, f.observations);
   expect(rebased.next.task.stage).toBe("in_progress");
   expect(rebased.next.review?.publicationPending).toBe(false);
-  expect(
-    rebased.next.messages.find((m) => m.purpose === "fix_round")?.text,
-  ).toMatch(/conflicts with/);
-  // Reconciling again changes nothing: one message, one stage change.
+  expect(rebased.next.desiredRun).toMatchObject({
+    role: "implementer",
+    round: 1,
+    resume: false,
+    fixReason: expect.stringContaining("conflicts with"),
+  });
+  // Reconciling again changes nothing: one retirement request, one stage change.
   const again = fixed(rebased.next, f.observations);
   expect(again.next.task.stage).toBe("in_progress");
   expect(
-    again.next.messages.filter((m) => m.purpose === "fix_round"),
+    again.next.outbox.filter(
+      (row) => row.action?.kind === "stop_run" && row.action.terminate,
+    ),
   ).toHaveLength(1);
 });
 

@@ -273,6 +273,9 @@ const fullContextSchema = z.strictObject({
   brief: text,
   plan: storedPlanSchema.extend({ version: line }).nullable(),
   decisions: text,
+  fixRound: z
+    .strictObject({ reason: text, diff: z.string(), truncated: z.boolean() })
+    .optional(),
   handoff: contextHandoffSchema,
   findings: z.array(findingViewSchema),
   testResults: z.array(testResultSchema),
@@ -302,6 +305,9 @@ export const outputSchemas = {
       brief: text.optional(),
       plan: storedPlanSchema.extend({ version: line }).nullable().optional(),
       decisions: text.optional(),
+      fixRound: z
+        .strictObject({ reason: text, diff: z.string(), truncated: z.boolean() })
+        .optional(),
       handoff: contextHandoffSchema.optional(),
       findings: z
         .strictObject({

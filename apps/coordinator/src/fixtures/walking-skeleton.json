@@ -24,7 +24,7 @@
     ]
   },
   {
-    "name": "implementer with one fix round",
+    "name": "initial implementer",
     "agent": {
       "provider": "codex",
       "role": "implementer",
@@ -47,8 +47,18 @@
           "handoff": { "summary": "Ready", "nextSteps": [] }
         }
       },
-      { "status": "idle" },
-      { "expect": "message", "match": "findings" },
+      { "status": "idle" }
+    ]
+  },
+  {
+    "name": "fresh implementer fix round",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "interactive"
+    },
+    "steps": [
+      { "expect": "message", "match": "fresh implementer fix-round session" },
       {
         "git": "commit",
         "files": { "example.txt": "fixed implementation\n" },

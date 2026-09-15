@@ -88,7 +88,7 @@ export function reconcileStages(c: Context): void {
       c.voidApprovals("ci_failed");
       ciFindings(c, pr.ci);
       c.stage("in_progress", "CI failed on the reviewed head");
-      c.fix(`ci:${pr.headSha}`);
+      c.fix(`CI failed on reviewed head ${pr.headSha}`);
     } else {
       const approval = state.approvals.find(
         (a) => a.kind === "merge" && !a.voidedAt,

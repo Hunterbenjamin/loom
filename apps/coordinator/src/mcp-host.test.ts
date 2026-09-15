@@ -1,9 +1,13 @@
-import type { Repo } from "@loom/core";
+import type { Repo, Sha } from "@loom/core";
 import type { Store } from "@loom/store";
 import { expect, test } from "vitest";
 import { finding, fixture } from "../../../packages/core/test/fixtures.js";
 import type { Adapters } from "./adapters.js";
-import { createMcpHost } from "./mcp-host.js";
+import {
+  capFixRoundPatch,
+  createMcpHost,
+  FIX_ROUND_DIFF_BYTES,
+} from "./mcp-host.js";
 import type { RecipeStore } from "./recipes.js";
 
 const setup = (role: "implementer" | "reviewer" = "implementer") => {
@@ -63,4 +67,13 @@ test("reviewer context keeps role filtering in full and changes views", async ()
     mustAct: [{ id: "visible", title: "Fix bug", status: "disputed" }],
   });
   expect(repeat).not.toHaveProperty("findings");
+test("fix-round patches truncate on a UTF-8 boundary and retain the range and stat", () => {
+  const from = "a".repeat(40) as Sha;
+  const to = "b".repeat(40) as Sha;
+  const patch = `diff --git a/file b/file\n${"雪".repeat(FIX_ROUND_DIFF_BYTES)}`;
+  const result = capFixRoundPatch(patch, " file | 1 +\n", from, to);
+  expect(result.truncated).toBe(true);
+  expect(result.diff).not.toContain("�");
+  expect(result.diff).toContain(`git diff ${from}..${to}`);
+  expect(result.diff).toContain("file | 1 +");
 });

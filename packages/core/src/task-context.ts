@@ -13,6 +13,7 @@ export interface TaskContextProjection {
   headSha: Sha | null;
   brief: string;
   workflow: Record<string, string>;
+  fixRound?: GetTaskContextFullOutput["fixRound"];
 }
 
 const equal = (left: unknown, right: unknown): boolean =>
@@ -59,6 +60,7 @@ export function taskContextFull({
   headSha,
   brief,
   workflow,
+  fixRound,
 }: TaskContextProjection): GetTaskContextFullOutput {
   const run = state.runs.find((candidate) => candidate.id === runId);
   const worktree = state.worktree;
@@ -93,6 +95,7 @@ export function taskContextFull({
       typeof state.artifactContents.decisions === "string"
         ? state.artifactContents.decisions
         : "",
+    ...(fixRound ? { fixRound } : {}),
     handoff: (state.artifactContents.handoff ??
       null) as GetTaskContextFullOutput["handoff"],
     findings: findingViews(state, run.role, run.round),
@@ -178,7 +181,13 @@ export function taskContextChanges(
   if (!equal(previousWorktreeDetails, currentWorktreeDetails))
     changes.worktree = current.worktree;
 
-  for (const field of ["brief", "plan", "handoff", "workflow"] as const)
+  for (const field of [
+    "brief",
+    "plan",
+    "fixRound",
+    "handoff",
+    "workflow",
+  ] as const)
     if (!equal(previous[field], current[field]))
       Object.assign(changes, { [field]: current[field] });
 

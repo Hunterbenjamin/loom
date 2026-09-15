@@ -301,6 +301,8 @@ export interface Run {
   reasoningEffort?: string;
   /** Captured semantic access policy; legacy rows use full. */
   access?: import("./settings.js").AccessPreset;
+  /** Why this fresh implementer round was requested. Absent on initial and legacy runs. */
+  fixReason?: string;
   /**
    * (ref: provider) Claude: UUIDv5 of `<runId>#<sessionEpoch>`, chosen before launch, so never null,
    * and reused by every attempt of that epoch.
