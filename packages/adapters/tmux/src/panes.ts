@@ -1,3 +1,4 @@
+import type { Provider } from "@loom/core";
 // tmux's `-F` output, parsed and validated before anything in core sees it. Fields are joined
 // with US (0x1f) because a path may contain anything else, including a tab.
 
@@ -137,7 +138,7 @@ export function toObservation(
   row: PaneRow,
   hostGeneration: string,
   startCwd: WorktreePath,
-  agent: "codex" | "claude" | null = null,
+  agent: Provider | null = null,
 ): PaneObservation {
   return {
     agent,

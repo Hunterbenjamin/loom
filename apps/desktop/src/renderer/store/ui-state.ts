@@ -42,7 +42,7 @@ export interface UiState {
   prTab: "for-you" | "created";
   prSections: Partial<Record<ReviewSection, boolean>>;
   prCompletedCount: number;
-  prQuery: string;
+  filterQuery: string;
   prCursor: number | null;
   openPr: { repoId: PullRequestRow["repoId"]; number: number } | null;
   /** The brief open over the Daily brief list. */
@@ -76,7 +76,7 @@ export const initialUi: UiState = {
   prTab: "for-you",
   prSections: {},
   prCompletedCount: 20,
-  prQuery: "",
+  filterQuery: "",
   prCursor: null,
   openPr: null,
   openBrief: null,
@@ -132,7 +132,7 @@ export function createInitialState(
 
 /** The Tracker's three destinations. Other view ids remain reachable by keyboard and palette. */
 export const VIEWS: {
-  id: Exclude<ViewId, "settings" | "briefs">;
+  id: "all" | "needs-you" | "pull-requests";
   label: string;
   hint: string;
 }[] = [

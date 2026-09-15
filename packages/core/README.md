@@ -28,3 +28,9 @@ Colocated tests use [test/fixtures.ts](test/fixtures.ts), injected hashes/IDs an
 They cover guards, determinism, fixed points, replay, capacity, cancellation and multi-pass delivery.
 No provider processes run. Run only relevant test files locally according to the
 [agent check policy](../../docs/design/agents.md#issue-agents).
+
+## Data contracts
+
+Core owns entity TypeScript types and closed value lists in [entities.ts](src/entities.ts).
+Each list is an `as const` array and its union type is derived from it. Core has no runtime
+dependencies. Protocol owns entity zod schemas; validation stays at the I/O boundaries.

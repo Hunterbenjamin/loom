@@ -9,6 +9,7 @@ import type {
   Provider,
   Role,
   RunMode,
+  SendVia,
   TransportAttempt,
 } from "./entities.js";
 import type {
@@ -30,12 +31,7 @@ interface ActionBase {
 }
 
 /** How a message reaches the provider. Chosen by provider and mode. */
-export type SendVia =
-  | "codex_turn_start"
-  | "codex_turn_steer"
-  /** Paste into the run's pane, then Enter. Never proof of delivery. */
-  | "pane_paste"
-  | "claude_sdk";
+export type { SendVia } from "./entities.js";
 
 export type Action = ActionBase &
   (

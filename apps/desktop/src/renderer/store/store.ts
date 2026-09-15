@@ -220,6 +220,8 @@ export function createStore(
           : { sort, descending: sort === "time" },
       );
     },
+    setFilterQuery: (filterQuery: string) =>
+      setUi({ filterQuery, prCursor: null, cursor: null }),
     setCursor: (cursor: number | null) => setUi({ cursor }),
     moveCursor(delta: number, length: number) {
       if (length === 0) return;

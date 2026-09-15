@@ -9,7 +9,10 @@ import type { State } from "../store/store.js";
 import { VIEWS } from "../store/ui-state.js";
 import { ChimeMuteCommand } from "../workbench/chime.js";
 import { STAGES, stageLabel } from "./format.js";
+import { runTrackerCommand } from "./keys.js";
 import { PullRequestPaletteCommands } from "./pull-request-commands.js";
+import { hasTrackerAction, runTrackerAction } from "./tracker-actions.js";
+import { formatKeys, trackerKeymap } from "./tracker-keymap.js";
 
 /** Issue commands always target the active detail or the visible issue cursor. */
 export function paletteIssueTarget(state: State) {
@@ -17,7 +20,10 @@ export function paletteIssueTarget(state: State) {
   if (ui.openTask || ui.openPr) return selectedDetailTask(state)?.id ?? null;
   if (ui.openBrief || ["briefs", "settings", "pull-requests"].includes(ui.view))
     return null;
-  const rows = ui.view === "needs-you" ? inboxRows(state) : cursorRows(state);
+  const rows =
+    ui.view === "needs-you" && ui.pane === "list"
+      ? inboxRows(state)
+      : cursorRows(state);
   return rows[ui.cursor ?? -1]?.task.id ?? null;
 }
 
@@ -26,6 +32,13 @@ export function Palette() {
   const open = useStore((s) => s.ui.palette);
   const rows = useStore(selectedRows);
   const current = useStore(paletteIssueTarget);
+  const canToggleView = useStore(
+    (s) =>
+      !s.ui.openTask &&
+      !s.ui.openPr &&
+      !s.ui.openBrief &&
+      ["all", "needs-you"].includes(s.ui.view),
+  );
   const pane = useStore((s) => s.ui.pane);
   const repos = useStore((s) => s.snapshot.repos);
   const [value, setValue] = useState("");
@@ -57,36 +70,65 @@ export function Palette() {
             {VIEWS.map((view) => (
               <Command.Item
                 key={view.id}
-                onSelect={() => run(() => store.setView(view.id))}
+                onSelect={() =>
+                  run(() => runTrackerCommand(store, `go-${view.id}`))
+                }
               >
-                {view.label}
+                {view.label} <kbd>{formatKeys(`go-${view.id}`)}</kbd>
               </Command.Item>
             ))}
             <Command.Item
-              onSelect={() =>
-                run(() => store.setPane(pane === "list" ? "board" : "list"))
-              }
+              disabled={!canToggleView}
+              onSelect={() => run(() => runTrackerCommand(store, "view"))}
             >
-              Switch to {pane === "list" ? "board" : "list"}
+              Switch to {pane === "list" ? "board" : "list"}{" "}
+              <kbd>{formatKeys("view")}</kbd>
             </Command.Item>
           </Command.Group>
 
           <Command.Group heading="More sections">
-            <Command.Item onSelect={() => run(() => store.setView("briefs"))}>
-              Daily brief
+            <Command.Item
+              onSelect={() => run(() => runTrackerCommand(store, "go-briefs"))}
+            >
+              Daily brief <kbd>{formatKeys("go-briefs")}</kbd>
             </Command.Item>
-            <Command.Item onSelect={() => run(() => store.setView("settings"))}>
-              Settings
+            <Command.Item
+              onSelect={() =>
+                run(() => runTrackerCommand(store, "go-settings"))
+              }
+            >
+              Settings <kbd>{formatKeys("go-settings")}</kbd>
             </Command.Item>
           </Command.Group>
 
           <PullRequestPaletteCommands close={close} />
+          <Command.Group heading="Detail">
+            {trackerKeymap
+              .filter(
+                (entry) =>
+                  entry.scope === "detail" &&
+                  entry.group !== "Pull request" &&
+                  hasTrackerAction(store, entry.id),
+              )
+              .map((entry) => (
+                <Command.Item
+                  key={entry.id}
+                  onSelect={() =>
+                    run(() => {
+                      runTrackerAction(store, entry.id);
+                    })
+                  }
+                >
+                  {entry.label} <kbd>{formatKeys(entry.id)}</kbd>
+                </Command.Item>
+              ))}
+          </Command.Group>
 
           <Command.Group heading="Issue">
             {current ? (
               <>
                 <Command.Item onSelect={() => run(() => store.open(current))}>
-                  Open {current}
+                  Open {current} <kbd>{formatKeys("open")}</kbd>
                 </Command.Item>
                 <Command.Item
                   onSelect={() =>
@@ -99,16 +141,16 @@ export function Palette() {
                   Review changes and findings
                 </Command.Item>
                 <Command.Item
-                  onSelect={() => run(() => store.setStagePicker(true))}
+                  onSelect={() => run(() => runTrackerCommand(store, "stage"))}
                 >
-                  Change stage…
+                  Change stage… <kbd>{formatKeys("stage")}</kbd>
                 </Command.Item>
               </>
             ) : null}
             <Command.Item
-              onSelect={() => run(() => store.setCreateIssue(true))}
+              onSelect={() => run(() => runTrackerCommand(store, "create"))}
             >
-              Create issue…
+              Create issue… <kbd>{formatKeys("create")}</kbd>
             </Command.Item>
           </Command.Group>
 
@@ -209,6 +251,13 @@ function Scrim({
     // biome-ignore lint/a11y/noStaticElementInteractions: clicking the backdrop dismisses; `esc` does the same
     <div
       className="scrim"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+        }
+      }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

@@ -128,3 +128,10 @@ attention queries read the stored derived fields without recomputing decisions.
 Colocated store tests use temporary database files, separate connections, real WAL, backups and artifact
 files; no real agents or shared daemons are started. Fixtures cover owned core
 state and synthetic hook receipts, not copied production data.
+
+## Shared validation
+
+Core owns entity types and closed value lists. Protocol owns entity zod shapes and exposes
+`storedEntities`, preserving the store's existing scalar rules and unknown-key stripping.
+[entity-schemas.ts](src/entity-schemas.ts) applies core contract checks to those schemas; action
+and input schemas compose their shared pieces. No entity field list is maintained in the store.

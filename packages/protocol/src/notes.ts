@@ -1,9 +1,10 @@
+import { TASK_NOTE_AUTHOR_VALUES } from "@loom/core";
 import { z } from "zod";
 export const taskNote = z.strictObject({
   id: z.string(),
   taskId: z.string().nullable(),
   repoId: z.string().optional(),
-  author: z.enum(["main", "lead", "human"]),
+  author: z.enum(TASK_NOTE_AUTHOR_VALUES),
   at: z.string().datetime(),
   eventId: z.string(),
   row: z.string(),

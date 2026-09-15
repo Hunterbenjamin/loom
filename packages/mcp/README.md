@@ -56,3 +56,10 @@ Colocated tests use SDK clients, synthetic blobs and [InMemoryHost](src/memory.t
 identity isolation, expired tokens, anchor validation, correlated dispositions and transport framing.
 Schema type-equality assertions run under typecheck. Real registration probes in `src/real.test.ts`
 are opt-in with `LOOM_REAL_PROVIDERS=1`; see [repository checks](../../AGENTS.md#checks).
+
+## Shared shapes
+
+Core owns closed value lists and entity types; protocol owns entity zod schemas. MCP derives
+plans, anchors, stages, finding statuses, severities, roles, sides and test results from protocol.
+Agent-only validation stays here: nonblank goals, string steps, repository-relative review
+locations and 64-hex anchor hashes. Tool input/output JSON schemas remain unchanged.

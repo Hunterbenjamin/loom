@@ -4,6 +4,7 @@ import {
   displayName,
   type FindingStatus,
   issueKey,
+  ROLE_VALUES,
   type Role,
   sumTokenUsage,
   type TaskId,
@@ -28,7 +29,7 @@ export function inspectTask(store: Store, taskId: TaskId, adapters?: Adapters) {
   };
   for (const finding of state.findings) counts[finding.status]++;
   const codexServerRunning = adapters?.codexServerRunning(taskId) ?? false;
-  const roles: Role[] = ["planner", "implementer", "reviewer"];
+  const roles: Role[] = [...ROLE_VALUES];
   const tokenUsage = {
     total: sumTokenUsage(runs),
     byRole: Object.fromEntries(

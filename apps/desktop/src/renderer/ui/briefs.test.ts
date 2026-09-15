@@ -179,3 +179,29 @@ test("failed research stays readable and can be run again", async () => {
   ).toContain("Search unavailable");
   expect(button("Run now").disabled).toBe(false);
 });
+
+test("brief filtering and keyboard endpoints open the visible brief", async () => {
+  const { createShortcutHandler } = await import("./keys.js");
+  const second = {
+    ...completed,
+    id: "00000000-0000-4000-8000-000000000003",
+    content: null,
+    status: "failed" as const,
+  };
+  const h = await mount([completed, second]);
+  act(() => h.store.setView("briefs"));
+  const handler = createShortcutHandler(h.store);
+  const press = (key: string) =>
+    act(() => handler(new KeyboardEvent("keydown", { key })));
+  press("G");
+  expect(h.store.getState().ui.cursor).toBe(1);
+  press("g");
+  press("g");
+  expect(h.store.getState().ui.cursor).toBe(0);
+  act(() => h.store.setFilterQuery("failed"));
+  expect(h.host.querySelectorAll("[data-brief]")).toHaveLength(1);
+  press("j");
+  await act(async () => press("Enter"));
+  expect(h.store.getState().ui.openBrief).toBe(second.id);
+  expect(h.store.getState().ui.openTask).toBeNull();
+});

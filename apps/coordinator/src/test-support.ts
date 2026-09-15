@@ -1,3 +1,4 @@
+import { ROLE_VALUES } from "@loom/core";
 // The test harness: a real coordinator (loop, executor, MCP server, store, protocol server)
 // against `@loom/fake-agent`'s providers, pane host and GitHub, a throwaway Git repository and a
 // fake clock. Nothing here starts an agent, a terminal, a daemon or a real network connection
@@ -172,7 +173,7 @@ async function open(
       expectedVersion: fixtureSettings.version,
       data: {
         roles: Object.fromEntries(
-          (["planner", "implementer", "reviewer"] as const).map((role) => {
+          [...ROLE_VALUES].map((role) => {
             const provider =
               config.providerOverrides[role] ?? legacyProviders[role];
             return [

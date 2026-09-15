@@ -95,8 +95,8 @@ export function reviewGroups(state: {
   ui: State["ui"];
   snapshot: Pick<State["snapshot"], "pullRequests">;
 }) {
-  const { repo, prTab, prQuery, prSections, prCompletedCount } = state.ui;
-  const needle = prQuery.trim().toLowerCase();
+  const { repo, prTab, filterQuery, prSections, prCompletedCount } = state.ui;
+  const needle = filterQuery.trim().toLowerCase();
   const groups = REVIEW_SECTIONS.map(({ id, label }) => ({
     id,
     label,
@@ -195,9 +195,6 @@ export function pullRequestActions(ctx: StoreContext) {
     },
     loadMoreCompletedPrs() {
       ctx.setUi({ prCompletedCount: ctx.get().ui.prCompletedCount + 20 });
-    },
-    setPrQuery(prQuery: string) {
-      ctx.setUi({ prQuery, prCursor: null });
     },
     openPullRequest(openPr: UiState["openPr"]) {
       ctx.setUi({

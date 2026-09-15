@@ -124,10 +124,10 @@ test("renders the reference sections, compact glyph rows and viewer count", () =
     h.host.querySelector('[data-view="pull-requests"] .count')?.textContent,
   ).toBe("3");
   act(() => h.button("For you").click());
-  act(() => h.store.setPrQuery("KEYBOARD"));
+  act(() => h.store.setFilterQuery("KEYBOARD"));
   expect(h.rows()).toHaveLength(1);
   expect(h.rows()[0]?.textContent).toContain("Improve keyboard navigation");
-  act(() => h.store.setPrQuery("nothing matches"));
+  act(() => h.store.setFilterQuery("nothing matches"));
   expect(h.rows()).toHaveLength(0);
   expect(h.host.textContent).toContain("No reviews match this filter.");
 });
@@ -150,14 +150,14 @@ test("keyboard skips collapsed sections; Enter opens the PR and issue links open
   key("Escape");
   key("k");
   key("/");
-  const input = h.host.querySelector<HTMLInputElement>("[data-pr-search]");
+  const input = h.host.querySelector<HTMLInputElement>("[data-tracker-search]");
   if (!input) throw new Error("missing search");
   expect(document.activeElement).toBe(input);
   key("j", input);
   expect(h.store.getState().ui.prCursor).toBe(0);
-  act(() => h.store.setPrQuery("keyboard"));
+  act(() => h.store.setFilterQuery("keyboard"));
   key("Escape", input);
-  expect(h.store.getState().ui.prQuery).toBe("");
+  expect(h.store.getState().ui.filterQuery).toBe("");
   const task = h.host.querySelector<HTMLButtonElement>(".pr-task-link");
   if (!task) throw new Error("missing issue link");
   expect(key("Enter", task).defaultPrevented).toBe(false);

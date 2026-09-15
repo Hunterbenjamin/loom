@@ -401,7 +401,8 @@ test("PR shortcuts reuse confirmation and guarded controls, while typing and dia
     '[data-pr-action="open"]',
   );
   if (!link) throw new Error("Missing GitHub link");
-  const open = vi.spyOn(link, "click").mockImplementation(() => {});
+  const open = vi.spyOn(window, "open").mockReturnValue(null);
+  cleanups.push(() => open.mockRestore());
   press("o");
   expect(open).toHaveBeenCalledOnce();
   press("d");
@@ -464,7 +465,7 @@ test("palette exposes PR actions and disabled reasons, and merge opens the same 
   expect(item("merge").getAttribute("aria-disabled")).toBe("true");
   expect(item("merge").title).toBe("Checks are pending.");
   expect(item("delete").getAttribute("aria-disabled")).toBe("true");
-  expect(item("open").textContent).toContain("o");
+  expect(item("github").textContent).toContain("o");
   expect(item("refresh").textContent).toContain("r");
   press("m", h.host.querySelector("input") ?? window);
   expect(h.host.querySelector("dialog")).toBeNull();
@@ -851,6 +852,7 @@ test("Diff uses rail order, unified cards, durable Reviewed marks and file/hunk 
   await act(async () =>
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" })),
   );
+  expect(h.host.querySelector(".pr-page-body")?.scrollTop).toBe(0);
   expect(scroll).toHaveBeenCalledWith({
     type: "item",
     id: testFile.path,

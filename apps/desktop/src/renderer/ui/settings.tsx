@@ -1,4 +1,13 @@
-import { type SettingsValues, settingValue } from "@loom/core";
+import type { Provider } from "@loom/core";
+import {
+  ACCESS_PRESET_VALUES,
+  MERGE_POLICY_VALUES,
+  PROVIDER_VALUES,
+  ROLE_VALUES,
+  RUN_MODE_VALUES,
+  type SettingsValues,
+  settingValue,
+} from "@loom/core";
 import type { SettingsDocument } from "@loom/protocol";
 import { useState } from "react";
 import { useStore } from "../store/react.js";
@@ -16,7 +25,7 @@ import {
 import { KeyboardSettings } from "./settings-keys.js";
 
 type Role = keyof SettingsValues["roles"];
-const ROLES: Role[] = ["planner", "implementer", "reviewer"];
+const ROLES: Role[] = [...ROLE_VALUES];
 
 const SECTIONS = [
   { id: "general", label: "General", scoped: false },
@@ -141,7 +150,7 @@ function RoleCell({
   const field = useField(context, `roles.${role}.${setting}`);
   const roles = context.writer.pending;
   const provider = (roles[`roles.${role}.provider`] ??
-    field.document.effective.roles[role].provider) as "codex" | "claude";
+    field.document.effective.roles[role].provider) as Provider;
   const catalog = field.document.modelCatalog.providers[provider];
   if (setting === "provider")
     return (
@@ -149,7 +158,7 @@ function RoleCell({
         field={{
           ...field,
           save: (value) => {
-            const next = value as "codex" | "claude";
+            const next = value as Provider;
             field.save(value, {
               [`roles.${role}.model`]:
                 field.document.modelCatalog.providers[next]?.models[0] ?? "",
@@ -158,7 +167,7 @@ function RoleCell({
             });
           },
         }}
-        options={["codex", "claude"]}
+        options={[...PROVIDER_VALUES]}
         labels={{ codex: "Codex", claude: "Claude" }}
       />
     );
@@ -175,7 +184,7 @@ function RoleCell({
   return (
     <Select
       field={field}
-      options={["interactive", "headless"]}
+      options={[...RUN_MODE_VALUES]}
       labels={{ interactive: "Interactive", headless: "Headless" }}
     />
   );
@@ -306,7 +315,7 @@ function AccessRow({ context, role }: { context: FieldContext; role: Role }) {
     >
       <Select
         field={field}
-        options={["full", "approval-gated"]}
+        options={[...ACCESS_PRESET_VALUES]}
         labels={ACCESS_LABELS}
       />
     </Row>
@@ -369,7 +378,7 @@ function Workflow({ context }: { context: FieldContext }) {
         >
           <Select
             field={merge}
-            options={["require-human", "auto-small", "auto-all"]}
+            options={[...MERGE_POLICY_VALUES]}
             labels={MERGE_LABELS}
           />
         </Row>

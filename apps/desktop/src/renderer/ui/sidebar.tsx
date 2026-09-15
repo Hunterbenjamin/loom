@@ -3,6 +3,7 @@ import { reviewNeedsHuman } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { viewCounts } from "../store/selectors.js";
 import { VIEWS } from "../store/ui-state.js";
+import { formatKeys, keyHint } from "./tracker-keymap.js";
 
 export function Sidebar() {
   const store = useStoreApi();
@@ -76,7 +77,7 @@ export function Sidebar() {
             type="button"
             className="view-item"
             aria-current={view === item.id ? "page" : undefined}
-            title={item.hint}
+            {...keyHint(`go-${item.id}`, item.hint)}
             data-view={item.id}
             onClick={() => store.setView(item.id)}
           >
@@ -97,6 +98,7 @@ export function Sidebar() {
         <button
           type="button"
           className="view-item"
+          {...keyHint("go-briefs")}
           data-view="briefs"
           aria-current={view === "briefs" ? "page" : undefined}
           onClick={() => store.setView("briefs")}
@@ -109,7 +111,7 @@ export function Sidebar() {
           className="view-item"
           data-view="settings"
           aria-current={view === "settings" ? "page" : undefined}
-          title="Settings"
+          {...keyHint("go-settings")}
           onClick={() => store.setView("settings")}
         >
           <ViewIcon view="settings" />
@@ -131,7 +133,7 @@ export function Sidebar() {
           {theme === "dark" ? "Light theme" : "Dark theme"}
         </button>
         <span className="spacer" />
-        <kbd>⌘K</kbd>
+        <kbd>{formatKeys("palette")}</kbd>
       </div>
     </nav>
   );

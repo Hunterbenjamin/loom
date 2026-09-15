@@ -1,4 +1,5 @@
 import type { Action, ActionResult, OutboxEntry } from "@loom/core";
+import { ACCESS_PRESET_VALUES, RUN_MODE_VALUES } from "@loom/core";
 import { z } from "zod";
 import { locationSchema } from "./entity-schemas.js";
 import {
@@ -36,11 +37,11 @@ const fields = {
     runId: id,
     role,
     provider,
-    mode: z.enum(["headless", "interactive"]),
+    mode: z.enum(RUN_MODE_VALUES),
     worktreePath: text,
     model: text,
     reasoningEffort: text.min(1).optional(),
-    access: z.enum(["full", "approval-gated"]),
+    access: z.enum(ACCESS_PRESET_VALUES),
     attempt: positive,
     sessionEpoch: count,
     sessionId: id.nullable(),

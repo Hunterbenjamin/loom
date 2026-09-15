@@ -370,17 +370,19 @@ test("C opens the dialog, ignores typing, and modal shortcuts do not change the 
   });
 });
 
-test("the C key and the palette open the same dialog; there is no sidebar button", () => {
+test("the c key and hinted palette command open the same dialog; C is removed", () => {
   const h = setup({ open: false });
   expect(h.host.querySelector('[aria-label="Create issue"]')).toBeNull();
-  act(() => h.store.setCreateIssue(true));
+  act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "C" })));
+  expect(h.host.querySelector("dialog")).toBeNull();
+  act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "c" })));
   expect(h.host.querySelector("dialog")).not.toBeNull();
   h.cancelDialog();
   act(() => h.store.setPalette(true));
   const command = [...h.host.querySelectorAll<HTMLElement>("[cmdk-item]")].find(
-    (item) => item.textContent === "Create issue…",
+    (item) => item.textContent?.startsWith("Create issue…"),
   );
-  expect(command).toBeDefined();
+  expect(command?.querySelector("kbd")?.textContent).toBe("c");
   act(() => command?.click());
   expect(h.store.getState().ui).toMatchObject({
     createIssue: true,

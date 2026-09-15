@@ -2,8 +2,9 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { buildSnapshot } from "../fixtures/index.js";
 import { createFixtureStore as createStore } from "../fixtures/store.js";
-import { selectedRows } from "../store/selectors.js";
+import { cursorRows, selectedRows } from "../store/selectors.js";
 import { boardCursor, createShortcutHandler } from "./keys.js";
+import { registerTrackerActions } from "./tracker-actions.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => {
@@ -14,7 +15,8 @@ afterEach(() => {
 function setup() {
   const store = createStore(buildSnapshot(20));
   const help = vi.fn();
-  const handler = createShortcutHandler(store, help);
+  const pending = vi.fn();
+  const handler = createShortcutHandler(store, help, pending);
   window.addEventListener("keydown", handler);
   cleanups.push(() => window.removeEventListener("keydown", handler));
   const key = (
@@ -31,43 +33,45 @@ function setup() {
     target.dispatchEvent(event);
     return event;
   };
-  return { store, help, key };
+  return { store, help, key, pending };
 }
-test("section chords, legacy pane chords and help", () => {
+test("section chords, view toggle and help", () => {
   const { store, help, key } = setup();
   for (const [letter, view] of [
     ["n", "needs-you"],
     ["r", "pull-requests"],
     ["d", "briefs"],
     ["s", "settings"],
-    ["a", "all"],
+    ["i", "all"],
   ]) {
     key("g");
     key(letter!);
     expect(store.getState().ui.view).toBe(view);
   }
-  key("g");
-  key("b");
+  key("v");
   expect(store.getState().ui.pane).toBe("board");
-  key("g");
-  key("i");
+  key("v");
   expect(store.getState().ui.pane).toBe("list");
   key("?");
   expect(help).toHaveBeenCalledOnce();
   key("c");
   expect(store.getState().ui.createIssue).toBe(true);
 });
-test("prefix expiration and canceled prefixes do not navigate", () => {
+test("prefix waits without timeout and Escape or unmapped keys cancel", () => {
   vi.useFakeTimers();
-  const { store, key } = setup();
+  const { store, key, pending } = setup();
   key("g");
-  vi.advanceTimersByTime(901);
+  expect(pending).toHaveBeenLastCalledWith(true);
+  vi.advanceTimersByTime(60_000);
   key("n");
-  expect(store.getState().ui.view).toBe("all");
-  key("g");
-  key("Escape");
-  key("n");
-  expect(store.getState().ui.view).toBe("all");
+  expect(store.getState().ui.view).toBe("needs-you");
+  expect(pending).toHaveBeenLastCalledWith(false);
+  for (const cancel of ["Escape", "q", "a", "b"]) {
+    key("g");
+    key(cancel);
+    key("i");
+    expect(store.getState().ui.view).toBe("needs-you");
+  }
 });
 test("typing, terminals, composition and dialogs own all keys", () => {
   const { store, help, key } = setup();
@@ -92,44 +96,88 @@ test("typing, terminals, composition and dialogs own all keys", () => {
   expect(store.getState().ui.createIssue).toBe(false);
   expect(help).not.toHaveBeenCalled();
 });
-test("details consume navigation and activate only enabled controls on the detail", () => {
+test("detail actions dispatch by id; removed keys and repeated approval do nothing", () => {
   const { store, key } = setup();
   const task = store.getState().snapshot.tasks[0]!;
   store.open(task.id);
   store.setCursor(2);
-  document.body.innerHTML =
-    '<button data-issue-action="approve-plan"></button><div class="detail"><div class="pr-page-body"></div><button data-tab="plan"></button><button data-issue-action="approve-plan" disabled></button><button data-issue-action="edit"></button></div>';
-  const outside = vi.fn();
-  const approve = vi.fn();
-  const edit = vi.fn();
-  const tab = vi.fn();
-  document.querySelector("button")!.addEventListener("click", outside);
-  const disabled = document.querySelector<HTMLButtonElement>(
-    ".detail [data-issue-action=approve-plan]",
-  )!;
-  disabled.addEventListener("click", approve);
-  document
-    .querySelector("[data-issue-action=edit]")!
-    .addEventListener("click", edit);
-  document.querySelector("[data-tab=plan]")!.addEventListener("click", tab);
-  key("a");
-  expect(approve).not.toHaveBeenCalled();
-  expect(outside).not.toHaveBeenCalled();
-  disabled.disabled = false;
+  const approve = vi.fn(),
+    edit = vi.fn(),
+    tab = vi.fn(),
+    scroll = vi.fn(),
+    change = vi.fn();
+  cleanups.push(
+    registerTrackerActions(store, {
+      approve,
+      edit,
+      "tab-plan": tab,
+      "scroll-down": scroll,
+      change,
+    }),
+  );
   key("a");
   key("a", document.body, { repeat: true });
   expect(approve).toHaveBeenCalledOnce();
-  key("E");
-  expect(edit).toHaveBeenCalledOnce();
+  key("e");
   key("2");
-  expect(tab).toHaveBeenCalledOnce();
   key("j");
-  key("Enter");
+  key("x");
+  expect(edit).toHaveBeenCalledOnce();
+  expect(tab).toHaveBeenCalledOnce();
+  expect(scroll).toHaveBeenCalledOnce();
+  expect(change).toHaveBeenCalledOnce();
+  for (const removed of ["E", "t", "A", "C"]) key(removed);
+  expect(edit).toHaveBeenCalledOnce();
+  expect(change).toHaveBeenCalledOnce();
+  expect(store.getState().ui.createIssue).toBe(false);
   expect(store.getState().ui.cursor).toBe(2);
-  expect(store.getState().ui.openTask).toBe(task.id);
-  expect(document.querySelector(".pr-page-body")!.scrollTop).toBe(60);
-  const event = key("Enter", disabled);
-  expect(event.defaultPrevented).toBe(false);
+  key("s");
+  expect(store.getState().ui.stagePicker).toBe(true);
+});
+test("diff actions take precedence over scrolling and adjacent issues regardless of registration order", () => {
+  const { store, key } = setup();
+  store.open(store.getState().snapshot.tasks[0]!.id);
+  const scroll = vi.fn(),
+    file = vi.fn(),
+    hunk = vi.fn();
+  cleanups.push(
+    registerTrackerActions(store, {
+      "scroll-down": scroll,
+      "next-issue": scroll,
+    }),
+  );
+  const remove = registerTrackerActions(store, {
+    "next-file": file,
+    "next-hunk": hunk,
+  });
+  key("j");
+  key("]");
+  expect(file).toHaveBeenCalledOnce();
+  expect(hunk).toHaveBeenCalledOnce();
+  expect(scroll).not.toHaveBeenCalled();
+  remove();
+  key("j");
+  expect(scroll).toHaveBeenCalledOnce();
+});
+test("list endpoints, filter action and adjacent issues preserve the detail tab", () => {
+  const { store, key } = setup();
+  const focus = vi.fn();
+  cleanups.push(registerTrackerActions(store, { filter: focus }));
+  key("/");
+  expect(focus).toHaveBeenCalledOnce();
+  const rows = cursorRows(store.getState());
+  key("G");
+  expect(store.getState().ui.cursor).toBe(rows.length - 1);
+  key("g");
+  key("g");
+  expect(store.getState().ui.cursor).toBe(0);
+  key("Enter");
+  store.setTab("plan");
+  key("]");
+  expect(store.getState().ui.openTask).toBe(rows[1]!.task.id);
+  expect(store.getState().ui.tab).toBe("plan");
+  key("[");
+  expect(store.getState().ui.openTask).toBe(rows[0]!.task.id);
 });
 test("board movement stays in columns, skips empty ones and handles stale cursors", () => {
   const { store, key } = setup();
@@ -137,49 +185,18 @@ test("board movement stays in columns, skips empty ones and handles stale cursor
   rows[0]!.task.stage = "backlog";
   rows[1]!.task.stage = "backlog";
   rows[2]!.task.stage = "ci";
-  expect(boardCursor(rows, null, "j")).toBe(0);
-  expect(boardCursor(rows, 0, "j")).toBe(1);
-  expect(boardCursor(rows, 1, "j")).toBe(1);
-  expect(boardCursor(rows, 1, "l")).toBe(2);
-  expect(boardCursor(rows, 2, "h")).toBe(0);
-  expect(boardCursor(rows, 99, "k")).toBe(0);
-  expect(boardCursor([], null, "j")).toBeNull();
+  expect(boardCursor(rows, null, "next-row")).toBe(0);
+  expect(boardCursor(rows, 0, "next-row")).toBe(1);
+  expect(boardCursor(rows, 1, "next-row")).toBe(1);
+  expect(boardCursor(rows, 1, "right-column")).toBe(2);
+  expect(boardCursor(rows, 2, "left-column")).toBe(0);
+  expect(boardCursor(rows, 99, "previous-row")).toBe(0);
+  expect(boardCursor([], null, "next-row")).toBeNull();
   store.setPane("board");
   key("j");
   key("Enter");
   expect(store.getState().ui.openTask).not.toBeNull();
 });
-test("brief navigation opens a brief and never an issue", () => {
-  const { store, key } = setup();
-  store.setView("briefs");
-  document.body.innerHTML =
-    '<div data-brief="one"></div><div data-brief="two"></div>';
-  const rows = document.querySelectorAll<HTMLElement>("[data-brief]");
-  rows.forEach((row) => {
-    row.scrollIntoView = vi.fn();
-    row.addEventListener("click", () => store.openBrief(row.dataset.brief!));
-  });
-  key("j");
-  key("j");
-  key("Enter");
-  expect(store.getState().ui.openBrief).toBe("two");
-  key("e");
-  expect(store.getState().ui.stagePicker).toBe(false);
-  expect(store.getState().ui.openTask).toBeNull();
-});
-
-test("palette Escape works from its input and cancels a pending chord", () => {
-  const { store, key } = setup();
-  key("g");
-  store.setPalette(true);
-  const input = document.createElement("input");
-  document.body.append(input);
-  key("Escape", input);
-  expect(store.getState().ui.palette).toBe(false);
-  key("n");
-  expect(store.getState().ui.view).toBe("all");
-});
-
 test("stage and palette issue commands use visible selection and ignore non-issue lists", async () => {
   const { paletteIssueTarget } = await import("./palette.js");
   const { inboxRows } = await import("../store/inbox.js");
@@ -205,8 +222,24 @@ test("row navigation leaves old control focus so Enter opens the selected row", 
   const button = document.createElement("button");
   document.body.append(button);
   button.focus();
-  key("j", button);
+  key("G", button);
   expect(document.activeElement).not.toBe(button);
   key("Enter", document.activeElement!);
   expect(store.getState().ui.openTask).not.toBeNull();
+});
+
+test("every binding has a unique action id and registry cleanup removes only its owner", async () => {
+  const { trackerKeymap } = await import("./tracker-keymap.js");
+  const { hasTrackerAction } = await import("./tracker-actions.js");
+  expect(new Set(trackerKeymap.map((entry) => entry.id)).size).toBe(
+    trackerKeymap.length,
+  );
+  const { store } = setup();
+  for (const entry of trackerKeymap) {
+    expect(entry.keys.length).toBeGreaterThan(0);
+    const remove = registerTrackerActions(store, { [entry.id]: () => {} });
+    expect(hasTrackerAction(store, entry.id)).toBe(true);
+    remove();
+    expect(hasTrackerAction(store, entry.id)).toBe(false);
+  }
 });

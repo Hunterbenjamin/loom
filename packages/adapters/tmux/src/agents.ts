@@ -3,8 +3,9 @@
 // agent started from the pane's shell). This is a host fact about processes, never a status.
 import { execFile } from "node:child_process";
 import { basename } from "node:path";
+import type { Provider } from "@loom/core";
 
-type AgentKind = "codex" | "claude";
+type AgentKind = Provider;
 export interface ProcessRow {
   pid: number;
   ppid: number;

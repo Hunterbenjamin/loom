@@ -10,12 +10,10 @@ import type { UiState } from "../store/ui-state.js";
 import { Detail as IssueDetail } from "./detail.js";
 import { DetailLayout } from "./detail-layout.js";
 import { Overview } from "./overview.js";
-import {
-  PULL_REQUEST_ACTION_EVENT,
-  type PullRequestActionRequest,
-} from "./pull-request-commands.js";
 import { PullRequestGlyph as PrGlyph } from "./pull-request-glyph.js";
 import { ChangeCounts } from "./pull-request-overview.js";
+import { useTrackerActions } from "./tracker-actions.js";
+import { keyHint } from "./tracker-keymap.js";
 import { usePullRequestCommand } from "./use-pull-request-command.js";
 
 const Files = lazy(() =>
@@ -69,27 +67,37 @@ export function PullRequestDetail({
   const deleteReason = pr
     ? deleteDisabledReason(pr)
     : "Waiting for pull request detail.";
-  const actionBar = useRef<HTMLDivElement>(null);
-
-  // Palette and shortcuts activate the same guarded native controls as a click.
-  useEffect(() => {
-    const activate = (event: Event) => {
-      const request = (event as CustomEvent<PullRequestActionRequest>).detail;
-      if (
-        request.repoId !== selection.repoId ||
-        request.number !== selection.number ||
-        submitting.current ||
-        document.querySelector("dialog[open]")
-      )
-        return;
-      actionBar.current
-        ?.querySelector<HTMLElement>(`[data-pr-action="${request.action}"]`)
-        ?.click();
-    };
-    window.addEventListener(PULL_REQUEST_ACTION_EVENT, activate);
-    return () =>
-      window.removeEventListener(PULL_REQUEST_ACTION_EVENT, activate);
-  }, [selection.repoId, selection.number, submitting]);
+  const merge = () => {
+    if (!busy && !reason && pr && !submitting.current)
+      setConfirm({ kind: "merge", headSha: pr.headSha, base: pr.base });
+  };
+  const deleteBranch = () => {
+    if (!busy && !connection && !deleteReason)
+      void run({ kind: "delete_branch", ...selection });
+  };
+  const refresh = () => {
+    if (!busy && !connection)
+      void run({
+        kind: "refresh_pull_requests",
+        repoId: selection.repoId,
+        state: pr?.state ?? "open",
+      });
+  };
+  useTrackerActions(
+    task
+      ? {}
+      : {
+          "tab-overview": () => setTab("Overview"),
+          "tab-diff": () => setTab("Diff"),
+          merge,
+          delete: deleteBranch,
+          refresh,
+          github: () => {
+            if (header)
+              window.open(header.url, "_blank", "noopener,noreferrer");
+          },
+        },
+  );
 
   if (task)
     return <IssueDetail key={task.id} task={task} selection={selection} />;
@@ -97,7 +105,6 @@ export function PullRequestDetail({
   return (
     <DetailLayout
       testId="pull-request-detail"
-      actionRef={actionBar}
       onClose={() => store.openPullRequest(null)}
       tab={tab}
       breadcrumb={
@@ -135,12 +142,9 @@ export function PullRequestDetail({
               <button
                 type="button"
                 data-pr-action="delete"
-                aria-keyshortcuts="d"
+                {...keyHint("delete", deleteReason)}
                 disabled={!!busy || connection || !!deleteReason}
-                title={deleteReason ?? undefined}
-                onClick={() =>
-                  void run({ kind: "delete_branch", ...selection })
-                }
+                onClick={deleteBranch}
               >
                 Delete branch
               </button>
@@ -154,15 +158,9 @@ export function PullRequestDetail({
               <button
                 type="button"
                 data-pr-action="refresh"
-                aria-keyshortcuts="r"
+                {...keyHint("refresh")}
                 disabled={!!busy || connection}
-                onClick={() =>
-                  void run({
-                    kind: "refresh_pull_requests",
-                    repoId: selection.repoId,
-                    state: pr?.state ?? "open",
-                  })
-                }
+                onClick={refresh}
               >
                 Refresh
               </button>
@@ -172,7 +170,7 @@ export function PullRequestDetail({
             <a
               className="pr-github-chip mono"
               data-pr-action="open"
-              aria-keyshortcuts="o"
+              {...keyHint("github")}
               aria-label="Open on GitHub"
               href={header.url}
               target="_blank"
@@ -197,6 +195,7 @@ export function PullRequestDetail({
                 type="button"
                 role="tab"
                 id={`pr-tab-${label}`}
+                {...keyHint(label === "Overview" ? "tab-overview" : "tab-diff")}
                 data-tab={label === "Overview" ? "overview" : "diff"}
                 aria-controls="detail-panel"
                 aria-selected={tab === label}
@@ -212,17 +211,9 @@ export function PullRequestDetail({
               <button
                 type="button"
                 data-pr-action="merge"
-                aria-keyshortcuts="m Meta+Enter"
+                {...keyHint("merge", reason)}
                 disabled={!!busy || !!reason}
-                title={reason ?? undefined}
-                onClick={() =>
-                  pr &&
-                  setConfirm({
-                    kind: "merge",
-                    headSha: pr.headSha,
-                    base: pr.base,
-                  })
-                }
+                onClick={merge}
               >
                 Squash &amp; merge
               </button>

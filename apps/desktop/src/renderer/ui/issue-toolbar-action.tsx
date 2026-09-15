@@ -1,11 +1,14 @@
 import type { HumanCommand, Task } from "@loom/core";
 import { issueDecisions } from "../store/issue-actions.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { useTrackerActions } from "./tracker-actions.js";
+import { keyHint } from "./tracker-keymap.js";
 import type { HumanCommandOutcome } from "./use-human-command.js";
 
 export function IssueToolbarAction({
   task,
   onCommand,
+  onKeyboardApprove,
   onChangePlan,
   onRequestChanges,
   outcome,
@@ -15,6 +18,7 @@ export function IssueToolbarAction({
 }: {
   task: Task;
   onCommand: (command: HumanCommand) => void;
+  onKeyboardApprove: (command: HumanCommand) => void;
   onChangePlan: () => void;
   onRequestChanges: () => void;
   outcome: HumanCommandOutcome;
@@ -32,6 +36,38 @@ export function IssueToolbarAction({
     );
   });
   const store = useStoreApi();
+  const activate = (id: string, keyboard = false) => {
+    const action = decision?.actions.find((action) => action.id === id);
+    if (
+      !action ||
+      submitting ||
+      pending !== null ||
+      action.disabledReason ||
+      (decision?.kind === "needs_approval" && approvalUnavailableReason)
+    )
+      return;
+    if (id === "change-plan") onChangePlan();
+    else if (id === "request-changes") onRequestChanges();
+    else if (action.command)
+      (keyboard ? onKeyboardApprove : onCommand)(action.command());
+    else if (action.intent === "terminal") store.setTab("terminal");
+  };
+  useTrackerActions({
+    approve: () =>
+      activate(
+        decision?.kind === "plan_needs_approval"
+          ? "approve-plan"
+          : "approve-merge",
+        true,
+      ),
+    merge: () => activate("approve-merge", true),
+    change: () =>
+      activate(
+        decision?.kind === "plan_needs_approval"
+          ? "change-plan"
+          : "request-changes",
+      ),
+  });
   if (!decision) return null;
   // Approvals show every action with the primary one last and rightmost; the secondary action
   // (Change plan, Request changes) opens a dialog for the human's feedback.
@@ -80,13 +116,12 @@ export function IssueToolbarAction({
             }
             data-pr-action={action.id === "approve-merge" ? "merge" : undefined}
             aria-busy={loading || undefined}
-            title={action.disabledReason ?? undefined}
-            onClick={() => {
-              if (action.id === "change-plan") onChangePlan();
-              else if (action.id === "request-changes") onRequestChanges();
-              else if (action.command) onCommand(action.command());
-              else if (action.intent === "terminal") store.setTab("terminal");
-            }}
+            {...(primary.has(action.id)
+              ? keyHint("approve", action.disabledReason ?? action.label)
+              : secondary.has(action.id)
+                ? keyHint("change", action.disabledReason ?? action.label)
+                : { title: action.disabledReason ?? undefined })}
+            onClick={() => activate(action.id)}
           >
             {loading ? (
               <span className="button-spinner" aria-hidden="true" />
