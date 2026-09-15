@@ -7,6 +7,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useStore, useStoreApi } from "../store/react.js";
+import { conversationIndicator } from "../workbench/agents.js";
+import { Status } from "../workbench/status.js";
 
 function comparableText(value: string) {
   return value.replace(/\r\n/g, "\n").trim();
@@ -143,6 +145,7 @@ export function ChatWindow() {
   const picker = useRef<HTMLInputElement>(null);
   const following = useRef(true);
   const key = target ? conversationKey(target) : "";
+  const mainUnread = useStore((s) => s.mainFinished);
   const header = state.conversations.find(
     (value) => conversationKey(value.target) === key,
   );
@@ -356,7 +359,12 @@ export function ChatWindow() {
       aria-label={`${title} chat`}
     >
       <header className="chat-header">
-        <span className={`chat-status ${header?.status ?? "unknown"}`} />
+        <Status
+          state={conversationIndicator(
+            header?.status ?? "unknown",
+            target?.kind === "lead" && mainUnread,
+          )}
+        />
         <strong>{title}</strong>
         <span className="spacer" />
         <details className="chat-menu">

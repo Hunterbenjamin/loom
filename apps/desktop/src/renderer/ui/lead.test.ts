@@ -181,3 +181,48 @@ test("an empty Tracker offers Open repository without opening Main", async () =>
   );
   expect(chooseRepository).toHaveBeenCalledTimes(1);
 });
+
+test("the bottom bar's Main shows the shared agent indicator and no inbox count", async () => {
+  const store = createStore(buildSnapshot(20));
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  cleanups.push(() => {
+    root.unmount();
+    host.remove();
+  });
+  const render = () =>
+    act(async () =>
+      root.render(
+        createElement(StoreProvider, {
+          store,
+          // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
+          children: createElement(
+            WindowModeContext,
+            { value: "workbench" },
+            createElement(LeadBar, { surface: "tracker" }),
+          ),
+        }),
+      ),
+    );
+  const status = () =>
+    host.querySelector<HTMLElement>(".lead-toggle .wb-status");
+  const set = (status: "working" | "idle", unread: boolean) => {
+    const state = store.getState();
+    Object.assign(state, {
+      lead: { ...state.lead, status },
+      mainFinished: unread,
+    });
+  };
+
+  set("working", false);
+  await render();
+  expect(status()?.classList.contains("working")).toBe(true);
+  set("idle", true);
+  await render();
+  expect(status()?.classList.contains("finished")).toBe(true);
+  set("idle", false);
+  await render();
+  expect(status()?.classList.contains("idle")).toBe(true);
+  expect(host.querySelector(".lead-toggle")?.textContent).not.toMatch(/\d/);
+});

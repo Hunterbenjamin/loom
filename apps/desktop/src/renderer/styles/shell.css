@@ -147,12 +147,6 @@
 .connection-dot.connected {
   background: #64b891;
 }
-.lead-badge {
-  padding: 0 5px;
-  border-radius: 8px;
-  background: var(--bg-hover);
-  font-variant-numeric: tabular-nums;
-}
 .lead-panel {
   position: fixed;
   bottom: 34px;
