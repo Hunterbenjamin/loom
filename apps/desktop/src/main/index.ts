@@ -22,7 +22,7 @@ import {
 } from "../shared/ipc.js";
 import { usesWorkbenchKey } from "../shared/keybindings.js";
 import { resolveAttach } from "./attach.js";
-import { devControls } from "./dev-control.js";
+import { devControls, syncSummary } from "./dev-control.js";
 import { watchKeybindings } from "./keybindings.js";
 import { readNativeSettings, writeNativeSettings } from "./native-settings.js";
 import { OwnedResources } from "./ownership.js";
@@ -174,8 +174,31 @@ function flush(window: BrowserWindow, id: string): void {
   if (!window.isDestroyed()) window.webContents.send("pty:data", id, data);
 }
 
+const controls = devControls(app.getAppPath(), app.isPackaged, process.env);
+
+/** Pulls main when safe and restarts whatever is stale. A restart of this app ends the process
+ * before the report arrives; otherwise say what happened, including why nothing was pulled. */
+async function updateAndRestart() {
+  const report = join(
+    process.env.LOOM_DATA_ROOT
+      ? join(process.env.LOOM_DATA_ROOT, process.env.LOOM_INSTANCE ?? "dev")
+      : app.getPath("temp"),
+    "dev-control-sync.log",
+  );
+  try {
+    const { title, detail } = syncSummary(
+      await controls.runAndReport("sync", report),
+    );
+    await dialog.showMessageBox({ message: title, detail });
+  } catch (error) {
+    dialog.showErrorBox(
+      "Loom couldn't update",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
 function wire(): void {
-  const controls = devControls(app.getAppPath(), app.isPackaged, process.env);
   ipcMain.handle("app:dev-control-available", (event) => {
     owned(event.sender);
     return controls.available();
@@ -455,12 +478,52 @@ async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
   return window;
 }
 
+app.setAboutPanelOptions({ applicationName: "Loom" });
+
 app.whenReady().then(async () => {
   // Electron's default File menu binds Cmd+W to Close Window, which quits a one-window app and
   // steals the Workbench's own Cmd+W. Close Window stays in the menu, without an accelerator.
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
+      ...(process.platform === "darwin"
+        ? [
+            {
+              label: "Loom",
+              submenu: [
+                { role: "about" as const, label: "About Loom" },
+                ...(controls.available()
+                  ? [
+                      { type: "separator" as const },
+                      {
+                        label: "Update and Restart",
+                        click: () => void updateAndRestart(),
+                      },
+                      {
+                        label: "Restart Loom",
+                        click: () =>
+                          void controls
+                            .run("restart-app")
+                            .catch((error) =>
+                              dialog.showErrorBox(
+                                "Loom couldn't restart",
+                                String(error),
+                              ),
+                            ),
+                      },
+                    ]
+                  : []),
+                { type: "separator" as const },
+                { role: "services" as const },
+                { type: "separator" as const },
+                { role: "hide" as const, label: "Hide Loom" },
+                { role: "hideOthers" as const },
+                { role: "unhide" as const },
+                { type: "separator" as const },
+                { role: "quit" as const, label: "Quit Loom" },
+              ],
+            },
+          ]
+        : []),
       { role: "editMenu" },
       { role: "viewMenu" },
       {

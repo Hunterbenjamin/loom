@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import { devControls } from "./dev-control.js";
+import { devControls, syncSummary } from "./dev-control.js";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 afterEach(() => vi.restoreAllMocks());
@@ -107,6 +107,58 @@ test("reports launcher failures without executing a real tmux server", async () 
     const failed = devControls(appPath, false, {}).run("sync");
     child.emit("exit", 1);
     await expect(failed).rejects.toThrow("launcher exited");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("sync summaries say whether Loom updated, is current, or could not pull", () => {
+  expect(
+    syncSummary(
+      "update: main abc -> def (2 commit(s))\ncoordinator: stale, restarting\napp: up to date\ndev-control-exit 0\n",
+    ),
+  ).toEqual({
+    title: "Loom updated",
+    detail:
+      "update: main abc -> def (2 commit(s))\ncoordinator: stale, restarting\napp: up to date",
+  });
+  expect(
+    syncSummary("coordinator: up to date\napp: up to date\ndev-control-exit 0")
+      .title,
+  ).toBe("Loom is up to date");
+  expect(
+    syncSummary(
+      "update: on feat/x; 3 commit(s) on origin/main are not included (left as is)\ndev-control-exit 0",
+    ).title,
+  ).toBe("Loom couldn't update to the latest main");
+  expect(syncSummary("error: boom\ndev-control-exit 1")).toEqual({
+    title: "Update failed",
+    detail: "error: boom",
+  });
+});
+
+test("runAndReport writes the script's output to the report and resolves when it ends", async () => {
+  const { root, appPath } = checkout();
+  const report = join(root, "sync.log");
+  const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+  vi.mocked(spawn).mockImplementation((() => {
+    setTimeout(() => {
+      child.emit("exit", 0);
+      writeFileSync(report, "app: up to date\ndev-control-exit 0\n");
+    }, 0);
+    return child;
+  }) as never);
+  try {
+    const output = await devControls(appPath, false, {}).runAndReport(
+      "sync",
+      report,
+      5,
+    );
+    expect(output).toContain("dev-control-exit 0");
+    const command = vi.mocked(spawn).mock.lastCall?.[1]?.at(-1);
+    expect(command).toBe(
+      `scripts/dev.sh sync > '${report}' 2>&1; echo "dev-control-exit $?" >> '${report}'`,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
