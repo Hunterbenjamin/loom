@@ -39,7 +39,8 @@ not valid submissions or human commands. Terminal tasks suppress attention while
 | Done | GitHub has reported the workflow PR merged |
 | Canceled | Work stops; branch and PR remain; the human can reopen |
 
-Small tasks generate an accepted plan from their title/description and skip planning. This is a
+Small tasks generate an accepted plan from their title/description and skip planning, unless they
+require plan approval: then they plan and wait for approval like any other task. This is a
 routing choice, not a promise of completion within a fixed duration. Capacity and dependency guards
 still apply. Accepted plans survive parking in Backlog.
 

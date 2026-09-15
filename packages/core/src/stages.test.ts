@@ -819,6 +819,15 @@ describe("review and merge precedence", () => {
       const r = fixed(f.state, f.observations);
       expect(r.next.task.stage).toBe("in_progress");
     });
+    it("a small task that requires plan approval still goes through planning", () => {
+      const f = fixture("todo");
+      f.state.task.size = "small";
+      f.state.task.requirePlanApproval = true;
+      f.state.plan = null;
+      const r = fixed(f.state, f.observations);
+      expect(r.next.task.stage).toBe("planning");
+      expect(r.next.plan).toBeNull();
+    });
     it("normal task still goes through planning", () => {
       const f = fixture("todo");
       f.state.task.size = "normal";
