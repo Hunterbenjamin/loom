@@ -1,0 +1,158 @@
+.dim {
+  color: var(--text-dim);
+}
+
+.faint {
+  color: var(--text-faint);
+}
+
+.nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  border: 1px solid var(--line-strong);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.chip.attention {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  color: var(--warn);
+}
+
+.chip.danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+}
+
+.chip.good {
+  border-color: color-mix(in srgb, var(--good) 45%, transparent);
+  color: var(--good);
+}
+
+.chip.accent {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.pr-task-link {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.pr-markdown {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.pr-markdown pre {
+  padding: 12px;
+  overflow: auto;
+  background: var(--bg);
+}
+.pr-markdown img {
+  max-width: 100%;
+}
+.pr-markdown blockquote {
+  border-left: 3px solid var(--line);
+  margin-left: 0;
+  padding-left: 16px;
+}
+.pr-data,
+.pr-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.pr-data th,
+.pr-data td,
+.pr-markdown th,
+.pr-markdown td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.pr-glyph {
+  flex: 0 0 16px;
+  vertical-align: middle;
+}
+.pr-open {
+  color: var(--good);
+}
+.pr-merged {
+  color: var(--violet);
+}
+.pr-closed {
+  color: var(--danger);
+}
+.wb-status {
+  display: inline-block;
+  flex: none;
+  width: 1ch;
+  text-align: center;
+  font: inherit;
+}
+.wb-status.waiting {
+  color: var(--danger);
+}
+.wb-status.failed {
+  color: var(--danger);
+}
+.wb-status.working {
+  color: var(--good);
+}
+.wb-status.finished {
+  color: var(--accent);
+}
+.wb-status.unknown {
+  color: var(--violet);
+}
+.wb-status.idle {
+  color: var(--text-dim);
+}
+.inbox-glyph {
+  width: 16px;
+  text-align: center;
+}
+.inbox-glyph.attention {
+  color: var(--warn);
+}
+.inbox-glyph.danger {
+  color: var(--danger);
+}
+.button-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: button-spin 0.7s linear infinite;
+}
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .button-spinner {
+    animation-duration: 2s;
+  }
+}

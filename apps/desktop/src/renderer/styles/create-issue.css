@@ -1,0 +1,83 @@
+.create-issue-dialog {
+  width: 640px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 40px);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 16px 60px #0006;
+}
+.create-issue-dialog::backdrop {
+  background: #0007;
+}
+.create-issue-dialog h2 {
+  font-size: 17px;
+  margin: 0 0 20px;
+}
+.create-issue-dialog fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.create-issue-dialog label {
+  display: block;
+  margin: 14px 0 8px;
+  font-size: 12px;
+}
+.create-issue-dialog input:not([type="checkbox"]),
+.create-issue-dialog textarea,
+.create-issue-dialog select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: inherit;
+  border-radius: 5px;
+}
+.create-issue-dialog textarea {
+  min-height: 100px;
+  max-height: 35vh;
+  resize: none;
+}
+.issue-fields {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 0.6fr;
+  gap: 12px;
+}
+.issue-fields > div {
+  min-width: 0;
+}
+.create-issue-dialog .issue-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.issue-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+.create-issue-dialog button {
+  padding: 8px 12px;
+  border-radius: 5px;
+}
+.create-issue-dialog button[type="submit"] {
+  background: #526eb0;
+  color: white;
+}
+.create-issue-dialog button:disabled {
+  opacity: 0.45;
+}
+.issue-error {
+  color: var(--danger);
+  white-space: pre-wrap;
+}
+@media (max-width: 580px) {
+  .issue-fields {
+    grid-template-columns: 1fr;
+  }
+}
