@@ -194,6 +194,28 @@ export function createStore(
   instance = live ? "unconfigured" : "fixtures",
 ) {
   let pendingSelection: TaskId | null = null;
+  /**
+   * Cards dropped on a column but not yet republished, with the task version they were dropped at.
+   * The board shows them in the new column at once; the coordinator's next version of the task
+   * replaces the move, and a refusal puts the card back.
+   */
+  const moves = new Map<TaskId, { to: Stage; version: number }>();
+  const withMoves = (next: Snapshot): Snapshot => {
+    if (!moves.size) return next;
+    let changed = false;
+    const tasks = next.tasks.map((task) => {
+      const move = moves.get(task.id);
+      if (!move) return task;
+      if (task.version !== move.version) {
+        moves.delete(task.id);
+        return task;
+      }
+      if (task.stage === move.to) return task;
+      changed = true;
+      return { ...task, stage: move.to };
+    });
+    return changed ? { ...next, tasks } : next;
+  };
   const paneTransitions = createPaneTransitionDetector();
   const transitionListeners = new Set<(pane: PaneView) => void>();
   let paneFocus: (() => PaneIdentity | "main" | undefined) | undefined;
@@ -302,9 +324,10 @@ export function createStore(
               },
             };
       setUi({
+        // An accepted human command shows itself: the coordinator decided it before answering.
         toast: outcome.ok
           ? outcome.result.kind === "human"
-            ? `Queued by coordinator (${outcome.result.inputId}); watch Activity for the result.`
+            ? null
             : "Coordinator acknowledged the command."
           : `${outcome.error.code}: ${outcome.error.message}`,
       });
@@ -373,7 +396,7 @@ export function createStore(
       const previous = state;
       state = {
         ...state,
-        snapshot: projectSnapshot(state.snapshot, client, patch),
+        snapshot: withMoves(projectSnapshot(state.snapshot, client, patch)),
         pullRequestLists:
           !patch || patch.changes.some((c) => c.collection === "pull_requests")
             ? [...client.collections.pull_requests.values()]
@@ -743,11 +766,26 @@ export function createStore(
           api.toast("The coordinator controls this stage.");
           return;
         }
-        void api.command({
-          kind: "human",
-          taskId: id,
-          command: { type: "move", to },
-        });
+        const task = state.snapshot.tasks.find((t) => t.id === id);
+        if (!task || task.stage === to) return;
+        const from = task.stage;
+        const dropped = { to, version: task.version };
+        moves.set(id, dropped);
+        setSnapshot(withMoves(state.snapshot));
+        void api
+          .command({ kind: "human", taskId: id, command: { type: "move", to } })
+          .then((outcome) => {
+            if (outcome.ok || moves.get(id) !== dropped) return;
+            moves.delete(id);
+            setSnapshot({
+              ...state.snapshot,
+              tasks: state.snapshot.tasks.map((t) =>
+                t.id === id && t.version === dropped.version
+                  ? { ...t, stage: from }
+                  : t,
+              ),
+            });
+          });
         return;
       }
       const task = state.snapshot.tasks.find((t) => t.id === id);

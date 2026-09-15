@@ -477,7 +477,8 @@ Do not prune an outbox receipt while a live intent/dependency or a replayable re
 ### 5.1 One pass
 
 1. `reconcile(taskId)` is enqueued by hints, new inputs, `schedule` timers and a full resync about every
-   60 s. At most one pass per task runs at a time; enqueues during a pass coalesce into one more pass.
+   60 s. At most one pass per task runs at a time, and passes for different tasks run concurrently;
+   enqueues during a pass coalesce into one more pass.
 2. Load `TaskState` in one read transaction.
 3. Read observations from the owners, outside any transaction: the worktree, the PR (conditional
    request), every run that hasn't ended, external sessions in the worktree, capacity, dependencies and
@@ -485,8 +486,30 @@ Do not prune an outbox receipt while a live intent/dependency or a replayable re
 4. Call `reconcile`.
 5. Commit in one write transaction (§5.4). If the compare-and-set fails, drop the result and go back
    to step 2 (up to 3 times, then re-enqueue).
-6. The executor runs eligible pending outbox actions after dependency success and cancellation checks.
-   Each result is persisted as an `action_result` input, which enqueues step 1.
+6. The executor runs eligible pending outbox actions after dependency success and cancellation checks,
+   one at a time per task and tasks concurrently, and only for a task whose latest commit came from
+   a pass in this process (§5.1a). Each result is persisted as an `action_result` input, which
+   enqueues step 1.
+
+### 5.1a Human commands without an owner read
+
+A human command should change the board in milliseconds, and a pass takes seconds of owner reads.
+So when a task's first pending input is a human command that `decidableFromLastReadings` accepts
+(move, cancel, approve_plan, approve, waive_finding), the coordinator reconciles it at once against
+the observations the task's last pass committed with, refreshed only with the clock, capacity and
+the input itself, and commits that result. This is sound by §5.4 rule 2: those readings already
+produced the stored state, so the only new fact is the command, judged on what the human was shown.
+
+- **Accept only.** A refusal is not committed; a pass with fresh readings decides the command, since
+  an old reading may be the only reason for the refusal.
+- **No side effect on old readings.** Until a pass with fresh readings commits for the task, the
+  executor claims none of its actions. That pass re-applies every guard; observed head, CI or
+  merge changes void an approval and cancel its merge as usual.
+- **Not for agent-facing commands.** Commands that message or answer an agent stay on the normal
+  path: delivery in the same reconcile would act on the agent's old status.
+- **No readings yet** (a task not passed since the coordinator started) means the normal path.
+
+The protocol acknowledgement for a human command waits for its disposition, so `ok` means accepted.
 
 ### 5.2 Observations
 
@@ -623,7 +646,9 @@ instead of reusing the old receipt. These guarantees do not undo an external sid
    the coordinator also bumps its version when authoritative observation reconciliation changes these
    counts. Pure reads of capacity do not reserve a slot. Two tasks cannot take the last slot concurrently.
 8. **Caches never decide.** Guards use this pass's readings. Cached fields (C) are for the UI and for
-   diffing (for example, "the head changed since the last pass").
+   diffing (for example, "the head changed since the last pass"). The one exception is §5.1a, which
+   accepts a human command on the readings the last pass committed with and holds every resulting
+   action until a fresh pass confirms it.
 9. **Crashes don't prove a command didn't run** (spike 01). Before a new attempt after a crash or
    interrupt, re-read the worktree and include what's there in the attempt's first message.
 

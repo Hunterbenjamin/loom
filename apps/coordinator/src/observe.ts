@@ -80,19 +80,21 @@ export async function observeRun(
   now: string,
   run: Run,
 ): Promise<RunObservation> {
-  const provider: Reading<
-    CodexThreadObservation | ClaudeSessionObservation | null
+  // The owners are independent, so read them together; token usage follows the provider read
+  // it may need.
+  const providerRead: Promise<
+    Reading<CodexThreadObservation | ClaudeSessionObservation | null>
   > =
     run.sessionId === null
-      ? { ok: true, value: null, at: now as never }
+      ? Promise.resolve({ ok: true, value: null, at: now as never })
       : run.provider === "codex"
-        ? await reading(now, async () => {
+        ? reading(now, async () => {
             const codex = await adapters.codex(run.taskId);
             return (await codex.readThread(
               run.sessionId as never,
             )) as CodexThreadObservation;
           })
-        : await reading(now, async () => {
+        : reading(now, async () => {
             const sessionId = run.sessionId as never;
             const [sessions, hooks, headless] = await Promise.all([
               adapters.claude.listSessions(),
@@ -108,38 +110,48 @@ export async function observeRun(
               headless,
             };
           });
-  const pane =
+  const paneRead =
     run.mode === "interactive" && run.pane
-      ? await reading(now, () => adapters.paneHost.getPane(run.pane as never))
+      ? reading(now, () => adapters.paneHost.getPane(run.pane as never))
       : null;
   // `resumable: null` is uncertainty, and must trigger a further owner read when recovery needs
   // it (design §5.2). Ask the provider directly rather than inferring from the failed read.
-  let resumable: boolean | null = null;
-  let resumableFailure: string | null = null;
-  if (run.sessionId)
+  const resumableRead = (async (): Promise<[boolean | null, string | null]> => {
+    if (!run.sessionId) return [null, null];
     try {
-      resumable =
+      return [
         run.provider === "codex"
           ? await (await adapters.codex(run.taskId)).checkResumable(
               run.sessionId,
             )
-          : await adapters.claude.resumable(run.sessionId, run.worktreePath);
+          : await adapters.claude.resumable(run.sessionId, run.worktreePath),
+        null,
+      ];
     } catch (error) {
-      resumableFailure = error instanceof Error ? error.message : String(error);
-      resumable = null;
+      return [null, error instanceof Error ? error.message : String(error)];
     }
-  let activityAt: RunObservation["activityAt"] = null;
-  let activityFailure: string | null = null;
-  if (run.sessionId)
+  })();
+  const activityRead = (async (): Promise<
+    [RunObservation["activityAt"], string | null]
+  > => {
+    if (!run.sessionId) return [null, null];
     try {
-      activityAt =
+      return [
         run.provider === "codex"
           ? (await adapters.codex(run.taskId)).activityAt(run.sessionId)
-          : await adapters.claude.activityAt(run.sessionId);
+          : await adapters.claude.activityAt(run.sessionId),
+        null,
+      ];
     } catch (error) {
-      activityFailure = error instanceof Error ? error.message : String(error);
-      activityAt = null;
+      return [null, error instanceof Error ? error.message : String(error)];
     }
+  })();
+  const [
+    provider,
+    pane,
+    [resumable, resumableFailure],
+    [activityAt, activityFailure],
+  ] = await Promise.all([providerRead, paneRead, resumableRead, activityRead]);
   let tokenUsage: RunObservation["tokenUsage"] = null;
   let tokenUsageFailure: string | null = null;
   if (run.sessionId)
@@ -279,6 +291,52 @@ interface ObserveDeps {
   repoOf(state: TaskState): { github: string; baseBranch: string } | null;
   now(): string;
   reportAdapterFailure?: ReportAdapterFailure;
+  /** Milliseconds each owner read of this pass took, by owner. */
+  onReadTimes?(times: Record<string, number>): void;
+}
+
+/** Blockers' stages, and each merged blocker's merge commit while this task has no worktree. */
+async function observeDependencies(
+  deps: ObserveDeps,
+  state: TaskState,
+  repo: { github: string } | null,
+): Promise<Observations["dependencies"]> {
+  const dependencies = await deps.dependencies();
+  if (
+    !repo ||
+    state.task.blockedBy.length === 0 ||
+    (state.worktree && state.worktree.removedAt === null)
+  )
+    return dependencies;
+  return Promise.all(
+    dependencies.map(async (dependency) => {
+      if (!dependency.merged || !dependency.branch) return dependency;
+      try {
+        const pr = await deps.pullRequests.read(
+          deps.adapters,
+          repo.github,
+          dependency.branch,
+        );
+        return { ...dependency, mergeCommitSha: pr?.mergeCommitSha ?? null };
+      } catch {
+        return { ...dependency, mergeCommitSha: null };
+      }
+    }),
+  );
+}
+
+/** Capacity is the coordinator's own fact, so reading it is local and synchronous. */
+export function capacityReading(
+  deps: Pick<ObserveDeps, "capacity" | "config" | "coolingDownUntil">,
+): CapacityObservation {
+  const counts = deps.capacity.counts();
+  return {
+    version: counts.version,
+    active: counts.active,
+    caps: deps.config.caps,
+    coolingDownUntil:
+      deps.coolingDownUntil() as CapacityObservation["coolingDownUntil"],
+  };
 }
 
 /** One pass's observations. Every failure stays a failed `Reading`; nothing is invented. */
@@ -302,8 +360,8 @@ export async function observe(
   for (const finding of state.findings)
     if (finding.resolution?.commitSha)
       candidates.add(finding.resolution.commitSha);
-  const git = worktree
-    ? await reading(now, () =>
+  const gitRead = worktree
+    ? reading(now, () =>
         deps.adapters.git.readWorktree(
           worktree,
           repo?.baseBranch ?? deps.config.baseBranch,
@@ -317,9 +375,9 @@ export async function observe(
         ),
       )
     : null;
-  const github =
+  const githubRead =
     repo && state.task.branch
-      ? await reading(now, () =>
+      ? reading(now, () =>
           deps.pullRequests.read(
             deps.adapters,
             repo.github,
@@ -329,9 +387,9 @@ export async function observe(
       : null;
   // The CI gate reads checks for the submitted commit itself: no PR exists before review.
   const gate = state.ciGate;
-  const ci =
+  const ciRead =
     repo && gate
-      ? await reading(now, () =>
+      ? reading(now, () =>
           deps.adapters.github.readCommitCi(repo.github, gate.headSha),
         )
       : null;
@@ -350,9 +408,35 @@ export async function observe(
       (!r.endedAt ||
         (retryable && latestByRole.get(r.role) === r && r.sessionId)),
   );
-  const runs = await Promise.all(
-    live.map((run) => observeRun(deps.adapters, now, run)),
-  );
+  // Every owner read below is independent of the others, so they run together.
+  const started = performance.now();
+  const times: Record<string, number> = {};
+  const timed = <T>(owner: string, read: Promise<T>): Promise<T> =>
+    read.finally(() => {
+      times[owner] = Math.round(performance.now() - started);
+    });
+  const [git, github, ci, runs, externalResult, dependencies] =
+    await Promise.all([
+      timed("git", Promise.resolve(gitRead)),
+      timed("github", Promise.resolve(githubRead)),
+      timed("ci", Promise.resolve(ciRead)),
+      timed(
+        "runs",
+        Promise.all(live.map((run) => observeRun(deps.adapters, now, run))),
+      ),
+      timed(
+        "external sessions",
+        observeExternal(
+          deps.adapters,
+          state,
+          deps.launchedSessions(),
+          now,
+          state.config.stallAfterMs,
+        ),
+      ),
+      timed("dependencies", observeDependencies(deps, state, repo)),
+    ]);
+  deps.onReadTimes?.(times);
   for (const run of runs) {
     if (run.readFailures.resumable)
       deps.reportAdapterFailure?.(
@@ -370,46 +454,11 @@ export async function observe(
         run.readFailures.tokenUsage,
       );
   }
-  const counts = deps.capacity.counts();
-  const capacity: CapacityObservation = {
-    version: counts.version,
-    active: counts.active,
-    caps: deps.config.caps,
-    coolingDownUntil:
-      deps.coolingDownUntil() as CapacityObservation["coolingDownUntil"],
-  };
-  const externalResult = await observeExternal(
-    deps.adapters,
-    state,
-    deps.launchedSessions(),
-    now,
-    state.config.stallAfterMs,
-  );
+  const capacity = capacityReading(deps);
   const externalSessions: Reading<ExternalSessionObservation[]> =
     externalResult.readFailed
       ? { ok: false, reason: "External sessions read failed", at: now as never }
       : { ok: true, value: externalResult.sessions, at: now as never };
-  let dependencies = await deps.dependencies();
-  if (
-    repo &&
-    state.task.blockedBy.length > 0 &&
-    (!state.worktree || state.worktree.removedAt !== null)
-  )
-    dependencies = await Promise.all(
-      dependencies.map(async (dependency) => {
-        if (!dependency.merged || !dependency.branch) return dependency;
-        try {
-          const pr = await deps.pullRequests.read(
-            deps.adapters,
-            repo.github,
-            dependency.branch,
-          );
-          return { ...dependency, mergeCommitSha: pr?.mergeCommitSha ?? null };
-        } catch {
-          return { ...dependency, mergeCommitSha: null };
-        }
-      }),
-    );
 
   return {
     now: now as never,

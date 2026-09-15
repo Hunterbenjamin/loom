@@ -6,6 +6,7 @@ import { loadScenarios } from "@loom/fake-agent";
 import { PROTOCOL_VERSION } from "@loom/protocol";
 import { afterEach, expect, test, vi } from "vitest";
 import { LoomClient } from "./client.js";
+import { Loop } from "./loop.js";
 import { createHarness, type Harness, ScenarioDriver } from "./test-support.js";
 
 let open: Harness[] = [];
@@ -35,7 +36,7 @@ const served = async () => {
   return h;
 };
 
-test("retry reports the reconciler rejection instead of a successful queue acknowledgement", async () => {
+test("retry reports the reconciler's rejection in its acknowledgement", async () => {
   const h = await served();
   const task = h.coordinator.createTask({
     repoId: h.repo.id,
@@ -52,7 +53,7 @@ test("retry reports the reconciler rejection instead of a successful queue ackno
   ).toMatchObject({
     ok: false,
     error: {
-      code: "invalid_input",
+      code: "wrong_stage",
       message: "retry is not allowed in backlog",
     },
   });
@@ -323,7 +324,7 @@ test("a bad token is refused and the socket closes", async () => {
   expect(h.coordinator.protocol.clients).toBe(0);
 }, 30_000);
 
-test("a command is acknowledged, recorded as an input, and shows up as patches", async () => {
+test("a human command is decided before its acknowledgement, and its patch needs no owner read", async () => {
   const h = await served();
   const client = await connect(h, "window-2");
 
@@ -349,6 +350,20 @@ test("a command is acknowledged, recorded as an input, and shows up as patches",
   await patched;
   expect(client.state?.collections.task.get(taskId)?.stage).toBe("backlog");
 
+  // Design §5.1a: the move is decided against the readings of the last pass, with no owner read,
+  // so the acknowledgement already carries reconcile's decision and the patch follows at once.
+  const passes = vi.spyOn(Loop.prototype, "pass");
+  const next = client.await(
+    (frame) =>
+      frame.type === "patch" &&
+      frame.changes.some(
+        (change) =>
+          change.op === "upsert" &&
+          change.collection === "task" &&
+          change.value.id === taskId &&
+          change.value.stage !== "backlog",
+      ),
+  );
   const moved = await client.command({
     kind: "human",
     taskId,
@@ -356,15 +371,15 @@ test("a command is acknowledged, recorded as an input, and shows up as patches",
   });
   expect(moved).toMatchObject({ ok: true, result: { kind: "human" } });
   const inputId = (moved as { result: { inputId: string } }).result.inputId;
-  // Principle 3: the command is an input; reconcile decides what it means.
-  expect(h.store.inputDisposition(taskId, inputId)).toBeNull();
-
-  const next = client.await((frame) => frame.type === "patch");
-  await h.coordinator.settle();
-  await next;
   expect(h.store.inputDisposition(taskId, inputId)).toMatchObject({
     accepted: true,
   });
+  await next;
+  expect(passes).not.toHaveBeenCalled();
+  // Its actions wait for the fresh pass that confirms the move.
+  expect(h.coordinator.confirmed(taskId)).toBe(false);
+  await h.coordinator.settle();
+  expect(h.coordinator.confirmed(taskId)).toBe(true);
   expect(client.state?.collections.task.get(taskId)?.stage).not.toBe("backlog");
 }, 30_000);
 

@@ -20,6 +20,7 @@ import type {
   Attention,
   HumanCommand,
   Input,
+  InputDisposition,
   InputId,
   IsoTime,
   Observations,
@@ -68,7 +69,11 @@ import { LeadSession } from "./lead.js";
 import { Loop } from "./loop.js";
 import { messageAgent } from "./main-messages.js";
 import { createMcpHost } from "./mcp-host.js";
-import { observe as observeOwners, PullRequestCache } from "./observe.js";
+import {
+  capacityReading,
+  observe as observeOwners,
+  PullRequestCache,
+} from "./observe.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
 import { registerRepo } from "./repos.js";
@@ -191,6 +196,9 @@ const changedSettings = (before: SettingsPatch, after: SettingsPatch) =>
       ? []
       : [{ key, oldValue, newValue }];
   });
+
+/** A pass whose owner reads take this long is logged, so slow owners show up in the log. */
+const SLOW_READ_MS = 2000;
 
 export class Coordinator {
   readonly config: CoordinatorConfig;
@@ -568,7 +576,6 @@ export class Coordinator {
   // Built on first use: the fields it closes over are assigned in the constructor body.
   private mcpCache: ReturnType<Coordinator["mcpMiddleware"]> | null = null;
   private mcp: Awaited<ReturnType<typeof serveHttp>> | null = null;
-  private pump: NodeJS.Timeout | null = null;
   private resync: NodeJS.Timeout | null = null;
 
   constructor(private readonly options: CoordinatorOptions) {
@@ -600,6 +607,12 @@ export class Coordinator {
       store: this.store,
       drainExecutor: () => this.executor.drain(),
       observe: (state, inputs) => this.observe(state, inputs),
+      rebase: (readings, inputs) => ({
+        ...readings,
+        now: this.now() as never,
+        capacity: capacityReading(this.capacityDeps()),
+        inputs,
+      }),
       onCommit: ({ taskId, result }) => this.onCommit(taskId, result),
       onError: (error, taskId) => {
         this.log(`Pass for ${taskId} failed: ${error.message}`);
@@ -620,6 +633,8 @@ export class Coordinator {
       now: () => this.now(),
       nextInputId: () => randomUUID() as InputId,
       onResult: (taskId) => this.loop.enqueue(taskId),
+      mayAct: (taskId) => this.loop.isVerified(taskId),
+      onUnconfirmed: (taskId) => this.loop.enqueue(taskId),
       reportAdapterFailure: (operation, error) =>
         this.reportAdapterFailure(operation, error),
     });
@@ -831,12 +846,9 @@ export class Coordinator {
   run(): void {
     this.leadPoll = setInterval(() => void this.pollLeads(), 1500);
     this.leadPoll.unref?.();
-    this.pump = setInterval(() => {
-      void this.settle().catch((error) =>
-        this.log(`Settle failed: ${(error as Error).message}`),
-      );
-    }, 250);
-    this.pump.unref?.();
+    // Event-driven from here: every enqueue starts its pass, and every pass drains the executor.
+    this.loop.start();
+    void this.executor.drain();
     this.resync = setInterval(() => this.resyncAll(), this.config.resyncMs);
     this.resync.unref?.();
   }
@@ -864,9 +876,9 @@ export class Coordinator {
     if (this.panePoll) clearInterval(this.panePoll);
     await this.inventory.stop();
     if (this.leadPoll) clearInterval(this.leadPoll);
-    if (this.pump) clearInterval(this.pump);
+    this.loop.stop();
     if (this.resync) clearInterval(this.resync);
-    this.pump = this.resync = null;
+    this.resync = null;
     for (const cancel of this.timers) cancel();
     this.timers.clear();
     this.publishFailures.clear();
@@ -881,6 +893,11 @@ export class Coordinator {
   resyncAll(): void {
     for (const task of this.store.tasks())
       if (!TERMINAL.includes(task.stage)) this.loop.enqueue(task.id);
+  }
+
+  /** Whether a fresh pass has confirmed the task's latest commit, so its actions may run. */
+  confirmed(taskId: TaskId): boolean {
+    return this.loop.isVerified(taskId);
   }
 
   /** Runs queued passes and the executor until nothing is left. Tests drive the loop with this. */
@@ -953,8 +970,12 @@ export class Coordinator {
     return state;
   }
 
-  /** A human command becomes an input; reconcile decides what it means (principle 3). */
+  /**
+   * A human command becomes an input; reconcile decides what it means (principle 3). It is decided
+   * at once against the task's last readings when it can be (design §5.1a), and a pass follows.
+   */
   submitHuman(taskId: TaskId, command: HumanCommand): InputId {
+    const started = performance.now();
     const input: Input = {
       id: randomUUID() as InputId,
       receivedAt: this.now(),
@@ -962,8 +983,28 @@ export class Coordinator {
       command,
     };
     this.store.enqueueInput(taskId, input);
-    this.loop.enqueue(taskId);
+    const applied = this.loop.applyHuman(taskId);
+    if (applied)
+      this.log(
+        `${command.type} for ${taskId} decided in ${(performance.now() - started).toFixed(1)} ms`,
+      );
     return input.id;
+  }
+
+  /**
+   * What reconcile decided about an input. Decided inputs answer at once; otherwise (no readings
+   * yet in this process, or an agent's input first in line) this runs the passes that decide it.
+   */
+  private async decision(
+    taskId: TaskId,
+    inputId: InputId,
+  ): Promise<InputDisposition> {
+    for (let pass = 0; pass < 50; pass++) {
+      const disposition = this.store.inputDisposition(taskId, inputId);
+      if (disposition) return disposition;
+      await this.loop.pass(taskId);
+    }
+    throw new Error(`Input ${inputId} was queued but not consumed`);
   }
 
   repo(taskId: TaskId): Repo {
@@ -1147,16 +1188,28 @@ export class Coordinator {
     this.timers.add(cancel);
   }
 
+  private capacityDeps() {
+    return {
+      config: this.config,
+      capacity: { counts: () => this.store.capacityCounts() },
+      coolingDownUntil: () => ({
+        codex: this.cooldowns.get("codex") ?? null,
+        claude: this.cooldowns.get("claude") ?? null,
+      }),
+    };
+  }
+
   private async observe(
     state: TaskState,
     inputs: Input[],
   ): Promise<Observations> {
+    const started = performance.now();
+    let times: Record<string, number> = {};
     const observations = await observeOwners(
       {
         adapters: this.adapters,
-        config: this.config,
+        ...this.capacityDeps(),
         pullRequests: this.pullRequests,
-        capacity: { counts: () => this.store.capacityCounts() },
         dependencies: () => this.store.dependencyStages(state.task.id),
         inputs: () => inputs,
         launchedSessions: () =>
@@ -1170,10 +1223,6 @@ export class Coordinator {
                   .filter(Boolean) as never[],
               ),
           ),
-        coolingDownUntil: () => ({
-          codex: this.cooldowns.get("codex") ?? null,
-          claude: this.cooldowns.get("claude") ?? null,
-        }),
         repoOf: (s) => {
           const repo = this.store.repos().find((r) => r.id === s.task.repoId);
           return repo
@@ -1183,6 +1232,9 @@ export class Coordinator {
         now: () => this.now(),
         reportAdapterFailure: (operation, error) =>
           this.reportAdapterFailure(operation, error),
+        onReadTimes: (value) => {
+          times = value;
+        },
       },
       state,
     );
@@ -1200,6 +1252,15 @@ export class Coordinator {
     observations.workflowCommands = await this.workflow.read(
       this.repo(state.task.id).root,
     );
+    const elapsed = performance.now() - started;
+    if (elapsed >= SLOW_READ_MS)
+      this.log(
+        `Reading the owners of ${state.task.id} took ${Math.round(elapsed)} ms (${Object.entries(
+          times,
+        )
+          .map(([owner, ms]) => `${owner} ${ms}`)
+          .join(", ")})`,
+      );
     return observations;
   }
 
@@ -1774,25 +1835,9 @@ export class Coordinator {
             };
           }
           const inputId = this.submitHuman(command.taskId, human);
-          if (command.command.type === "retry") {
-            for (let pass = 0; pass < 50; pass++) {
-              await this.loop.pass(command.taskId);
-              const disposition = this.store.inputDisposition(
-                command.taskId,
-                inputId,
-              );
-              if (!disposition) continue;
-              if (!disposition.accepted)
-                return {
-                  ok: false,
-                  error: { ...disposition.error, code: "invalid_input" },
-                };
-              return { ok: true, result: { kind: "human", inputId } };
-            }
-            throw new Error(
-              `Retry input ${inputId} was queued but not consumed`,
-            );
-          }
+          const disposition = await this.decision(command.taskId, inputId);
+          if (!disposition.accepted)
+            return { ok: false, error: disposition.error };
           return { ok: true, result: { kind: "human", inputId } };
         }
         case "open_attach_session": {

@@ -117,8 +117,16 @@ failed or stale guard, failed merge precondition, or recovery observation voids 
 - **Reconcile from current state.** Every event enqueues `reconcile(taskId)`: hooks, app-server
   notifications, pane-host hints, and changes found by polling GitHub. Reconcile re-reads from each owner,
   compares that with the desired state, and takes idempotent actions. A full resync runs about every 60 seconds.
-- **One reconcile at a time per issue.** Stage transitions are compare-and-set on a version column
-  and are logged in a `transitions` table.
+- **Human commands are instant.** A move, cancel, plan approval, merge approval or finding waiver is
+  decided the moment it arrives, against the readings the issue was last reconciled with (what the
+  human was looking at), and its acknowledgement carries that decision. A pass with fresh readings
+  follows at once, and the executor runs none of the issue's actions until it has committed, so
+  every launch and merge still rests on a fresh reading. A command that would be refused, or that
+  messages or answers an agent, is decided by that fresh pass instead. See `docs/design/core.md` §5.1a.
+- **One reconcile at a time per issue; issues in parallel.** Passes for different issues read
+  their owners concurrently, and the executor runs one action at a time per issue with issues in
+  parallel; git operations that write a repository's shared refs are serialized per repository.
+  Stage transitions are compare-and-set on a version column and are logged in a `transitions` table.
 - **Join key: the worktree path.**
   - Claude hooks, Codex threads, tmux panes and `claude agents --json` all report their working directory (`cwd`).
     A pane's `pane_start_path` survives its process, so a dead pane still joins to its issue.

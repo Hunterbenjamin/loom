@@ -9,6 +9,23 @@ export const error = (
   code: McpError["code"],
   ...details: string[]
 ): McpError => ({ code, message: details[0] ?? code, details });
+/**
+ * Commands whose decision a pass may take against the readings the task was last reconciled with
+ * (design §5.1a). Each one's guard reads only Loom's records or readings the human was shown, and
+ * its consequences are stage changes, run ends, launches or a merge: intents whose actions still
+ * wait for a fresh pass. A command that messages or answers an agent is not here, because delivery
+ * in the same pass would act on that agent's old status.
+ */
+export function decidableFromLastReadings(cmd: HumanCommand): boolean {
+  return (
+    cmd.type === "move" ||
+    cmd.type === "cancel" ||
+    cmd.type === "approve_plan" ||
+    cmd.type === "approve" ||
+    cmd.type === "waive_finding"
+  );
+}
+
 export function human(
   c: Context,
   cmd: HumanCommand,

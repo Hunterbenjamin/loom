@@ -57,13 +57,26 @@ export function codexPerTask(
   | "close"
 > {
   const servers = new Map<string, CodexAdapter>();
+  /** Each server's start, so concurrent callers share it rather than using a server mid-start. */
+  const started = new WeakMap<CodexAdapter, Promise<void>>();
   return {
     async codex(taskId) {
-      const existing = servers.get(taskId);
-      if (existing) return existing;
-      const adapter = factory(taskId, join(dataDirectory, "codex", taskId));
-      servers.set(taskId, adapter);
-      await adapter.startServer();
+      let adapter = servers.get(taskId);
+      if (!adapter) {
+        adapter = factory(taskId, join(dataDirectory, "codex", taskId));
+        servers.set(taskId, adapter);
+      }
+      let start = started.get(adapter);
+      if (!start) {
+        const owner = adapter;
+        start = owner.startServer();
+        started.set(owner, start);
+        // A failed start is tried again by the next caller, as before.
+        start.catch(() => {
+          if (started.get(owner) === start) started.delete(owner);
+        });
+      }
+      await start;
       return adapter;
     },
     codexIfRunning(taskId) {

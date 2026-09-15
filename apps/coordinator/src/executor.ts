@@ -103,11 +103,24 @@ export interface ExecutorDeps {
   nextInputId(): InputId;
   /** Called after each recorded result, so the loop picks the input up. */
   onResult(taskId: TaskId): void;
+  /**
+   * Whether this task's actions may run now: its latest commit rests on fresh readings. A task
+   * that may not is handed to `onUnconfirmed`, which asks for the pass that confirms it.
+   */
+  mayAct(taskId: TaskId): boolean;
+  onUnconfirmed(taskId: TaskId): void;
   reportAdapterFailure?: ReportAdapterFailure;
 }
 
 export class Executor {
   private draining: Promise<number> | null = null;
+  /** Wakes a drain that is waiting on running actions, to look for newly claimable rows. */
+  private wake: (() => void) | null = null;
+  private again = false;
+  /** One action at a time per task; different tasks' actions run concurrently. */
+  private readonly running = new Map<TaskId, Promise<void>>();
+  /** Git operations that write a repository's shared refs or worktree list, per repository. */
+  private readonly repoLocks = new Map<string, Promise<unknown>>();
   constructor(private readonly deps: ExecutorDeps) {}
 
   /** Repository actions have no task/outbox identity; execute once and re-read before retry. */
@@ -190,9 +203,17 @@ export class Executor {
     }
   }
 
-  /** Runs every claimable row, one at a time, until none is left. Safe to call concurrently. */
+  /**
+   * Runs every claimable row until none is left, one per task at a time and tasks concurrently,
+   * and answers how many ran. Safe to call concurrently: a call during a drain joins it, and the
+   * drain looks for claimable rows again before it finishes.
+   */
   drain(): Promise<number> {
-    if (this.draining) return this.draining;
+    if (this.draining) {
+      this.again = true;
+      this.wake?.();
+      return this.draining;
+    }
     const work = this.loop().finally(() => {
       this.draining = null;
     });
@@ -203,11 +224,57 @@ export class Executor {
   private async loop(): Promise<number> {
     let done = 0;
     for (;;) {
-      const claim = this.deps.store.outbox.claim(this.deps.now() as never);
-      if (!claim) return done;
-      await this.execute(claim.key, claim.claimVersion, claim.action);
-      done++;
+      this.again = false;
+      const unconfirmed = new Set<TaskId>();
+      for (;;) {
+        const claim = this.deps.store.outbox.claim(
+          this.deps.now() as never,
+          undefined,
+          (taskId) => {
+            if (this.running.has(taskId)) return false;
+            if (this.deps.mayAct(taskId)) return true;
+            unconfirmed.add(taskId);
+            return false;
+          },
+        );
+        if (!claim) break;
+        const { taskId } = claim;
+        this.running.set(
+          taskId,
+          this.execute(claim.key, claim.claimVersion, claim.action).finally(
+            () => {
+              this.running.delete(taskId);
+              done++;
+            },
+          ),
+        );
+      }
+      for (const taskId of unconfirmed) this.deps.onUnconfirmed(taskId);
+      if (!this.running.size && !this.again) return done;
+      if (this.running.size && !this.again)
+        await Promise.race([
+          ...this.running.values(),
+          new Promise<void>((resolve) => {
+            this.wake = resolve;
+          }),
+        ]);
+      this.wake = null;
     }
+  }
+
+  /** Runs `work` after every earlier holder of `key` has finished. */
+  private exclusive<T>(key: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.repoLocks.get(key) ?? Promise.resolve();
+    const result = previous.then(work, work);
+    const settled = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.repoLocks.set(key, settled);
+    void settled.then(() => {
+      if (this.repoLocks.get(key) === settled) this.repoLocks.delete(key);
+    });
+    return result;
   }
 
   private async execute(
@@ -290,16 +357,19 @@ export class Executor {
     switch (action.kind) {
       case "create_worktree": {
         const repo = this.deps.repoById(action.repoId);
-        const { baseSha } = await adapters.git.fetchBase({
-          repoRoot: repo.root,
-          baseBranch: action.baseBranch,
-        });
-        const created = await adapters.git.createWorktree({
-          repoRoot: repo.root,
-          path: action.path,
-          branch: action.branch,
-          baseSha,
-          requiredCommits: action.requiredCommits,
+        // Concurrent fetches into one repository fail on its ref locks.
+        const created = await this.exclusive(repo.root, async () => {
+          const { baseSha } = await adapters.git.fetchBase({
+            repoRoot: repo.root,
+            baseBranch: action.baseBranch,
+          });
+          return adapters.git.createWorktree({
+            repoRoot: repo.root,
+            path: action.path,
+            branch: action.branch,
+            baseSha,
+            requiredCommits: action.requiredCommits,
+          });
         });
         // The repo's own setup (dependency install, generated files) runs here, once, so no
         // agent spends a turn discovering an empty node_modules. Idempotent: a retry after a
@@ -334,12 +404,14 @@ export class Executor {
           throw new Error("Waiting for live panes to leave the worktree");
         const repo = this.deps.repoById(action.repoId);
         try {
-          return await adapters.git.removeWorktree({
-            repoRoot: repo.root,
-            path: action.worktreePath,
-            branch: action.branch,
-            allowedRoot: this.deps.config.worktreeRoot,
-          });
+          return await this.exclusive(repo.root, () =>
+            adapters.git.removeWorktree({
+              repoRoot: repo.root,
+              path: action.worktreePath,
+              branch: action.branch,
+              allowedRoot: this.deps.config.worktreeRoot,
+            }),
+          );
         } catch (error) {
           if (error instanceof UnsafeWorktreePathError)
             throw new Fatal(error.message);
@@ -514,12 +586,14 @@ export class Executor {
         );
         if (observation.remoteHeadSha === action.expectedHeadSha)
           return { remoteHeadSha: action.expectedHeadSha };
-        return adapters.git.push({
-          worktreePath: action.worktreePath,
-          branch: action.branch,
-          expectedHeadSha: action.expectedHeadSha,
-          expectedRemoteHeadSha: observation.remoteHeadSha,
-        });
+        return this.exclusive(this.deps.repo(action.taskId).root, () =>
+          adapters.git.push({
+            worktreePath: action.worktreePath,
+            branch: action.branch,
+            expectedHeadSha: action.expectedHeadSha,
+            expectedRemoteHeadSha: observation.remoteHeadSha,
+          }),
+        );
       }
       case "open_pr": {
         const repo = this.deps.repo(action.taskId);
