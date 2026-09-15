@@ -64,13 +64,10 @@ test("audio obeys window/pane focus and mute; flash is once per transition with 
           createElement(ChimeMuteButton),
           createElement(Sidebar, {
             filter: "",
-            setFilter: vi.fn(),
             choose: vi.fn(),
             openGroup: vi.fn(),
             hidePanels: vi.fn(),
-            hasPanels: () => false,
             copyAttach: vi.fn(),
-            newTerminal: vi.fn(),
             openPinned: vi.fn(),
           }),
         ),
