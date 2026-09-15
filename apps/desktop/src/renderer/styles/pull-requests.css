@@ -96,7 +96,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  /* Line the tabs and actions up with .pr-overview's content: 44px inside a column of at most
+     1600px, centered. */
+  padding: 10px max(44px, calc((100% - 1600px) / 2 + 44px));
 }
 .pr-segments {
   display: flex;

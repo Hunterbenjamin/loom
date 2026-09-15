@@ -261,10 +261,11 @@ export function Detail({
           </div>
           <span className="spacer" />
           {task.stage === "backlog" ? (
-            <>
+            <div className="issue-toolbar-action">
               <button
                 type="button"
-                disabled={disconnected || submitting}
+                className="secondary"
+                disabled={disconnected || submitting || pending !== null}
                 onClick={() => setEditing(true)}
               >
                 Edit issue
@@ -272,14 +273,21 @@ export function Detail({
               <button
                 type="button"
                 disabled={disconnected || submitting || pending !== null}
+                aria-busy={pending === "move" || undefined}
                 onClick={() => void send({ type: "move", to: "todo" })}
               >
+                {pending === "move" ? (
+                  <span className="button-spinner" aria-hidden="true" />
+                ) : null}
                 Move to Todo
               </button>
-              {outcome.message ? (
-                <span role="status">{outcome.message}</span>
+              {/* Progress shows on the button; only a refusal needs words. */}
+              {outcome.kind === "refused" ? (
+                <span className="pr-outcome danger" role="alert">
+                  {outcome.message}
+                </span>
               ) : null}
-            </>
+            </div>
           ) : null}
           <IssueToolbarAction
             task={task}
