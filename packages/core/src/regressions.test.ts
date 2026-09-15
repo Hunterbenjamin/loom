@@ -83,7 +83,7 @@ describe("reconciliation ordering and recovery regressions", () => {
     expect(r.inputs[0]?.accepted).toBe(true);
     expect(r.actions.some((a) => a.kind === "start_run")).toBe(true);
   });
-  it("idle implementer waits for capacity before its fix message", () => {
+  it("a fix run waits for retirement and then capacity before launch", () => {
     const f = fixture("awaiting_approval");
     f.observations.capacity.caps.total = 0;
     f.observations.inputs = [
@@ -91,10 +91,18 @@ describe("reconciliation ordering and recovery regressions", () => {
     ];
     const blocked = fixed(f.state, f.observations);
     expect(blocked.next.task.stage).toBe("in_progress");
-    expect(blocked.actions.some((a) => a.kind === "send_message")).toBe(false);
+    const stop = blocked.actions.find(
+      (action) => action.kind === "stop_run" && action.terminate,
+    );
+    if (!stop) throw new Error("Missing implementer retirement");
+    expect(blocked.actions.some((a) => a.kind === "start_run")).toBe(false);
+    f.observations.inputs = [actionInput(stop, {})];
+    const retired = fixed(blocked.next, f.observations);
+    expect(retired.actions.some((a) => a.kind === "start_run")).toBe(false);
+    f.observations.inputs = [];
     f.observations.capacity.caps.total = 4;
-    const ready = fixed(blocked.next, f.observations);
-    expect(ready.actions.some((a) => a.kind === "send_message")).toBe(true);
+    const ready = fixed(retired.next, f.observations);
+    expect(ready.actions.some((a) => a.kind === "start_run")).toBe(true);
     expect(ready.capacityVersion).toBe(4);
   });
   it("submission pushes, and the reviewer starts only after CI passes on that commit", () => {

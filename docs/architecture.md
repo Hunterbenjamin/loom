@@ -440,9 +440,21 @@ a coordinator restart safely causes another full read.
 - test results
 - a handoff note at every role change
 
-Knowledge about the repo itself lives in `AGENTS.md`; `CLAUDE.md` imports it. Fix rounds resume the
-implementer's session. Reviewers start fresh each round and are given the previous findings. Context
-that crosses providers goes only through artifacts.
+Knowledge about the repo itself lives in `AGENTS.md`; `CLAUDE.md` imports it. Every implementation
+fix round (CI failure, blocking review or human findings, or a rebase) ends and retires the current
+implementer run, then starts `<task>/implementer/<n+1>` with a distinct provider session. The new run
+cannot launch until retirement succeeds. `get_task_context` supplies its compact handoff: the fix
+reason, accepted artifacts, visible findings and a base-to-current-HEAD patch read from Git at call
+time. The patch is capped at 60 KiB of UTF-8 and, when truncated, includes the diff stat and exact
+`git diff <base>..<head>` command. A retry or coordinator restart resumes that fix run's recorded
+session; it does not create another round. Reviewers also start fresh each round and are given the
+previous findings. Context that crosses providers goes only through artifacts, never transcripts.
+
+Measure this policy by joining run records (`task`, role, round and session ID) to provider usage
+(Codex `token_count`/thread usage events and Claude transcript message usage). Compare issues before
+and after rollout on total implementer input tokens per issue, maximum context per implementer
+session, and implementer rounds per issue; report the median and the top-five issues' share of total
+input tokens so a small expensive tail cannot hide behind the median.
 
 ## Review and approval
 
@@ -450,8 +462,8 @@ that crosses providers goes only through artifacts.
   records `ciGate` (the head and when it was submitted), and moves the task to `ci`. Each pass reads
   CI for exactly that commit (`GitHubAdapter.readCommitCi`, check runs and statuses by SHA, so no PR
   is needed; the workflow runs on every branch push). Green starts a review round. Red records one
-  blocking `ci` finding per failed check, with its URL, moves back to `in_progress`, and sends a fix
-  round to the same implementer session. A repository that reports no check within
+  blocking `ci` finding per failed check, with its URL, moves back to `in_progress`, and starts a
+  fresh implementer fix-round run. A repository that reports no check within
   `CI_START_GRACE_MS` of the push succeeding counts as having no CI. New commits after submitting
   withdraw the gate and move back to `in_progress`. While the task is in `ci`, the idle implementer
   owes nothing, so it raises no idle-without-submission attention. The gate caches the latest
@@ -470,7 +482,7 @@ that crosses providers goes only through artifacts.
   confirm a suspected bug), and it never edits or commits: `submit_review` refuses any reviewer
   commit (reviewedSha must be the round head, reviewerCommits empty) and any `fixed` finding or
   verdict. Blocking problems are `escalate` findings with a reason and go to the implementer, who
-  fixes them in its own session; `open` findings are non-blocking notes and never cost a round. In a
+  fixes them in a fresh fix-round session; `open` findings are non-blocking notes and never cost a round. In a
   later round the reviewer reviews only what changed since the previous reviewed head
   (`get_task_context` gives `worktree.roundHead` and `worktree.lastReviewedHead`). Reviewers keep
   the same worktree access and launch paths as implementers; planners alone keep Codex's read-only
@@ -524,7 +536,7 @@ that crosses providers goes only through artifacts.
 |---|---|
 | UI closed or crashed | Nothing happens. On reopen, the UI reconnects and gets a fresh snapshot. |
 | Coordinator restart | 1. Load SQLite and enqueue one deterministic restart input for each provider-native in-flight turn from the last committed pass.<br>2. Scan worktrees, panes, loaded Codex threads, `claude agents --json` and PRs.<br>3. Resubscribe to events and resume the same stored sessions.<br>4. After a fresh provider read, send one normal-path continuation only if the interrupted turn is idle and that role still owes work; record completed or not-needed outcomes instead.<br>Shutdown does not run a final reconcile that could create actions while adapters are closing. An agent's MCP token is judged live or stale by the store alone; the launch recipe only maps the token to its run. Nothing the coordinator holds in memory can refuse a run the store says is current. |
-| Idle after a fix round | A run that goes idle without submitting after Loom sent it a fix round (findings or a rebase) raises `idle_without_submission` after `fixRoundStallAfterMs` (5 minutes) instead of the full `stallAfterMs`: it already knows what to do. |
+| Idle after a fix round | A fresh implementer run with `round > 0` that goes idle without submitting raises `idle_without_submission` after `fixRoundStallAfterMs` (5 minutes) instead of the full `stallAfterMs`: its compact handoff already says what to do. |
 | Pane host stop, crash or kill | Every pane process dies, shells included (spikes 05 and 06). The host has no restore feature and needs none: Loom recreates the server, its sessions and each run's pane from stored state — session or thread ID, cwd, full command line and environment. Pane IDs restart at `%0`, so stale refs name nothing and every ref carries its host generation. Measured at about 30 s to a fresh reply from both providers. A Codex turn in flight completes because its app-server runs outside the pane host; Claude's is lost and re-sent. |
 | Codex app-server restart | Desired thread subscriptions survive the connection generation and are resumed/hydrated before retrying reads. An unavailable owner leaves runs `unknown`; after `unknownGraceMs` they raise `observability_failure`. A coordinator-recorded interrupted turn gets one continuation if its role still owes work; completed, newer, failed, or no-longer-needed turns do not. Other interruptions remain live and can raise `idle_without_submission`; they are not inferred ended. |
 | Agent failure | Detected via StopFailure, a failed Codex turn, a `claude agents` entry vanishing without SessionEnd, or the pane exiting. Retry with `min(10s·2^(n−1), cap)` backoff; after 3 attempts, flag the issue failed and notify the human (see `docs/design/core.md` §3). |

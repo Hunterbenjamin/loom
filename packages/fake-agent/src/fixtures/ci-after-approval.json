@@ -10,10 +10,20 @@
       {
         "github": "ci",
         "conclusion": "failure"
-      },
+      }
+    ]
+  },
+  {
+    "name": "fresh implementer after CI failure",
+    "agent": {
+      "provider": "codex",
+      "role": "implementer",
+      "mode": "headless"
+    },
+    "steps": [
       {
         "expect": "message",
-        "match": "findings"
+        "match": "fresh implementer fix-round session"
       },
       {
         "status": "idle"

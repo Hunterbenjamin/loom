@@ -345,6 +345,11 @@ function launch(c: Context, run: Run, resume: boolean, fresh = false): void {
       [
         `You are Loom's ${run.role} for task ${c.task.id}: ${c.task.title}.`,
         "Call the Loom MCP tool `get_task_context` first. The first call returns the full role view. Call it again only when told state changed; later calls return the changes and anything you must act on. Use `{ full: true }` to reread everything.",
+        ...(run.role === "implementer" && run.round > 0
+          ? [
+              `This is fresh implementer fix-round session ${run.round}; the current diff, reason and findings are in get_task_context, not in a previous transcript.`,
+            ]
+          : []),
         COMPLETION[run.role],
         "Inspect the existing worktree changes, plan, findings and handoff before continuing. Preserve existing work; this may be a fresh session replacing an earlier agent.",
         "Loom moves the task between stages; you never do. Don't merge and don't push to the base branch.",
@@ -448,6 +453,19 @@ export function startDesired(c: Context): void {
         label: c.task.title,
       });
     c.files();
+    if (desired.retireRunId) {
+      // Fix rounds replace the implementer structurally, just like restart_run: the old
+      // provider process must be confirmed gone before a new one touches the worktree.
+      let stop = c.state.outbox.find(
+        (row) =>
+          row.action?.kind === "stop_run" &&
+          row.action.terminate &&
+          row.action.runId === desired.retireRunId,
+      );
+      while (stop?.retriedBy)
+        stop = c.state.outbox.find((row) => row.key === stop?.retriedBy);
+      if (stop?.status !== "succeeded") return;
+    }
     const replacement = desired.replacement;
     if (replacement) {
       // Retirement must finish before a fresh agent can touch the same worktree, even
@@ -535,6 +553,7 @@ export function startDesired(c: Context): void {
             c.state.config.models[provider],
           ...(reasoningEffort ? { reasoningEffort } : {}),
           access: replacement?.access ?? roleProfile?.access ?? "full",
+          ...(desired.fixReason ? { fixReason: desired.fixReason } : {}),
           sessionId:
             provider === "claude"
               ? c.state.config.deriveClaudeSessionId(id, 0)

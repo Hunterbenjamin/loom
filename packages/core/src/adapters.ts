@@ -118,6 +118,12 @@ export interface GitAdapter {
     fromSha: Sha;
     toSha: Sha;
   }): Promise<FileChange[]>;
+  /** Text patch and summary for an immutable commit range. */
+  readDiff(req: {
+    repoRoot: WorktreePath;
+    fromSha: Sha;
+    toSha: Sha;
+  }): Promise<{ patch: string; stat: string }>;
   /** Null for a binary blob. */
   readBlob(repoRoot: WorktreePath, oid: BlobOid): Promise<string | null>;
 }

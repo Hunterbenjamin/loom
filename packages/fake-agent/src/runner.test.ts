@@ -36,6 +36,14 @@ test("design example: one fix round crosses real MCP/core and real Git to awaiti
   });
   expect(result.state.task.stage).toBe("awaiting_approval");
   expect(result.state.task.reviewRound).toBe(2);
+  const implementers = result.state.runs.filter(
+    (run) => run.role === "implementer",
+  );
+  expect(implementers.map((run) => run.round)).toEqual([0, 1]);
+  expect(new Set(implementers.map((run) => run.sessionId)).size).toBe(2);
+  expect(
+    result.state.messages.some((message) => message.purpose === "fix_round"),
+  ).toBe(false);
   expect(result.state.findings).toMatchObject([
     { status: "resolved", resolution: { note: "Verified" } },
   ]);
@@ -215,6 +223,11 @@ test("CI failing after approval disarms auto merge and creates one finding by na
       externalId: env.adapters.github.snapshot()?.ci.checks[0]?.id,
     },
   ]);
+  expect(
+    result.state.runs.find(
+      (run) => run.role === "implementer" && run.round === 1,
+    )?.fixReason,
+  ).toContain("CI failed on reviewed head");
 }, 30000);
 
 test("interactive Claude vanishes without automatic relaunch", async () => {

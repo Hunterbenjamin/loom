@@ -138,6 +138,10 @@ export interface TaskState {
     role: Role;
     round: number;
     resume: boolean;
+    /** Fix rounds wait for this run's terminal retirement before entering the worktree. */
+    retireRunId?: RunId;
+    /** Copied onto the new run so its context survives retries and coordinator restarts. */
+    fixReason?: string;
     /** Human retry: retire this attempt before rotating its session and launching again. */
     fresh?: boolean;
     replacement?: {

@@ -265,6 +265,7 @@ export const run = z.strictObject({
   model: z.string(),
   reasoningEffort: z.string().min(1).optional(),
   access: z.enum(["full", "approval-gated"]).optional(),
+  fixReason: z.string().min(1).optional(),
   sessionId: providerSessionId.nullable(),
   sessionEpoch: count,
   tokenUsage: z

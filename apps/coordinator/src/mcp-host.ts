@@ -28,9 +28,32 @@ import type { WorkflowReader } from "./workflow.js";
 
 /** Lines of context hashed either side of the selection, so a move can still be recognized. */
 export const CONTEXT_LINES = 3;
+export const FIX_ROUND_DIFF_BYTES = 60 * 1024;
 
 /** `lf-v1`: CRLF becomes LF before hashing. Recorded on the anchor so a reader knows. */
 const normalize = (text: string): string => text.replace(/\r\n/g, "\n");
+
+export const capFixRoundPatch = (
+  patch: string,
+  stat: string,
+  from: Sha,
+  to: Sha,
+): { diff: string; truncated: boolean } => {
+  if (Buffer.byteLength(patch) <= FIX_ROUND_DIFF_BYTES)
+    return { diff: patch, truncated: false };
+  let bytes = 0;
+  let end = 0;
+  for (const character of patch) {
+    const size = Buffer.byteLength(character);
+    if (bytes + size > FIX_ROUND_DIFF_BYTES) break;
+    bytes += size;
+    end += character.length;
+  }
+  return {
+    diff: `${patch.slice(0, end)}\n\n[Diff truncated after ${FIX_ROUND_DIFF_BYTES} UTF-8 bytes. Inspect the complete patch with: git diff ${from}..${to}]\n\n${stat}`,
+    truncated: true,
+  };
+};
 
 export interface McpHostDeps {
   store: Store;
@@ -99,6 +122,23 @@ export function createMcpHost(deps: McpHostDeps): {
           );
           return null;
         });
+      let fixRound: GetTaskContextFullOutput["fixRound"];
+      if (
+        run.role === "implementer" &&
+        run.round > 0 &&
+        run.fixReason &&
+        git?.headSha
+      ) {
+        const { patch, stat } = await deps.adapters.git.readDiff({
+          repoRoot: worktree.path,
+          fromSha: worktree.baseSha,
+          toSha: git.headSha,
+        });
+        fixRound = {
+          reason: run.fixReason,
+          ...capFixRoundPatch(patch, stat, worktree.baseSha, git.headSha),
+        };
+      }
       const current = taskContextFull({
         state,
         runId,
@@ -107,6 +147,7 @@ export function createMcpHost(deps: McpHostDeps): {
           typeof state.artifactContents.brief === "string"
             ? state.artifactContents.brief
             : taskBrief(state.task),
+        ...(fixRound ? { fixRound } : {}),
         // Design note 13.3: loaded and validated here, never a reconcile input.
         workflow: await deps.workflow.read(repo.root),
       });

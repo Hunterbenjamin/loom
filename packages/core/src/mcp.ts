@@ -120,6 +120,8 @@ export interface GetTaskContextFullOutput {
   plan: (Plan & { version: number }) | null;
   /** The full append-only decisions log. */
   decisions: string;
+  /** Present only for a fresh implementer fix round; computed without transcript content. */
+  fixRound?: { reason: string; diff: string; truncated: boolean };
   handoff: Handoff | null;
   /** Implementer: open, escalated, addressed and disputed. Reviewer: prior rounds and current external findings. */
   findings: FindingView[];
@@ -157,6 +159,7 @@ export interface GetTaskContextChangesOutput {
   plan?: (Plan & { version: number }) | null;
   /** The appended suffix, or the whole log when it was rewritten. */
   decisions?: string;
+  fixRound?: { reason: string; diff: string; truncated: boolean };
   handoff?: Handoff | null;
   findings?: { changed: FindingView[]; noLongerVisible: FindingId[] };
   /** The appended suffix, or the whole list when it was rewritten. */

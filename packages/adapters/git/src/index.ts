@@ -511,6 +511,25 @@ export function createGitAdapter(
       }
       return raw.map((record) => record.change);
     },
+    async readDiff(req) {
+      const path = pathSchema.parse(req.repoRoot);
+      const from = await commit(path, sha.parse(req.fromSha));
+      const to = await commit(path, sha.parse(req.toSha));
+      const args = [
+        "--no-ext-diff",
+        "--no-textconv",
+        "--find-renames",
+        "--no-relative",
+        from,
+        to,
+        "--",
+      ];
+      const [patch, stat] = await Promise.all([
+        git(path, ["diff", "--patch", "--binary", ...args]),
+        git(path, ["diff", "--stat", ...args]),
+      ]);
+      return { patch: decode(patch.output), stat: decode(stat.output) };
+    },
     async readBlob(repoRoot, oid) {
       pathSchema.parse(repoRoot);
       const output = (

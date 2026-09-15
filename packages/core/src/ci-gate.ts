@@ -43,7 +43,7 @@ export function ciFindings(c: Context, ci: CiState): void {
 
 /**
  * CI before review (docs/architecture.md, "CI gate"). The implementer's submission is pushed and
- * waits here: green starts a review round, red goes straight back to the same implementer, and the
+ * waits here: green starts a review round, red starts a fresh implementer fix round, and the
  * reviewer only ever reads code that already passes the machine checks.
  */
 export function reconcileCiGate(c: Context): void {
@@ -105,7 +105,9 @@ export function reconcileCiGate(c: Context): void {
       "in_progress",
       `CI failed on ${gate.headSha.slice(0, 7)}: ${failed.map((check) => check.name).join(", ") || "CI"}`,
     );
-    c.fix(`ci-gate:${gate.headSha}`);
+    c.fix(
+      `CI failed on submitted head ${gate.headSha}: ${failed.map((check) => check.name).join(", ") || "CI"}`,
+    );
     return;
   }
   // Green (or no CI at all): earlier CI failures are settled by this commit, not by anyone's say-so.

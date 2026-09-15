@@ -508,7 +508,7 @@ export function submission(
       } else {
         next = "in_progress";
         c.stage(next, "Review requests a converging fix round");
-        c.fix(`round:${task.reviewRound}`);
+        c.fix(`Review round ${task.reviewRound} returned blocking findings`);
       }
       return {
         tool: call.tool,
