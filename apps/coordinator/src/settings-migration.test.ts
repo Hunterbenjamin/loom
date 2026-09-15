@@ -4,18 +4,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   DEFAULT_SETTINGS,
-  resolveSettings,
   type RepoId,
+  resolveSettings,
   type WorktreePath,
 } from "@loom/core";
 import { openStore } from "@loom/store";
 import { afterEach, expect, test } from "vitest";
 import { configSchema, reconcileConfig } from "./config.js";
-import { legacySettingsDefaults, migrateSettings } from "./settings-migration.js";
+import {
+  legacySettingsDefaults,
+  migrateSettings,
+} from "./settings-migration.js";
 
 const Database = createRequire(
   new URL("../../../packages/store/package.json", import.meta.url),
-)("better-sqlite3") as new (path: string) => {
+)("better-sqlite3") as new (
+  path: string,
+) => {
   prepare(sql: string): {
     get(...values: unknown[]): unknown;
     pluck(): { get(...values: unknown[]): unknown };
@@ -62,21 +67,19 @@ test("moves legacy compatibility values into settings exactly once", async () =>
       .pluck()
       .get(repo.id) as string,
   ) as Record<string, unknown>;
-  sqlite
-    .prepare("UPDATE repos SET data = ? WHERE id = ?")
-    .run(
-      JSON.stringify({
-        ...raw,
-        baseBranch: "release",
-        defaultProviders: {
-          planner: "claude",
-          implementer: "claude",
-          reviewer: "codex",
-        },
-        serialTests: true,
-      }),
-      repo.id,
-    );
+  sqlite.prepare("UPDATE repos SET data = ? WHERE id = ?").run(
+    JSON.stringify({
+      ...raw,
+      baseBranch: "release",
+      defaultProviders: {
+        planner: "claude",
+        implementer: "claude",
+        reviewer: "codex",
+      },
+      serialTests: true,
+    }),
+    repo.id,
+  );
   sqlite.close();
   store.settings.update({
     scope: { kind: "global" },

@@ -1,13 +1,13 @@
 import {
   DEFAULT_SETTINGS,
   mergeSettings,
+  type ProviderRules,
   resolveSettings,
   SETTINGS_CATALOG,
-  settingValue,
-  type ProviderRules,
   type SettingsPatch,
   type SettingsScope,
   type SettingsValues,
+  settingValue,
 } from "@loom/core";
 import type { Store } from "@loom/store";
 import type { CoordinatorConfig } from "./config.js";

@@ -71,8 +71,8 @@ import { observe as observeOwners, PullRequestCache } from "./observe.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
 import { registerRepo } from "./repos.js";
-import { migrateSettings } from "./settings-migration.js";
 import { ProtocolServer } from "./server.js";
+import { migrateSettings } from "./settings-migration.js";
 import { runShell, type Shell } from "./shell.js";
 import { resolveCommandTaskRefs } from "./task-refs.js";
 import { openTaskTerminal } from "./task-terminal.js";
@@ -364,7 +364,6 @@ export class Coordinator {
             }).data,
           }));
     const validateResolved = (
-      repositoryId: string | undefined,
       repositoryData: SettingsPatch | null,
       environment: SettingsPatch | null,
     ) => {
@@ -378,16 +377,12 @@ export class Coordinator {
       return validateSettings(effective);
     };
     const errors = [
-      ...validateResolved(undefined, null, null),
-      ...validateResolved(undefined, null, this.config.settingsEnvironment),
+      ...validateResolved(null, null),
+      ...validateResolved(null, this.config.settingsEnvironment),
       ...repositories.flatMap((repo) =>
         [
-          ...validateResolved(repo.id, repo.data, null),
-          ...validateResolved(
-            repo.id,
-            repo.data,
-            this.config.settingsEnvironment,
-          ),
+          ...validateResolved(repo.data, null),
+          ...validateResolved(repo.data, this.config.settingsEnvironment),
         ].map((message) => `${repo.id}: ${message}`),
       ),
     ];
@@ -493,8 +488,7 @@ export class Coordinator {
       shell: options.shell ?? runShell,
       repo: (taskId) => this.repo(taskId),
       repoById: (repoId) => this.repoById(repoId),
-      repositorySettings: (repoId) =>
-        this.effectiveSettings(repoId).repository,
+      repositorySettings: (repoId) => this.effectiveSettings(repoId).repository,
       schedule: (taskId, at, why) => this.schedule(taskId, at, why),
       notify: (level, title, body) => this.log(`[${level}] ${title}: ${body}`),
       now: () => this.now(),

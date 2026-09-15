@@ -408,12 +408,7 @@ export async function main(argv: string[]): Promise<void> {
     const [action, root, github] = args;
     if (action !== "add" || !root || !github)
       throw new Error("loom repo add <root> <owner/name>");
-    return addRepo(
-      config,
-      root,
-      github,
-      flag(argv, "base") ?? undefined,
-    );
+    return addRepo(config, root, github, flag(argv, "base") ?? undefined);
   }
   // Keep the legacy command group as an unadvertised alias.
   if (group !== "issue" && group !== "task")

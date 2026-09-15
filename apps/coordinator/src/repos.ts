@@ -1,10 +1,5 @@
 import { realpath, stat } from "node:fs/promises";
-import type {
-  Repo,
-  RepoId,
-  SettingsPatch,
-  WorktreePath,
-} from "@loom/core";
+import type { Repo, RepoId, SettingsPatch, WorktreePath } from "@loom/core";
 import type { Store } from "@loom/store";
 
 /** Shared by the offline CLI registration and the live protocol command. */
