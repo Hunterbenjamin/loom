@@ -12,7 +12,6 @@ import { toSnapshot } from "../fixtures/protocol.js";
 import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
 import { pullRequestSubscriptions } from "../store/pull-requests.js";
 import { StoreProvider } from "../store/react.js";
-import { terminalsForTask } from "../store/selectors.js";
 import { createStore } from "../store/store.js";
 import { Detail } from "./detail.js";
 import { useShortcuts } from "./keys.js";
@@ -57,6 +56,8 @@ function setup(change: Partial<PullRequestDetailRow["detail"]> = {}) {
   const row = buildPullRequestDetails(fixture.pullRequests)[0];
   if (!row) throw new Error("Missing fixture");
   row.detail = { ...row.detail, ...change };
+  // Direct GitHub actions belong only to PRs without an issue.
+  row.taskId = null;
   const store = createStore(fixture, true);
   store.setConnection("connected");
   const selection = { repoId: row.repoId, number: row.number };
@@ -715,34 +716,24 @@ test("file selection scrolls the existing viewer after a delayed patch arrives",
   });
 });
 
-test("manually linking another issue never opens an agent on that issue's different branch", async () => {
-  const h = setup({ head: "feat/no-agent" });
-  const issue = h.fixture.tasks.find(
-    (task) =>
-      task.repoId === h.row.repoId &&
-      task.branch &&
-      terminalsForTask(h.fixture, task).length > 0,
-  );
-  if (!issue) throw new Error("Missing agent fixture");
+test("linking a PR opens the issue Plan and overview, without direct merge", async () => {
+  const h = setup();
+  const issue = h.fixture.tasks.find((task) => h.fixture.plans[task.id]);
+  if (!issue) throw new Error("Missing issue");
   act(() => {
     h.row.taskId = issue.id;
     h.update();
   });
-  expect(
-    h.host.querySelector<HTMLButtonElement>('[aria-label="Open branch agent"]')
-      ?.disabled,
-  ).toBe(true);
-  act(() => {
-    h.row.detail.head = issue.branch ?? "";
-    h.update();
-  });
-  const button = h.host.querySelector<HTMLButtonElement>(
-    '[aria-label="Open branch agent"]',
-  );
-  expect(button?.disabled).toBe(false);
-  await act(async () => button?.click());
-  expect(h.store.getState().ui.openTask).toBe(issue.id);
-  expect(h.store.getState().ui.tab).toBe("terminal");
+  expect(h.host.querySelector('[data-testid="detail"]')).not.toBeNull();
+  expect(h.host.querySelectorAll(".pr-story")).toHaveLength(1);
+  expect(h.host.querySelectorAll(".pr-rail")).toHaveLength(1);
+  expect(h.host.textContent).toContain(issue.description);
+  expect(h.host.textContent).toContain("Keeps GitHub as the owner.");
+  expect(h.host.textContent).not.toContain("Squash & merge");
+  await h.click("Plan");
+  expect(h.host.textContent).toContain(h.fixture.plans[issue.id]?.goal);
+  await h.click("Diff");
+  expect(h.store.getState().ui.tab).toBe("diff");
 });
 
 test("Diff uses rail order, unified cards, durable Reviewed marks and file/hunk keys", async () => {
@@ -1065,4 +1056,50 @@ test("issue detail opens durable explicit PR links without a PR list cache and d
     repoId: task.repoId,
     number: 43,
   });
+});
+
+test("a branch before its PR reads the coordinator diff", async () => {
+  const h = setup();
+  const task = h.fixture.tasks.find((task) => task.branch);
+  if (!task) throw new Error("Missing branch");
+  const branchTask = { ...task, prNumber: null };
+  act(() => {
+    h.store.getState().snapshot.pullRequests = [];
+    h.store.getState().inbox = [];
+    h.store.open(task.id);
+    h.root.render(
+      createElement(StoreProvider, {
+        store: h.store,
+        // biome-ignore lint/correctness/noChildrenProp: typed provider children
+        children: createElement(Detail, { task: branchTask }),
+      }),
+    );
+  });
+  h.sender.mockResolvedValue({
+    ok: true,
+    result: {
+      kind: "diff",
+      diff: {
+        taskId: task.id,
+        range: {
+          baseSha: h.row.detail.baseSha,
+          headSha: h.row.detail.headSha,
+          mode: "whole_branch",
+        } as never,
+        patch: { text: h.row.patch?.patch ?? "", key: "branch-fixture" },
+        files: [],
+        computedAt: h.row.detail.observedAt,
+      },
+    },
+  });
+  await act(async () => {
+    await import("./branch-diff.js");
+  });
+  await h.click("Diff");
+  expect(h.sender).toHaveBeenCalledWith({
+    kind: "fetch_diff",
+    taskId: task.id,
+    range: { mode: "whole_branch" },
+  });
+  expect(h.host.querySelector('[data-testid="pierre"]')).not.toBeNull();
 });

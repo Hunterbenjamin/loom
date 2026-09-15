@@ -8,6 +8,7 @@ import { pane } from "../../../../../packages/protocol/src/pane-fixture.js";
 import { inputId, questionId, transitionId } from "../fixtures/ids.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
+import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
 import { Detail } from "./detail.js";
@@ -718,6 +719,8 @@ test("tabs are Overview and Plan, with Terminal only while the issue has a live 
   expect(
     h.host.querySelector("[data-tab-body]")?.getAttribute("data-tab-body"),
   ).toBe("overview");
+  // This test checks tab availability; terminal rendering has its own tests.
+  act(() => h.store.setTab("overview"));
   h.store.getState().panes = [{ ...pane, taskId: h.task.id }];
   h.render();
   expect(tabs()).toEqual(["Overview", "Plan", "Terminal"]);
@@ -773,4 +776,90 @@ test("the overview renders the description and findings as Markdown and lists ac
   expect(overview?.querySelectorAll(".event").length).toBeGreaterThan(0);
   for (const row of overview?.querySelectorAll(".event") ?? [])
     expect(row.children).toHaveLength(3);
+});
+
+test("backlog exposes editing and Move to Todo; absent plan and branch omit their tabs", async () => {
+  const h = setup();
+  h.task.stage = "backlog";
+  h.task.attention = { reasons: [], reasonSince: {}, since: null };
+  h.task.branch = null;
+  h.task.prNumber = null;
+  delete h.snapshot.plans[h.task.id];
+  h.snapshot.pullRequests = [];
+  const sender = vi.fn(async () => ({
+    ok: true as const,
+    result: { kind: "human" as const, inputId: inputId("backlog-move") },
+  }));
+  h.store.setSender(sender);
+  h.render();
+  expect(
+    [...h.host.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent),
+  ).toEqual(["Overview"]);
+  await act(async () =>
+    [...h.host.querySelectorAll("button")]
+      .find((b) => b.textContent === "Edit issue")
+      ?.click(),
+  );
+  const title = h.host.querySelector<HTMLInputElement>('[aria-label="Title"]');
+  if (!title) throw new Error("Missing title field");
+  expect(title.value).toBe(h.task.title);
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set?.call(title, "New backlog title");
+    title.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () =>
+    [...h.host.querySelectorAll("button")]
+      .find((b) => b.textContent === "Save changes")
+      ?.click(),
+  );
+  expect(sender).toHaveBeenLastCalledWith({
+    kind: "human",
+    taskId: h.task.id,
+    command: {
+      type: "edit_task",
+      expectedVersion: h.task.version,
+      title: "New backlog title",
+      description: h.task.description,
+      size: h.task.size,
+      requirePlanApproval: h.task.requirePlanApproval,
+    },
+  });
+  await act(async () =>
+    [...h.host.querySelectorAll("button")]
+      .find((b) => b.textContent === "Move to Todo")
+      ?.click(),
+  );
+  expect(sender).toHaveBeenLastCalledWith({
+    kind: "human",
+    taskId: h.task.id,
+    command: { type: "move", to: "todo" },
+  });
+});
+
+test("a PR head change disables issue approval and invalidates its open confirmation", async () => {
+  const h = setup("merge");
+  const row = buildPullRequestDetails(h.snapshot.pullRequests)[0];
+  if (!row) throw new Error("Missing PR");
+  row.repoId = h.task.repoId;
+  row.taskId = h.task.id;
+  h.task.prNumber = row.number;
+  row.detail.headSha = "b".repeat(40) as typeof row.detail.headSha;
+  h.store.getState().pullRequestDetails = [row];
+  h.render();
+  const button = (label: string) =>
+    [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(
+      (b) => b.textContent === label,
+    );
+  expect(button("Approve merge")?.disabled).toBe(false);
+  await act(async () => button("Approve merge")?.click());
+  expect(button("Confirm approval")?.disabled).toBe(false);
+  act(() => {
+    row.detail.headSha = "c".repeat(40) as typeof row.detail.headSha;
+    h.render();
+  });
+  expect(button("Confirm approval")?.disabled).toBe(true);
+  expect(button("Approve merge")?.disabled).toBe(true);
 });

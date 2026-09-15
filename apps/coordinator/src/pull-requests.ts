@@ -22,6 +22,7 @@ import {
   type Subscription,
 } from "@loom/protocol";
 import type { z } from "zod";
+import { pullRequestOwner } from "./pull-request-owner.js";
 import type { Row } from "./views.js";
 
 type ListScope = Extract<Subscription, { kind: "pull_requests" }>;
@@ -291,18 +292,12 @@ export class PullRequestViews {
   }
 
   private taskId(repoId: RepoId, head: string, number: number) {
-    const linked = this.deps.preferences?.(repoId, number)?.taskId;
-    if (
-      linked &&
-      this.deps
-        .tasks()
-        .some((task) => task.repoId === repoId && task.id === linked)
-    )
-      return linked;
-    const matches = this.deps
-      .tasks()
-      .filter((task) => task.repoId === repoId && task.branch === head);
-    return matches.length === 1 ? (matches[0]?.id ?? null) : null;
+    return pullRequestOwner(
+      this.deps.tasks(),
+      repoId,
+      head,
+      this.deps.preferences?.(repoId, number)?.taskId,
+    );
   }
 
   /** Task creation/branch changes update links without manufacturing a GitHub observation. */

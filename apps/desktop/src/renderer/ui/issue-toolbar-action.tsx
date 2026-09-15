@@ -11,6 +11,7 @@ export function IssueToolbarAction({
   outcome,
   submitting,
   pending,
+  approvalUnavailableReason,
 }: {
   task: Task;
   onCommand: (command: HumanCommand) => void;
@@ -20,6 +21,7 @@ export function IssueToolbarAction({
   submitting: boolean;
   /** The command in flight: its button shows progress instead of status text. */
   pending: HumanCommand["type"] | null;
+  approvalUnavailableReason?: string | null;
 }) {
   const decision = useStore((state) => {
     const decisions = issueDecisions(state, task).decisions;
@@ -50,11 +52,14 @@ export function IssueToolbarAction({
         : action.command?.("").type;
   const busy = pending !== null;
   const disabledReasons = [
-    ...new Set(
-      actions.flatMap((action) =>
+    ...new Set([
+      ...(decision.kind === "needs_approval" && approvalUnavailableReason
+        ? [approvalUnavailableReason]
+        : []),
+      ...actions.flatMap((action) =>
         action.disabledReason ? [action.disabledReason] : [],
       ),
-    ),
+    ]),
   ];
   return (
     <div className="issue-toolbar-action">
@@ -65,7 +70,14 @@ export function IssueToolbarAction({
             key={action.id}
             type="button"
             className={secondary.has(action.id) ? "secondary" : undefined}
-            disabled={submitting || busy || !!action.disabledReason}
+            disabled={
+              submitting ||
+              busy ||
+              !!action.disabledReason ||
+              (decision.kind === "needs_approval" &&
+                !!approvalUnavailableReason)
+            }
+            data-pr-action={action.id === "approve-merge" ? "merge" : undefined}
             aria-busy={loading || undefined}
             title={action.disabledReason ?? undefined}
             onClick={() => {

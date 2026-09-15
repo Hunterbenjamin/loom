@@ -11,6 +11,7 @@ import { createRoot } from "react-dom/client";
 import { TrackerClient } from "../shared/client.js";
 import { connectionConfig } from "../shared/connection.js";
 import { defaultKeybindings } from "../shared/keybindings.js";
+import { selectedDetailTask } from "./store/detail-selection.js";
 
 const App = lazy(() => import("./app.js").then((m) => ({ default: m.App })));
 const Workbench = lazy(() =>
@@ -112,7 +113,8 @@ if (config.mode === "live") {
   });
   store.setSender((command) => client.command(command));
   store.subscribe(() => {
-    const { openTask, openRun, chatTarget, chatView } = store.getState().ui;
+    const { openRun, chatTarget, chatView } = store.getState().ui;
+    const openTask = selectedDetailTask(store.getState())?.id;
     client.setDetail([
       { kind: "panes" },
       { kind: "agents" },

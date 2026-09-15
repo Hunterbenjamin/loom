@@ -1,6 +1,6 @@
 import { displayName } from "@loom/core";
 import type { PullRequestCommand, PullRequestDetailRow } from "@loom/protocol";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useStore, useStoreApi } from "../store/react.js";
@@ -115,7 +115,11 @@ export function PullRequestOverview({
   disabled,
   run,
   onFile,
+  issueStory,
+  issueRail,
 }: {
+  issueStory?: ReactNode;
+  issueRail?: ReactNode;
   row: PullRequestDetailRow;
   disabled: boolean;
   run(command: PullRequestCommand): Promise<boolean>;
@@ -150,7 +154,14 @@ export function PullRequestOverview({
   return (
     <div className="pr-overview">
       <main className="pr-story">
-        <h1>{pr.title}</h1>
+        {issueStory}
+        {issueStory ? (
+          <h2>
+            Pull request #{row.number}: {pr.title}
+          </h2>
+        ) : (
+          <h1>{pr.title}</h1>
+        )}
         <div className="pr-byline">
           <span className="pr-avatar">
             {(pr.author ?? "?").slice(0, 2).toUpperCase()}
@@ -242,6 +253,7 @@ export function PullRequestOverview({
         </form>
       </main>
       <aside className="pr-rail" aria-label="Pull request properties">
+        {issueRail}
         <section>
           <h3>Status</h3>
           <div className="pr-property">

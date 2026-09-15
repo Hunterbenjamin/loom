@@ -42,6 +42,7 @@ import {
 } from "./launch.js";
 import { indexChanges, mapFindings } from "./mapping.js";
 import type { PullRequestCache } from "./observe.js";
+import { pullRequestOwner } from "./pull-request-owner.js";
 import type { Shell } from "./shell.js";
 import type { WorkflowReader } from "./workflow.js";
 
@@ -168,6 +169,18 @@ export class Executor {
         );
         return;
       case "merge_pull_request":
+        if (
+          pullRequestOwner(
+            this.deps.store.tasks(),
+            repo.id,
+            pr.head,
+            this.deps.store.pullRequestPreferences(repo.id, command.number)
+              .taskId,
+          )
+        )
+          throw new PreconditionFailed(
+            "This PR belongs to an issue; approve its reviewed head through the issue",
+          );
         if (pr.headSha !== command.matchHeadSha)
           throw new PreconditionFailed(
             "PR head changed; refresh and confirm the new head SHA",

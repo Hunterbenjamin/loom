@@ -179,7 +179,7 @@ export function App() {
               />
             </Suspense>
           ) : task ? (
-            <Detail task={task} />
+            <Detail key={task.id} task={task} />
           ) : null}
         </div>
       </div>

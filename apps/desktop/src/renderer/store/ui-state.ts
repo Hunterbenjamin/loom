@@ -16,7 +16,7 @@ export type ViewId =
   | "settings"
   | "briefs";
 export type Pane = "list" | "board";
-export type TabId = "overview" | "plan" | "terminal";
+export type TabId = "overview" | "plan" | "diff" | "terminal";
 export type SortKey =
   | "stage"
   | "title"
