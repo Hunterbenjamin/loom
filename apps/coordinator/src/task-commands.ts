@@ -5,6 +5,7 @@ import type {
   ProviderRules,
   RepoId,
   TaskId,
+  TaskSize,
   TaskState,
 } from "@loom/core";
 import type { Store } from "@loom/store";
@@ -23,7 +24,7 @@ export interface CreateTaskInput {
   requirePlanApproval?: boolean | null;
   blockedBy?: TaskId[];
   budgetMinutes?: number | null;
-  size?: "small" | "normal" | null;
+  size?: TaskSize | null;
 }
 
 interface TaskCommandDeps {

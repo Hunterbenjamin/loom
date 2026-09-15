@@ -1,4 +1,5 @@
 import type { Context } from "./context.js";
+import type { RestartOutcome } from "./entities.js";
 import { read, roleOwesWork } from "./helpers.js";
 import type { Input } from "./observations.js";
 
@@ -25,7 +26,7 @@ export function continueInterrupted(c: Context): void {
   for (const run of c.state.runs) {
     const interruption = run.restartInterruption;
     if (!interruption || interruption.outcome) continue;
-    const decide = (outcome: "continued" | "completed" | "not_needed") => {
+    const decide = (outcome: RestartOutcome) => {
       interruption.outcome = outcome;
       interruption.decidedAt = c.now;
     };

@@ -1,3 +1,4 @@
+import type { CiCheckStatus } from "./entities.js";
 // The pure reconciler contract. See engine.ts for the implementation and ../README.md for persistence requirements.
 
 import type { Action, ActionError, ActionKind } from "./actions.js";
@@ -131,7 +132,7 @@ export interface TaskState {
       conclusion: CiConclusion;
       checks: {
         name: string;
-        status: "queued" | "in_progress" | "completed";
+        status: CiCheckStatus;
         conclusion: string | null;
         url: string | null;
       }[];

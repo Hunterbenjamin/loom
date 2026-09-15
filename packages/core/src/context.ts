@@ -1,10 +1,12 @@
 import type { Action } from "./actions.js";
 import type {
+  ApprovalAuthor,
   ApprovalVoidReason,
   ArtifactKind,
   BlockedReason,
   Finding,
   MessagePurpose,
+  MessageWhen,
   Role,
   Run,
   RunEndReason,
@@ -412,7 +414,7 @@ export class Context {
     purpose: MessagePurpose,
     sequence: string | number,
     text: string,
-    options: { when?: "now" | "after_turn"; images?: string[] } = {},
+    options: { when?: MessageWhen; images?: string[] } = {},
   ): void {
     const id = messageId(run.id, purpose, sequence);
     if (this.state.messages.some((m) => m.id === id)) return;
@@ -497,7 +499,7 @@ export class Context {
       this.state.findings.push(finding);
     return finding;
   }
-  approval(head?: Sha, approvedBy: "human" | "policy" = "human"): void {
+  approval(head?: Sha, approvedBy: ApprovalAuthor = "human"): void {
     const id =
       `${this.task.id}/approval/${this.task.version + 1}/${this.result.inputs.length}` as ApprovalId;
     const common = {

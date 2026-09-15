@@ -7,6 +7,7 @@ import { textHash } from "@loom/adapter-claude";
 import type {
   IsoTime,
   McpServerEntry,
+  MessageWhen,
   PaneRef,
   ProviderSessionId,
   Repo,
@@ -133,7 +134,7 @@ export class LeadSession {
   sendMessage(
     id: string,
     text: string,
-    when: "now" | "after_turn" = "now",
+    when: MessageWhen = "now",
   ): Promise<{ id: string; state: "queued" | "sent" | "refused" }> {
     return this.exclusive(async () => {
       const existing = this.deps.store.leadMessages.get(this.deps.repo.id, id);

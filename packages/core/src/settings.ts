@@ -1,4 +1,4 @@
-import type { Provider, Role, RunMode } from "./entities.js";
+import type { Provider, Role, RunMode, TaskSize } from "./entities.js";
 import { ROLE_VALUES } from "./entities.js";
 import {
   DEFAULT_KEYBINDINGS,
@@ -51,7 +51,7 @@ export interface SettingsValues {
   roles: Record<Role, RoleProfile>;
   workflow: {
     requirePlanApproval: boolean;
-    size: "small" | "normal";
+    size: TaskSize;
     budgetMinutes: number | null;
     reviewRoundCap: number;
     mergePolicy: MergePolicy;

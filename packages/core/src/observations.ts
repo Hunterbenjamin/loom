@@ -1,3 +1,4 @@
+import type { DialogKind, MessageWhen, Side, TaskSize } from "./entities.js";
 // What reconcile sees. Snapshots are fresh reads from each owner, never replayed events.
 // Inputs (human commands, MCP calls, action results) are Loom-owned facts, each consumed once.
 
@@ -90,7 +91,7 @@ export interface GitHubComment {
   reviewId: string | null;
   path: string | null;
   line: number | null;
-  side: "old" | "new" | null;
+  side: Side | null;
   commitSha: Sha | null;
   body: string;
   author: string;
@@ -182,7 +183,7 @@ export interface ClaudeHookSummary {
   pendingDialog: {
     command?: string;
     requestId?: string;
-    kind: "permission" | "input";
+    kind: DialogKind;
     tool: string;
     at: IsoTime;
   } | null;
@@ -302,7 +303,7 @@ export type HumanCommand =
       expectedVersion: number;
       title: string;
       description: string;
-      size: "small" | "normal";
+      size: TaskSize;
       requirePlanApproval: boolean;
     }
   | { type: "push_branch"; headSha: Sha }
@@ -346,7 +347,7 @@ export type HumanCommand =
       type: "send_message";
       runId: RunId;
       text: string;
-      when?: "now" | "after_turn";
+      when?: MessageWhen;
       /** Attachment IDs at the protocol boundary; coordinator-resolved image paths in core. */
       attachmentIds?: string[];
       expectedRun?: { sessionEpoch: number; attempts: number };

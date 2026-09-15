@@ -1,4 +1,5 @@
 import type {
+  CiConclusion,
   CiState,
   GitHubAdapter,
   PaneHost,
@@ -281,7 +282,7 @@ export class FakeGitHub implements GitHubAdapter {
    * CI a pushed commit reports until a test sets it with `ci(...)`. Green by default, so scripted
    * scenarios pass the CI gate; gate tests start from "pending" and drive it explicitly.
    */
-  commitCiDefault: "success" | "failure" | "pending" | "none" = "success";
+  commitCiDefault: CiConclusion = "success";
 
   constructor(
     readonly clock: FakeClock,

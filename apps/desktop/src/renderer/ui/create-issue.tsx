@@ -1,3 +1,4 @@
+import type { TaskSize } from "@loom/core";
 import { suggestName, type TaskId } from "@loom/core";
 import type { AckOutcome } from "@loom/protocol";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -38,9 +39,7 @@ function CreateIssueDialog() {
   const nameEdited = useRef(false);
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"backlog" | "todo">("backlog");
-  const [size, setSize] = useState<"normal" | "small">(
-    initialDefaults?.size ?? "normal",
-  );
+  const [size, setSize] = useState<TaskSize>(initialDefaults?.size ?? "normal");
   const [requirePlanApproval, setRequirePlanApproval] = useState(
     initialDefaults?.requirePlanApproval ?? true,
   );
