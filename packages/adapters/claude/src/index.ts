@@ -136,11 +136,13 @@ export async function createClaudeAdapter(
       settingsPath: string,
       mcpServer?: McpServerEntry,
       bashCommandPrefixes?: string[],
+      researchDirectory?: string,
     ): Promise<void> => {
       await writeSettingsFiles(settingsPath, {
         ...settingsRequest,
         mcpServer: mcpServer ?? config.mcpServer,
         bashCommandPrefixes,
+        researchDirectory,
       });
     },
 
@@ -151,6 +153,7 @@ export async function createClaudeAdapter(
       settingsPath,
       readOnly,
       approvalGated,
+      research,
     }) => [
       "--settings",
       settingsPath,
@@ -162,11 +165,21 @@ export async function createClaudeAdapter(
       model,
       // Task planners keep their edit restrictions while keeping the tools needed to inspect
       // and test the repo. Main and full-access implementers run unrestricted.
-      ...(readOnly
-        ? ["--disallowedTools", ...READ_ONLY_DISALLOWED_TOOLS]
-        : approvalGated
-          ? []
-          : ["--permission-mode", "bypassPermissions"]),
+      ...(research
+        ? [
+            "--setting-sources",
+            "",
+            "--strict-mcp-config",
+            "--tools",
+            "WebSearch,WebFetch",
+            "--permission-mode",
+            "dontAsk",
+          ]
+        : readOnly
+          ? ["--disallowedTools", ...READ_ONLY_DISALLOWED_TOOLS]
+          : approvalGated
+            ? []
+            : ["--permission-mode", "bypassPermissions"]),
     ],
 
     startHeadless: async (request: StartHeadlessRequest): Promise<void> => {
@@ -241,4 +254,3 @@ export async function createClaudeAdapter(
 }
 
 export * from "./brief-research.js";
-export * from "./research.js";

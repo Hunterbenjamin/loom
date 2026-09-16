@@ -436,6 +436,8 @@ export interface CodexAdapter {
     developerInstructions: string;
     config: Record<string, unknown>;
     approvalPolicy?: "never" | "on-request";
+    /** No inherited environments or capability roots; explicit MCP tools only. */
+    isolated?: boolean;
   }): Promise<{ threadId: ProviderSessionId; generation: number }>;
   startTurn(req: {
     threadId: ProviderSessionId;
@@ -443,6 +445,7 @@ export interface CodexAdapter {
     images?: string[];
     model?: string;
     effort?: string;
+    sandboxPolicy?: { type: "readOnly"; networkAccess: false };
   }): Promise<{ turnId: string }>;
   steerTurn(req: {
     threadId: ProviderSessionId;
@@ -521,6 +524,7 @@ export interface ClaudeAdapter {
     mcpServer?: McpServerEntry,
     /** Bash command prefixes to pre-allow without prompts (e.g., 'pnpm test', 'git commit'). */
     bashCommandPrefixes?: string[],
+    researchDirectory?: string,
   ): Promise<void>;
   /**
    * Pane command for an interactive run: `--session-id` (or `--resume`), the per-run
@@ -534,6 +538,7 @@ export interface ClaudeAdapter {
     /** Planners and reviewers must not inherit implementer edit/bypass permissions. */
     readOnly: boolean;
     approvalGated?: boolean;
+    research?: boolean;
   }): string[];
   /** Agent SDK. Loom chooses the session ID. */
   startHeadless(req: {

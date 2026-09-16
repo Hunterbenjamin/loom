@@ -116,6 +116,7 @@ export class CoordinatorViews {
           .tasks()
           .map((t) => this.deps.store.loadTaskState(t.id)),
         repos: this.deps.store.repos(),
+        research: this.deps.store.research.list({ archived: "all" }),
         now: this.deps.now(),
         leadPanes: new Set(
           [...this.deps.leads.entries()].flatMap(([id, lead]) =>

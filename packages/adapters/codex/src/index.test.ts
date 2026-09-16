@@ -284,6 +284,21 @@ describe("Codex app-server adapter", () => {
       }),
     );
   });
+  it("passes the explicit read-only network policy to research turns", async () => {
+    await adapter.startTurn({
+      threadId,
+      text: "research",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+    });
+    expect(fake.messages.map((entry) => entry.message)).toContainEqual(
+      expect.objectContaining({
+        method: "turn/start",
+        params: expect.objectContaining({
+          sandboxPolicy: { type: "readOnly", networkAccess: false },
+        }),
+      }),
+    );
+  });
   it("passes pinned model and reasoning to turn/start", async () => {
     await adapter.startTurn({
       threadId,

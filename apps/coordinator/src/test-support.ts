@@ -53,7 +53,6 @@ const GIT_ENVIRONMENT = {
 };
 
 interface HarnessOptions {
-  researchSessions?: Adapters["researchSessions"];
   /** Serve the WebSocket protocol too. Off by default: most tests drive the loop directly. */
   serveProtocol?: boolean;
   /** Extra files committed into the repository before the branch exists. */
@@ -237,7 +236,6 @@ async function open(
     },
   };
   const adapters: Adapters = {
-    researchSessions: options.researchSessions,
     git: git2,
     github: {
       listPullRequests: github.listPullRequests,
@@ -290,6 +288,12 @@ async function open(
   const ensurePane = paneHost.ensurePane.bind(paneHost);
   paneHost.ensurePane = async (request) => {
     const ref = await ensurePane(request);
+    const recipe = coordinator.recipes.get(request.runId);
+    if (recipe?.research && recipe.provider === "claude" && recipe.sessionId) {
+      providers.create("claude", request.cwd, recipe.sessionId, "interactive");
+      if (request.args.includes("--"))
+        providers.enqueue(recipe.sessionId, recipe.prompt);
+    }
     if (request.runId === "lead" || request.runId.startsWith("lead-"))
       return ref;
     for (const task of store.tasks())
@@ -308,6 +312,13 @@ async function open(
   const paste = paneHost.pasteText.bind(paneHost);
   paneHost.pasteText = async (ref, text) => {
     const written = await paste(ref, text);
+    for (const entry of store.research.list({ archived: "all" }))
+      if (
+        entry.pane?.paneId === ref.paneId &&
+        entry.pane?.hostGeneration === ref.hostGeneration &&
+        entry.sessionId
+      )
+        providers.enqueue(entry.sessionId as ProviderSessionId, text);
     for (const task of store.tasks())
       for (const run of store.loadTaskState(task.id).runs)
         if (run.pane?.paneId === ref.paneId && run.sessionId)

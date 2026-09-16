@@ -20,6 +20,8 @@ export function ResearchView() {
   const [state, setState] = useState<ResearchState | null>(null);
   const [entry, setEntry] = useState<ResearchEntry | null>(null);
   const [question, setQuestion] = useState("");
+  const [directory, setDirectory] = useState("");
+  const [followUp, setFollowUp] = useState("");
   const [archived, setArchived] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -146,9 +148,17 @@ export function ResearchView() {
               kind: "start_research",
               id: crypto.randomUUID(),
               question,
+              directory,
             });
         }}
       >
+        <input
+          aria-label="Research directory"
+          placeholder="Absolute directory to read"
+          value={directory}
+          onChange={(event) => setDirectory(event.target.value)}
+          required
+        />
         <textarea
           aria-label="Research question"
           placeholder="What would you like to research?"
@@ -159,7 +169,11 @@ export function ResearchView() {
         <button
           type="submit"
           disabled={
-            !connected || busy || !!state?.runningId || !question.trim()
+            !connected ||
+            busy ||
+            !!state?.runningId ||
+            !question.trim() ||
+            !directory.trim()
           }
         >
           {state?.runningId ? "Researching…" : "Research"}
@@ -253,10 +267,60 @@ export function ResearchView() {
                       : `${current.provider} · ${current.model} · ${current.status}`}
                   </p>
                   <p>{current.question}</p>
+                  {current.origin === "agent" ? (
+                    <>
+                      <p>
+                        Scope: {current.directory} · Agent:{" "}
+                        {current.observedStatus}
+                      </p>
+                      {current.pane ? (
+                        <p>Research terminal is available in Workbench.</p>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void act({ kind: "resume_research", id: current.id })
+                        }
+                      >
+                        Resume terminal
+                      </button>
+                      <form
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          if (followUp.trim()) {
+                            void act({
+                              kind: "extend_research",
+                              id: current.id,
+                              message: followUp,
+                            });
+                            setFollowUp("");
+                          }
+                        }}
+                      >
+                        <textarea
+                          aria-label="Research follow-up"
+                          value={followUp}
+                          onChange={(event) => setFollowUp(event.target.value)}
+                          maxLength={16384}
+                        />
+                        <button
+                          type="submit"
+                          disabled={
+                            busy ||
+                            current.observedStatus !== "idle" ||
+                            !followUp.trim()
+                          }
+                        >
+                          Follow up
+                        </button>
+                      </form>
+                    </>
+                  ) : null}
                   {current.status === "running" ? (
                     <p role="status">
-                      Researching live sources. You can leave this page; the
-                      document is saved when it finishes.
+                      The agent is reading your directory and researching the
+                      web. The document is saved when the agent submits it.
                     </p>
                   ) : null}
                   {current.error ? (

@@ -124,7 +124,6 @@ export const settingDefinition = z.strictObject({
     "Repositories",
     "Access & safety",
     "Main",
-    "Research",
     "Terminals & keybindings",
     "GitHub",
     "Appearance",

@@ -109,6 +109,7 @@ export class PaneInventory {
     private metadata: () => {
       states: TaskState[];
       repos?: import("@loom/core").Repo[];
+      research?: import("@loom/protocol").ResearchEntry[];
       now: string;
       leadPane?: string | null;
       leadWaiting?: boolean;
@@ -154,6 +155,26 @@ export class PaneInventory {
           m.leadPanes,
           m.repos ?? [],
         );
+        for (const row of rows) {
+          const research = m.research?.find(
+            (entry) => entry.pane && paneKey(entry.pane) === row.id,
+          );
+          if (!research) continue;
+          row.provider = research.provider;
+          row.status =
+            research.observedStatus === "waiting"
+              ? "blocked"
+              : research.status === "failed"
+                ? "failed"
+                : research.status === "completed" &&
+                    research.observedStatus === "idle"
+                  ? "ended"
+                  : research.observedStatus;
+          row.attention =
+            research.observedStatus === "waiting" ||
+            research.status === "failed";
+          row.paneTitle = research.document?.title ?? "Research";
+        }
         // Share each cwd read (including failures) for this refresh only. The next
         // poll or hint must observe branch switches and recover unreadable paths.
         const branches = new Map<string, Promise<string | null>>();

@@ -18,6 +18,9 @@ afterEach(async () => {
 const saved: ResearchEntry = {
   id: "00000000-0000-4000-8000-000000000001",
   question: "How do keybindings work?",
+  directory: null,
+  pane: null,
+  observedStatus: "unknown",
   origin: "main",
   status: "completed",
   sessionId: null,
@@ -129,7 +132,9 @@ test("running and interrupted entries stay readable", async () => {
   };
   const { host, store } = await mount([entry]);
   await act(async () => store.openResearch(entry.id));
-  expect(host.textContent).toContain("Researching live sources");
+  expect(host.textContent).toContain(
+    "reading your directory and researching the web",
+  );
   expect(
     (host.querySelector('button[type="submit"]') as HTMLButtonElement).disabled,
   ).toBe(true);

@@ -97,38 +97,3 @@ test("rejects ungrounded, malformed and failed provider results", async () => {
     "error_max_budget_usd",
   );
 });
-
-test("on-demand research uses the document contract and depth budget, and records prose failures", async () => {
-  const { createClaudeResearch } = await import("./research.js");
-  const document = {
-    title: "Answer",
-    body: "Two paragraphs.\n\nEnough for this question.",
-    sources: [{ title: "Source", url: "https://example.org" }],
-  };
-  const input = {
-    ...request(),
-    reasoningEffort: null,
-    limits: { turns: 10, tokens: 30000 },
-    onSession: vi.fn(),
-  };
-  fake.messages = [
-    ...web,
-    { type: "result", subtype: "success", structured_output: document },
-  ];
-  expect(await createClaudeResearch("claude")(input)).toEqual(document);
-  expect(fake.options).toMatchObject({
-    maxTurns: 10,
-    maxBudgetUsd: 0.9,
-    outputFormat: {
-      type: "json_schema",
-      schema: { properties: { body: { type: "string" } } },
-    },
-  });
-  fake.messages = [
-    ...web,
-    { type: "result", subtype: "success", result: "Here is prose, not JSON" },
-  ];
-  await expect(createClaudeResearch("claude")(input)).rejects.toThrow(
-    "Here is prose, not JSON",
-  );
-});

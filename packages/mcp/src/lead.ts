@@ -54,6 +54,8 @@ export const messageAgentResultSchema = z.strictObject({
 });
 const researchCommands = [
   "start_research",
+  "extend_research",
+  "resume_research",
   "save_research",
   "list_research",
   "read_research",

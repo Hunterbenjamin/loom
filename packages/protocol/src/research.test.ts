@@ -37,6 +37,9 @@ test("entry round trips provenance and archive time", () => {
   const entry = {
     id: "00000000-0000-4000-8000-000000000001",
     question: "Question",
+    directory: null,
+    pane: null,
+    observedStatus: "unknown",
     origin: "main",
     status: "completed",
     sessionId: null,

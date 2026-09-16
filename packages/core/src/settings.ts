@@ -119,7 +119,6 @@ export interface SettingDefinition {
     | "Workflow & approvals"
     | "Repositories"
     | "Access & safety"
-    | "Research"
     | "Main"
     | "Terminals & keybindings"
     | "GitHub"
@@ -240,7 +239,7 @@ const GLOBAL = ["global"] as const;
 export const SETTINGS_CATALOG: SettingDefinition[] = [
   ...["provider", "model", "reasoningEffort", "depth"].map((key) => ({
     key: `research.${key}`,
-    section: "Research" as const,
+    section: "Agents & models" as const,
     label: `Research ${key}`,
     timing: "next-run" as const,
     scopes: [...GLOBAL],
@@ -483,7 +482,7 @@ export function validateSettings(values: SettingsValues): string[] {
   const errors: string[] = [];
   for (const [name, profile] of Object.entries({
     ...values.roles,
-    research: { ...values.research, runMode: "headless", access: "full" },
+    research: values.research,
   })) {
     const models: readonly string[] =
       MODEL_CATALOG.providers[profile.provider].models;
@@ -495,7 +494,11 @@ export function validateSettings(values: SettingsValues): string[] {
       errors.push(`${name}: Claude does not accept a reasoning effort`);
     if (profile.provider === "codex" && profile.reasoningEffort === null)
       errors.push(`${name}: Codex requires a reasoning effort`);
-    if (profile.access === "approval-gated" && profile.runMode === "headless")
+    if (
+      "access" in profile &&
+      profile.access === "approval-gated" &&
+      profile.runMode === "headless"
+    )
       errors.push(`${name}: approval-gated access requires interactive mode`);
   }
   if (values.runtime.retryBaseMs > values.runtime.retryCapMs)
