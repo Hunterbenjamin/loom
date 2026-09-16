@@ -240,4 +240,5 @@ export async function createClaudeAdapter(
   };
 }
 
+export * from "./brief-research.js";
 export * from "./research.js";

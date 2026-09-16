@@ -156,3 +156,26 @@ it("the catalog and effective settings expose only Main, ignoring retired fields
     ),
   ).toEqual(["main.model"]);
 });
+
+it("Research defaults to Codex and validates its independent model and reasoning profile", () => {
+  expect(DEFAULT_SETTINGS.research.provider).toBe("codex");
+  const settings = mergeSettings(DEFAULT_SETTINGS, {
+    research: { depth: "deep", reasoningEffort: "high" },
+  });
+  expect(settings.research).toMatchObject({
+    depth: "deep",
+    reasoningEffort: "high",
+  });
+  expect(settings.roles).toEqual(DEFAULT_SETTINGS.roles);
+  expect(validateSettings(settings)).toEqual([]);
+  expect(
+    validateSettings(
+      mergeSettings(settings, { research: { provider: "claude" } }),
+    ),
+  ).toEqual(
+    expect.arrayContaining([
+      expect.stringContaining("Unknown claude model for research"),
+      expect.stringContaining("Claude does not accept"),
+    ]),
+  );
+});

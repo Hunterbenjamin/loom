@@ -17,7 +17,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   },
 }));
 
-import { createBriefResearch } from "./research.js";
+import { createBriefResearch } from "./brief-research.js";
 
 const request = () => ({
   sessionId: "00000000-0000-4000-8000-000000000001",
@@ -95,5 +95,40 @@ test("rejects ungrounded, malformed and failed provider results", async () => {
   fake.messages = [...web, { type: "result", subtype: "error_max_budget_usd" }];
   await expect(createBriefResearch("claude")(request())).rejects.toThrow(
     "error_max_budget_usd",
+  );
+});
+
+test("on-demand research uses the document contract and depth budget, and records prose failures", async () => {
+  const { createClaudeResearch } = await import("./research.js");
+  const document = {
+    title: "Answer",
+    body: "Two paragraphs.\n\nEnough for this question.",
+    sources: [{ title: "Source", url: "https://example.org" }],
+  };
+  const input = {
+    ...request(),
+    reasoningEffort: null,
+    limits: { turns: 10, tokens: 30000 },
+    onSession: vi.fn(),
+  };
+  fake.messages = [
+    ...web,
+    { type: "result", subtype: "success", structured_output: document },
+  ];
+  expect(await createClaudeResearch("claude")(input)).toEqual(document);
+  expect(fake.options).toMatchObject({
+    maxTurns: 10,
+    maxBudgetUsd: 0.9,
+    outputFormat: {
+      type: "json_schema",
+      schema: { properties: { body: { type: "string" } } },
+    },
+  });
+  fake.messages = [
+    ...web,
+    { type: "result", subtype: "success", result: "Here is prose, not JSON" },
+  ];
+  await expect(createClaudeResearch("claude")(input)).rejects.toThrow(
+    "Here is prose, not JSON",
   );
 });

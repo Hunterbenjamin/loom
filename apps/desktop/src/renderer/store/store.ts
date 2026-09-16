@@ -166,8 +166,10 @@ export function createStore(
         openTask: null,
         openPr: null,
         openBrief: null,
+        openResearch: null,
       });
     },
+    openResearch: (openResearch: string | null) => setUi({ openResearch }),
     openBrief: (openBrief: string | null) => setUi({ openBrief }),
     setPane: (pane: Pane) => setUi({ pane, cursor: null }),
     toggleListSection(stage: Stage) {

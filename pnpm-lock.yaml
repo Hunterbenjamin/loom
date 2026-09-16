@@ -176,6 +176,9 @@ importers:
       '@loom/core':
         specifier: workspace:*
         version: link:../../core
+      '@loom/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
       ws:
         specifier: ^8.18.3
         version: 8.21.3
@@ -234,6 +237,9 @@ importers:
       '@loom/mcp':
         specifier: workspace:*
         version: link:../mcp
+      '@loom/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@4.6.2)

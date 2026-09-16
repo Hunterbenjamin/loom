@@ -46,6 +46,9 @@ const mergeStored = (
   ...(patch.repository
     ? { repository: { ...current.repository, ...patch.repository } }
     : {}),
+  ...(patch.research
+    ? { research: { ...current.research, ...patch.research } }
+    : {}),
   ...(patch.main ? { main: { ...current.main, ...patch.main } } : {}),
   ...(patch.runtime
     ? { runtime: { ...current.runtime, ...patch.runtime } }

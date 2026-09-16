@@ -41,6 +41,7 @@ test("section chords, view toggle and help", () => {
     ["n", "needs-you"],
     ["r", "pull-requests"],
     ["d", "briefs"],
+    ["e", "research"],
     ["s", "settings"],
     ["i", "all"],
   ]) {
@@ -207,7 +208,12 @@ test("stage and palette issue commands use visible selection and ignore non-issu
   const { store } = setup();
   store.setCursor(0);
   expect(paletteIssueTarget(store.getState())).not.toBeNull();
-  for (const view of ["briefs", "settings", "pull-requests"] as const) {
+  for (const view of [
+    "briefs",
+    "research",
+    "settings",
+    "pull-requests",
+  ] as const) {
     store.setView(view);
     store.setCursor(0);
     expect(paletteIssueTarget(store.getState())).toBeNull();

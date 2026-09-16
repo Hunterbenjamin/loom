@@ -37,6 +37,7 @@ export const trackerKeymap = [
       ["needs-you", "n", "Inbox"],
       ["pull-requests", "r", "Review"],
       ["briefs", "d", "Daily brief"],
+      ["research", "e", "Research"],
       ["settings", "s", "Settings"],
     ] as const
   ).map(([view, key, label]) => ({

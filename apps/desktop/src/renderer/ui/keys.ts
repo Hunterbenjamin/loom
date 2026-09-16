@@ -46,6 +46,7 @@ export function runTrackerCommand(
     if (ui.palette) return store.setPalette(false);
     if (ui.stagePicker) return store.setStagePicker(false);
     if (ui.openPr) return store.openPullRequest(null);
+    if (ui.openResearch) return store.openResearch(null);
     if (ui.openBrief) return store.openBrief(null);
     return store.open(null);
   }
@@ -90,7 +91,9 @@ export function runTrackerCommand(
     ui.openTask ||
     ui.openPr ||
     ui.openBrief ||
+    ui.openResearch ||
     ui.view === "settings" ||
+    ui.view === "research" ||
     ui.view === "briefs"
   )
     return;
@@ -212,10 +215,15 @@ export function createShortcutHandler(
       event.preventDefault();
       return;
     }
-    const detail = !!(ui.openTask || ui.openPr || ui.openBrief);
+    const detail = !!(
+      ui.openTask ||
+      ui.openPr ||
+      ui.openBrief ||
+      ui.openResearch
+    );
     const issue = detail
       ? !!selectedDetailTask(store.getState())
-      : !["pull-requests", "briefs", "settings"].includes(ui.view);
+      : !["pull-requests", "briefs", "research", "settings"].includes(ui.view);
     const candidates = trackerKeymap.filter((entry) =>
       (entry.keys as readonly string[]).includes(sequence),
     );

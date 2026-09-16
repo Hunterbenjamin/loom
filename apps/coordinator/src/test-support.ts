@@ -53,6 +53,7 @@ const GIT_ENVIRONMENT = {
 };
 
 interface HarnessOptions {
+  researchSessions?: Adapters["researchSessions"];
   /** Serve the WebSocket protocol too. Off by default: most tests drive the loop directly. */
   serveProtocol?: boolean;
   /** Extra files committed into the repository before the branch exists. */
@@ -236,6 +237,7 @@ async function open(
     },
   };
   const adapters: Adapters = {
+    researchSessions: options.researchSessions,
     git: git2,
     github: {
       listPullRequests: github.listPullRequests,

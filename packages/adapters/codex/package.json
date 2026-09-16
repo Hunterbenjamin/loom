@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@loom/core": "workspace:*",
+    "@loom/protocol": "workspace:*",
     "ws": "^8.18.3",
     "zod": "^4.1.5"
   },

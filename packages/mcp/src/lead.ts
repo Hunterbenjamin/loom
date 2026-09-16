@@ -52,7 +52,21 @@ export const messageAgentResultSchema = z.strictObject({
   delivered: z.enum(["queued", "refused"]),
   reason: z.string().optional(),
 });
+const researchCommands = [
+  "start_research",
+  "save_research",
+  "list_research",
+  "read_research",
+];
 export const leadInputSchemas = {
+  ...Object.fromEntries(
+    command.options
+      .filter((option) => researchCommands.includes(option.shape.kind.value))
+      .map((option) => [
+        option.shape.kind.value,
+        (option as z.ZodObject).omit({ kind: true }),
+      ]),
+  ),
   message_agent: messageAgentSchema,
   set_note: z.strictObject({ note: mainNoteSchema }),
   list_tasks: z.strictObject({}),
@@ -71,6 +85,8 @@ export function leadCommand(
   name: string,
   input: Record<string, unknown>,
 ): Command {
+  if (researchCommands.includes(name))
+    return command.parse({ kind: name, ...input });
   if (name === "create_task") return command.parse({ kind: name, ...input });
   const type = humanTypes[name as keyof typeof humanTypes];
   if (!type) throw new Error("Not a Main command");
