@@ -2,6 +2,7 @@ import type { AttentionReason, RunId, Stage, TaskId } from "@loom/core";
 import type { ConversationTarget, PullRequestRow } from "@loom/protocol";
 import { repoId as parseRepoId } from "@loom/protocol";
 import type { Snapshot } from "../store/snapshot.js";
+import type { CreatableId } from "../ui/creatables.js";
 import type { ReviewSection } from "./pull-requests.js";
 import type { State } from "./store.js";
 
@@ -61,7 +62,8 @@ export interface UiState {
   palette: boolean;
   chimeMuted: boolean;
   stagePicker: boolean;
-  createIssue: boolean;
+  create: CreatableId | null;
+  createPalette: boolean;
   /** Explicit selection should scroll even when it also reveals a collapsed section. */
   selectionVersion: number;
   toast: string | null;
@@ -93,7 +95,8 @@ export const initialUi: UiState = {
   palette: false,
   chimeMuted: false,
   stagePicker: false,
-  createIssue: false,
+  create: null,
+  createPalette: false,
   selectionVersion: 0,
   toast: null,
   openRun: null,

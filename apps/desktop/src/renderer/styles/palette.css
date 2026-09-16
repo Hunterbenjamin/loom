@@ -77,3 +77,16 @@
   flex: 1;
   min-height: 0;
 }
+
+.palette [cmdk-item].creatable {
+  height: auto;
+  min-height: 54px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px;
+}
+.palette .creatable .faint {
+  font-size: 12px;
+}

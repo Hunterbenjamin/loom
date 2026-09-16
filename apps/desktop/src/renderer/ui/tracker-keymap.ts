@@ -27,7 +27,7 @@ export const trackerKeymap = [
   {
     id: "create",
     keys: ["c"],
-    label: "Create issue",
+    label: "Create…",
     group: "Everywhere",
     scope: "global",
   },

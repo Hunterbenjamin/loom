@@ -340,7 +340,7 @@ function ConfirmAction({
   return (
     <dialog
       ref={dialog}
-      className="create-issue-dialog pr-confirm"
+      className="create-dialog pr-confirm"
       aria-labelledby="pr-confirm-title"
       onCancel={(event) => {
         event.preventDefault();
