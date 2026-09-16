@@ -9,7 +9,6 @@ import {
 import { NewTerminalDialog } from "./new-terminal.js";
 import { WorkbenchPalette } from "./palette.js";
 import { attentionPanes, sameTerminal, spaceKey } from "./selectors.js";
-import { ShortcutsHelp } from "./shortcuts-help.js";
 import { Sidebar } from "./sidebar.js";
 import { TabGrid } from "./tab-grid.js";
 import { createdTerminal, identity } from "./tabs.js";
@@ -46,7 +45,6 @@ export function Workbench() {
   const repo = useStore((state) => state.ui.repo);
   const [filter, setFilter] = useState("");
   const [palette, setPalette] = useState(false);
-  const [help, setHelp] = useState(false);
   const [error, setError] = useState("");
   const { bindings, prefixArmed } = useWindowKeybindings();
   const [pendingTab, setPendingTab] = useState<PendingTab | null>(null);
@@ -152,7 +150,6 @@ export function Workbench() {
     bindings,
     store,
     setPalette,
-    setHelp,
     setZoom,
     setPendingTab,
     selectTab,
@@ -276,9 +273,6 @@ export function Workbench() {
           scratch={newTab}
           bindings={bindings}
         />
-      )}
-      {help && (
-        <ShortcutsHelp bindings={bindings} close={() => setHelp(false)} />
       )}
     </div>
   );

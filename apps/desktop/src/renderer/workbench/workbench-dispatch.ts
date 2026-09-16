@@ -22,7 +22,6 @@ type DispatchOptions = {
   bindings: KeybindingsState;
   store: Store;
   setPalette: Dispatch<SetStateAction<boolean>>;
-  setHelp: Dispatch<SetStateAction<boolean>>;
   setZoom: Dispatch<SetStateAction<string | null>>;
   setPendingTab: Dispatch<SetStateAction<PendingTab | null>>;
   selectTab: (tab: Tab) => void;
@@ -45,7 +44,6 @@ export const workbenchDispatch = (options: DispatchOptions) =>
       bindings,
       store,
       setPalette,
-      setHelp,
       setZoom,
       setPendingTab,
       selectTab,
@@ -116,7 +114,6 @@ export const workbenchDispatch = (options: DispatchOptions) =>
     if (action === "new") return newTab();
     if (action === "new-space") return newSpace();
     if (action === "jump") return setPalette(true);
-    if (action === "help") return setHelp(true);
     if (action === "close") return killPanel(focused);
     if (action === "close-space") return closeSpace();
     if (action === "zoom") return setZoom((value) => (value ? null : focused));

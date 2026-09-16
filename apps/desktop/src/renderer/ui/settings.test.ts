@@ -1,5 +1,10 @@
 // @vitest-environment happy-dom
-import { DEFAULT_SETTINGS, MODEL_CATALOG, SETTINGS_CATALOG } from "@loom/core";
+import {
+  DEFAULT_SETTINGS,
+  KEYBINDING_ACTIONS,
+  MODEL_CATALOG,
+  SETTINGS_CATALOG,
+} from "@loom/core";
 import { type AckOutcome, stateFromSnapshot } from "@loom/protocol";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -260,4 +265,14 @@ test("Research settings switch provider, model and reasoning together and save d
   expect(send).toHaveBeenCalledWith(
     expect.objectContaining({ patch: { research: { depth: "deep" } } }),
   );
+});
+
+test("Keyboard settings exposes every action in its source group, including terminal reading", async () => {
+  const { section, group, button } = await mount();
+  await section("Keyboard");
+  for (const action of KEYBINDING_ACTIONS) {
+    expect(
+      button(`Add shortcut for ${action.label}`, group(action.group)),
+    ).toBeDefined();
+  }
 });

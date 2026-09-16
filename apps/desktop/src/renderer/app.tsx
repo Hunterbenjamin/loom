@@ -1,11 +1,4 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef } from "react";
 import { attentionCount, inboxRows } from "./store/inbox.js";
 import { selectedPullRequests } from "./store/pull-requests.js";
 import { useStore, useStoreApi } from "./store/react.js";
@@ -24,8 +17,9 @@ import { PullRequestsView } from "./ui/pull-requests.js";
 import { ResearchView } from "./ui/research.js";
 import { SettingsView } from "./ui/settings.js";
 import { OpenRepository, Sidebar } from "./ui/sidebar.js";
-import { TrackerHelp, WhichKey } from "./ui/tracker-help.js";
 import { keyHint } from "./ui/tracker-keymap.js";
+import { WhichKey } from "./ui/which-key.js";
+import { useWindowKeybindings } from "./window-keybindings.js";
 
 const PullRequestDetail = lazy(() =>
   import("./ui/pull-request-detail.js").then((m) => ({
@@ -42,8 +36,7 @@ export function App() {
       content.current;
     target?.focus({ preventScroll: true });
   }, []);
-  const [help, setHelp] = useState(false);
-  const showHelp = useCallback(() => setHelp(true), []);
+  const { showHelp } = useWindowKeybindings();
   const pendingKey = useShortcuts(store, showHelp);
   useEffect(() => {
     store.setTrackerVisible(true);
@@ -123,7 +116,6 @@ export function App() {
 
   return (
     <div className="shell">
-      {help ? <TrackerHelp onClose={() => setHelp(false)} /> : null}
       {pendingKey ? <WhichKey /> : null}
       <Sidebar />
       <div className="main" ref={content} tabIndex={-1}>

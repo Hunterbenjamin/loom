@@ -32,8 +32,11 @@ Enter opens the resolving issue detail. Multiple runs for a reason can be select
 panel. A command acknowledgement follows the [core command contract](core.md#instant-human-commands);
 commands are not replayed after a disconnect.
 
-`?` opens the [Tracker shortcut map](../../apps/desktop/src/renderer/ui/tracker-help.tsx), which owns
-the key list. Shortcuts follow the active list, board or detail and pause in inputs and terminals.
+`?` in Tracker and `Prefix ?` in either window open the same [Keyboard map](../../apps/desktop/src/renderer/ui/keyboard-sheet.tsx).
+It always starts on Everywhere, with shared reading keys and entry points; Tracker and Workbench
+tabs show surface-specific keys from their original maps. Arrow keys or h/l change tabs, reading
+keys scroll, and Escape or Close restores focus. Tracker keys are fixed; configured bindings,
+their path, prefix timeout and errors are shown alongside the editable Workbench map. Shortcuts follow the active list, board or detail and pause in inputs and terminals.
 F6 returns focus from terminal input to detail controls.
 
 ## Combined issue and PR detail

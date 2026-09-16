@@ -11,6 +11,7 @@ import {
 } from "../../shared/keybindings.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
+import { WindowKeyboardSheet } from "../ui/keyboard-sheet.js";
 import { WindowKeybindings } from "../window-keybindings.js";
 import { Workbench } from "./workbench.js";
 
@@ -122,6 +123,7 @@ async function harness(panes = [pane]) {
           WindowKeybindings,
           null,
           createElement(Workbench),
+          createElement(WindowKeyboardSheet),
         ),
       }),
     ),
@@ -197,14 +199,16 @@ test("prefix survives Shift on every focus surface; literal, plain typing and ki
         "Ctrl+Space armed",
       );
       await h.press(surface, "?", { shiftKey: true });
-      expect(h.element.querySelector(".wb-help")?.textContent).toContain(
+      expect(h.element.querySelector(".keyboard-sheet")?.textContent).toContain(
         "Cmd+D / Ctrl+Space then |",
       );
       expect(h.element.querySelector(".bottom-bar")?.textContent).not.toContain(
         "armed",
       );
       await act(async () =>
-        h.element.querySelector<HTMLButtonElement>(".wb-help button")?.click(),
+        h.element
+          .querySelector<HTMLButtonElement>(".keyboard-sheet-close")
+          ?.click(),
       );
     }
     h.terminal.focus();
@@ -252,7 +256,7 @@ test("live reload changes help and matching together, disarms the old prefix, an
     const old = await h.press(h.terminal, "t", { metaKey: true });
     expect(old.defaultPrevented).toBe(false);
     await h.press(h.terminal, "H", { ctrlKey: true, shiftKey: true });
-    const help = h.element.querySelector(".wb-help");
+    const help = h.element.querySelector(".keyboard-sheet");
     expect(help?.textContent).toContain("Ctrl+Shift+H");
     expect(help?.textContent).toContain("Cmd+U");
     expect(help?.textContent).toContain("4.2 seconds");
@@ -297,10 +301,10 @@ test("Prefix [ enters the focused terminal's scroll mode and can be rebound", as
     );
     await h.press(h.terminal, " ", { ctrlKey: true });
     await h.press(h.terminal, "?", { shiftKey: true });
-    expect(h.element.querySelector(".wb-help")?.textContent).toContain(
+    expect(h.element.querySelector(".keyboard-sheet")?.textContent).toContain(
       "Ctrl+Shift+S",
     );
-    expect(h.element.querySelector(".wb-help")?.textContent).toContain(
+    expect(h.element.querySelector(".keyboard-sheet")?.textContent).toContain(
       "Scroll terminal history",
     );
   } finally {

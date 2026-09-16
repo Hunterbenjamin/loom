@@ -22,6 +22,7 @@ import { emptySnapshot } from "./live/snapshot.js";
 import { pullRequestSubscriptions } from "./store/pull-requests.js";
 import { StoreProvider, useStore } from "./store/react.js";
 import { createStore } from "./store/store.js";
+import { WindowKeyboardSheet } from "./ui/keyboard-sheet.js";
 import { TerminalHistoryContext } from "./ui/terminal.js";
 import { WindowKeybindings } from "./window-keybindings.js";
 import { WindowModeContext } from "./window-mode.js";
@@ -128,6 +129,7 @@ function Boot() {
         <TerminalSettings>
           <WindowModeContext value={mode}>
             <PaneChime />
+            <WindowKeyboardSheet />
             <Suspense fallback={<div>Opening {mode}…</div>}>
               {visited.has("tracker") && (
                 <Activity mode={mode === "tracker" ? "visible" : "hidden"}>
