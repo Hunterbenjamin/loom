@@ -72,7 +72,7 @@ describe("createClaudeAdapter", () => {
 
   test("research has only web tools and scoped Loom tools, with isolated settings", async () => {
     const settingsPath = join(dir, "research.json");
-    await adapter.writeSettings(settingsPath, undefined, undefined, dir);
+    await adapter.writeSettings(settingsPath, undefined, undefined, true);
     const args = adapter.interactiveArgs({
       sessionId: SESSION,
       resume: false,

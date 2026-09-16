@@ -53,7 +53,8 @@ export interface SettingsRequest {
   mcpServer: McpServerEntry;
   /** Bash command prefixes that should be automatically allowed (e.g., 'pnpm test', 'git commit'). */
   bashCommandPrefixes?: string[];
-  researchDirectory?: string;
+  /** Whether this run may use the web tools. Research and planners research; the rest do not. */
+  webSearch?: boolean;
 }
 
 const hookUrl = (base: string, event: string): string => {
@@ -117,7 +118,7 @@ export function buildSettings(request: SettingsRequest): ClaudeSettingsFile {
     }
   }
 
-  if (request.researchDirectory) allow.push("WebSearch", "WebFetch");
+  if (request.webSearch) allow.push("WebSearch", "WebFetch");
 
   return {
     permissions: { allow },

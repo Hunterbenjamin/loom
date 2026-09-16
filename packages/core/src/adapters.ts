@@ -524,7 +524,7 @@ export interface ClaudeAdapter {
     mcpServer?: McpServerEntry,
     /** Bash command prefixes to pre-allow without prompts (e.g., 'pnpm test', 'git commit'). */
     bashCommandPrefixes?: string[],
-    researchDirectory?: string,
+    webSearch?: boolean,
   ): Promise<void>;
   /**
    * Pane command for an interactive run: `--session-id` (or `--resume`), the per-run

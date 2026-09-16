@@ -2,7 +2,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadScenarios } from "@loom/fake-agent";
 import { expect, test, vi } from "vitest";
-import { writeCodexHomeConfig } from "./launch.js";
+import {
+  agentThreadConfig,
+  WEB_SEARCH_ROLES,
+  writeCodexHomeConfig,
+} from "./launch.js";
 import { createHarness, ScenarioDriver } from "./test-support.js";
 
 const updateRole = (
@@ -280,3 +284,24 @@ test("replacement waits through failed retirement and restart, then uses its cap
     await h.close();
   }
 }, 30_000);
+
+test("planners may search the web; implementers and reviewers may not", () => {
+  const recipe = (role: string) =>
+    agentThreadConfig(
+      { role, reasoningEffort: null } as never,
+      { command: "loom", args: [], env: {} } as never,
+    );
+  expect(recipe("planner").web_search).toBe("live");
+  expect(recipe("research").web_search).toBe("live");
+  expect(recipe("implementer").web_search).toBeUndefined();
+  expect(recipe("reviewer").web_search).toBeUndefined();
+  // A planner keeps the sandbox a task run needs; only research is fenced to web-only.
+  expect(recipe("planner").sandbox_mode).toBeUndefined();
+  expect(recipe("research").sandbox_mode).toBe("read-only");
+});
+
+test("web access follows the role, so a settings rewrite cannot strip it", () => {
+  expect(WEB_SEARCH_ROLES.includes("planner")).toBe(true);
+  expect(WEB_SEARCH_ROLES.includes("research")).toBe(true);
+  expect(WEB_SEARCH_ROLES.includes("implementer")).toBe(false);
+});

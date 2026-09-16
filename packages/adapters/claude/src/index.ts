@@ -136,13 +136,13 @@ export async function createClaudeAdapter(
       settingsPath: string,
       mcpServer?: McpServerEntry,
       bashCommandPrefixes?: string[],
-      researchDirectory?: string,
+      webSearch?: boolean,
     ): Promise<void> => {
       await writeSettingsFiles(settingsPath, {
         ...settingsRequest,
         mcpServer: mcpServer ?? config.mcpServer,
         bashCommandPrefixes,
-        researchDirectory,
+        webSearch,
       });
     },
 
