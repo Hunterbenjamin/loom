@@ -4,7 +4,7 @@ import type { Snapshot } from "../fixtures/index.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { createFixtureStore as createStore } from "../fixtures/store.js";
 import {
-  cursorRows,
+  cursorItems,
   groupRows,
   rowsFor,
   sortRows,
@@ -324,11 +324,11 @@ describe("list section paging", () => {
     expect(groupRows(rows)).toEqual([
       { kind: "header", stage: "canceled", count: 3, collapsed: true },
     ]);
-    expect(cursorRows(canceled.getState())).toEqual([]);
+    expect(cursorItems(canceled.getState())).toEqual(groupRows(rows));
     canceled.toggleListSection("canceled");
-    expect(cursorRows(canceled.getState())).toHaveLength(3);
+    expect(cursorItems(canceled.getState())).toHaveLength(4);
     const done = setup("done", 3);
-    expect(cursorRows(done.getState())).toHaveLength(3);
+    expect(cursorItems(done.getState())).toHaveLength(4);
   });
 
   test.each(["done", "canceled"] as const)(
@@ -364,14 +364,14 @@ describe("list section paging", () => {
       }
       expect(rows).toEqual(before);
       store.loadMoreListSection(stage);
-      expect(cursorRows(store.getState())).toHaveLength(20);
+      expect(cursorItems(store.getState())).toHaveLength(22);
       expect(groupRows(rows, store.getState().ui.listSections).at(-1)).toEqual({
         kind: "load-more",
         stage,
         count: 6,
       });
       store.loadMoreListSection(stage);
-      expect(cursorRows(store.getState())).toHaveLength(26);
+      expect(cursorItems(store.getState())).toHaveLength(27);
       expect(
         groupRows(rows, store.getState().ui.listSections).filter(
           (item) => item.kind === "load-more",
@@ -398,13 +398,17 @@ describe("list section paging", () => {
   test("leaves active sections unlimited and in the selected sort order", () => {
     const store = setup("in_progress", 46);
     store.setSort("title");
-    expect(cursorRows(store.getState()).map((row) => row.task.id)).toEqual(
-      Array.from({ length: 46 }, (_, i) => `task-${i}`),
-    );
+    expect(
+      cursorItems(store.getState()).flatMap((item) =>
+        item.kind === "row" ? [item.row.task.id] : [],
+      ),
+    ).toEqual(Array.from({ length: 46 }, (_, i) => `task-${i}`));
     store.toggleListSection("in_progress");
-    expect(cursorRows(store.getState())).toEqual([]);
+    expect(cursorItems(store.getState())).toEqual([
+      { kind: "header", stage: "in_progress", count: 46, collapsed: true },
+    ]);
     store.setPane("board");
-    expect(cursorRows(store.getState())).toHaveLength(46);
+    expect(cursorItems(store.getState())).toHaveLength(46);
   });
 
   test("breaks equal transition timestamps deterministically, without minute rounding", () => {

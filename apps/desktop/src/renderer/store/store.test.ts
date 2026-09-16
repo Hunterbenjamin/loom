@@ -100,7 +100,7 @@ describe("actions", () => {
 
 it("all selectors, counts, inbox and board stay within the selected project", async () => {
   const { inboxRows, attentionCount } = await import("./inbox.js");
-  const { selectedRows, cursorRows } = await import("./selectors.js");
+  const { selectedRows, cursorItems } = await import("./selectors.js");
   const api = store();
   const snapshot = api.getState().snapshot;
   api.getState().ui.repo = "";
@@ -131,8 +131,8 @@ it("all selectors, counts, inbox and board stay within the selected project", as
       for (const pane of ["list", "board"] as const) {
         api.setPane(pane);
         expect(
-          cursorRows(api.getState()).every(
-            (row) => row.task.repoId === repo.id,
+          cursorItems(api.getState()).every(
+            (item) => item.kind !== "row" || item.row.task.repoId === repo.id,
           ),
         ).toBe(true);
       }
@@ -239,4 +239,29 @@ it("starts empty and refuses simulated stage transitions", async () => {
   });
   expect(result).toMatchObject({ ok: false, error: { code: "unavailable" } });
   expect(api.getState().snapshot).toBe(before);
+});
+
+it("protocol updates retain a selected task or header by identity", async () => {
+  const { stateFromSnapshot } = await import("@loom/protocol");
+  const { toSnapshot } = await import("../fixtures/protocol.js");
+  const { cursorItems, listItemKey } = await import("./selectors.js");
+  const api = store();
+  const wire = toSnapshot(api.getState().snapshot);
+  api.applyProtocol(stateFromSnapshot(wire.meta, wire.body));
+  for (const kind of ["row", "header"] as const) {
+    const items = cursorItems(api.getState());
+    expect(cursorItems(api.getState())).toBe(items);
+    const index = items.findLastIndex((item) => item.kind === kind);
+    api.setCursor(index);
+    const selected = listItemKey(items[index]!);
+    const first = wire.body.tasks[0]!;
+    wire.body.tasks = [
+      ...wire.body.tasks,
+      { ...first, id: `extra-${kind}` as typeof first.id, stage: "backlog" },
+    ];
+    api.applyProtocol(stateFromSnapshot(wire.meta, wire.body));
+    expect(
+      listItemKey(cursorItems(api.getState())[api.getState().ui.cursor!]!),
+    ).toBe(selected);
+  }
 });

@@ -92,31 +92,7 @@
   background: var(--bg-hover);
   color: var(--text);
 }
-.list-search,
-.reviews-search {
-  display: flex;
-  align-items: center;
-}
-.list-search input,
-.reviews-search input {
-  width: 0;
-  padding: 0;
-  opacity: 0;
-  border: 0;
-}
-.list-search:focus-within input,
-.list-search[data-active="true"] input,
-.reviews-search[data-active="true"] input {
-  width: 200px;
-  padding: 5px 8px;
-  opacity: 1;
-}
-.list-search button,
-.reviews-search button {
-  display: flex;
-  padding: 5px;
-  color: var(--text-dim);
-}
+
 .list-row,
 .review-row {
   display: flex;
@@ -295,4 +271,11 @@
 .review-status.working {
   color: var(--text);
   font-size: 22px;
+}
+
+.list-group[data-cursor="true"],
+.list-load-more[data-cursor="true"] {
+  background: var(--bg-hover);
+  outline: 1px solid var(--text-dim);
+  outline-offset: -1px;
 }

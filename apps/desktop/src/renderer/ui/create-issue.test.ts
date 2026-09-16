@@ -9,7 +9,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
 import { StoreProvider } from "../store/react.js";
-import { cursorRows } from "../store/selectors.js";
+import { cursorItems, listItemKey } from "../store/selectors.js";
 import { createStore } from "../store/store.js";
 import { CreateIssue } from "./create-issue.js";
 import { useShortcuts } from "./keys.js";
@@ -231,8 +231,9 @@ test("defaults to the sidebar repo and sends the complete backlog payload with m
   body.projects = [{ id: "project", repoId: repo.id }];
   act(() => h.store.applyProtocol(stateFromSnapshot(meta, body)));
   expect(
-    cursorRows(h.store.getState()).at(h.store.getState().ui.cursor ?? -1)?.task
-      .id,
+    listItemKey(
+      cursorItems(h.store.getState()).at(h.store.getState().ui.cursor ?? -1)!,
+    ),
   ).toBe(id);
   const newTask = body.tasks.find((task) => task.id === id);
   if (!newTask) throw new Error("Missing new task");
@@ -248,8 +249,9 @@ test("defaults to the sidebar repo and sends the complete backlog payload with m
     ),
   );
   expect(
-    cursorRows(h.store.getState()).at(h.store.getState().ui.cursor ?? -1)?.task
-      .id,
+    listItemKey(
+      cursorItems(h.store.getState()).at(h.store.getState().ui.cursor ?? -1)!,
+    ),
   ).toBe(id);
 });
 

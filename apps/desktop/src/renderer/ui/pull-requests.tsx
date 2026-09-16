@@ -35,7 +35,6 @@ export function PullRequestsView() {
     ),
   );
   const scroller = useRef<HTMLDivElement>(null);
-  const search = useRef<HTMLInputElement>(null);
   const items: Item[] = [];
   let cursor = 0;
   for (const group of groups) {
@@ -78,12 +77,7 @@ export function PullRequestsView() {
 
   return (
     <>
-      <ListToolbar
-        query={ui.filterQuery}
-        onQuery={store.setFilterQuery}
-        inputRef={search}
-        label="Filter reviews"
-      >
+      <ListToolbar>
         {(
           [
             ["for-you", "For you"],
@@ -117,11 +111,9 @@ export function PullRequestsView() {
         ) : null}
         {!loading && groups.every((group) => group.count === 0) ? (
           <div className="pad faint" role="status">
-            {ui.filterQuery.trim()
-              ? "No reviews match this filter."
-              : ui.prTab === "created"
-                ? "No pull requests created by you."
-                : "No reviews for you."}
+            {ui.prTab === "created"
+              ? "No pull requests created by you."
+              : "No reviews for you."}
           </div>
         ) : null}
         <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
