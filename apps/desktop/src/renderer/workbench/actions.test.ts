@@ -91,7 +91,7 @@ test("expiry updates the indicator without another key; Escape and unknown suffi
   expect(h.handle(key("Escape"))).toBe(true);
   expect(h.handle(key("x"))).toBe(false);
   h.handle(prefix);
-  expect(h.handle(key("q"))).toBe(false);
+  expect(h.handle(key("q"))).toBe(true);
   expect(h.handle(key("x"))).toBe(false);
   expect(h.dispatch).not.toHaveBeenCalled();
   h.cancel();

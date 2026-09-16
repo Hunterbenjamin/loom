@@ -115,15 +115,27 @@ Settings owns bindings, prefix and timeout; the palette and shortcut help show e
 Defaults and the chord grammar live in [core/keybindings.ts](../../packages/core/src/keybindings.ts).
 The default prefix is Ctrl+Space, with a three-second timeout. Common suffixes are `|`/`-` to split,
 `h j k l` to focus, `c` for a new terminal, `n`/`p` for tabs, `x` to close and `z` to zoom. Repeating
-the prefix sends it literally. Escape/blur cancels; unknown suffixes pass through.
+the prefix sends it literally. Escape/blur cancels; an armed prefix consumes its next key even when no binding matches.
 
-Window capture handles shortcuts before xterm; Electron suppresses competing native accelerators
+One window-root capture listener handles shortcuts before xterm, even before Workbench is opened; Electron suppresses competing native accelerators
 for configured Workbench chords. Naming dialogs and the palette retain their own input handling.
 Cmd+J and Cmd+Shift+W are reserved. Legacy binding import is covered in [settings](../architecture.md#settings).
 
 Attach replays host history into viewer scrollback. Selection copies on mouse release; alternate
 screen programs receive wheel input themselves. The [pane-host contract](../architecture.md#pane-host-and-embedded-terminals)
 explains attach isolation, sizing and native ownership.
+
+`Prefix [` enters reading mode in the most recently focused terminal, including an issue's Terminal
+tab or task shell. The terminal bar shows SCROLL. `j`/`k`, Ctrl+D/Ctrl+U, Space/Shift+Space,
+`gg`/`G` read the viewer's history; Escape or `q` returns to typing at the bottom. Typing another
+key leaves reading mode and sends it to the program. Shift+PageUp/PageDown and Cmd+ArrowUp/ArrowDown
+page from typing without requiring the prefix. Cmd+ArrowUp also enters chat reading; Cmd+ArrowDown
+keeps chat's jump-to-latest behavior from both the composer and conversation.
+
+Entry checks the pane's flags first. An alternate-screen program has no viewer scrollback:
+reading mode refuses with a brief explanation, and its keys stay with the program. Keyboard reading
+never sends synthetic mouse reports or enters tmux copy mode. The wheel continues to scroll viewer
+history on normal-screen panes and send mouse reports to alternate-screen programs.
 
 ## Main
 

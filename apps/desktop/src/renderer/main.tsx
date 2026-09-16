@@ -23,6 +23,7 @@ import { pullRequestSubscriptions } from "./store/pull-requests.js";
 import { StoreProvider, useStore } from "./store/react.js";
 import { createStore } from "./store/store.js";
 import { TerminalHistoryContext } from "./ui/terminal.js";
+import { WindowKeybindings } from "./window-keybindings.js";
 import { WindowModeContext } from "./window-mode.js";
 import "./styles/index.css";
 import { PaneChime } from "./workbench/chime.js";
@@ -123,23 +124,25 @@ function Boot() {
 
   const app = (
     <StoreProvider store={store}>
-      <TerminalSettings>
-        <WindowModeContext value={mode}>
-          <PaneChime />
-          <Suspense fallback={<div>Opening {mode}…</div>}>
-            {visited.has("tracker") && (
-              <Activity mode={mode === "tracker" ? "visible" : "hidden"}>
-                <App />
-              </Activity>
-            )}
-            {visited.has("workbench") && (
-              <Activity mode={mode === "workbench" ? "visible" : "hidden"}>
-                <Workbench />
-              </Activity>
-            )}
-          </Suspense>
-        </WindowModeContext>
-      </TerminalSettings>
+      <WindowKeybindings>
+        <TerminalSettings>
+          <WindowModeContext value={mode}>
+            <PaneChime />
+            <Suspense fallback={<div>Opening {mode}…</div>}>
+              {visited.has("tracker") && (
+                <Activity mode={mode === "tracker" ? "visible" : "hidden"}>
+                  <App />
+                </Activity>
+              )}
+              {visited.has("workbench") && (
+                <Activity mode={mode === "workbench" ? "visible" : "hidden"}>
+                  <Workbench />
+                </Activity>
+              )}
+            </Suspense>
+          </WindowModeContext>
+        </TerminalSettings>
+      </WindowKeybindings>
     </StoreProvider>
   );
   return Pool ? <Pool>{app}</Pool> : app;
@@ -169,6 +172,7 @@ declare global {
       /** The live xterm instance, so the harness can time keystroke to glyph. */
       term: unknown;
       terms?: Record<string, unknown>;
+      focusedTerminal?: string;
       terminalControllers?: Record<
         string,
         import("./ui/terminal.js").TerminalController

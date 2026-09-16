@@ -16,6 +16,7 @@ import {
 import { defaultKeybindingsState } from "../../shared/keybindings.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
+import { WindowKeybindings } from "../window-keybindings.js";
 import { Workbench } from "./workbench.js";
 
 vi.mock("dockview", () => ({
@@ -215,7 +216,11 @@ async function harness(
       createElement(StoreProvider, {
         store,
         // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
-        children: createElement(Workbench),
+        children: createElement(
+          WindowKeybindings,
+          null,
+          createElement(Workbench),
+        ),
       }),
     );
   await act(async () => render());

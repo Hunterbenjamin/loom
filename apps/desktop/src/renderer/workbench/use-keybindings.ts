@@ -48,16 +48,14 @@ export const useKeybindings = () => {
   return { bindings, prefixArmed, setPrefixArmed };
 };
 
-/** Called separately so Workbench preserves the original cross-concern effect order. */
+/** One capture listener at the window root, ahead of xterm. */
 export const useKeybindingListener = ({
   bindings,
   dispatch,
-  setPalette,
   setPrefixArmed,
 }: {
   bindings: KeybindingsState;
   dispatch: (action: KeybindingAction) => void;
-  setPalette: Dispatch<SetStateAction<boolean>>;
   setPrefixArmed: Dispatch<SetStateAction<boolean>>;
 }) => {
   const latest = useRef(dispatch);
@@ -80,7 +78,7 @@ export const useKeybindingListener = ({
         event.preventDefault();
         event.stopImmediatePropagation();
         matcher.cancel();
-        setPalette((value) => !value);
+        latest.current("commands");
         return;
       }
       if (
@@ -104,5 +102,5 @@ export const useKeybindingListener = ({
       window.removeEventListener("blur", matcher.cancel);
       matcher.cancel();
     };
-  }, [bindings.config, setPalette, setPrefixArmed]);
+  }, [bindings.config, setPrefixArmed]);
 };

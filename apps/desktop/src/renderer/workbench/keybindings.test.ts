@@ -11,6 +11,7 @@ import {
 } from "../../shared/keybindings.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
+import { WindowKeybindings } from "../window-keybindings.js";
 import { Workbench } from "./workbench.js";
 
 // Keep the real TerminalSession and its custom key handler. Model xterm's
@@ -47,6 +48,7 @@ vi.mock("@xterm/xterm", () => ({
     input(data: string) {
       this.data(data);
     }
+    buffer = { active: { type: "normal", viewportY: 0, baseY: 100 } };
     scrollToBottom() {}
     onResize() {}
     onScroll() {}
@@ -76,10 +78,10 @@ vi.mock("dockview", () => ({
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-async function harness() {
+async function harness(panes = [pane]) {
   const store = createStore(undefined, "test");
   store.applyProtocol(
-    stateFromSnapshot(meta, { ...emptySnapshotBody(), panes: [pane] }),
+    stateFromSnapshot(meta, { ...emptySnapshotBody(), panes }),
   );
   store.setConnection("connected");
   let changed: (state: KeybindingsState) => void = () => {};
@@ -98,6 +100,7 @@ async function harness() {
     },
   } as unknown as typeof window.loomHost;
   window.loomTerminal = {
+    paneFlags: vi.fn(async () => ({ alternate: false })),
     spawn: vi.fn(async () => ({ pid: 1, command: "fake attach" })),
     kill: vi.fn(async () => true),
     write: vi.fn(),
@@ -115,7 +118,11 @@ async function harness() {
       createElement(StoreProvider, {
         store,
         // biome-ignore lint/correctness/noChildrenProp: Typed provider requires children.
-        children: createElement(Workbench),
+        children: createElement(
+          WindowKeybindings,
+          null,
+          createElement(Workbench),
+        ),
       }),
     ),
   );
@@ -296,6 +303,62 @@ test("Prefix [ enters the focused terminal's scroll mode and can be rebound", as
     expect(h.element.querySelector(".wb-help")?.textContent).toContain(
       "Scroll terminal history",
     );
+  } finally {
+    await h.close();
+  }
+});
+
+test("reading follows terminal focus, including Prefix h/l, and retains recency on a header", async () => {
+  const h = await harness([pane, { ...pane, id: "second", paneId: "%3" }]);
+  try {
+    const panels = [...h.element.querySelectorAll<HTMLElement>("[data-panel]")];
+    expect(panels).toHaveLength(2);
+    for (const [index, panel] of panels.entries())
+      panel.getBoundingClientRect = () =>
+        ({
+          left: index * 100,
+          right: (index + 1) * 100,
+          top: 0,
+          bottom: 100,
+        }) as DOMRect;
+    const first = panels[0]?.querySelector("textarea");
+    const second = panels[1]?.querySelector("textarea");
+    if (!first || !second) throw new Error("Missing split terminals");
+    await act(async () => first.focus());
+    const read = async (target: Element) => {
+      await h.press(target, " ", { ctrlKey: true });
+      await h.press(target, "[");
+    };
+    await read(first);
+    expect(panels[0]?.textContent).toContain("SCROLL");
+    await h.press(first, "q");
+    for (const [key, target, panel] of [
+      ["l", second, panels[1]],
+      ["h", first, panels[0]],
+    ] as const) {
+      const active = document.activeElement;
+      if (!active) throw new Error("Missing keyboard focus");
+      await h.press(active, " ", { ctrlKey: true });
+      await h.press(active, key);
+      await act(
+        async () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+      expect(document.activeElement).toBe(target);
+      await read(target);
+      expect(panel?.textContent).toContain("SCROLL");
+      await h.press(target, "q");
+    }
+    await act(async () => second.focus());
+    const header = panels[0]?.querySelector("button");
+    if (!header) throw new Error("Missing panel header");
+    await act(async () => header.focus());
+    await read(header);
+    expect(panels[1]?.textContent).toContain("SCROLL");
+    expect(panels[0]?.textContent).not.toContain("SCROLL");
+    expect(window.loomTerminal.write).not.toHaveBeenCalled();
   } finally {
     await h.close();
   }

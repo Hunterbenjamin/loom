@@ -548,7 +548,8 @@ test("composer page keys scroll the conversation and Cmd+Down restores following
   expect(scroller.scrollTop).toBe(300);
   await press("PageDown", { shiftKey: true });
   expect(scroller.scrollTop).toBe(600);
-  await press("PageUp", { shiftKey: true });
+  await press("ArrowUp", { metaKey: true });
+  expect(scroller.scrollTop).toBe(300);
   await press("ArrowDown", { metaKey: true });
   expect(scroller.scrollTop).toBe(1000);
   expect(host.querySelector(".chat-jump-latest")).toBeNull();

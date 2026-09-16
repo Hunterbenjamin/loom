@@ -2,6 +2,10 @@ import type { PaneView } from "@loom/protocol";
 import { useState } from "react";
 import { useStore } from "../store/react.js";
 import { LeadBar } from "../ui/lead.js";
+import {
+  useWindowKeybindings,
+  useWorkbenchKeybindings,
+} from "../window-keybindings.js";
 import { NewTerminalDialog } from "./new-terminal.js";
 import { WorkbenchPalette } from "./palette.js";
 import { attentionPanes, sameTerminal, spaceKey } from "./selectors.js";
@@ -10,7 +14,6 @@ import { Sidebar } from "./sidebar.js";
 import { TabGrid } from "./tab-grid.js";
 import { createdTerminal, identity } from "./tabs.js";
 import { useChatTerminal } from "./use-chat-terminal.js";
-import { useKeybindingListener, useKeybindings } from "./use-keybindings.js";
 import { useMainSession } from "./use-main-session.js";
 import {
   useSpaceTabs,
@@ -45,7 +48,7 @@ export function Workbench() {
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [error, setError] = useState("");
-  const { bindings, prefixArmed, setPrefixArmed } = useKeybindings();
+  const { bindings, prefixArmed } = useWindowKeybindings();
   const [pendingTab, setPendingTab] = useState<PendingTab | null>(null);
 
   useSpaceTabsMarkRead(spaceTabsState);
@@ -162,7 +165,7 @@ export function Workbench() {
     newTab,
     newSpace,
   });
-  useKeybindingListener({ bindings, dispatch, setPalette, setPrefixArmed });
+  useWorkbenchKeybindings(dispatch);
 
   return (
     <div className="workbench">
