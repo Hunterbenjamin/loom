@@ -139,6 +139,24 @@ test("depth enforces observed token limits without publishing partial output", a
     error: "Research token budget exhausted",
   });
 });
+test("cached context replay does not spend the budget", async () => {
+  // A live run reported 116,283 input tokens with 89,600 cached after 659 tokens of output, and
+  // the old measure failed it against the 100,000 standard budget before it had done any work.
+  const h = await setup();
+  const { entry, recipe, session } = await start(h);
+  h.providers.confirm(session);
+  h.providers.get(session).tokenUsage = {
+    input: recipe.research!.limits.tokens + 20_000,
+    cachedInput: recipe.research!.limits.tokens + 10_000,
+    output: 659,
+    reasoning: 80,
+  };
+  await h.coordinator.research.refresh();
+  expect(h.coordinator.research.read(entry.id)).toMatchObject({
+    status: "running",
+    error: null,
+  });
+});
 test("restart preserves running identity and documents without replaying a prompt", async () => {
   const h = await setup();
   const savedId = randomUUID();
