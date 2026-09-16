@@ -18,7 +18,13 @@ Tracker lists, board, search, review lists and counts follow the selected projec
 
 ## Issues and Inbox
 
-Create issue opens with `C`, the palette or the picker's plus button. It offers Backlog/Todo,
+`c` opens a create palette, separate from the ⌘K command palette. Each entry describes what it
+creates and opens its own modal. Issue and Research are registered in `ui/creatables.tsx`; adding
+a kind requires its dialog and one registry entry. ⌘K generates its Create group from that registry,
+and its create-palette hint and the `?` map use `ui/tracker-keymap.ts`. Escape dismisses the palette
+and restores focus. Daily brief retains Run now on its page; cron is not yet available.
+
+The Issue modal offers Backlog/Todo,
 Normal/Small and plan-approval policy. Cmd+Enter submits; edited drafts require confirmation before
 discard. Creation waits for the assigned issue key; Todo then sends a separate move, so a failed
 move can be retried without duplicating the issue.
@@ -32,8 +38,11 @@ Enter opens the resolving issue detail. Multiple runs for a reason can be select
 panel. A command acknowledgement follows the [core command contract](core.md#instant-human-commands);
 commands are not replayed after a disconnect.
 
-`?` opens the [Tracker shortcut map](../../apps/desktop/src/renderer/ui/tracker-help.tsx), which owns
-the key list. Shortcuts follow the active list, board or detail and pause in inputs and terminals.
+`?` in Tracker and `Prefix ?` in either window open the same [Keyboard map](../../apps/desktop/src/renderer/ui/keyboard-sheet.tsx).
+It always starts on Everywhere, with shared reading keys and entry points; Tracker and Workbench
+tabs show surface-specific keys from their original maps. Arrow keys or h/l change tabs, reading
+keys scroll, and Escape or Close restores focus. Tracker keys are fixed; configured bindings,
+their path, prefix timeout and errors are shown alongside the editable Workbench map. Shortcuts follow the active list, board or detail and pause in inputs and terminals.
 F6 returns focus from terminal input to detail controls.
 
 ## Combined issue and PR detail
@@ -159,7 +168,11 @@ owns schedule, research limits and interrupted-run behavior.
 ## Research
 
 Research is a separate sidebar destination, available through `g e`, the command palette and
-keyboard help. A request box starts on-demand web research; settings under Agents → Research
+keyboard help. The create palette’s Research modal accepts an editable Directory (initially the
+selected repository root) and a Question. Cmd+Enter submits; edited drafts require confirmation
+before discard. A successful acknowledgement opens the new research entry. Refusals, including
+another research already running, stay in the modal with the draft intact. The Research page
+retains its Archived filter and list/detail navigation. Settings under Agents → Research
 choose provider, model, reasoning and depth for the next request. Only one request runs at a time.
 History groups entries by month, supports filtering and keyboard selection, and opens the shared
 detail layout with the original question, rendered markdown and clickable sources. Running,

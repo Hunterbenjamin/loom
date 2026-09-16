@@ -1,69 +1,121 @@
-.tracker-help {
-  width: min(1400px, calc(100vw - 48px));
-  max-width: calc(100vw - 48px);
-  max-height: calc(100vh - 48px);
-  padding: 24px;
+.keyboard-sheet {
+  width: min(1000px, calc(100vw - 40px));
+  max-width: calc(100vw - 40px);
+  height: min(760px, calc(100vh - 40px));
+  max-height: calc(100vh - 40px);
+  box-sizing: border-box;
+  padding: 0;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 16px 60px #0006;
+  border-radius: 12px;
+  box-shadow: 0 20px 80px #0006;
 }
-.tracker-help[open] {
+.keyboard-sheet[open] {
   display: flex;
   flex-direction: column;
+}
+.keyboard-sheet::backdrop {
+  background: #0008;
+}
+.keyboard-sheet header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 16px;
+  padding: 24px 28px 16px;
 }
-.tracker-help::backdrop {
-  background: #0007;
-}
-.tracker-help h2 {
+.keyboard-sheet h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 22px;
 }
-.tracker-help-body {
+.keyboard-sheet p {
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.keyboard-sheet header p {
+  margin: 4px 0 0;
+  opacity: 0.7;
+}
+.keyboard-sheet-close {
+  padding: 8px 12px;
+  flex: none;
+}
+.keyboard-sheet [role="tablist"] {
+  display: flex;
+  gap: 8px;
+  padding: 0 28px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.keyboard-sheet [role="tab"] {
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+.keyboard-sheet [role="tab"][aria-selected="true"] {
+  border-color: var(--line);
+  background: var(--text);
+  color: var(--bg);
+}
+.keyboard-sheet :focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+.keyboard-sheet-panel {
   overflow: auto;
   min-height: 0;
+  flex: 1;
+  padding: 8px 28px 24px;
 }
-.tracker-help-grid {
+.keyboard-sheet-panel[hidden] {
+  display: none;
+}
+.keyboard-sheet-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
-  gap: 20px 28px;
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+  gap: 24px 32px;
   align-items: start;
 }
-.tracker-help h3 {
-  margin: 0 0 8px;
+.keyboard-sheet h3 {
+  margin: 16px 0 10px;
   font-size: 13px;
 }
-.tracker-help dl {
+.keyboard-sheet dl {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
-.tracker-help dl > div {
+.keyboard-sheet dl > div {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
-  padding: 4px 0;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
 }
-.tracker-help dd {
+.keyboard-sheet dt {
+  flex: 1;
+}
+.keyboard-sheet dd {
   margin: 0;
+  flex: 1;
   text-align: right;
 }
-.tracker-help kbd {
+.keyboard-sheet kbd {
   font:
     11px ui-monospace,
     monospace;
   border: 1px solid var(--line);
   border-radius: 4px;
-  padding: 2px 4px;
+  padding: 3px 5px;
   display: inline-block;
+  overflow-wrap: anywhere;
 }
-.tracker-help p {
+.keyboard-sheet footer {
+  border-top: 1px solid var(--line);
+  padding: 14px 28px;
   font-size: 12px;
-  margin-bottom: 0;
-}
-.tracker-help > button {
-  align-self: flex-end;
-  padding: 8px 12px;
+  opacity: 0.75;
 }

@@ -106,6 +106,8 @@ async function mount(
 }
 test("lists by month, renders markdown and sources, and archives without losing the open document", async () => {
   const { host, store } = await mount([structuredClone(saved)]);
+  expect(host.querySelector("form.list-toolbar")).toBeNull();
+  expect(host.querySelector('[aria-label="Research question"]')).toBeNull();
   expect(host.textContent).toContain("September 2026");
   expect(host.textContent).toContain("Saved by Main");
   await act(async () => store.openResearch(saved.id));
@@ -150,7 +152,11 @@ test("running and interrupted entries stay readable", async () => {
     "reading your directory and researching the web",
   );
   expect(
-    (host.querySelector('button[type="submit"]') as HTMLButtonElement).disabled,
+    (
+      host.querySelector(
+        '[data-testid="research-detail"] form button[type="submit"]',
+      ) as HTMLButtonElement
+    ).disabled,
   ).toBe(true);
   entry.status = "interrupted";
   entry.error = "Coordinator stopped before completion";

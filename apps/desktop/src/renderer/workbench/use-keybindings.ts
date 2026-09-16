@@ -67,7 +67,11 @@ export const useKeybindingListener = ({
       setPrefixArmed,
     );
     const key = (event: KeyboardEvent) => {
-      // The palette chord is never gated: it opens the palette from anywhere and closes it too.
+      if (document.querySelector("dialog[open]")) {
+        matcher.cancel();
+        return;
+      }
+      // Outside native dialogs, the palette chord opens and closes the palette.
       if (
         event.type === "keydown" &&
         !event.repeat &&
@@ -82,9 +86,7 @@ export const useKeybindingListener = ({
         return;
       }
       if (
-        document.querySelector(
-          'dialog[open], [aria-modal="true"], [role="menu"]',
-        ) ||
+        document.querySelector('[aria-modal="true"], [role="menu"]') ||
         (event.target instanceof Element && event.target.closest(".wb-rename"))
       ) {
         matcher.cancel();

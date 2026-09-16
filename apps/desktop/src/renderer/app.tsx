@@ -1,11 +1,4 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef } from "react";
 import { attentionCount, inboxRows } from "./store/inbox.js";
 import { selectedPullRequests } from "./store/pull-requests.js";
 import { useStore, useStoreApi } from "./store/react.js";
@@ -13,19 +6,20 @@ import { selectedRows } from "./store/selectors.js";
 import { VIEWS } from "./store/ui-state.js";
 import { BoardView } from "./ui/board.js";
 import { BriefsView } from "./ui/briefs.js";
-import { CreateIssue } from "./ui/create-issue.js";
+import { CreateDialog } from "./ui/creatables.js";
 import { Detail } from "./ui/detail.js";
 import { InboxView } from "./ui/inbox.js";
 import { useShortcuts } from "./ui/keys.js";
 import { LeadBar } from "./ui/lead.js";
 import { ListView } from "./ui/list.js";
-import { Palette, StagePicker } from "./ui/palette.js";
+import { CreatePalette, Palette, StagePicker } from "./ui/palette.js";
 import { PullRequestsView } from "./ui/pull-requests.js";
 import { ResearchView } from "./ui/research.js";
 import { SettingsView } from "./ui/settings.js";
 import { OpenRepository, Sidebar } from "./ui/sidebar.js";
-import { TrackerHelp, WhichKey } from "./ui/tracker-help.js";
 import { keyHint } from "./ui/tracker-keymap.js";
+import { WhichKey } from "./ui/which-key.js";
+import { useWindowKeybindings } from "./window-keybindings.js";
 
 const PullRequestDetail = lazy(() =>
   import("./ui/pull-request-detail.js").then((m) => ({
@@ -42,8 +36,7 @@ export function App() {
       content.current;
     target?.focus({ preventScroll: true });
   }, []);
-  const [help, setHelp] = useState(false);
-  const showHelp = useCallback(() => setHelp(true), []);
+  const { showHelp } = useWindowKeybindings();
   const pendingKey = useShortcuts(store, showHelp);
   useEffect(() => {
     store.setTrackerVisible(true);
@@ -123,7 +116,6 @@ export function App() {
 
   return (
     <div className="shell">
-      {help ? <TrackerHelp onClose={() => setHelp(false)} /> : null}
       {pendingKey ? <WhichKey /> : null}
       <Sidebar />
       <div className="main" ref={content} tabIndex={-1}>
@@ -225,7 +217,8 @@ export function App() {
       <LeadBar surface="tracker" onMainClose={focusContent} />
       <Palette />
       <StagePicker />
-      <CreateIssue />
+      <CreatePalette />
+      <CreateDialog />
       {toast ? <div className="toast">{toast}</div> : null}
     </div>
   );

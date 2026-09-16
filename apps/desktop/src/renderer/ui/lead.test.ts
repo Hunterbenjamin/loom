@@ -2,13 +2,22 @@
 import { act, createElement, Fragment } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
+import { defaultKeybindingsState } from "../../shared/keybindings.js";
 import { App } from "../app.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { StoreProvider } from "../store/react.js";
 import { cursorItems, listItemKey, selectedRows } from "../store/selectors.js";
+import { WindowKeybindings } from "../window-keybindings.js";
 import { WindowModeContext } from "../window-mode.js";
 import { LeadBar } from "./lead.js";
+
+// These tests exercise window shortcuts, not WebGL or terminal rendering.
+vi.mock("./terminal.js", () => ({
+  enterFocusedScrollMode: vi.fn(),
+  TerminalTab: () => null,
+  TaskShellTerminal: () => null,
+}));
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -30,7 +39,7 @@ function mount() {
     mode: vi.fn(),
     onModeChanged: vi.fn(() => () => {}),
     chooseRepository: vi.fn(),
-    keybindings: vi.fn(),
+    keybindings: vi.fn(async () => defaultKeybindingsState),
     onKeybindingsChanged: vi.fn(() => () => {}),
     openWindow: vi.fn(),
     connection: vi.fn(),
@@ -46,8 +55,11 @@ function mount() {
   });
   act(() =>
     root.render(
-      // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
-      createElement(StoreProvider, { store, children: createElement(App) }),
+      createElement(StoreProvider, {
+        store,
+        // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
+        children: createElement(WindowKeybindings, null, createElement(App)),
+      }),
     ),
   );
   return { store, host };
@@ -269,8 +281,11 @@ test("an empty Tracker offers Open repository without opening Main", async () =>
   });
   await act(async () =>
     root.render(
-      // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
-      createElement(StoreProvider, { store, children: createElement(App) }),
+      createElement(StoreProvider, {
+        store,
+        // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
+        children: createElement(WindowKeybindings, null, createElement(App)),
+      }),
     ),
   );
   expect(host.querySelector<HTMLButtonElement>(".lead-toggle")?.disabled).toBe(

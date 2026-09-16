@@ -11,9 +11,9 @@ import { toSnapshot } from "../fixtures/protocol.js";
 import { StoreProvider } from "../store/react.js";
 import { cursorItems, listItemKey } from "../store/selectors.js";
 import { createStore } from "../store/store.js";
-import { CreateIssue } from "./create-issue.js";
+import { CreateDialog } from "./creatables.js";
 import { useShortcuts } from "./keys.js";
-import { Palette } from "./palette.js";
+import { CreatePalette, Palette } from "./palette.js";
 import { Sidebar } from "./sidebar.js";
 
 (
@@ -59,7 +59,7 @@ function setup({ open = true, repo = "repo-loom", emptyRepos = false } = {}) {
     store.applyProtocol(stateFromSnapshot(meta, body));
   }
   snapshot = store.getState().snapshot;
-  store.setCreateIssue(open);
+  store.setCreate(open ? "issue" : null);
   const send = vi
     .fn<(command: unknown) => Promise<AckOutcome>>()
     .mockResolvedValue(created);
@@ -84,7 +84,8 @@ function setup({ open = true, repo = "repo-loom", emptyRepos = false } = {}) {
           createElement(Keyboard, { key: "keys" }),
           createElement(Sidebar, { key: "sidebar" }),
           createElement(Palette, { key: "palette" }),
-          createElement(CreateIssue, { key: "create" }),
+          createElement(CreatePalette, { key: "create-palette" }),
+          createElement(CreateDialog, { key: "create" }),
         ],
       }),
     ),
@@ -325,7 +326,7 @@ test("Escape cancels empty drafts; edited drafts require discard and keep editin
   const h = setup();
   h.cancelDialog();
   expect(h.host.querySelector("dialog")).toBeNull();
-  act(() => h.store.setCreateIssue(true));
+  act(() => h.store.setCreate("issue"));
   h.change("#issue-description", "Do not lose this");
   h.cancelDialog();
   expect(h.host.textContent).toContain("Discard this issue draft?");
@@ -340,7 +341,7 @@ test("Escape cancels empty drafts; edited drafts require discard and keep editin
   expect(h.send).not.toHaveBeenCalled();
 });
 
-test("C opens the dialog, ignores typing, and modal shortcuts do not change the underlying Tracker", () => {
+test("c opens the palette, ignores typing, and modal shortcuts do not change the underlying Tracker", () => {
   const h = setup({ open: false });
   const typing = document.createElement("input");
   h.host.append(typing);
@@ -349,14 +350,15 @@ test("C opens the dialog, ignores typing, and modal shortcuts do not change the 
       new KeyboardEvent("keydown", { key: "c", bubbles: true }),
     ),
   );
-  expect(h.store.getState().ui.createIssue).toBe(false);
+  expect(h.store.getState().ui.createPalette).toBe(false);
   act(() =>
     window.dispatchEvent(
       new KeyboardEvent("keydown", { key: "c", cancelable: true }),
     ),
   );
-  expect(h.store.getState().ui.createIssue).toBe(true);
+  expect(h.store.getState().ui.createPalette).toBe(true);
   expect(h.store.getState().ui.palette).toBe(false);
+  act(() => h.store.setCreate("issue"));
   act(() => {
     h.store.open(id);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -372,22 +374,18 @@ test("C opens the dialog, ignores typing, and modal shortcuts do not change the 
   });
 });
 
-test("the c key and hinted palette command open the same dialog; C is removed", () => {
+test("the command palette opens the create palette with a keymap hint or an issue directly", () => {
   const h = setup({ open: false });
-  expect(h.host.querySelector('[aria-label="Create issue"]')).toBeNull();
-  act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "C" })));
-  expect(h.host.querySelector("dialog")).toBeNull();
-  act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "c" })));
-  expect(h.host.querySelector("dialog")).not.toBeNull();
-  h.cancelDialog();
   act(() => h.store.setPalette(true));
-  const command = [...h.host.querySelectorAll<HTMLElement>("[cmdk-item]")].find(
-    (item) => item.textContent?.startsWith("Create issue…"),
+  const commands = [...h.host.querySelectorAll<HTMLElement>("[cmdk-item]")];
+  const palette = commands.find((item) =>
+    item.textContent?.startsWith("Create…"),
   );
-  expect(command?.querySelector("kbd")?.textContent).toBe("c");
-  act(() => command?.click());
+  expect(palette?.querySelector("kbd")?.textContent).toBe("c");
+  const issue = commands.find((item) => item.textContent === "Create issue…");
+  act(() => issue?.click());
   expect(h.store.getState().ui).toMatchObject({
-    createIssue: true,
+    create: "issue",
     palette: false,
   });
 });

@@ -1,6 +1,6 @@
 import { displayName } from "@loom/core";
 import { Command, defaultFilter } from "cmdk";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { selectedDetailTask } from "../store/detail-selection.js";
 import { inboxRows } from "../store/inbox.js";
 import { useStore, useStoreApi } from "../store/react.js";
@@ -13,6 +13,7 @@ import {
 import type { State } from "../store/store.js";
 import { VIEWS } from "../store/ui-state.js";
 import { ChimeMuteCommand } from "../workbench/chime.js";
+import { CREATABLES } from "./creatables.js";
 import { STAGES, stageLabel } from "./format.js";
 import { runTrackerCommand } from "./keys.js";
 import { PullRequestPaletteCommands } from "./pull-request-commands.js";
@@ -197,11 +198,22 @@ export function Palette() {
                 </Command.Item>
               </>
             ) : null}
+          </Command.Group>
+
+          <Command.Group heading="Create">
             <Command.Item
               onSelect={() => run(() => runTrackerCommand(store, "create"))}
             >
-              Create issue… <kbd>{formatKeys("create")}</kbd>
+              Create… <kbd>{formatKeys("create")}</kbd>
             </Command.Item>
+            {CREATABLES.map((entry) => (
+              <Command.Item
+                key={entry.id}
+                onSelect={() => run(() => store.setCreate(entry.id))}
+              >
+                Create {entry.label.toLowerCase()}…
+              </Command.Item>
+            ))}
           </Command.Group>
 
           <Command.Group heading="Window">
@@ -268,6 +280,33 @@ export function Palette() {
   );
 }
 
+export function CreatePalette() {
+  const store = useStoreApi();
+  const open = useStore((s) => s.ui.createPalette);
+  if (!open) return null;
+  return (
+    <Scrim onClose={() => store.setCreatePalette(false)}>
+      <Command label="Create palette" loop>
+        <Command.Input autoFocus placeholder="What would you like to create?" />
+        <Command.List>
+          <Command.Empty>Nothing matches.</Command.Empty>
+          {CREATABLES.map((entry) => (
+            <Command.Item
+              key={entry.id}
+              className="creatable"
+              value={`${entry.label} ${entry.description}`}
+              onSelect={() => store.setCreate(entry.id)}
+            >
+              <span>{entry.label}</span>
+              <span className="faint">{entry.description}</span>
+            </Command.Item>
+          ))}
+        </Command.List>
+      </Command>
+    </Scrim>
+  );
+}
+
 export function StagePicker() {
   const store = useStoreApi();
   const open = useStore((s) => s.ui.stagePicker);
@@ -313,6 +352,14 @@ function Scrim({
   children: React.ReactNode;
   onClose: () => void;
 }) {
+  // Capture focus before the palette input's autofocus, and restore before a dialog mounts.
+  const [previous] = useState(() => document.activeElement);
+  useLayoutEffect(() => {
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus();
+    };
+  }, [previous]);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: clicking the backdrop dismisses; `esc` does the same
     <div

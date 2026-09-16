@@ -86,7 +86,7 @@ function ConfirmIssueCancel({
   return (
     <dialog
       ref={dialog}
-      className="create-issue-dialog pr-confirm"
+      className="create-dialog pr-confirm"
       aria-labelledby="issue-cancel-title"
       onKeyDown={(event) => event.stopPropagation()}
       onCancel={(event) => {
