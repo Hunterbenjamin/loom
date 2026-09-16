@@ -212,12 +212,12 @@ export async function runCodexResearch(
   } finally {
     unobserve();
     // Leaving without a finished turn leaves the model running and billing against the account,
-    // so interrupt on every early exit, not only on abort and the lookup ceiling.
+    // so interrupt on every early exit, not only on abort and the lookup ceiling. The turn often
+    // ends on its own first ("no active turn to interrupt"), and that must never replace the
+    // error that actually ended the research.
     if (turnId && !completed)
-      await connection.rpc(
-        "turn/interrupt",
-        { threadId: thread.id, turnId },
-        z.object({}),
-      );
+      await connection
+        .rpc("turn/interrupt", { threadId: thread.id, turnId }, z.object({}))
+        .catch(() => {});
   }
 }

@@ -20,6 +20,7 @@ async function setup({
   webCount = 1,
   webStatus = "completed",
   readFailures = 0,
+  interruptFails = false,
 } = {}) {
   const fake = await fakeServer();
   cleanups.push(() => fake.close());
@@ -122,7 +123,10 @@ async function setup({
         },
       };
     }
-    if (method === "turn/interrupt") return { result: {} };
+    if (method === "turn/interrupt")
+      return interruptFails
+        ? { error: { code: -32603, message: "no active turn to interrupt" } }
+        : { result: {} };
     throw new Error(`Unexpected method ${method}`);
   });
   const controller = new AbortController();
@@ -201,6 +205,18 @@ test("an abandoned turn is interrupted so it stops billing", {
   timeout: 20000,
 }, async () => {
   const { run, calls } = await setup({ readFailures: 100 });
+  await expect(run()).rejects.toThrow("rollout");
+  expect(calls.some((call) => call.method === "turn/interrupt")).toBe(true);
+});
+test("a failed interrupt never replaces the error that ended the research", {
+  timeout: 20000,
+}, async () => {
+  // The turn usually ends before the cleanup interrupt lands, and the app-server answers "no
+  // active turn to interrupt". Reporting that instead of the real failure hides the cause.
+  const { run, calls } = await setup({
+    readFailures: 100,
+    interruptFails: true,
+  });
   await expect(run()).rejects.toThrow("rollout");
   expect(calls.some((call) => call.method === "turn/interrupt")).toBe(true);
 });
