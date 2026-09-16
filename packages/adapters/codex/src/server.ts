@@ -341,6 +341,17 @@ export class TaskServer {
       await log.close();
     }
   }
+  /** Retire a recorded, interrupted research server without launching or adopting any other process. */
+  stopRecorded(): Promise<void> {
+    return this.serialize(async () => {
+      const owner = await this.readOwner();
+      if (!owner || !(await sameProcess(owner, this.socket))) return;
+      await terminateOwned(owner, this.socket);
+      const current = await this.readOwner();
+      if (current?.pid === owner.pid && current.startedAt === owner.startedAt)
+        await this.removeFiles();
+    });
+  }
   stop(): Promise<void> {
     return this.serialize(() => this.stopOwned());
   }

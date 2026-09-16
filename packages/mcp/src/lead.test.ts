@@ -207,3 +207,26 @@ test("Main message destinations and text are validated; removed Operator destina
         .isError,
     ).toBe(true);
 });
+
+test("Research tools are Main-only, validated and routed as coordinator commands", async () => {
+  const { leadCommand } = await import("./lead.js");
+  const { client, invoke } = await connect(true);
+  const names = (await client.listTools()).tools.map((tool) => tool.name);
+  for (const name of [
+    "start_research",
+    "save_research",
+    "list_research",
+    "read_research",
+  ])
+    expect(names).toContain(name);
+  const input = {
+    id: "00000000-0000-4000-8000-000000000001",
+    question: "Compare keybindings",
+  };
+  await client.callTool({ name: "start_research", arguments: input });
+  expect(invoke).toHaveBeenCalledWith("start_research", input, "repo-loom");
+  expect(leadCommand("start_research", input)).toEqual({
+    kind: "start_research",
+    ...input,
+  });
+});

@@ -5,6 +5,7 @@ import {
   KEYBINDING_ACTIONS,
   parseChord,
 } from "./keybindings.js";
+import type { ResearchDepth } from "./research.js";
 
 export type SettingsScope =
   | { kind: "global" }
@@ -49,6 +50,9 @@ export interface RoleProfile {
 
 export interface SettingsValues {
   roles: Record<Role, RoleProfile>;
+  research: Pick<RoleProfile, "provider" | "model" | "reasoningEffort"> & {
+    depth: ResearchDepth;
+  };
   workflow: {
     requirePlanApproval: boolean;
     size: TaskSize;
@@ -94,6 +98,7 @@ export interface SettingsValues {
 
 export type SettingsPatch = {
   roles?: Partial<Record<Role, Partial<RoleProfile>>>;
+  research?: Partial<SettingsValues["research"]>;
   workflow?: Partial<SettingsValues["workflow"]>;
   repository?: Partial<SettingsValues["repository"]>;
   main?: Partial<SettingsValues["main"]>;
@@ -114,6 +119,7 @@ export interface SettingDefinition {
     | "Workflow & approvals"
     | "Repositories"
     | "Access & safety"
+    | "Research"
     | "Main"
     | "Terminals & keybindings"
     | "GitHub"
@@ -192,6 +198,12 @@ export const DEFAULT_SETTINGS: SettingsValues = {
   },
   repository: { baseBranch: "main", serialTests: false },
   main: { model: null },
+  research: {
+    provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningEffort: "medium",
+    depth: "standard",
+  },
   runtime: {
     capTotal: 4,
     capCodex: 3,
@@ -226,6 +238,13 @@ export const DEFAULT_SETTINGS: SettingsValues = {
 const BOTH = ["global", "repository"] as const;
 const GLOBAL = ["global"] as const;
 export const SETTINGS_CATALOG: SettingDefinition[] = [
+  ...["provider", "model", "reasoningEffort", "depth"].map((key) => ({
+    key: `research.${key}`,
+    section: "Research" as const,
+    label: `Research ${key}`,
+    timing: "next-run" as const,
+    scopes: [...GLOBAL],
+  })),
   ...([...ROLE_VALUES] as Role[]).flatMap((name) => [
     {
       key: `roles.${name}.provider`,
@@ -454,6 +473,7 @@ const merge = (
     workflow: { ...base.workflow, ...patch.workflow },
     repository: { ...base.repository, ...patch.repository },
     main: { ...base.main, ...patch.main },
+    research: { ...base.research, ...patch.research },
     runtime: { ...base.runtime, ...patch.runtime },
     appearance: { ...base.appearance, ...patch.appearance },
   };
@@ -461,10 +481,10 @@ const merge = (
 
 export function validateSettings(values: SettingsValues): string[] {
   const errors: string[] = [];
-  for (const [name, profile] of Object.entries(values.roles) as [
-    Role,
-    RoleProfile,
-  ][]) {
+  for (const [name, profile] of Object.entries({
+    ...values.roles,
+    research: { ...values.research, runMode: "headless", access: "full" },
+  })) {
     const models: readonly string[] =
       MODEL_CATALOG.providers[profile.provider].models;
     if (!models.includes(profile.model))

@@ -7,6 +7,12 @@ import {
   pullRequestFileContents,
   pullRequestReviewChange,
 } from "./pull-requests.js";
+import {
+  researchDocument,
+  researchEntry,
+  researchQuestion,
+  researchState,
+} from "./research.js";
 // What a window asks the coordinator to do. Human commands become inputs on the task's inbox and
 // are acknowledged with the input ID; reconcile decides what happens next and the result arrives
 // as patches (principle 3: code moves tasks, and only after validating). UI-only requests answer
@@ -101,6 +107,27 @@ export const setTitle = z.strictObject({
 });
 
 export const command = z.union([
+  z.strictObject({
+    kind: z.literal("list_research"),
+    archived: z.boolean().optional(),
+  }),
+  z.strictObject({ kind: z.literal("read_research"), id: z.string().uuid() }),
+  z.strictObject({
+    kind: z.literal("start_research"),
+    id: z.string().uuid(),
+    question: researchQuestion,
+  }),
+  z.strictObject({
+    kind: z.literal("save_research"),
+    id: z.string().uuid(),
+    question: researchQuestion,
+    document: researchDocument,
+  }),
+  z.strictObject({
+    kind: z.literal("set_research_archived"),
+    id: z.string().uuid(),
+    archived: z.boolean(),
+  }),
   z.strictObject({ kind: z.literal("get_briefs") }),
   z.strictObject({ kind: z.literal("get_brief"), id: z.string().uuid() }),
   z.strictObject({ kind: z.literal("run_brief"), id: z.string().uuid() }),
@@ -272,6 +299,8 @@ export const commandRequest = z.strictObject({
 
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
+  z.strictObject({ kind: z.literal("research_list"), state: researchState }),
+  z.strictObject({ kind: z.literal("research_entry"), entry: researchEntry }),
   z.strictObject({ kind: z.literal("briefs"), state: briefState }),
   z.strictObject({ kind: z.literal("brief"), run: briefRun }),
   z.strictObject({

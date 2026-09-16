@@ -22,6 +22,7 @@ import { ListView } from "./ui/list.js";
 import { TrackerFilter } from "./ui/list-rows.js";
 import { Palette, StagePicker } from "./ui/palette.js";
 import { PullRequestsView } from "./ui/pull-requests.js";
+import { ResearchView } from "./ui/research.js";
 import { SettingsView } from "./ui/settings.js";
 import { OpenRepository, Sidebar } from "./ui/sidebar.js";
 import { TrackerHelp, WhichKey } from "./ui/tracker-help.js";
@@ -129,16 +130,19 @@ export function App() {
       <div className="main" ref={content} tabIndex={-1}>
         <header className="topbar">
           <h1>
-            {view === "briefs"
-              ? "Daily brief"
-              : view === "settings"
-                ? "Settings"
-                : view === "pull-requests"
-                  ? "Reviews"
-                  : VIEWS.find((item) => item.id === view)?.label}
+            {view === "research"
+              ? "Research"
+              : view === "briefs"
+                ? "Daily brief"
+                : view === "settings"
+                  ? "Settings"
+                  : view === "pull-requests"
+                    ? "Reviews"
+                    : VIEWS.find((item) => item.id === view)?.label}
           </h1>
           {view === "pull-requests" ||
           view === "settings" ||
+          view === "research" ||
           view === "briefs" ? null : (
             <span className="faint nums">{count}</span>
           )}
@@ -153,6 +157,7 @@ export function App() {
           </button>
           {view !== "pull-requests" &&
             view !== "settings" &&
+            view !== "research" &&
             view !== "briefs" && (
               <div className="segmented">
                 <button
@@ -187,7 +192,9 @@ export function App() {
           {view !== "settings" && view !== "pull-requests" ? (
             <TrackerFilter />
           ) : null}
-          {view === "briefs" ? (
+          {view === "research" ? (
+            <ResearchView />
+          ) : view === "briefs" ? (
             <BriefsView />
           ) : view === "settings" ? (
             <SettingsView />

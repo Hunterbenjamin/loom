@@ -4,8 +4,16 @@
 // the shared Codex daemon or global config.
 
 import { join } from "node:path";
-import { createBriefResearch, createClaudeAdapter } from "@loom/adapter-claude";
-import { createCodexAdapter } from "@loom/adapter-codex";
+import {
+  createBriefResearch,
+  createClaudeAdapter,
+  createClaudeResearch,
+} from "@loom/adapter-claude";
+import {
+  createCodexAdapter,
+  createCodexResearch,
+  recoverCodexResearch,
+} from "@loom/adapter-codex";
 import { createGitAdapter } from "@loom/adapter-git";
 import { createGitHubAdapter } from "@loom/adapter-github";
 import { createTmuxPaneHost } from "@loom/adapter-tmux";
@@ -34,6 +42,12 @@ export async function createRealAdapters(
     if (!listeners.size) pending.push(event);
     for (const listener of listeners) listener(event);
   };
+  const researchServer = {
+    taskDirectory: join(store.dataDirectory, "research-server"),
+    executable: config.codexExecutable,
+  };
+  // Research is not resumed on restart: retire its recorded process before accepting new work.
+  await recoverCodexResearch(researchServer);
   const git = createGitAdapter();
   const github = createGitHubAdapter({
     excludedAuthors: config.excludedAuthors,
@@ -94,6 +108,10 @@ export async function createRealAdapters(
       };
     },
     research: createBriefResearch(config.claudeExecutable),
+    researchSessions: {
+      claude: createClaudeResearch(config.claudeExecutable),
+      codex: createCodexResearch(researchServer),
+    },
     git,
     github,
     paneHost,

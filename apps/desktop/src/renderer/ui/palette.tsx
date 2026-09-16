@@ -18,7 +18,11 @@ import { formatKeys, trackerKeymap } from "./tracker-keymap.js";
 export function paletteIssueTarget(state: State) {
   const { ui } = state;
   if (ui.openTask || ui.openPr) return selectedDetailTask(state)?.id ?? null;
-  if (ui.openBrief || ["briefs", "settings", "pull-requests"].includes(ui.view))
+  if (
+    ui.openBrief ||
+    ui.openResearch ||
+    ["briefs", "research", "settings", "pull-requests"].includes(ui.view)
+  )
     return null;
   const rows =
     ui.view === "needs-you" && ui.pane === "list"
@@ -37,6 +41,7 @@ export function Palette() {
       !s.ui.openTask &&
       !s.ui.openPr &&
       !s.ui.openBrief &&
+      !s.ui.openResearch &&
       ["all", "needs-you"].includes(s.ui.view),
   );
   const pane = useStore((s) => s.ui.pane);
@@ -91,6 +96,13 @@ export function Palette() {
               onSelect={() => run(() => runTrackerCommand(store, "go-briefs"))}
             >
               Daily brief <kbd>{formatKeys("go-briefs")}</kbd>
+            </Command.Item>
+            <Command.Item
+              onSelect={() =>
+                run(() => runTrackerCommand(store, "go-research"))
+              }
+            >
+              Research <kbd>{formatKeys("go-research")}</kbd>
             </Command.Item>
             <Command.Item
               onSelect={() =>

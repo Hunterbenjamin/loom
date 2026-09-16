@@ -439,7 +439,9 @@ describe("current rows (0011)", () => {
     const snapshot = db.serialize();
     expect(await migrate(db, join(root, "backups"))).toEqual([]);
     expect(db.serialize().equals(snapshot)).toBe(true);
-    db.exec(required(migrations.at(-1)).sql);
+    db.exec(
+      required(migrations.find((migration) => migration.version === 11)).sql,
+    );
     expect(read(db, "messages", "unsent").pendingSince).toBe(migrationTime);
   });
   it.each(["baseBranch", "defaultProviders", "serialTests"])(

@@ -30,6 +30,7 @@ export {
 export * from "./notes.js";
 export * from "./patch.js";
 export * from "./pull-requests.js";
+export * from "./research.js";
 export * from "./settings.js";
 export * from "./snapshot.js";
 export * from "./subscriptions.js";

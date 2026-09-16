@@ -26,6 +26,7 @@ import { MainMessageStore } from "./main-messages.js";
 import { Outbox } from "./outbox.js";
 import { PullRequestStore } from "./pull-requests.js";
 import { RepositoryStore } from "./repositories.js";
+import { ResearchStore } from "./research.js";
 import { SettingsStore } from "./settings.js";
 import { type CommitOutcome, TaskCommitStore } from "./task-commit.js";
 import { TaskQueries } from "./task-queries.js";
@@ -37,6 +38,7 @@ export type { CommitOutcome, Conflict } from "./task-commit.js";
 export class Store {
   readonly mainMessages: MainMessageStore;
   readonly briefs: BriefStore;
+  readonly research: ResearchStore;
   readonly leadMessages: LeadMessageStore;
   readonly hooks: SqliteHookLog;
   readonly outbox: Outbox;
@@ -54,6 +56,7 @@ export class Store {
     config: ReconcileConfig,
   ) {
     this.briefs = new BriefStore(db);
+    this.research = new ResearchStore(db);
     this.mainMessages = new MainMessageStore(db);
     this.leadMessages = new LeadMessageStore(db);
     this.hooks = new SqliteHookLog(db);

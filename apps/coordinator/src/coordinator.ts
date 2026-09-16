@@ -47,6 +47,7 @@ import { handlePullRequestCommand } from "./pull-requests.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
 import { repoHandlers } from "./repos.js";
+import { Research, researchHandlers } from "./research.js";
 import { ProtocolServer } from "./server.js";
 import { CoordinatorSettings } from "./settings.js";
 import { runShell, type Shell } from "./shell.js";
@@ -88,6 +89,7 @@ export class Coordinator {
   private readonly commandHandlers: Handlers<ServedCommandKind>;
   private readonly baselineConfig: CoordinatorConfig;
   readonly briefs: DailyBriefs;
+  readonly research: Research;
   readonly leads = new Map<string, LeadSession>();
   private leadPoll: NodeJS.Timeout | null = null;
   private readonly views: CoordinatorViews;
@@ -146,6 +148,13 @@ export class Coordinator {
       onGlobalSaved: () => this.applyStoredRuntime(false),
       publish: () => this.views.publishSettings(),
     });
+    this.research = new Research({
+      store: this.store,
+      sessions: this.adapters.researchSessions,
+      settings: () => this.settings.effective().research,
+      now: this.now,
+    });
+    this.research.recover();
     this.store.setRoleProfilesResolver(
       (task) => this.settings.effective(task.repoId).roles,
     );
@@ -200,6 +209,11 @@ export class Coordinator {
       log: (message) => this.log(message),
     });
     this.commandHandlers = {
+      ...researchHandlers({
+        store: this.store,
+        research: this.research,
+        now: this.now,
+      }),
       ...briefHandlers({ store: this.store, briefs: this.briefs }),
       ...this.settings.handlers(),
       ...terminalHandlers({
@@ -398,6 +412,7 @@ export class Coordinator {
   }
 
   async stop(): Promise<void> {
+    await this.research.stop();
     await this.briefs.stop();
     await this.views.prViews.stop();
     await this.views.conversationViews.stop();

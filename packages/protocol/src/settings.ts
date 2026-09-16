@@ -3,6 +3,7 @@ import {
   MERGE_POLICY_VALUES,
   PROVIDER_VALUES,
   REASONING_EFFORT_VALUES,
+  RESEARCH_DEPTH_VALUES,
   ROLE_VALUES,
   RUN_MODE_VALUES,
   TASK_SIZE_VALUES,
@@ -23,7 +24,11 @@ export const roleProfile = z.strictObject({
   runMode: z.enum(RUN_MODE_VALUES),
   access: z.enum(ACCESS_PRESET_VALUES),
 });
+export const researchProfile = roleProfile
+  .pick({ provider: true, model: true, reasoningEffort: true })
+  .extend({ depth: z.enum(RESEARCH_DEPTH_VALUES) });
 export const settingsValues = z.strictObject({
+  research: researchProfile,
   roles: z.strictObject({
     planner: roleProfile,
     implementer: roleProfile,
@@ -73,6 +78,7 @@ export const settingsValues = z.strictObject({
 });
 
 export const settingsPatch = z.strictObject({
+  research: researchProfile.partial().optional(),
   roles: z.partialRecord(z.enum(ROLE_VALUES), roleProfile.partial()).optional(),
   workflow: settingsValues.shape.workflow.partial().optional(),
   repository: settingsValues.shape.repository.partial().optional(),
@@ -87,6 +93,7 @@ export const settingsPatch = z.strictObject({
 const storedRoleProfile = roleProfile.partial().passthrough();
 export const storedSettingsPatch = z
   .object({
+    research: researchProfile.partial().passthrough().optional(),
     roles: z
       .object({
         planner: storedRoleProfile.optional(),
@@ -117,6 +124,7 @@ export const settingDefinition = z.strictObject({
     "Repositories",
     "Access & safety",
     "Main",
+    "Research",
     "Terminals & keybindings",
     "GitHub",
     "Appearance",

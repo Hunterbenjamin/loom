@@ -15,6 +15,7 @@ import {
   type TokenCounts,
   type WorktreePath,
 } from "@loom/core";
+import type { ResearchSession, ResearchSessionRequest } from "@loom/protocol";
 import { z } from "zod";
 import type { JsonValue } from "./generated/serde_json/JsonValue.js";
 import type { ThreadReadParams } from "./generated/v2/ThreadReadParams.js";
@@ -26,6 +27,7 @@ import type { TurnStartParams } from "./generated/v2/TurnStartParams.js";
 import type { TurnSteerParams } from "./generated/v2/TurnSteerParams.js";
 import { type Incoming, RpcConnection, RpcError, redact } from "./protocol.js";
 import { PendingRequests, StaleCodexRequestError } from "./requests.js";
+import { runCodexResearch } from "./research.js";
 import * as schemas from "./schemas.js";
 import { CODEX_VERSION, TaskServer } from "./server.js";
 
@@ -72,7 +74,41 @@ export function createCodexAdapter(options: CodexAdapterOptions): CodexAdapter {
   return new AppServerAdapter(options);
 }
 
+export async function recoverCodexResearch(
+  options: CodexAdapterOptions,
+): Promise<void> {
+  await new TaskServer(
+    options.taskDirectory,
+    options.executable ?? "codex",
+  ).stopRecorded();
+}
+
+export function createCodexResearch(
+  options: CodexAdapterOptions,
+): ResearchSession {
+  return async (request) => {
+    const adapter = new AppServerAdapter(options);
+    try {
+      await adapter.startServer();
+      return await adapter.research(request);
+    } finally {
+      await adapter.stopServer();
+    }
+  };
+}
+
 class AppServerAdapter implements CodexAdapter {
+  private readonly researchListeners = new Set<
+    (method: string, params: unknown) => void
+  >();
+  research(request: ResearchSessionRequest) {
+    return runCodexResearch(this.rpc(), request, (listener) => {
+      this.researchListeners.add(listener);
+      return () => {
+        this.researchListeners.delete(listener);
+      };
+    });
+  }
   private readonly server: TaskServer;
   private readonly timeoutMs: number;
   private counter: number;
@@ -306,6 +342,8 @@ class AppServerAdapter implements CodexAdapter {
     }
   }
   private receive(message: Incoming) {
+    for (const listener of this.researchListeners)
+      listener(message.method, message.params);
     const request = this.pending.receive(message);
     if (request) {
       if (request.activityAt)

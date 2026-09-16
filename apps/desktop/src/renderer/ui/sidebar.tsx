@@ -109,6 +109,17 @@ export function Sidebar() {
         <button
           type="button"
           className="view-item"
+          {...keyHint("go-research")}
+          data-view="research"
+          aria-current={view === "research" ? "page" : undefined}
+          onClick={() => store.setView("research")}
+        >
+          <ViewIcon view="research" />
+          <span>Research</span>
+        </button>
+        <button
+          type="button"
+          className="view-item"
           data-view="settings"
           aria-current={view === "settings" ? "page" : undefined}
           {...keyHint("go-settings")}
@@ -170,7 +181,7 @@ function ViewIcon({ view }: { view: string }) {
         <path d="M10 2l-1.5 1.5L10 5" />
       </svg>
     );
-  if (view === "briefs")
+  if (view === "briefs" || view === "research")
     return (
       <svg {...common} aria-hidden="true">
         <rect x="2.5" y="2" width="11" height="12" rx="1.5" />
