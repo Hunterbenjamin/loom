@@ -1,4 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { attentionCount, inboxRows } from "./store/inbox.js";
 import { selectedPullRequests } from "./store/pull-requests.js";
 import { useStore, useStoreApi } from "./store/react.js";
