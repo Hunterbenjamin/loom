@@ -33,11 +33,24 @@ export const RunDot = memo(function RunDot({
   read = false,
 }: {
   run: Run | null;
-  /** A Done or Canceled issue needs nothing more, so it is always grey. */
+  /** Merging shows progress; Done and Canceled issues are always grey. */
   stage?: Stage;
   /** Whether the human has seen this run's finished turn; blue means unread. */
   read?: boolean;
 }) {
+  if (stage === "merging")
+    return (
+      <span title="Merging">
+        <Status
+          state={{
+            tone: "working",
+            icon: "◌",
+            label: "Merging",
+            priority: 3,
+          }}
+        />
+      </span>
+    );
   if (!run) return <span className="dot faint" title="No run" />;
   return (
     <span
