@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { attentionCount, inboxRows } from "./store/inbox.js";
 import { selectedPullRequests } from "./store/pull-requests.js";
 import { useStore, useStoreApi } from "./store/react.js";
@@ -28,6 +28,13 @@ const PullRequestDetail = lazy(() =>
 
 export function App() {
   const store = useStoreApi();
+  const content = useRef<HTMLDivElement>(null);
+  const focusContent = useCallback(() => {
+    const target =
+      content.current?.querySelector<HTMLElement>(".pr-page-head") ??
+      content.current;
+    target?.focus({ preventScroll: true });
+  }, []);
   const [help, setHelp] = useState(false);
   const showHelp = useCallback(() => setHelp(true), []);
   const pendingKey = useShortcuts(store, showHelp);
@@ -112,7 +119,7 @@ export function App() {
       {help ? <TrackerHelp onClose={() => setHelp(false)} /> : null}
       {pendingKey ? <WhichKey /> : null}
       <Sidebar />
-      <div className="main">
+      <div className="main" ref={content} tabIndex={-1}>
         <header className="topbar">
           <h1>
             {view === "briefs"
@@ -205,7 +212,7 @@ export function App() {
         </div>
       </div>
 
-      <LeadBar surface="tracker" />
+      <LeadBar surface="tracker" onMainClose={focusContent} />
       <Palette />
       <StagePicker />
       <CreateIssue />
