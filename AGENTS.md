@@ -61,3 +61,8 @@ Agents run on the same machine as the user's real work.
 
 Branches are `<type>/<slug>` with type `feat`, `fix`, `docs`, `chore` or `spike`. Keep PRs small and
 say what changed, why, and how you tested it.
+
+Every agent-created commit must include `Assisted-by: <provider>:<model>` using the run's provider
+and model. Keep the human as author, committer and signer, preserving the existing Git identity
+and signing configuration. Never invent an agent identity or email address, and never add AI
+`Co-Authored-By:` or `Signed-off-by:` trailers.
