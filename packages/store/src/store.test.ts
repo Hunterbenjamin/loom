@@ -328,6 +328,18 @@ describe("task transactions", () => {
       taskId,
     ]);
   });
+  it("lists the tasks whose worktree has not been removed", async () => {
+    const store = await seeded();
+    expect(store.liveWorktreeTaskIds()).toEqual([]);
+    expect(store.commit(taskId, result(richState()), 0).ok).toBe(true);
+    expect(store.liveWorktreeTaskIds()).toEqual([taskId]);
+    const removed = store.loadTaskState(taskId);
+    const version = removed.task.version;
+    removed.task.version = version + 1;
+    required(removed.worktree).removedAt = now;
+    expect(store.commit(taskId, result(removed), version).ok).toBe(true);
+    expect(store.liveWorktreeTaskIds()).toEqual([]);
+  });
   it("a stale version writes no SQL, receipts, transitions, outbox or artifact files", async () => {
     const store = await seeded(),
       state = richState();

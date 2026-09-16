@@ -111,29 +111,36 @@ export class CoordinatorViews {
     this.inventory = new PaneInventory(
       this.deps.adapters.paneHost,
       this.deps.adapters.git,
-      () => ({
-        states: this.deps.store
-          .tasks()
-          .map((t) => this.deps.store.loadTaskState(t.id)),
-        repos: this.deps.store.repos(),
-        research: this.deps.store.research.list({ archived: "all" }),
-        now: this.deps.now(),
-        leadPanes: new Set(
-          [...this.deps.leads.entries()].flatMap(([id, lead]) =>
-            lead.paneRef &&
-            this.published
-              .rows()
-              .some(
-                (r) =>
-                  r.collection === "lead" &&
-                  r.key === id &&
-                  (r.value as { status: string }).status === "waiting",
-              )
-              ? [paneKey(lead.paneRef)]
-              : [],
+      () => {
+        // Only a task that is still moving or still has its worktree can own a pane: a finished
+        // task's session went with its worktree. Loading every task's state here made each pane
+        // refresh (every two seconds, and on every hint) cost over a second with 137 tasks.
+        const live = new Set(this.deps.store.liveWorktreeTaskIds());
+        return {
+          states: this.deps.store
+            .tasks()
+            .filter((t) => !TERMINAL.includes(t.stage) || live.has(t.id))
+            .map((t) => this.deps.store.loadTaskState(t.id)),
+          repos: this.deps.store.repos(),
+          research: this.deps.store.research.list({ archived: "all" }),
+          now: this.deps.now(),
+          leadPanes: new Set(
+            [...this.deps.leads.entries()].flatMap(([id, lead]) =>
+              lead.paneRef &&
+              this.published
+                .rows()
+                .some(
+                  (r) =>
+                    r.collection === "lead" &&
+                    r.key === id &&
+                    (r.value as { status: string }).status === "waiting",
+                )
+                ? [paneKey(lead.paneRef)]
+                : [],
+            ),
           ),
-        ),
-      }),
+        };
+      },
       (panes, unavailable) => {
         this.deps.protocol().publish(
           this.published.replace("panes", null, [

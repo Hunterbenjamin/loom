@@ -191,6 +191,10 @@ export class Store {
   tasksByStage(stage: Stage): Task[] {
     return this.queries.tasksByStage(stage);
   }
+  /** Tasks whose worktree, and with it their pane workspace, has not been removed. */
+  liveWorktreeTaskIds(): TaskId[] {
+    return this.queries.liveWorktreeTaskIds();
+  }
   tasksNeedingAttention(): Task[] {
     return this.queries.tasksNeedingAttention();
   }
