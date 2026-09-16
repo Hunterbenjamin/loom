@@ -267,7 +267,7 @@ export class Research {
               recipe.settingsPath,
               this.deps.launch().mcpEntry(recipe.token),
               undefined,
-              recipe.cwd,
+              true,
             );
         await this.watch(recipe);
         await this.observe(entry.id);
@@ -296,7 +296,7 @@ export class Research {
           recipe.settingsPath!,
           launch.mcpEntry(recipe.token),
           undefined,
-          recipe.cwd,
+          true,
         );
         restored = await launch.recipes.save({
           ...recipe,

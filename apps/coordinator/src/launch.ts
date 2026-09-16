@@ -86,6 +86,9 @@ export async function writeCodexHomeConfig(
 const READ_ONLY: (Role | "research")[] = ["planner", "research"];
 
 /** A Codex thread's own overrides: its run's Loom registration and reasoning effort. */
+/** Roles that investigate outside the repository: research, and planners finding a cause. */
+export const WEB_SEARCH_ROLES: readonly string[] = ["planner", "research"];
+
 export function codexThreadConfig(
   entry: McpServerEntry,
   reasoningEffort?: string | null,
@@ -242,7 +245,7 @@ export async function launchAgent(
       settingsPath,
       deps.mcpEntry(token),
       context.bashPrefixes,
-      action.role === "research" ? action.worktreePath : undefined,
+      WEB_SEARCH_ROLES.includes(action.role),
     );
     const sessionId = action.sessionId;
     if (!sessionId)
@@ -378,6 +381,7 @@ export function agentThreadConfig(
 ): Record<string, unknown> {
   return {
     ...codexThreadConfig(entry, recipe.reasoningEffort),
+    ...(recipe.role === "planner" ? { web_search: "live" } : {}),
     ...(recipe.role === "research"
       ? {
           sandbox_mode: "read-only",
