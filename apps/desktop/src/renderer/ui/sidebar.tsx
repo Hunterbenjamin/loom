@@ -197,11 +197,19 @@ function ViewIcon({ view }: { view: string }) {
         <path d="M10 2l-1.5 1.5L10 5" />
       </svg>
     );
-  if (view === "briefs" || view === "research")
+  if (view === "briefs")
     return (
       <svg {...common} aria-hidden="true">
         <rect x="2.5" y="2" width="11" height="12" rx="1.5" />
         <path d="M5 5h6M5 8h6M5 11h3" />
+      </svg>
+    );
+  // Research reads as investigation, not as another written page like the brief.
+  if (view === "research")
+    return (
+      <svg {...common} aria-hidden="true">
+        <circle cx="7" cy="7" r="4.5" />
+        <path d="M10.4 10.4L13.5 13.5" />
       </svg>
     );
   if (view === "settings")
