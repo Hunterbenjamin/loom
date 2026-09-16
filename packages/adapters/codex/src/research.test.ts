@@ -19,6 +19,7 @@ async function setup({
   inProgress = false,
   webCount = 1,
   webStatus = "completed",
+  readFailures = 0,
 } = {}) {
   const fake = await fakeServer();
   cleanups.push(() => fake.close());
@@ -35,6 +36,7 @@ async function setup({
   cleanups.push(async () => connection.close());
   const calls: { method: string; params: Record<string, unknown> }[] = [];
   let persisted = false;
+  let reads = 0;
   fake.handle((method, params, socket) => {
     calls.push({ method, params });
     if (method === "thread/start")
@@ -91,7 +93,15 @@ async function setup({
       }
       return { result: { turn: { id: "turn", status: "inProgress" } } };
     }
-    if (method === "thread/read")
+    if (method === "thread/read") {
+      if (reads++ < readFailures)
+        return {
+          error: {
+            code: -32603,
+            message:
+              "failed to read thread: thread-store internal error: rollout at /x.jsonl is empty",
+          },
+        };
       return {
         result: {
           thread: {
@@ -111,6 +121,7 @@ async function setup({
           },
         },
       };
+    }
     if (method === "turn/interrupt") return { result: {} };
     throw new Error(`Unexpected method ${method}`);
   });
@@ -177,6 +188,21 @@ test("the output schema carries no string format OpenAI rejects", async () => {
   // The document's source URLs are z.url(), which emits format: "uri"; OpenAI refuses that
   // schema with invalid_json_schema, so the request never reaches the model.
   expect(formats).not.toContain("uri");
+});
+test("a thread that is not readable yet is polled, not failed", async () => {
+  // The app-server writes the rollout after turn/start returns; reads before that fail while the
+  // turn runs on. Failing there abandoned a live turn that kept billing.
+  const { run, calls } = await setup({ readFailures: 2 });
+  expect(await run()).toEqual(document);
+  expect(calls.filter((call) => call.method === "thread/read")).toHaveLength(3);
+  expect(calls.some((call) => call.method === "turn/interrupt")).toBe(false);
+});
+test("an abandoned turn is interrupted so it stops billing", {
+  timeout: 20000,
+}, async () => {
+  const { run, calls } = await setup({ readFailures: 100 });
+  await expect(run()).rejects.toThrow("rollout");
+  expect(calls.some((call) => call.method === "turn/interrupt")).toBe(true);
 });
 test("rejects prose and documents without observed live web success", async () => {
   await expect((await setup({ web: false })).run()).rejects.toThrow(
