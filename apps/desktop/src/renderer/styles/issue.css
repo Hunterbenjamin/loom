@@ -198,3 +198,29 @@
   display: inline-block;
   min-width: 44px;
 }
+
+.issue-plan .pr-story,
+.issue-plan .pr-rail {
+  overflow-wrap: anywhere;
+}
+.issue-plan .pr-description:first-child {
+  margin-top: 0;
+}
+.issue-plan .pr-description ul,
+.issue-plan-steps {
+  margin: 0;
+  padding-left: 24px;
+}
+.issue-plan .pr-description li + li {
+  margin-top: 8px;
+}
+.issue-plan .issue-plan-steps li + li {
+  margin-top: 18px;
+}
+.issue-plan-steps .dim {
+  margin-top: 4px;
+  white-space: pre-wrap;
+}
+.issue-plan .chip {
+  white-space: normal;
+}
