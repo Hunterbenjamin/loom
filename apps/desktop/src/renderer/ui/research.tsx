@@ -298,8 +298,13 @@ export function ResearchView() {
                         ? "Leave a note, or mention @loom to continue research…"
                         : "Leave a note…"
                     }
-                    post={(message) =>
-                      act({ kind: "comment_research", id: current.id, message })
+                    post={(message, requestId) =>
+                      act({
+                        kind: "comment_research",
+                        id: current.id,
+                        message,
+                        requestId,
+                      })
                     }
                   />
                 </>

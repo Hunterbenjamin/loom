@@ -19,6 +19,15 @@ export class ResearchStore {
       .all(id)
       .map((raw) => researchComment.parse(JSON.parse(z.string().parse(raw))));
   }
+  getComment(id: string): ResearchComment | null {
+    const raw = this.db
+      .prepare("SELECT value FROM research_comments WHERE id=?")
+      .pluck()
+      .get(id);
+    return raw === undefined
+      ? null
+      : researchComment.parse(JSON.parse(z.string().parse(raw)));
+  }
   appendComment(value: ResearchComment): void {
     const comment = researchComment.parse(value);
     this.db

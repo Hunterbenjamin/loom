@@ -123,6 +123,10 @@ export const command = z.union([
   z.strictObject({
     kind: z.literal("comment_research"),
     id: z.string().uuid(),
+    requestId: z
+      .string()
+      .uuid()
+      .describe("Fresh comment UUID; reuse it when retrying the same comment"),
     message: researchCommentText,
   }),
   z.strictObject({ kind: z.literal("resume_research"), id: z.string().uuid() }),

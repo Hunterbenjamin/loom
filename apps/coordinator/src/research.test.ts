@@ -109,7 +109,11 @@ test("scope and concurrency refusals, failed follow-up preserves the document", 
   await h.coordinator.research.submit(entry.id, document);
   h.providers.finish(session, "completed");
   await h.coordinator.research.refresh();
-  await h.coordinator.research.comment(entry.id, "@loom Compare more keys");
+  await h.coordinator.research.comment(
+    entry.id,
+    "@loom Compare more keys",
+    randomUUID(),
+  );
   h.providers.confirm(session);
   h.providers.finish(session, "failed", {
     kind: "provider failed",
@@ -296,7 +300,11 @@ test("Claude research launches its recorded session in a pane and keeps failed f
   ).toBe(false);
   h.providers.finish(session, "completed");
   await h.coordinator.research.refresh();
-  await h.coordinator.research.comment(entry.id, "@loom Add examples");
+  await h.coordinator.research.comment(
+    entry.id,
+    "@loom Add examples",
+    randomUUID(),
+  );
   expect(h.providers.confirm(session)?.text).toContain(document.body);
   h.providers.finish(session, "failed", {
     kind: "test failure",
@@ -313,7 +321,12 @@ test("recovery reconnects a surviving provider session and resumes its pane with
   const h = await setup();
   const { entry, session } = await start(h);
   h.providers.confirm(session);
-  await h.coordinator.research.comment(entry.id, "Please @LoOm add examples");
+  const requestId = randomUUID();
+  await h.coordinator.research.comment(
+    entry.id,
+    "Please @LoOm add examples",
+    requestId,
+  );
   await h.coordinator.research.stop();
   const { RecipeStore } = await import("./recipes.js");
   const { Research } = await import("./research.js");
@@ -344,6 +357,10 @@ test("recovery reconnects a surviving provider session and resumes its pane with
   );
   const send = vi.spyOn(adapter, "startTurn");
   await owner.recover();
+  await owner.comment(entry.id, "Please @LoOm add examples", requestId);
+  expect(
+    h.store.research.comments(entry.id).filter((c) => c.id === requestId),
+  ).toHaveLength(1);
   expect(owner.read(entry.id)).toMatchObject({
     status: "running",
     observedStatus: "working",
@@ -370,9 +387,21 @@ test("notes send nothing; queued mentions drain once in order and completed entr
   const adapter = await h.adapters.codex(recipe.taskId);
   const send = vi.spyOn(adapter, "startTurn");
   h.providers.confirm(session);
-  await h.coordinator.research.comment(entry.id, "A note about @loomer");
-  await h.coordinator.research.comment(entry.id, "First, @LoOm compare more");
-  await h.coordinator.research.comment(entry.id, "@loom then add examples");
+  await h.coordinator.research.comment(
+    entry.id,
+    "A note about @loomer",
+    randomUUID(),
+  );
+  await h.coordinator.research.comment(
+    entry.id,
+    "First, @LoOm compare more",
+    randomUUID(),
+  );
+  await h.coordinator.research.comment(
+    entry.id,
+    "@loom then add examples",
+    randomUUID(),
+  );
   expect(send).not.toHaveBeenCalled();
   expect(
     h.store.research.comments(entry.id).filter((c) => !c.delivered),
@@ -411,9 +440,9 @@ test("Main comments are attributed at the authenticated MCP boundary; saved entr
   const h = await setup();
   const id = randomUUID();
   h.coordinator.research.save(id, "Saved", document);
-  await h.coordinator.research.comment(id, "Human note");
+  await h.coordinator.research.comment(id, "Human note", randomUUID());
   await expect(
-    h.coordinator.research.comment(id, "@loom continue"),
+    h.coordinator.research.comment(id, "@loom continue", randomUUID()),
   ).rejects.toThrow("no agent session");
   const { createAgentMcp } = await import("./agent-mcp.js");
   const { leadInputSchemas } = await import("@loom/mcp");
@@ -421,6 +450,7 @@ test("Main comments are attributed at the authenticated MCP boundary; saved entr
     leadInputSchemas.comment_research!.safeParse({
       id,
       message: "note",
+      requestId: randomUUID(),
       author: "human",
     }).success,
   ).toBe(false);
@@ -437,11 +467,9 @@ test("Main comments are attributed at the authenticated MCP boundary; saved entr
     log: () => {},
     reportAdapterFailure: () => {},
   } as unknown as Parameters<typeof createAgentMcp>[0]);
-  await mcp.leadHost.invoke(
-    "comment_research",
-    { id, message: "Main note" },
-    h.repo.id,
-  );
+  const request = { id, message: "Main note", requestId: randomUUID() };
+  for (let attempt = 0; attempt < 2; attempt++)
+    await mcp.leadHost.invoke("comment_research", request, h.repo.id);
   expect(h.store.research.comments(id).map((c) => [c.author, c.text])).toEqual([
     ["human", "Human note"],
     ["main", "Main note"],
@@ -460,6 +488,7 @@ test("a provider hint releases queued research on another idle entry", async () 
   await h.coordinator.research.comment(
     first.entry.id,
     "@loom continue after the other run",
+    randomUUID(),
   );
   expect(h.store.research.comments(first.entry.id).at(-1)?.delivered).toBe(
     false,
@@ -487,7 +516,7 @@ test("failed dispatch is recorded once and never replaces or replays the submitt
   const send = vi
     .spyOn(adapter, "startTurn")
     .mockRejectedValue(new Error("Delivery failed"));
-  await h.coordinator.research.comment(entry.id, "@loom more");
+  await h.coordinator.research.comment(entry.id, "@loom more", randomUUID());
   await h.coordinator.research.refresh();
   await h.coordinator.research.refresh();
   expect(send).toHaveBeenCalledTimes(1);
@@ -501,4 +530,62 @@ test("failed dispatch is recorded once and never replaces or replays the submitt
   expect(h.store.research.comments(entry.id).every((c) => c.delivered)).toBe(
     true,
   );
+});
+
+test("human command retries keep one comment and one follow-up, rejecting conflicting identities", async () => {
+  const h = await setup();
+  const { researchHandlers } = await import("./research.js");
+  const handlers = researchHandlers({
+    store: h.store,
+    research: h.coordinator.research,
+    now: () => h.clock.now(),
+  });
+  const { entry, recipe, session } = await start(h);
+  h.providers.confirm(session);
+  const send = vi.spyOn(await h.adapters.codex(recipe.taskId), "startTurn");
+  const request = {
+    kind: "comment_research" as const,
+    id: entry.id,
+    message: "Please @loom continue",
+    requestId: randomUUID(),
+  };
+  // The first acknowledgement is lost; concurrent retries keep the same identity.
+  await Promise.all([
+    handlers.comment_research(request),
+    handlers.comment_research(request),
+  ]);
+  expect(
+    h.store.research
+      .comments(entry.id)
+      .filter((c) => c.id === request.requestId),
+  ).toHaveLength(1);
+  expect(send).not.toHaveBeenCalled();
+  await h.coordinator.research.submit(entry.id, document);
+  h.providers.finish(session, "completed");
+  await h.coordinator.research.refresh();
+  expect(send).toHaveBeenCalledTimes(1);
+  h.providers.confirm(session);
+  await h.coordinator.research.submit(entry.id, document);
+  h.providers.finish(session, "completed");
+  await h.coordinator.research.refresh();
+  await handlers.comment_research(request);
+  await h.coordinator.research.refresh();
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(h.coordinator.research.read(entry.id).status).toBe("completed");
+  await expect(
+    handlers.comment_research({ ...request, message: "Different" }),
+  ).rejects.toThrow("another request");
+  await expect(
+    h.coordinator.research.comment(
+      entry.id,
+      request.message,
+      request.requestId,
+      "main",
+    ),
+  ).rejects.toThrow("another request");
+  const other = randomUUID();
+  h.coordinator.research.save(other, "Other", document);
+  await expect(
+    handlers.comment_research({ ...request, id: other }),
+  ).rejects.toThrow("another request");
 });

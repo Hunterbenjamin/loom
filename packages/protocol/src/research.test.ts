@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { command } from "./commands.js";
 import {
   mentionsLoom,
   researchComment,
@@ -97,4 +98,19 @@ test("comments validate attribution, timestamps and text bounds; mentions match 
     expect(mentionsLoom(text)).toBe(true);
   for (const text of ["loom", "@loomer", "@loom2", "@loom_extra"])
     expect(mentionsLoom(text)).toBe(false);
+});
+
+test("research comments require a stable UUID request identity", () => {
+  const input = {
+    kind: "comment_research",
+    id: "00000000-0000-4000-8000-000000000001",
+    message: "Note",
+  };
+  expect(command.safeParse(input).success).toBe(false);
+  expect(command.safeParse({ ...input, requestId: "invalid" }).success).toBe(
+    false,
+  );
+  expect(command.safeParse({ ...input, requestId: input.id }).success).toBe(
+    true,
+  );
 });

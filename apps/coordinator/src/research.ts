@@ -346,16 +346,29 @@ export class Research {
   comment(
     id: string,
     message: string,
+    requestId: string,
     author: "human" | "main" = "human",
   ): Promise<ResearchEntry> {
     return this.exclusive(async () => {
       const entry = this.read(id);
       const text = researchCommentText.parse(message);
+      const existing = this.deps.store.research.getComment(requestId);
+      if (existing) {
+        if (
+          existing.entryId !== id ||
+          existing.author !== author ||
+          existing.text !== text
+        )
+          throw new Error(
+            "Comment request ID already belongs to another request",
+          );
+        return entry;
+      }
       if (entry.origin === "main" && mentionsLoom(text))
         throw new Error(
           "Main-saved research has no agent session; post a note without @loom",
         );
-      this.appendComment(id, author, text, !mentionsLoom(text));
+      this.appendComment(id, author, text, !mentionsLoom(text), requestId);
       if (mentionsLoom(text)) await this.observe(id);
       return this.read(id);
     });
@@ -365,9 +378,10 @@ export class Research {
     author: ResearchComment["author"],
     text: string,
     delivered = true,
+    commentId: string = randomUUID(),
   ) {
     this.deps.store.research.appendComment({
-      id: randomUUID(),
+      id: commentId,
       entryId: id,
       author,
       text,
@@ -781,7 +795,13 @@ export function researchHandlers(deps: {
         ),
       ),
     comment_research: async (command) =>
-      result(await deps.research.comment(command.id, command.message)),
+      result(
+        await deps.research.comment(
+          command.id,
+          command.message,
+          command.requestId,
+        ),
+      ),
     resume_research: async (command) =>
       result(await deps.research.resume(command.id)),
     save_research: (command) =>

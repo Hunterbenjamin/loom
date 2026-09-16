@@ -134,6 +134,7 @@ export function createAgentMcp(deps: AgentMcpDeps) {
           const entry = await deps.research.comment(
             command.id,
             command.message,
+            command.requestId,
             "main",
           );
           return {

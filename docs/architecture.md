@@ -238,7 +238,10 @@ instructions. No structured provider output or successful-web-lookup gate is inv
 
 Only validated `submit_research` replaces a document in SQLite. Migration 0014 stores ordered
 research comments separately from documents, with author (human, Main or agent), text, time and
-delivery state. `comment_research` stores a note; a case-insensitive `@loom` mention queues a
+delivery state. `comment_research` requires a caller-generated `requestId`, stored as the comment
+ID. Identical retries return the existing comment; reuse for another entry, author or text is
+refused. The desktop retains this ID until success, and Main supplies it through MCP.
+The command stores a note; a case-insensitive `@loom` mention queues a
 follow-up with the existing document as context. Main's authenticated MCP path fixes its author.
 Main-saved entries accept notes but refuse mentions because they have no research session.
 Provider observation drains pending mentions when the entry is no longer running, its session is

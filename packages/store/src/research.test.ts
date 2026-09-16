@@ -58,6 +58,8 @@ test("0014 retains existing documents; comments are isolated, ordered and surviv
     db = new Database(path);
     store = new ResearchStore(db);
     expect(store.comments(entry.id)).toEqual(comments);
+    expect(store.getComment(comments[0]!.id)).toEqual(comments[0]);
+    expect(store.getComment(randomUUID())).toBeNull();
     store.markDelivered(comments[0]!.id);
     expect(store.comments(entry.id)).toEqual(
       comments.map((c) => ({ ...c, delivered: true })),

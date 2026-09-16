@@ -216,6 +216,7 @@ test("running research renders an ordered thread with the shared keyboard compos
     kind: "comment_research",
     id: entry.id,
     message: "Please @loom continue",
+    requestId: expect.any(String),
   });
   expect(textarea.value).toBe("");
 });
@@ -239,4 +240,38 @@ test("reading actions expand the thread and scroll the detail", async () => {
   const body = host.querySelector(".pr-page-body") as HTMLElement;
   runTrackerAction(store, "scroll-down");
   expect(body.scrollTop).toBe(60);
+});
+
+test("an uncertain comment retry keeps its request ID until success", async () => {
+  const { host, store, send } = await mount([saved]);
+  await act(async () => store.openResearch(saved.id));
+  const textarea = host.querySelector(
+    ".pr-comment-box textarea",
+  ) as HTMLTextAreaElement;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )!.set!.call(textarea, "A note");
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const submit = () =>
+    textarea.form!.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+  send.mockRejectedValueOnce(new Error("Response lost"));
+  await act(async () => {
+    submit();
+  });
+  expect(textarea.value).toBe("A note");
+  await act(async () => {
+    submit();
+  });
+  const attempts = send.mock.calls
+    .map(([command]) => command)
+    .filter((command) => command.kind === "comment_research");
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0]).toMatchObject({ requestId: expect.any(String) });
+  expect(attempts[1]).toEqual(attempts[0]);
+  expect(textarea.value).toBe("");
 });
