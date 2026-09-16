@@ -23,7 +23,7 @@ export function ResearchView() {
   const [archived, setArchived] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [revision, setRevision] = useState(0);
+  const refreshResearch = useRef<(() => Promise<void>) | null>(null);
   const submitting = useRef(false);
   useEffect(() => {
     if (!connected) return;
@@ -56,13 +56,15 @@ export function ResearchView() {
         loading = false;
       }
     };
+    refreshResearch.current = refresh;
     void refresh();
     const timer = setInterval(() => void refresh(), 3000);
     return () => {
       disposed = true;
+      refreshResearch.current = null;
       clearInterval(timer);
     };
-  }, [store, connected, archived, open, revision]);
+  }, [store, connected, archived, open]);
   const act = async (command: Command) => {
     if (submitting.current) return;
     submitting.current = true;
@@ -77,7 +79,7 @@ export function ResearchView() {
           store.openResearch(result.result.entry.id);
         }
       }
-      setRevision((value) => value + 1);
+      await refreshResearch.current?.();
       setError("");
     } catch (error) {
       setError(error instanceof Error ? error.message : "Action failed");
