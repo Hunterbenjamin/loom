@@ -1,4 +1,3 @@
-import type { ReasoningEffort } from "@loom/core";
 import { z } from "zod";
 
 export const researchQuestion = z.string().trim().min(1).max(10000);
@@ -24,6 +23,19 @@ export const researchEntry = z.strictObject({
   question: researchQuestion,
   origin: z.enum(["agent", "main"]),
   status: z.enum(["running", "completed", "failed", "interrupted"]),
+  directory: z.string().nullable().default(null),
+  pane: z
+    .object({
+      hostGeneration: z.string(),
+      sessionName: z.string(),
+      windowId: z.string(),
+      paneId: z.string(),
+    })
+    .nullable()
+    .default(null),
+  observedStatus: z
+    .enum(["working", "idle", "waiting", "unknown", "ended"])
+    .default("unknown"),
   sessionId: z.string().min(1).nullable(),
   provider: z.enum(["codex", "claude"]).nullable(),
   model: z.string().min(1).nullable(),
@@ -43,18 +55,3 @@ export const researchState = z.strictObject({
   runningId: z.string().uuid().nullable(),
 });
 export type ResearchState = z.infer<typeof researchState>;
-
-export interface ResearchSessionRequest {
-  sessionId: string;
-  cwd: string;
-  prompt: string;
-  model: string;
-  reasoningEffort: ReasoningEffort | null;
-  limits: { turns: number; tokens: number };
-  controller: AbortController;
-  /** Persist the provider identity before the first turn. */
-  onSession(id: string): void;
-}
-export type ResearchSession = (
-  request: ResearchSessionRequest,
-) => Promise<ResearchDocument>;

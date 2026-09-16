@@ -13,6 +13,7 @@ import type {
   RunId,
   Sha,
 } from "@loom/core";
+import { type ResearchDocument, researchDocument } from "@loom/protocol";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
@@ -35,7 +36,8 @@ import {
 
 type McpIdentity =
   | { runId: RunId; active: boolean; kind?: "run"; reason?: string }
-  | { kind: "lead"; active: boolean; repoId: string };
+  | { kind: "lead"; active: boolean; repoId: string }
+  | { kind: "research"; active: boolean; id: string };
 
 export type McpInput = Extract<Input, { type: "mcp" }>;
 export interface McpHost {
@@ -52,6 +54,15 @@ export interface McpServerOptions {
   /** Receives the cause of a host failure that the agent only sees as a generic error. */
   log?: (message: string) => void;
   leadHost?: LeadHost;
+  researchHost?: {
+    submit(id: string, document: ResearchDocument): Promise<unknown>;
+    read(
+      id: string,
+      path: string,
+      offset: number,
+      list: boolean,
+    ): Promise<unknown>;
+  };
   /** Re-read authoritative liveness on every call; null means an unknown token. */
   resolveToken(token: string): McpIdentity | null | Promise<McpIdentity | null>;
   /** Read the exact reviewed blobs, verifying the path and range; never read the working file. */
@@ -71,6 +82,10 @@ const failure = (
   message: string,
   details: string[] = [message],
 ): McpResult<never> => ({ ok: false, error: { code, message, details } });
+const researchRead = z.strictObject({
+  path: z.string().min(1).max(4096),
+  offset: z.number().int().nonnegative().default(0),
+});
 const names = Object.keys(inputSchemas) as McpToolName[];
 const descriptions: Record<McpToolName, string> = {
   get_task_context:
@@ -103,7 +118,7 @@ async function invoke(
   const identity = token ? await options.resolveToken(token) : null;
   if (!identity)
     return failure("unknown_run", "The token does not identify a run");
-  if (identity.kind === "lead")
+  if (identity.kind === "lead" || identity.kind === "research")
     return failure("guard_failed", "Main identity cannot call task-run tools");
   if (!identity.active) {
     options.log?.(
@@ -210,6 +225,37 @@ export function createMcpServer(
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const identity = token ? await options.resolveToken(token) : null;
+    if (identity?.kind === "research")
+      return {
+        tools: [
+          {
+            name: "submit_research",
+            annotations: {
+              readOnlyHint: false,
+              destructiveHint: false,
+              openWorldHint: false,
+            },
+            description:
+              "Save the complete research document: title, markdown body and sources.",
+            inputSchema: z.toJSONSchema(researchDocument, { io: "input" }) as {
+              type: "object";
+            },
+          },
+          ...["read_research_file", "list_research_directory"].map((name) => ({
+            name,
+            annotations: {
+              readOnlyHint: true,
+              destructiveHint: false,
+              openWorldHint: false,
+            },
+            description:
+              "Read inside this research session’s named directory. Paths may be relative to that directory. File reads return at most 32KiB; continue at nextOffset.",
+            inputSchema: z.toJSONSchema(researchRead, { io: "input" }) as {
+              type: "object";
+            },
+          })),
+        ],
+      };
     if (identity?.kind === "lead")
       return {
         tools: leadToolNames.map((name) => ({
@@ -257,6 +303,65 @@ export function createMcpServer(
   });
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const name = request.params.name;
+    if (name === "read_research_file" || name === "list_research_directory") {
+      const identity = token ? await options.resolveToken(token) : null;
+      if (!identity || identity.kind !== "research" || !identity.active)
+        return reply(
+          failure(
+            "guard_failed",
+            "Only active research sessions can read their scope",
+          ),
+        );
+      const parsed = researchRead.safeParse(request.params.arguments);
+      if (!parsed.success || !options.researchHost)
+        return reply(failure("invalid_input", "Invalid scope read"));
+      try {
+        return reply({
+          ok: true,
+          value: await options.researchHost.read(
+            identity.id,
+            parsed.data.path,
+            parsed.data.offset,
+            name === "list_research_directory",
+          ),
+        });
+      } catch {
+        return reply(
+          failure(
+            "guard_failed",
+            "Path is unavailable or outside the research directory",
+          ),
+        );
+      }
+    }
+    if (name === "submit_research") {
+      const identity = token ? await options.resolveToken(token) : null;
+      if (!identity) return reply(failure("unknown_run", "Unknown identity"));
+      if (identity.kind !== "research")
+        return reply(
+          failure("guard_failed", "Only research sessions can submit research"),
+        );
+      if (!identity.active)
+        return reply(
+          failure("stale_run", "Research is not accepting a document"),
+        );
+      const parsed = researchDocument.safeParse(request.params.arguments);
+      if (!parsed.success)
+        return reply(failure("invalid_input", "Invalid research document"));
+      if (!options.researchHost)
+        return reply(failure("guard_failed", "Research unavailable"));
+      try {
+        return reply({
+          ok: true,
+          value: await options.researchHost.submit(identity.id, parsed.data),
+        });
+      } catch (error) {
+        options.log?.(`Research submission failed: ${String(error)}`);
+        return reply(
+          failure("guard_failed", "Research document was not accepted"),
+        );
+      }
+    }
     if (leadToolNames.includes(name)) {
       const identity = token ? await options.resolveToken(token) : null;
       if (!identity) return reply(failure("unknown_run", "Unknown identity"));

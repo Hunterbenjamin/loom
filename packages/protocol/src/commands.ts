@@ -114,9 +114,16 @@ export const command = z.union([
   z.strictObject({ kind: z.literal("read_research"), id: z.string().uuid() }),
   z.strictObject({
     kind: z.literal("start_research"),
+    directory: z.string().min(1),
     id: z.string().uuid(),
     question: researchQuestion,
   }),
+  z.strictObject({
+    kind: z.literal("extend_research"),
+    id: z.string().uuid(),
+    message: leadMessageText,
+  }),
+  z.strictObject({ kind: z.literal("resume_research"), id: z.string().uuid() }),
   z.strictObject({
     kind: z.literal("save_research"),
     id: z.string().uuid(),

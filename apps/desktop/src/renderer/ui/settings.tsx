@@ -220,7 +220,7 @@ function ResearchSettings({ context }: { context: FieldContext }) {
   return (
     <Group
       title="Research"
-      description="On-demand web research. Changes apply to the next run."
+      description="Read-only directory and web research. Changes apply to the next run."
     >
       <Row field={provider} label="Provider">
         <Select
@@ -251,7 +251,7 @@ function ResearchSettings({ context }: { context: FieldContext }) {
       <Row
         field={depth}
         label="Depth"
-        description="Quick: 10 steps / 30k tokens; standard: 30 / 100k; deep: 60 / 200k. Claude uses equivalent $0.90 / $3 / $6 spending limits."
+        description="Quick: 30k tokens; standard: 100k; deep: 200k. Research steps are guided by the prompt; token limits are enforced from provider usage."
       >
         <Select field={depth} options={["quick", "standard", "deep"]} />
       </Row>

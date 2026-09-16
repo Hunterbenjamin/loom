@@ -70,6 +70,30 @@ describe("createClaudeAdapter", () => {
       body: JSON.stringify(samples[name]),
     });
 
+  test("research has only web tools and scoped Loom tools, with isolated settings", async () => {
+    const settingsPath = join(dir, "research.json");
+    await adapter.writeSettings(settingsPath, undefined, undefined, dir);
+    const args = adapter.interactiveArgs({
+      sessionId: SESSION,
+      resume: false,
+      model: "haiku",
+      settingsPath,
+      readOnly: true,
+      research: true,
+    });
+    expect(args).toContain("--strict-mcp-config");
+    expect(args[args.indexOf("--tools") + 1]).toBe("WebSearch,WebFetch");
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("dontAsk");
+    expect(args).not.toContain("bypassPermissions");
+    const settings = JSON.parse(await readFile(settingsPath, "utf8"));
+    expect(settings.permissions.allow).toContain("WebSearch");
+    expect(
+      settings.permissions.allow.some((tool: string) =>
+        /Bash|Read|Edit|Write/.test(tool),
+      ),
+    ).toBe(false);
+  });
+
   test("a hook receipt becomes a hint, keyed by session and worktree", async () => {
     await post("UserPromptSubmit");
     expect(hints).toEqual([

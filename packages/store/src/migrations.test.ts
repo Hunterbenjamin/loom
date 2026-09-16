@@ -256,7 +256,10 @@ describe("current rows (0011)", () => {
   }
   it("fills every missing field, preserves current values, and retires only attempted ended-run messages", async () => {
     const db = await seed();
-    expect(required(migrations.at(-1)).breaking).toBe(false);
+    expect(
+      required(migrations.find((migration) => migration.version === 11))
+        .breaking,
+    ).toBe(false);
     const state = richState();
     const originalTask = {
       ...task(),
@@ -484,4 +487,34 @@ describe("current rows (0011)", () => {
       expect(read(db, "tasks", "t2").attention.reasonSince).toEqual({});
     },
   );
+});
+
+it("0013 preserves Main documents and removes obsolete headless agent entries", async () => {
+  const db = open();
+  await migrate(db, join(root, "backups"), migrations.slice(0, 12));
+  const saved = {
+    id: "main",
+    origin: "main",
+    document: { title: "Saved", body: "Keep this", sources: [] },
+  };
+  const insert = db.prepare(
+    "INSERT INTO research(id,value,started_at,archived_at) VALUES (?, ?, ?, NULL)",
+  );
+  insert.run("main", JSON.stringify(saved), now);
+  insert.run(
+    "agent",
+    JSON.stringify({ id: "agent", origin: "agent", status: "failed" }),
+    now,
+  );
+  await migrate(db, join(root, "backups"));
+  const rows = db.prepare("SELECT value FROM research").pluck().all();
+  expect(rows).toHaveLength(1);
+  expect(JSON.parse(String(rows[0]))).toEqual({
+    ...saved,
+    directory: null,
+    pane: null,
+    observedStatus: "unknown",
+  });
+  await migrate(db, join(root, "backups"));
+  expect(db.prepare("SELECT value FROM research").pluck().all()).toEqual(rows);
 });

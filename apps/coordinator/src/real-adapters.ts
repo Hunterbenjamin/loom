@@ -4,22 +4,15 @@
 // the shared Codex daemon or global config.
 
 import { join } from "node:path";
-import {
-  createBriefResearch,
-  createClaudeAdapter,
-  createClaudeResearch,
-} from "@loom/adapter-claude";
-import {
-  createCodexAdapter,
-  createCodexResearch,
-  recoverCodexResearch,
-} from "@loom/adapter-codex";
+import { createBriefResearch, createClaudeAdapter } from "@loom/adapter-claude";
+import { createCodexAdapter } from "@loom/adapter-codex";
 import { createGitAdapter } from "@loom/adapter-git";
 import { createGitHubAdapter } from "@loom/adapter-github";
 import { createTmuxPaneHost } from "@loom/adapter-tmux";
 import type { Store } from "@loom/store";
 import { type Adapters, codexPerTask } from "./adapters.js";
 import type { CoordinatorConfig } from "./config.js";
+import { researchOwnerId } from "./derive.js";
 
 /**
  * The adapter-wide Claude MCP entry is a placeholder: every Loom launch writes the run's own
@@ -42,12 +35,6 @@ export async function createRealAdapters(
     if (!listeners.size) pending.push(event);
     for (const listener of listeners) listener(event);
   };
-  const researchServer = {
-    taskDirectory: join(store.dataDirectory, "research-server"),
-    executable: config.codexExecutable,
-  };
-  // Research is not resumed on restart: retire its recorded process before accepting new work.
-  await recoverCodexResearch(researchServer);
   const git = createGitAdapter();
   const github = createGitHubAdapter({
     excludedAuthors: config.excludedAuthors,
@@ -88,13 +75,23 @@ export async function createRealAdapters(
     createCodexAdapter({
       taskDirectory,
       executable: config.codexExecutable,
-      liveSessionOwners: async () =>
-        store
+      liveSessionOwners: async () => [
+        ...store.research
+          .list({ archived: "all" })
+          .filter(
+            (entry) => researchOwnerId(entry.id) === taskId && entry.sessionId,
+          )
+          .map(
+            (entry) =>
+              entry.sessionId as import("@loom/core").ProviderSessionId,
+          ),
+        ...store
           .runs(taskId)
           .filter(
             (run) => run.provider === "codex" && !run.endedAt && run.sessionId,
           )
           .map((run) => run.sessionId as NonNullable<typeof run.sessionId>),
+      ],
       onDiagnostic: (event) => diagnostic({ ...event, taskId }),
       onLog: (message) => console.log(`${taskId}: ${message}`),
     }),
@@ -108,10 +105,6 @@ export async function createRealAdapters(
       };
     },
     research: createBriefResearch(config.claudeExecutable),
-    researchSessions: {
-      claude: createClaudeResearch(config.claudeExecutable),
-      codex: createCodexResearch(researchServer),
-    },
     git,
     github,
     paneHost,

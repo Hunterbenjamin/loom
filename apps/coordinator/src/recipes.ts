@@ -42,7 +42,19 @@ export const ENVIRONMENT_ALLOWLIST = [
 const recipeSchema = z.object({
   runId: z.string().min(1),
   taskId: z.string().min(1),
-  role: z.enum(ROLE_VALUES),
+  role: z.enum([...ROLE_VALUES, "research"]),
+  research: z
+    .object({
+      id: z.string().uuid(),
+      mcpPort: z.number().int().default(0),
+      limits: z.object({ turns: z.number(), tokens: z.number() }),
+      tokenBaseline: z.number().default(0),
+      turnId: z.string().nullable().default(null),
+      dispatched: z.boolean().default(false),
+      promptHash: z.string().default(""),
+      priorPromptId: z.string().nullable().default(null),
+    })
+    .optional(),
   provider: z.enum(PROVIDER_VALUES),
   mode: z.enum(RUN_MODE_VALUES),
   model: z.string().min(1),
@@ -72,7 +84,7 @@ type StoredRecipe = z.output<typeof recipeSchema>;
 export interface LaunchRecipe extends StoredRecipe {
   runId: RunId;
   taskId: TaskId;
-  role: Role;
+  role: Role | "research";
   provider: Provider;
   mode: RunMode;
   sessionId: ProviderSessionId | null;

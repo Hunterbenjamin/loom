@@ -39,3 +39,7 @@ export const deriveClaudeSessionId = (
 
 /** One unguessable MCP token per run. Never derived from an ID (decision 14). */
 export const newToken = (): string => randomBytes(32).toString("base64url");
+
+/** Compact, lossless owner key keeps the private app-server's Unix socket path short. */
+export const researchOwnerId = (id: string): import("@loom/core").TaskId =>
+  `r-${Buffer.from(id.replaceAll("-", ""), "hex").toString("base64url")}` as import("@loom/core").TaskId;

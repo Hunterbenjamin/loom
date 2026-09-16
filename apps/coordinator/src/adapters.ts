@@ -12,9 +12,6 @@ import type {
 } from "@loom/core";
 
 export interface Adapters {
-  researchSessions?: Partial<
-    Record<"codex" | "claude", import("@loom/protocol").ResearchSession>
-  >;
   research?: import("@loom/adapter-claude").BriefResearch;
   subscribeDiagnostics?(
     listener: (

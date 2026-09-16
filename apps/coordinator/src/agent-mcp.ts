@@ -15,6 +15,7 @@ import { messageAgent } from "./main-messages.js";
 import { createMcpHost, type McpHostDeps } from "./mcp-host.js";
 
 interface AgentMcpDeps extends McpHostDeps {
+  research: import("./research.js").Research;
   leads: Map<string, LeadSession>;
   leadFor(repoId: string): LeadSession;
   repoById(repoId: RepoId): Repo;
@@ -40,10 +41,20 @@ export function createAgentMcp(deps: AgentMcpDeps) {
     host,
     buildAnchor,
     log: (message: string) => deps.log(`MCP: ${message}`),
+    researchHost: {
+      read: (id: string, path: string, offset: number, list: boolean) =>
+        deps.research.readScope(id, path, offset, list),
+      submit: (
+        id: string,
+        document: import("@loom/protocol").ResearchDocument,
+      ) => deps.research.submit(id, document),
+    },
     resolveToken: (token: string) =>
+      deps.research.resolve(token) ??
       [...deps.leads.values()]
         .map((lead) => lead.resolve(token))
-        .find(Boolean) ?? resolveToken(token),
+        .find(Boolean) ??
+      resolveToken(token),
     leadHost: {
       invoke: async (
         name: string,

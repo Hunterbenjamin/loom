@@ -196,7 +196,7 @@ The scheduled date is persisted before launch; at most one automatic attempt run
 A manual run after 07:00 satisfies that date too. Run now remains available while scheduling is
 paused; concurrent requests coalesce into an active run and repeated run IDs return their record.
 
-Research uses a dedicated instance-data workspace and a saved provider session UUID. The Claude
+The brief uses a dedicated instance-data workspace and a saved provider session UUID. The Claude
 Agent SDK runs Sonnet with web tools, a $3 budget and 30-turn limit, without repository tools,
 inherited settings or MCP servers. Structured output is validated and requires a successful live
 web lookup. Source relevance and evidence strength remain research judgments.
@@ -204,7 +204,7 @@ web lookup. Source relevance and evidence strength remain research judgments.
 SQLite owns schedule, run records and final briefs; the provider owns transcripts. History returns
 the latest 30 runs; older runs remain addressable. Shutdown aborts the owned query; startup marks
 unfinished records interrupted. Failures require Run now or the next scheduled date, with no
-uncertain automatic replay. Closing a window does not stop research; the coordinator must be running
+uncertain automatic replay. Closing a window does not stop the brief; the coordinator must be running
 on an awake host. Briefs create no issue, branch, pane or Main message.
 
 ## Data shape ownership
@@ -222,33 +222,36 @@ these contracts.
 
 ## On-demand research
 
-The coordinator's `Research` owner accepts one instance-wide run at a time. A second start is
-refused with the running entry ID; repeating the same request ID returns its existing record.
-There is no queue or schedule. SQLite migration 0012 stores independent Research documents:
-question, title, markdown body, HTTP(S) sources, provenance, status and archive timestamp. Archive
-changes visibility without deleting content. Main's `save_research` stores completed documents
-with `origin=main`, without a provider session or a claim of live-web verification. The four Main
-research tools reuse validated coordinator commands; task-run tokens cannot invoke them.
+The coordinator's `Research` owner holds interactive sessions independently of task stages.
+`launchAgent` is the common provider launch path for tasks and research: it persists the private
+recipe and MCP identity before launching, records Codex's thread ID before its first turn, and
+opens an owned pane workspace. Research uses the human's existing absolute directory as cwd.
+A second concurrent request is refused. There is no queue or schedule.
 
-Research settings are instance-wide and captured on each start, outside pipeline roles. Both
-providers implement the same `ResearchSession` contract and validate with `researchDocument`.
-Claude shares the brief's web-only SDK runner, but has its own schema and limits. The brief still
-uses 30 turns, $3 and its existing editorial contract. Codex uses Loom's app-server transport and
-CLI credentials, not the separately billed Responses deep-research API. Its private server and
-home are outside every task's server directory; thread and turn have no environments or workspace
-roots, read-only sandbox, no MCP, no shell/image/collaboration tools, and live web search.
+Research tools are isolated from task-run and Main tools in both directions. The research token
+can submit a complete document and read/list files within its recorded directory. Scoped reads
+resolve real paths and reject traversal and symlinks outside that directory. General shell and
+native filesystem tools are disabled: Codex's native read-only sandbox prevents writes but does
+not itself restrict reads to cwd. Codex turns additionally set `networkAccess: false`; both
+providers retain their web tools. Pages and local contents are untrusted evidence, never
+instructions. No structured provider output or successful-web-lookup gate is involved.
 
-Quick/standard/deep allow 10/30/60 steps with ceilings of 30k/100k/200k tokens. Claude maps these to
-SDK maxTurns and $0.90/$3/$6 spending limits; these are budget equivalents, not exact token caps.
-Codex's one app-server turn contains the model's research loop: completed web lookups count against
-the step limit, and cumulative token notifications enforce the token ceiling. The adapter interrupts
-the owned turn on budget exhaustion or abort and closes its server. Only a successful live web tool
-result (Claude) or completed raw web-search response item (Codex) qualifies as live lookup evidence.
-Fetched pages are explicitly untrusted data in the prompt. Prose, invalid output and oversized
-bodies fail instead of being repaired or truncated into documents; diagnostic provider text is
-retained in the failed entry, bounded to 120k characters.
+Only validated `submit_research` replaces a document in SQLite. `extend_research` sends a further
+message to the same session with the existing document; failed turns preserve the last submitted
+version. `resume_research` restores the owned pane from its recipe without sending a prompt.
+Provider hints and the same native provider reads used by other sessions drive observed status;
+terminal output is never parsed. Restart loads recipes and reconnects observations without
+replaying messages. Running entries remain visible, and completed documents stay intact.
+If launch stopped before a recipe or provider session ID was recorded, recovery marks the
+request failed without replaying it, freeing the active slot for a new request.
 
-Run identity is stored before launch. Claude's UUID is preallocated; Codex's returned thread ID is
-stored before its first turn. On restart the private recorded research server is retired using its
-verified process identity, and all running entries, including archived ones, become interrupted.
-No agent is automatically replayed. Closing a window has no effect on a running job.
+Quick/standard/deep capture token ceilings of 30k/100k/200k per request, enforced against observed
+provider usage; exhaustion interrupts the owned turn. The prompt also guides the agent toward
+10/30/60 research steps, rather than claiming an interactive provider turn cap. The daily brief's
+separate SDK runner retains its original 30-turn/$3 contract.
+
+Migration 0013 is breaking: it retains `origin=main` documents and drops obsolete headless agent
+rows, and prevents older builds from reading the new entry shape. Main's
+`save_research` still stores conversation documents without a research session or live-web claim.
+List, archive and unarchive operate on stored documents. Agent settings sit under Agents & models;
+research panes and observed agent status appear in Workbench.

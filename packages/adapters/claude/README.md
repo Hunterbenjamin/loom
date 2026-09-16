@@ -12,7 +12,7 @@ entry and durable hook log. `writeSettings` writes hook settings plus a sibling 
 - [settings.ts](src/settings.ts): per-session hook/MCP configuration; no global config edits.
 - [headless.ts](src/headless.ts): SDK launches, resume and role tool restrictions.
 - [transcript.ts](src/transcript.ts): provider-owned conversation and token usage reads.
-- [research.ts](src/research.ts): bounded web-only daily-brief sessions.
+- [brief-research.ts](src/brief-research.ts): bounded web-only daily-brief sessions.
 
 Native status enums may add values: unknown values retain their raw text. Hook receipts provide
 detail rather than replacing session status. `MemoryHookLog` serves fixtures; the

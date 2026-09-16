@@ -222,6 +222,7 @@ test("Research tools are Main-only, validated and routed as coordinator commands
   const input = {
     id: "00000000-0000-4000-8000-000000000001",
     question: "Compare keybindings",
+    directory: "/repo",
   };
   await client.callTool({ name: "start_research", arguments: input });
   expect(invoke).toHaveBeenCalledWith("start_research", input, "repo-loom");
@@ -229,4 +230,19 @@ test("Research tools are Main-only, validated and routed as coordinator commands
     kind: "start_research",
     ...input,
   });
+});
+
+test("task-run and Main tokens cannot submit or read scoped research", async () => {
+  for (const lead of [false, true]) {
+    const { client } = await connect(lead);
+    for (const name of [
+      "submit_research",
+      "read_research_file",
+      "list_research_directory",
+    ]) {
+      expect(
+        (await client.callTool({ name, arguments: {} })).structuredContent,
+      ).toMatchObject({ ok: false, error: { code: "guard_failed" } });
+    }
+  }
 });

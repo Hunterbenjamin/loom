@@ -150,11 +150,11 @@ export class Coordinator {
     });
     this.research = new Research({
       store: this.store,
-      sessions: this.adapters.researchSessions,
+      launch: () => this.launchDeps(),
+      log: this.logger,
       settings: () => this.settings.effective().research,
       now: this.now,
     });
-    this.research.recover();
     this.store.setRoleProfilesResolver(
       (task) => this.settings.effective(task.repoId).roles,
     );
@@ -304,6 +304,7 @@ export class Coordinator {
     // Stable instance configuration wins; only ephemeral instances reuse the Main recipe's port.
     const mcpPort =
       this.config.mcpPort ||
+      this.research.mcpPort ||
       [...this.leads.values()].find((lead) => lead.mcpPort)?.mcpPort ||
       0;
     try {
@@ -318,6 +319,7 @@ export class Coordinator {
       throw error;
     }
     for (const lead of this.leads.values()) await lead.recover();
+    await this.research.recover();
     const report = await recover(
       {
         store: this.store,
@@ -395,6 +397,7 @@ export class Coordinator {
   }
 
   async pollLeads(): Promise<void> {
+    await this.research.refresh("claude");
     await Promise.all(
       [...this.leads.values()].map(async (lead) => {
         try {
@@ -500,6 +503,7 @@ export class Coordinator {
 
   private mcpOptions(): ReturnType<typeof createAgentMcp> {
     this.mcpCache ??= createAgentMcp({
+      research: this.research,
       store: this.store,
       adapters: this.adapters,
       recipes: this.recipes,

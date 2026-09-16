@@ -28,6 +28,10 @@ import {
 import type { WorkflowReader } from "./workflow.js";
 
 export type StartRunAction = Extract<Action, { kind: "start_run" }>;
+export type AgentLaunch = Omit<StartRunAction, "role" | "key"> & {
+  role: Role | "research";
+  research?: LaunchRecipe["research"];
+};
 
 export interface LaunchDeps {
   adapters: Adapters;
@@ -54,7 +58,7 @@ export interface LaunchDeps {
  */
 export async function writeCodexHomeConfig(
   dataDirectory: string,
-  action: StartRunAction,
+  action: AgentLaunch,
 ): Promise<void> {
   const home = join(dataDirectory, "codex", action.taskId, "codex-home");
   await mkdir(home, { recursive: true, mode: 0o700 });
@@ -79,7 +83,7 @@ export async function writeCodexHomeConfig(
   await writeFile(join(home, "config.toml"), lines.join("\n"), { mode: 0o600 });
 }
 
-const READ_ONLY: Role[] = ["planner"];
+const READ_ONLY: (Role | "research")[] = ["planner", "research"];
 
 /** A Codex thread's own overrides: its run's Loom registration and reasoning effort. */
 export function codexThreadConfig(
@@ -163,6 +167,28 @@ export async function startRun(
   action: StartRunAction,
   state: TaskState,
 ): Promise<ActionOutputs["start_run"]> {
+  return launchAgent(deps, action, {
+    workspaceId: state.worktree?.paneWorkspaceId ?? null,
+    prompt: launchPrompt(state, action),
+    bashPrefixes:
+      action.provider === "claude" &&
+      action.mode === "interactive" &&
+      action.access === "full"
+        ? await deriveBashPrefixes(state, deps.workflowReader, deps.repoById)
+        : undefined,
+  });
+}
+
+/** Shared provider launch; the caller owns identity, workspace and lifecycle. */
+export async function launchAgent(
+  deps: LaunchDeps,
+  action: AgentLaunch,
+  context: {
+    workspaceId: string | null;
+    prompt: string;
+    bashPrefixes?: string[];
+  },
+): Promise<ActionOutputs["start_run"]> {
   const { adapters, config, recipes } = deps;
   const access = action.access;
   const previous = recipes.get(action.runId);
@@ -173,7 +199,7 @@ export async function startRun(
   const directory = recipes.directory(action.runId);
   const settingsPath =
     action.provider === "claude" ? join(directory, "settings.json") : null;
-  const prompt = launchPrompt(state, action);
+  const prompt = context.prompt;
   const env = runEnvironment(deps.environment ?? process.env, {
     LOOM_MCP_TOKEN: token,
     LOOM_INSTANCE: config.instance,
@@ -185,6 +211,7 @@ export async function startRun(
     runId: action.runId,
     taskId: action.taskId,
     role: action.role,
+    ...(action.research ? { research: action.research } : {}),
     provider: action.provider,
     mode: action.mode,
     model: action.model,
@@ -211,18 +238,11 @@ export async function startRun(
     // `--settings` is part of a Claude session's identity: whatever relaunches the run must pass
     // it again. The token goes in the sibling MCP config, never in the settings file.
     // For interactive runs, derive bash command prefixes from WORKFLOW.md.
-    let bashPrefixes: string[] | undefined;
-    if (action.mode === "interactive" && access === "full") {
-      bashPrefixes = await deriveBashPrefixes(
-        state,
-        deps.workflowReader,
-        deps.repoById,
-      );
-    }
     await adapters.claude.writeSettings(
       settingsPath,
       deps.mcpEntry(token),
-      bashPrefixes,
+      context.bashPrefixes,
+      action.role === "research" ? action.worktreePath : undefined,
     );
     const sessionId = action.sessionId;
     if (!sessionId)
@@ -246,8 +266,10 @@ export async function startRun(
       settingsPath,
       readOnly: READ_ONLY.includes(action.role),
       approvalGated: access === "approval-gated",
+      research: action.role === "research",
     });
-    const pane = await openPane(deps, state, action, {
+    if (action.role === "research" && !action.resume) args.push("--", prompt);
+    const pane = await openPane(deps, context.workspaceId, action, {
       ...recipe,
       executable: config.claudeExecutable,
       args,
@@ -261,10 +283,7 @@ export async function startRun(
   // A repeated `start_run` must adopt the recorded thread, not open a second one.
   let threadId = action.sessionId;
   let generation = codex.generation();
-  const threadConfig = codexThreadConfig(
-    deps.mcpEntry(token),
-    action.reasoningEffort,
-  );
+  const threadConfig = agentThreadConfig(recipe, deps.mcpEntry(token));
   if (threadId && action.resume) {
     const snapshot = await codex.resumeThread(threadId, {
       config: threadConfig,
@@ -285,6 +304,7 @@ export async function startRun(
           ? "workspace-write"
           : "danger-full-access",
       approvalPolicy: access === "approval-gated" ? "on-request" : "never",
+      isolated: action.role === "research",
       developerInstructions: prompt,
       config: threadConfig,
     });
@@ -301,7 +321,7 @@ export async function startRun(
   const [executable, ...args] = codex.attachArgs(threadId);
   if (!executable)
     throw new Error("The Codex adapter returned no attach command");
-  const pane = await openPane(deps, state, action, {
+  const pane = await openPane(deps, context.workspaceId, action, {
     ...recipe,
     sessionId: threadId,
     executable,
@@ -313,11 +333,10 @@ export async function startRun(
 /** Records the full command line before the pane exists, then asks the host for the pane. */
 async function openPane(
   deps: LaunchDeps,
-  state: TaskState,
-  action: StartRunAction,
+  workspaceId: string | null,
+  action: AgentLaunch,
   recipe: LaunchRecipe,
 ): Promise<ActionOutputs["start_run"]["pane"]> {
-  const workspaceId = state.worktree?.paneWorkspaceId;
   if (!workspaceId)
     throw new Error("The task's pane workspace has not been opened yet");
   const saved = await deps.recipes.save(recipe);
@@ -350,4 +369,34 @@ export async function relaunchFromRecipe(
     args: recipe.args,
     env: recipe.env,
   });
+}
+
+/** Reused on recovery so the same session keeps its registration and sandbox settings. */
+export function agentThreadConfig(
+  recipe: LaunchRecipe,
+  entry: McpServerEntry,
+): Record<string, unknown> {
+  return {
+    ...codexThreadConfig(entry, recipe.reasoningEffort),
+    ...(recipe.role === "research"
+      ? {
+          sandbox_mode: "read-only",
+          approval_policy: "never",
+          web_search: "live",
+          sandbox_read_only: { network_access: false },
+          project_doc_max_bytes: 0,
+          features: {
+            shell_tool: false,
+            unified_exec: false,
+            view_image: false,
+            multi_agent: false,
+            multi_agent_v2: false,
+            js_repl: false,
+            apps: false,
+            plugins: false,
+            tool_suggest: false,
+          },
+        }
+      : {}),
+  };
 }
