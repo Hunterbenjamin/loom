@@ -242,6 +242,8 @@ version. `resume_research` restores the owned pane from its recipe without sendi
 Provider hints and the same native provider reads used by other sessions drive observed status;
 terminal output is never parsed. Restart loads recipes and reconnects observations without
 replaying messages. Running entries remain visible, and completed documents stay intact.
+If launch stopped before a recipe or provider session ID was recorded, recovery marks the
+request failed without replaying it, freeing the active slot for a new request.
 
 Quick/standard/deep capture token ceilings of 30k/100k/200k per request, enforced against observed
 provider usage; exhaustion interrupts the owned turn. The prompt also guides the agent toward

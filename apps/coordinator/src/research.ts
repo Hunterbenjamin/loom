@@ -236,7 +236,18 @@ export class Research {
     for (const entry of this.deps.store.research.list({ archived: "all" })) {
       if (entry.origin !== "agent") continue;
       const recipe = this.deps.launch().recipes.get(this.runId(entry.id));
-      if (!recipe?.research) continue;
+      if (!recipe?.research || !recipe.sessionId) {
+        // SQLite records the request before workspace/recipe creation, and Codex assigns
+        // its ID separately. A crash between these writes cannot be resumed or replayed.
+        if (entry.status === "running")
+          this.fail(
+            entry.id,
+            new Error(
+              "Research launch was interrupted before a resumable session was recorded. Start a new request.",
+            ),
+          );
+        continue;
+      }
       if (recipe.sessionId && entry.sessionId !== recipe.sessionId)
         this.deps.store.research.put({ ...entry, sessionId: recipe.sessionId });
       try {

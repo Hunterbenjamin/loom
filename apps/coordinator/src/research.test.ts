@@ -168,6 +168,59 @@ test("restart preserves running identity and documents without replaying a promp
   ).toBe(true);
 });
 
+test.each(["before recipe", "before Codex session", "before Claude recipe"])(
+  "restart releases an incomplete launch %s without replay",
+  async (boundary) => {
+    const h = await setup();
+    const { entry, recipe } = await start(h);
+    await h.coordinator.research.stop();
+    // Recreate the durable records at each pre-launch crash boundary.
+    h.store.research.put({
+      ...entry,
+      sessionId: boundary === "before Claude recipe" ? randomUUID() : null,
+      provider: boundary === "before Claude recipe" ? "claude" : "codex",
+      pane: null,
+      observedStatus: "unknown",
+    });
+    if (boundary === "before Codex session")
+      await h.coordinator.recipes.save({
+        ...recipe,
+        sessionId: null,
+        executable: null,
+        args: [],
+        research: { ...recipe.research!, dispatched: false, turnId: null },
+      });
+    else await h.coordinator.recipes.forget(recipe.runId);
+    const completed = {
+      ...entry,
+      id: randomUUID(),
+      status: "completed" as const,
+      document,
+      finishedAt: h.clock.now(),
+      pane: null,
+      observedStatus: "idle" as const,
+    };
+    h.store.research.put(completed);
+
+    const next = await h.restart();
+    cleanup.splice(0);
+    cleanup.push(() => next.close());
+    const recovered = next.coordinator.research.read(entry.id);
+    expect(recovered).toMatchObject({
+      status: "failed",
+      document: null,
+      error: expect.stringContaining("before a resumable session was recorded"),
+      finishedAt: expect.any(String),
+    });
+    expect(next.providers.sessions.size).toBe(0);
+    expect(next.coordinator.research.read(completed.id)).toEqual(completed);
+    await next.coordinator.research.recover();
+    expect(next.coordinator.research.read(entry.id)).toEqual(recovered);
+    expect(next.providers.sessions.size).toBe(0);
+    await start(next);
+  },
+);
+
 test("scoped reads reject traversal and symlinks outside the named directory", async () => {
   const h = await setup();
   const { writeFile, symlink } = await import("node:fs/promises");
