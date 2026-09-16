@@ -9,7 +9,11 @@ import type { ActionResult, InputId, Repo, RunId, TaskId } from "@loom/core";
 import type { RunningAction, Store } from "@loom/store";
 import type { Adapters } from "./adapters.js";
 import type { LaunchDeps } from "./launch.js";
-import { codexThreadConfig, relaunchFromRecipe } from "./launch.js";
+import {
+  codexThreadConfig,
+  relaunchFromRecipe,
+  WEB_SEARCH_ROLES,
+} from "./launch.js";
 import type { RecipeStore } from "./recipes.js";
 
 interface RecoveryDeps {
@@ -225,6 +229,9 @@ export async function recover(
         await deps.adapters.claude.writeSettings(
           recipe.settingsPath,
           deps.launch.mcpEntry(recipe.token),
+          undefined,
+          // A rewrite that forgot the role would strip a planner's web tools on restart.
+          WEB_SEARCH_ROLES.includes(recipe.role),
         );
       } catch (error) {
         deps.log(
