@@ -428,6 +428,34 @@ describe("headless retries and interactive control", () => {
 });
 
 describe("launch results and persisted outbox", () => {
+  it.each([
+    ["planning", "planner", "submit_plan"],
+    ["in_progress", "implementer", "submit_for_review"],
+    ["in_review", "reviewer", "submit_review"],
+  ] as const)(
+    "%s initial message leaves plan and launch rules to their owners",
+    (stage, role, tool) => {
+      const f = fixture(stage);
+      const run = f.state.runs.find((value) => value.role === role);
+      if (!run) throw Error("Missing run");
+      run.endedAt = now;
+      run.endReason = "vanished";
+      f.observations.inputs = [command({ type: "retry" })];
+      const result = fixed(f.state, f.observations);
+      const message = result.next.messages.find(
+        (value) => value.purpose === "initial",
+      );
+      expect(message).toBeDefined();
+      expect(message?.text).toContain(`You are Loom's ${role}`);
+      expect(message?.text).toContain(tool);
+      expect(message?.text).toContain("Inspect the existing worktree changes");
+      expect(message?.text).toContain("Current git observation:");
+      expect(message?.text).not.toContain("Plan:");
+      expect(message?.text).not.toContain(JSON.stringify(f.state.plan));
+      expect(message?.text).not.toContain("get_task_context");
+      expect(message?.text).not.toContain("Loom moves the task");
+    },
+  );
   it("relaunch refreshes the git observation exactly once in an undelivered initial message", () => {
     const f = fixture("todo");
     f.state.plan = null;

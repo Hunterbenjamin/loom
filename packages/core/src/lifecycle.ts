@@ -336,18 +336,10 @@ function launch(c: Context, run: Run, resume: boolean, fresh = false): void {
       run.attempts,
       [
         `You are Loom's ${run.role} for task ${c.task.id}: ${c.task.title}.`,
-        "Call the Loom MCP tool `get_task_context` first. The first call returns the full role view. Call it again only when told state changed; later calls return the changes and anything you must act on. Use `{ full: true }` to reread everything.",
-        ...(run.role === "implementer" && run.round > 0
-          ? [
-              `This is fresh implementer fix-round session ${run.round}; the current diff, reason and findings are in get_task_context, not in a previous transcript.`,
-            ]
-          : []),
         COMPLETION[run.role],
         "Inspect the existing worktree changes, plan, findings and handoff before continuing. Preserve existing work; this may be a fresh session replacing an earlier agent.",
-        "Loom moves the task between stages; you never do. Don't merge and don't push to the base branch.",
         "Be economical: call `report_progress` only when a decision changes course, at most once per plan step. If a Loom tool fails twice in a row with the same error, stop retrying, say so, and end your turn; Loom notices an idle run and brings in the human.",
         `Current git observation: ${JSON.stringify(c.git ?? null)}`,
-        `Plan: ${JSON.stringify(c.state.plan ?? null)}`,
       ].join("\n"),
     );
 }

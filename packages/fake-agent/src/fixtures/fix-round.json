@@ -47,7 +47,7 @@
     "steps": [
       {
         "expect": "message",
-        "match": "fresh implementer fix-round session"
+        "match": "submit_for_review"
       },
       {
         "git": "commit",
