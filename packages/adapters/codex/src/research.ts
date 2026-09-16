@@ -31,6 +31,9 @@ export const researchConfig = {
  * duration, email, hostname, ipv4, ipv6, uuid), so a schema carrying `format: "uri"` is refused
  * with `invalid_json_schema`. Drop the unsupported formats here, where that provider limit lives;
  * the returned document is still parsed against the zod schema, which validates the URL itself. */
+/** How long a fresh thread may fail to read before the failure counts as real. */
+const THREAD_STORE_READY_MS = 10_000;
+
 const OPENAI_STRING_FORMATS = new Set([
   "date-time",
   "date",
@@ -136,6 +139,7 @@ export async function runCodexResearch(
     }
   });
   let turnId: string | null = null;
+  let completed = false;
   try {
     request.controller.signal.throwIfAborted();
     const params: TurnStartParams = {
@@ -149,17 +153,32 @@ export async function runCodexResearch(
     };
     const result = await connection.rpc("turn/start", params, turnResult);
     turnId = result.turn.id;
+    let readable = false;
+    const readableBy = Date.now() + THREAD_STORE_READY_MS;
     while (true) {
       request.controller.signal.throwIfAborted();
       if (limitError) throw new Error(limitError);
-      const read = await connection.rpc(
-        "thread/read",
-        { threadId: thread.id, includeTurns: true },
-        researchThread,
-      );
+      let read: z.infer<typeof researchThread>;
+      try {
+        read = await connection.rpc(
+          "thread/read",
+          { threadId: thread.id, includeTurns: true },
+          researchThread,
+        );
+        readable = true;
+      } catch (error) {
+        // The app-server writes the thread's rollout file after turn/start returns, so a read
+        // issued before that lands fails with "rollout ... is empty" while the turn is running
+        // normally. Treat that as not-yet-readable until the store serves its first read; a
+        // failure after that is real and stops the run.
+        if (readable || Date.now() > readableBy) throw error;
+        await delay(250, undefined, { signal: request.controller.signal });
+        continue;
+      }
       const turn = read.thread.turns.find((item) => item.id === turnId);
       if (limitError) throw new Error(limitError);
       if (turn && turn.status !== "inProgress") {
+        completed = true;
         const text =
           turn.items.filter((item) => item.type === "agentMessage").at(-1)
             ?.text ?? "";
@@ -192,7 +211,9 @@ export async function runCodexResearch(
     }
   } finally {
     unobserve();
-    if (turnId && (request.controller.signal.aborted || limitError))
+    // Leaving without a finished turn leaves the model running and billing against the account,
+    // so interrupt on every early exit, not only on abort and the lookup ceiling.
+    if (turnId && !completed)
       await connection.rpc(
         "turn/interrupt",
         { threadId: thread.id, turnId },
