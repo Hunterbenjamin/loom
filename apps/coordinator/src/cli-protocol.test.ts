@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { TaskId } from "@loom/core";
 import { afterEach, expect, test, vi } from "vitest";
@@ -14,6 +15,15 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   process.exitCode = 0;
 });
+
+/** process.env without the npm and pnpm variables that steer a nested pnpm invocation. */
+function workspaceEnv(): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key]) => !/^(npm_|pnpm_|PNPM_|NPM_)/.test(key),
+    ),
+  );
+}
 
 async function serve() {
   const h = await createHarness({
@@ -42,7 +52,15 @@ test("pnpm loom issue create stores a long quoted description without alteration
   const { stdout, stderr } = await promisify(execFile)(
     "pnpm",
     ["loom", "issue", "create", h.repo.id, "Long description", description],
-    { env: { ...process.env, ...env }, timeout: 20_000 },
+    {
+      // The `loom` script lives in the workspace root, and pnpm resolves scripts from its own
+      // cwd and env. Without pinning both, this passes only when the outer command happened to
+      // launch vitest from the root: running this package's tests directly made the nested call
+      // recursive and it failed with "Command \"loom\" not found".
+      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+      env: { ...workspaceEnv(), ...env },
+      timeout: 20_000,
+    },
   );
   expect(stderr).toBe("");
   const created = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
