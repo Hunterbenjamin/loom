@@ -252,7 +252,7 @@ async function harness(
   };
 }
 
-test("Workbench reserves a draggable title area and keeps tab controls interactive", async () => {
+test("Workbench follows window controls for its draggable title area and keeps tabs interactive", async () => {
   const style = document.createElement("style");
   // happy-dom drops Electron's vendor property; retain its selectors for this
   // markup check. Native hit testing must also be verified in the running app.
@@ -271,7 +271,11 @@ test("Workbench reserves a draggable title area and keeps tab controls interacti
     expect(tabs).not.toBeNull();
     if (!titlebar || !tabs) throw new Error("Missing window title area");
     expect(titlebar.nextElementSibling?.className).toBe("wb-body");
-    expect(getComputedStyle(titlebar).height).toBe("30px");
+    expect(getComputedStyle(titlebar).height).toBe("0px");
+    for (const inset of [true, false, true]) {
+      document.documentElement.dataset.windowControlsInset = String(inset);
+      expect(getComputedStyle(titlebar).height).toBe(inset ? "30px" : "0px");
+    }
     for (const region of [titlebar, tabs]) {
       expect(
         getComputedStyle(region).getPropertyValue("--test-app-region"),
@@ -287,6 +291,7 @@ test("Workbench reserves a draggable title area and keeps tab controls interacti
     await act(async () => h.button("＋").click());
     expect(h.element.querySelector("dialog")).not.toBeNull();
   } finally {
+    delete document.documentElement.dataset.windowControlsInset;
     await h.close();
     style.remove();
   }

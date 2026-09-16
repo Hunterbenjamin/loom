@@ -33,6 +33,7 @@ import {
   readPaneHistory,
 } from "./pane-history.js";
 import { repositoryFolder } from "./repository.js";
+import { syncWindowChrome } from "./window-chrome.js";
 
 ipcMain.handle("app:choose-repository", async (event) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
@@ -371,6 +372,7 @@ async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
       backgroundThrottling: false,
     },
   });
+  syncWindowChrome(window);
   window.webContents.setWindowOpenHandler(({ url }) => {
     const parsed = z.url().safeParse(url);
     if (parsed.success && /^https?:\/\//i.test(parsed.data))

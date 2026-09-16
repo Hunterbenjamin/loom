@@ -1,11 +1,15 @@
 :root {
   --row: 32px;
   --radius: 5px;
-  --titlebar-height: 30px;
+  --titlebar-height: 0px;
   --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
   --sans:
     ui-sans-serif, -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
   color-scheme: dark;
+}
+
+:root[data-window-controls-inset="true"] {
+  --titlebar-height: 30px;
 }
 
 :root[data-theme="dark"] {
