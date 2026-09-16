@@ -199,6 +199,8 @@ test.each(["interactive", "headless"] as const)(
     const messages = h.store.messages(taskId);
     for (const run of h.store.runs(taskId)) {
       const recipe = h.coordinator.recipes.get(run.id);
+      if (run.role === "implementer")
+        expect(recipe?.prompt).toContain(`Assisted-by: claude:${run.model}`);
       expect(run.mode).toBe(mode);
       expect(run.pane === null).toBe(mode === "headless");
       expect(mode === "interactive" ? args : headless).toHaveBeenCalledWith(
@@ -237,6 +239,10 @@ test("every run's launch recipe is persisted privately before anything starts", 
   const recipes = h.coordinator.recipes.all();
   expect(recipes.length).toBeGreaterThan(0);
   for (const recipe of recipes) {
+    if (recipe.role === "implementer")
+      expect(recipe.prompt).toContain(
+        `Assisted-by: ${recipe.provider}:${recipe.model}`,
+      );
     expect(recipe.token.length).toBeGreaterThanOrEqual(16);
     // The token is never an argument: it rides in the environment and the MCP config.
     expect(recipe.args.join(" ")).not.toContain(recipe.token);

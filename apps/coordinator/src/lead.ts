@@ -549,7 +549,7 @@ export class LeadSession {
       "--name",
       "Main",
       "--",
-      leadBrief(await this.note(), this.deps.repo.github),
+      leadBrief(await this.note(), this.deps.repo.github, recipe.model),
     );
     await this.save({ ...recipe, args, launched: true });
     const { workspaceId } = await this.deps.adapters.paneHost.ensureWorkspace({

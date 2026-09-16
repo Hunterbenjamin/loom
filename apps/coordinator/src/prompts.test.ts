@@ -5,8 +5,9 @@ import { leadBrief, mainPanelBrief, roleBrief, taskBrief } from "./prompts.js";
 // names an agent needs, without treating a particular sentence as an executable contract.
 test("Main receives the selected repository and a lossless saved note", () => {
   const note = 'Priority: releases.\n"Restart drill" is historical.';
-  const prompt = leadBrief(note, "example/repository");
+  const prompt = leadBrief(note, "example/repository", "claude-test-model");
   expect(prompt).toContain("example/repository");
+  expect(prompt).toContain("Assisted-by: claude:claude-test-model");
   expect(prompt).toContain(JSON.stringify(note));
   for (const tool of [
     "list_tasks",
@@ -34,6 +35,8 @@ test.each([
       reviewRoundCap: 3,
     },
     role,
+    provider: "codex",
+    model: "gpt-6-astra",
     round: 1,
     branch: "fix/example",
     worktreePath: "/tmp/example-worktree",
@@ -48,6 +51,9 @@ test.each([
     ...tools,
   ])
     expect(prompt).toContain(value);
+  expect(prompt.includes("Assisted-by: codex:gpt-6-astra")).toBe(
+    role === "implementer",
+  );
 });
 
 test("task artifacts retain the human's title and description", () => {

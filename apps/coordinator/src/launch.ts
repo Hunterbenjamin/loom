@@ -145,6 +145,8 @@ export function launchPrompt(state: TaskState, action: StartRunAction): string {
   return roleBrief({
     task: state.task,
     role: action.role,
+    provider: action.provider,
+    model: action.model,
     round: run?.round ?? 0,
     branch: state.worktree?.branch ?? state.task.branch ?? "(no branch)",
     worktreePath: action.worktreePath,
