@@ -197,11 +197,18 @@ function ViewIcon({ view }: { view: string }) {
         <path d="M10 2l-1.5 1.5L10 5" />
       </svg>
     );
-  if (view === "briefs" || view === "research")
+  if (view === "briefs")
     return (
       <svg {...common} aria-hidden="true">
         <rect x="2.5" y="2" width="11" height="12" rx="1.5" />
         <path d="M5 5h6M5 8h6M5 11h3" />
+      </svg>
+    );
+  if (view === "research")
+    return (
+      <svg {...common} aria-hidden="true">
+        <circle cx="6.75" cy="6.75" r="4.25" />
+        <path d="m10 10 3.5 3.5" />
       </svg>
     );
   if (view === "settings")
