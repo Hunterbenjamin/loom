@@ -102,6 +102,7 @@ test("concurrent open commands are idempotent, private, and separate from task r
   expect(saved.args.at(-2)).toBe("--");
   expect(h.paneHost.launches[0]?.args).toEqual(saved.args);
   expect(saved.args.join(" ")).toContain("with hands");
+  expect(saved.args.at(-1)).toContain("Assisted-by: claude:fake-lead-model");
   expect(saved.args.join(" ")).not.toContain(saved.token);
   expect(
     (await stat(join(h.store.dataDirectory, `lead/${h.repo.id}/recipe.json`)))
