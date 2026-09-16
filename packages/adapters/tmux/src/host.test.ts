@@ -821,10 +821,12 @@ while True:
       second.stdin.write("bravo\n");
       // The panes write independently: a.txt becoming ready says nothing about b.txt.
       await Promise.all(
-        ([
-          ["a.txt", "alpha"],
-          ["b.txt", "bravo"],
-        ] as const).map(([file, text]) =>
+        (
+          [
+            ["a.txt", "alpha"],
+            ["b.txt", "bravo"],
+          ] as const
+        ).map(([file, text]) =>
           until(async () =>
             (await readFile(join(dir, file), "utf8").catch(() => "")).includes(
               text,
