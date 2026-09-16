@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { z } from "zod";
 import type {
   DevControlCommand,
   PtyExit,
@@ -12,6 +13,19 @@ import {
 const onData = new Map<string, (data: string) => void>();
 const onExit = new Map<string, (info: PtyExit) => void>();
 const onHistory = new Map<string, (history: string) => void>();
+
+// The DOM exists before main publishes the initial state at did-finish-load.
+window.addEventListener(
+  "DOMContentLoaded",
+  () => {
+    ipcRenderer.on("app:window-controls-inset", (_event, raw: unknown) => {
+      document.documentElement.dataset.windowControlsInset = String(
+        z.boolean().parse(raw),
+      );
+    });
+  },
+  { once: true },
+);
 
 ipcRenderer.on("pty:data", (_event, id: string, data: string) =>
   onData.get(id)?.(data),

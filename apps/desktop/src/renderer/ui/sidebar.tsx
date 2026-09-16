@@ -44,25 +44,41 @@ export function Sidebar() {
   return (
     <nav className="sidebar" aria-label="Views">
       <div className="sidebar-top">
-        <select
-          className="repo-select"
-          aria-label="Repository"
-          value={repo}
-          disabled={busy}
-          onChange={(event) => void choose(event.target.value)}
-        >
-          {!repo ? (
-            <option value="" disabled>
-              Open repository
-            </option>
-          ) : null}
-          {repos.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.github}
-            </option>
-          ))}
-          <option value="__add__">Add repository…</option>
-        </select>
+        <div className="repo-picker">
+          <select
+            className="repo-select"
+            aria-label="Repository"
+            value={repo}
+            disabled={busy}
+            onChange={(event) => void choose(event.target.value)}
+          >
+            {!repo ? (
+              <option value="" disabled>
+                Open repository
+              </option>
+            ) : null}
+            {repos.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.github}
+              </option>
+            ))}
+            <option value="__add__">Add repository…</option>
+          </select>
+          <svg
+            className="repo-chevron"
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m3 4.5 3 3 3-3" />
+          </svg>
+        </div>
       </div>
 
       {error ? (
