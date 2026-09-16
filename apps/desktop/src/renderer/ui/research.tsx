@@ -1,12 +1,15 @@
 import type {
   Command,
+  ResearchComment,
   ResearchEntry,
   ResearchState,
   ResearchSummary,
 } from "@loom/protocol";
 import { useEffect, useRef, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
+import { ActivityList } from "./activity.js";
 import { Byline } from "./byline.js";
+import { CommentComposer } from "./comment-composer.js";
 import { DetailLayout } from "./detail-layout.js";
 import { ListGroupHeader, ListRow } from "./list-rows.js";
 import { PrMarkdown } from "./pull-request-overview.js";
@@ -25,7 +28,7 @@ export function ResearchView() {
   const cursor = useStore((s) => s.ui.cursor);
   const [state, setState] = useState<ResearchState | null>(null);
   const [entry, setEntry] = useState<ResearchEntry | null>(null);
-  const [followUp, setFollowUp] = useState("");
+  const [comments, setComments] = useState<ResearchComment[]>([]);
   const [archived, setArchived] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -49,8 +52,10 @@ export function ResearchView() {
             id: open,
           });
           if (!detail.ok) throw new Error(detail.error.message);
-          if (!disposed && detail.result.kind === "research_entry")
+          if (!disposed && detail.result.kind === "research_entry") {
             setEntry(detail.result.entry);
+            setComments(detail.result.comments);
+          }
         }
         if (!disposed) setError("");
       } catch (error) {
@@ -72,7 +77,7 @@ export function ResearchView() {
     };
   }, [store, connected, archived, open]);
   const act = async (command: Command) => {
-    if (submitting.current) return;
+    if (submitting.current) return false;
     submitting.current = true;
     setBusy(true);
     try {
@@ -80,11 +85,14 @@ export function ResearchView() {
       if (!result.ok) throw new Error(result.error.message);
       if (result.result.kind === "research_entry") {
         setEntry(result.result.entry);
+        setComments(result.result.comments);
       }
       await refreshResearch.current?.();
       setError("");
+      return true;
     } catch (error) {
       setError(error instanceof Error ? error.message : "Action failed");
+      return false;
     } finally {
       submitting.current = false;
       setBusy(false);
@@ -266,48 +274,40 @@ export function ResearchView() {
                   <PrMarkdown body={current.document.body} />
                 </section>
               ) : null}
-              {current?.origin === "agent" ? (
-                <section className="pr-description research-followups">
-                  <h3>Follow up</h3>
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      if (!followUp.trim()) return;
-                      void act({
-                        kind: "extend_research",
+              {current ? (
+                <>
+                  <ActivityList
+                    key={current.id}
+                    title="Comments"
+                    items={comments.map((comment) => ({
+                      id: comment.id,
+                      at: comment.at,
+                      kind: "comment",
+                      url: null,
+                      label: `${comment.author === "human" ? "You" : comment.author === "main" ? "Main" : "Research agent"}${comment.delivered ? "" : " · queued"}`,
+                      body: comment.text,
+                    }))}
+                  />
+                  <CommentComposer
+                    key={`${current.id}-composer`}
+                    disabled={busy || !connected}
+                    label="Research comment"
+                    maxLength={16384}
+                    placeholder={
+                      current.origin === "agent"
+                        ? "Leave a note, or mention @loom to continue research…"
+                        : "Leave a note…"
+                    }
+                    post={(message, requestId) =>
+                      act({
+                        kind: "comment_research",
                         id: current.id,
-                        message: followUp,
-                      });
-                      setFollowUp("");
-                    }}
-                  >
-                    <textarea
-                      aria-label="Research follow-up"
-                      placeholder="Ask the agent to dig further; it keeps this document and adds to it."
-                      value={followUp}
-                      onChange={(event) => setFollowUp(event.target.value)}
-                      maxLength={16384}
-                      rows={3}
-                    />
-                    <div className="research-followup-actions">
-                      <span className="faint">
-                        {current.observedStatus === "idle"
-                          ? "Agent is idle"
-                          : `Agent is ${current.observedStatus}`}
-                      </span>
-                      <button
-                        type="submit"
-                        disabled={
-                          busy ||
-                          current.observedStatus !== "idle" ||
-                          !followUp.trim()
-                        }
-                      >
-                        Send
-                      </button>
-                    </div>
-                  </form>
-                </section>
+                        message,
+                        requestId,
+                      })
+                    }
+                  />
+                </>
               ) : null}
             </main>
             <aside className="pr-rail" aria-label="Properties">

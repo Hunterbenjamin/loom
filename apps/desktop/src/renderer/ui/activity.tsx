@@ -41,7 +41,13 @@ const RECENT = 3;
  * Oldest first, in the pull request activity style. Only the latest entries show until the human
  * expands the earlier ones, as GitHub and Linear do.
  */
-export function ActivityList({ items }: { items: ActivityItem[] }) {
+export function ActivityList({
+  items,
+  title = "Activity",
+}: {
+  items: ActivityItem[];
+  title?: string;
+}) {
   const now = useStore((s) => s.snapshot.now);
   const [expanded, setExpanded] = useState(false);
   useTrackerActions({ activity: () => setExpanded((value) => !value) });
@@ -52,7 +58,7 @@ export function ActivityList({ items }: { items: ActivityItem[] }) {
   const sorted = all.slice(hidden);
   return (
     <section className="pr-activity">
-      <h3>Activity</h3>
+      <h3>{title}</h3>
       {all.length ? null : <p className="faint">No activity yet.</p>}
       {hidden ? (
         <button

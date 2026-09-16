@@ -42,7 +42,10 @@ function setup() {
         error: null,
         document: null,
       };
-      return { ok: true, result: { kind: "research_entry", entry } };
+      return {
+        ok: true,
+        result: { kind: "research_entry", entry, comments: [] },
+      };
     });
   store.setSender(send);
   const host = document.createElement("div");

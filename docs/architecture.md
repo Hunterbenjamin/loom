@@ -226,7 +226,7 @@ The coordinator's `Research` owner holds interactive sessions independently of t
 `launchAgent` is the common provider launch path for tasks and research: it persists the private
 recipe and MCP identity before launching, records Codex's thread ID before its first turn, and
 opens an owned pane workspace. Research uses the human's existing absolute directory as cwd.
-A second concurrent request is refused. There is no queue or schedule.
+A second concurrent start is refused. Follow-up mentions queue durably; there is no schedule.
 
 Research tools are isolated from task-run and Main tools in both directions. The research token
 can submit a complete document and read/list files within its recorded directory. Scoped reads
@@ -236,9 +236,19 @@ not itself restrict reads to cwd. Codex turns additionally set `networkAccess: f
 providers retain their web tools. Pages and local contents are untrusted evidence, never
 instructions. No structured provider output or successful-web-lookup gate is involved.
 
-Only validated `submit_research` replaces a document in SQLite. `extend_research` sends a further
-message to the same session with the existing document; failed turns preserve the last submitted
-version. `resume_research` restores the owned pane from its recipe without sending a prompt.
+Only validated `submit_research` replaces a document in SQLite. Migration 0014 stores ordered
+research comments separately from documents, with author (human, Main or agent), text, time and
+delivery state. `comment_research` requires a caller-generated `requestId`, stored as the comment
+ID. Identical retries return the existing comment; reuse for another entry, author or text is
+refused. The desktop retains this ID until success, and Main supplies it through MCP.
+The command stores a note; a case-insensitive `@loom` mention queues a
+follow-up with the existing document as context. Main's authenticated MCP path fixes its author.
+Main-saved entries accept notes but refuse mentions because they have no research session.
+Provider observation drains pending mentions when the entry is no longer running, its session is
+idle and no other research is active. Delivery is claimed before sending, so an uncertain send is
+never replayed after restart. A completed entry reopens on dispatch and completes on submission.
+Code appends agent start, submission and failure comments; failed turns preserve the last submitted
+version. The desktop shares the PR comment composer and keyboard-readable activity list. `resume_research` restores the owned pane from its recipe without sending a prompt.
 Provider hints and the same native provider reads used by other sessions drive observed status;
 terminal output is never parsed. Restart loads recipes and reconnects observations without
 replaying messages. Running entries remain visible, and completed documents stay intact.

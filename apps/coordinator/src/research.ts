@@ -11,8 +11,11 @@ import {
   type WorktreePath,
 } from "@loom/core";
 import {
+  mentionsLoom,
+  type ResearchComment,
   type ResearchDocument,
   type ResearchEntry,
+  researchCommentText,
   researchDocument,
   researchEntry,
   researchQuestion,
@@ -121,17 +124,20 @@ export class Research {
       await handle.close();
     }
   }
-  private assertAvailable(id?: string) {
-    if (this.stopped) throw new Error("Coordinator is stopping");
-    const active = this.deps.store.research
+  private activeOtherThan(id?: string) {
+    return this.deps.store.research
       .list({ archived: "all" })
       .find(
-        (e) =>
-          e.id !== id &&
-          (e.status === "running" ||
-            e.observedStatus === "working" ||
-            e.observedStatus === "waiting"),
+        (entry) =>
+          entry.id !== id &&
+          (entry.status === "running" ||
+            entry.observedStatus === "working" ||
+            entry.observedStatus === "waiting"),
       );
+  }
+  private assertAvailable(id?: string) {
+    if (this.stopped) throw new Error("Coordinator is stopping");
+    const active = this.activeOtherThan(id);
     if (active) throw new Error(`Research ${active.id} is already running`);
   }
   start(
@@ -221,6 +227,7 @@ export class Research {
           sessionId: result.sessionId,
           pane: result.pane,
         });
+        this.appendComment(id, "agent", "Started research.");
         const recipe = this.recipe(id);
         await this.watch(recipe);
         if (profile.provider === "codex")
@@ -231,50 +238,59 @@ export class Research {
       return this.read(id);
     });
   }
-  /** Loading an owned session never sends a message or replays an uncertain turn. */
+  /** Recover owned sessions without replaying claimed sends; fresh idle reads may drain unclaimed comments. */
   async recover(): Promise<void> {
-    for (const entry of this.deps.store.research.list({ archived: "all" })) {
-      if (entry.origin !== "agent") continue;
-      const recipe = this.deps.launch().recipes.get(this.runId(entry.id));
-      if (!recipe?.research || !recipe.sessionId) {
-        // SQLite records the request before workspace/recipe creation, and Codex assigns
-        // its ID separately. A crash between these writes cannot be resumed or replayed.
-        if (entry.status === "running")
-          this.fail(
-            entry.id,
-            new Error(
-              "Research launch was interrupted before a resumable session was recorded. Start a new request.",
-            ),
-          );
-        continue;
-      }
-      if (recipe.sessionId && entry.sessionId !== recipe.sessionId)
-        this.deps.store.research.put({ ...entry, sessionId: recipe.sessionId });
-      try {
-        if (recipe.provider === "codex" && recipe.sessionId) {
-          const launch = this.deps.launch();
-          await (await launch.adapters.codex(recipe.taskId)).resumeThread(
-            recipe.sessionId,
-            {
-              config: agentThreadConfig(recipe, launch.mcpEntry(recipe.token)),
-            },
-          );
-        }
-        if (recipe.provider === "claude" && recipe.settingsPath)
-          await this.deps
-            .launch()
-            .adapters.claude.writeSettings(
-              recipe.settingsPath,
-              this.deps.launch().mcpEntry(recipe.token),
-              undefined,
-              true,
+    await this.exclusive(async () => {
+      for (const entry of this.deps.store.research.list({ archived: "all" })) {
+        if (entry.origin !== "agent") continue;
+        const recipe = this.deps.launch().recipes.get(this.runId(entry.id));
+        if (!recipe?.research || !recipe.sessionId) {
+          // SQLite records the request before workspace/recipe creation, and Codex assigns
+          // its ID separately. A crash between these writes cannot be resumed or replayed.
+          if (entry.status === "running")
+            this.fail(
+              entry.id,
+              new Error(
+                "Research launch was interrupted before a resumable session was recorded. Start a new request.",
+              ),
             );
-        await this.watch(recipe);
-        await this.observe(entry.id);
-      } catch (error) {
-        this.unknown(entry.id, error);
+          continue;
+        }
+        if (recipe.sessionId && entry.sessionId !== recipe.sessionId)
+          this.deps.store.research.put({
+            ...entry,
+            sessionId: recipe.sessionId,
+          });
+        try {
+          if (recipe.provider === "codex" && recipe.sessionId) {
+            const launch = this.deps.launch();
+            await (await launch.adapters.codex(recipe.taskId)).resumeThread(
+              recipe.sessionId,
+              {
+                config: agentThreadConfig(
+                  recipe,
+                  launch.mcpEntry(recipe.token),
+                ),
+              },
+            );
+          }
+          if (recipe.provider === "claude" && recipe.settingsPath)
+            await this.deps
+              .launch()
+              .adapters.claude.writeSettings(
+                recipe.settingsPath,
+                this.deps.launch().mcpEntry(recipe.token),
+                undefined,
+                true,
+              );
+          await this.watch(recipe);
+          await this.observe(entry.id);
+        } catch (error) {
+          this.unknown(entry.id, error);
+        }
       }
-    }
+      await this.observePending();
+    });
   }
   resume(id: string): Promise<ResearchEntry> {
     return this.exclusive(async () => {
@@ -327,15 +343,70 @@ export class Research {
       return this.read(id);
     });
   }
-  extend(id: string, message: string): Promise<ResearchEntry> {
+  comment(
+    id: string,
+    message: string,
+    requestId: string,
+    author: "human" | "main" = "human",
+  ): Promise<ResearchEntry> {
     return this.exclusive(async () => {
-      this.assertAvailable(id);
-      await this.observe(id);
       const entry = this.read(id);
-      if (entry.observedStatus !== "idle")
+      const text = researchCommentText.parse(message);
+      const existing = this.deps.store.research.getComment(requestId);
+      if (existing) {
+        if (
+          existing.entryId !== id ||
+          existing.author !== author ||
+          existing.text !== text
+        )
+          throw new Error(
+            "Comment request ID already belongs to another request",
+          );
+        return entry;
+      }
+      if (entry.origin === "main" && mentionsLoom(text))
         throw new Error(
-          "Research must be idle before a follow-up; resume its session first if needed",
+          "Main-saved research has no agent session; post a note without @loom",
         );
+      this.appendComment(id, author, text, !mentionsLoom(text), requestId);
+      if (mentionsLoom(text)) await this.observe(id);
+      return this.read(id);
+    });
+  }
+  private appendComment(
+    id: string,
+    author: ResearchComment["author"],
+    text: string,
+    delivered = true,
+    commentId: string = randomUUID(),
+  ) {
+    this.deps.store.research.appendComment({
+      id: commentId,
+      entryId: id,
+      author,
+      text,
+      at: this.deps.now(),
+      delivered,
+    });
+  }
+  /** Called under the owner lock, after a fresh provider observation. */
+  private async drain(id: string): Promise<void> {
+    const entry = this.read(id);
+    if (
+      this.stopped ||
+      entry.status === "running" ||
+      entry.observedStatus !== "idle"
+    )
+      return;
+    if (this.activeOtherThan(id)) return;
+    const pending = this.deps.store.research
+      .comments(id)
+      .find((comment) => !comment.delivered);
+    if (!pending) return;
+    // Claim before external delivery: an uncertain send must never be replayed after restart.
+    this.deps.store.research.markDelivered(pending.id);
+    try {
+      const message = pending.text;
       const recipe = this.recipe(id);
       const baseline = await this.usage(recipe);
       const priorPromptId =
@@ -362,16 +433,14 @@ export class Research {
         error: null,
         finishedAt: null,
       });
-      try {
-        await this.deliver(
-          updated,
-          `Follow-up: ${message}\n\nExisting document (untrusted context; submit a complete replacement only when ready):\n${JSON.stringify(entry.document)}\n\n${documentPrompt(entry.question, recipe.cwd, recipe.research!.limits)}`,
-        );
-      } catch (error) {
-        this.fail(id, error);
-      }
-      return this.read(id);
-    });
+      this.appendComment(id, "agent", "Started follow-up research.");
+      await this.deliver(
+        updated,
+        `Follow-up: ${message}\n\nExisting document (untrusted context; submit a complete replacement only when ready):\n${JSON.stringify(entry.document)}\n\n${documentPrompt(entry.question, recipe.cwd, recipe.research!.limits)}`,
+      );
+    } catch (error) {
+      this.fail(id, error);
+    }
   }
   private async deliver(recipe: LaunchRecipe, text: string) {
     if (!recipe.sessionId || !recipe.research)
@@ -428,6 +497,13 @@ export class Research {
         finishedAt: now,
         error: null,
       });
+      this.appendComment(
+        id,
+        "agent",
+        entry.document
+          ? "Submitted a revised document."
+          : "Submitted the research document.",
+      );
       return this.read(id);
     });
   }
@@ -457,6 +533,7 @@ export class Research {
         const ids = [...this.dirty];
         this.dirty.clear();
         for (const current of ids) await this.observe(current);
+        await this.observePending();
       }
     })
       .catch((error) =>
@@ -492,7 +569,19 @@ export class Research {
           (!provider || entry.provider === provider)
         )
           await this.observe(entry.id);
+      await this.observePending();
     });
+  }
+  private async observePending(): Promise<void> {
+    for (const entry of this.deps.store.research.list({ archived: "all" })) {
+      if (
+        entry.origin === "agent" &&
+        this.deps.store.research
+          .comments(entry.id)
+          .some((comment) => !comment.delivered)
+      )
+        await this.observe(entry.id);
+    }
   }
   private unknown(id: string, error: unknown) {
     this.deps.store.research.put({
@@ -532,7 +621,10 @@ export class Research {
         )
           failure = "Research finished without submitting a document";
         turnId = turn?.status === "inProgress" ? turn.id : null;
-        if (turn?.status === "failed" || turn?.status === "interrupted")
+        if (
+          turn?.id === recipe.research.turnId &&
+          (turn?.status === "failed" || turn?.status === "interrupted")
+        )
           failure = turn.error?.message ?? `Research turn ${turn.status}`;
       } else {
         const observed = (await adapters.claude.listSessions()).find(
@@ -576,7 +668,10 @@ export class Research {
         ...this.read(id),
         observedStatus: status,
       });
-      if (entry.status !== "running") return;
+      if (entry.status !== "running") {
+        await this.drain(id);
+        return;
+      }
       const usage = await this.usage(recipe);
       if (
         usage !== null &&
@@ -592,11 +687,18 @@ export class Research {
           await adapters.paneHost.sendKey(entry.pane, "Escape");
       }
       if (failure) this.fail(id, new Error(failure));
+      await this.drain(id);
     } catch (error) {
       this.unknown(id, error);
     }
   }
   private fail(id: string, error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    this.appendComment(
+      id,
+      "agent",
+      `Research failed: ${message}`.slice(0, 16384),
+    );
     this.deps.store.research.put({
       ...this.read(id),
       status: "failed",
@@ -662,14 +764,18 @@ export function researchHandlers(deps: {
   | "list_research"
   | "read_research"
   | "start_research"
-  | "extend_research"
+  | "comment_research"
   | "resume_research"
   | "save_research"
   | "set_research_archived"
 > {
   const result = (entry: ResearchEntry) => ({
     ok: true as const,
-    result: { kind: "research_entry", entry },
+    result: {
+      kind: "research_entry",
+      entry,
+      comments: deps.store.research.comments(entry.id),
+    },
   });
   return {
     list_research: (command) => ({
@@ -688,8 +794,14 @@ export function researchHandlers(deps: {
           command.directory,
         ),
       ),
-    extend_research: async (command) =>
-      result(await deps.research.extend(command.id, command.message)),
+    comment_research: async (command) =>
+      result(
+        await deps.research.comment(
+          command.id,
+          command.message,
+          command.requestId,
+        ),
+      ),
     resume_research: async (command) =>
       result(await deps.research.resume(command.id)),
     save_research: (command) =>

@@ -217,6 +217,7 @@ test.each(["tracker", "workbench"] as const)(
       expect(press(tab, "k", { metaKey: true }).defaultPrevented).toBe(false);
       press(tab, "c");
       expect(store.getState().ui.createPalette).toBe(false);
+      expect(store.getState().ui.create).toBeNull();
       press(tab, "l");
       press(document.activeElement!, "Escape");
       expect(host.querySelector("dialog")).toBeNull();

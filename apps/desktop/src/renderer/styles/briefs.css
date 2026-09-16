@@ -77,22 +77,3 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-
-/* The follow-up sits at the end of the document, as a composer rather than a bare field. */
-.research-followups textarea {
-  width: 100%;
-  resize: vertical;
-  color: inherit;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px;
-  font: inherit;
-}
-.research-followup-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 8px;
-}

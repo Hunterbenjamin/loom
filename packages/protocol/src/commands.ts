@@ -8,6 +8,8 @@ import {
   pullRequestReviewChange,
 } from "./pull-requests.js";
 import {
+  researchComment,
+  researchCommentText,
   researchDocument,
   researchEntry,
   researchQuestion,
@@ -119,9 +121,13 @@ export const command = z.union([
     question: researchQuestion,
   }),
   z.strictObject({
-    kind: z.literal("extend_research"),
+    kind: z.literal("comment_research"),
     id: z.string().uuid(),
-    message: leadMessageText,
+    requestId: z
+      .string()
+      .uuid()
+      .describe("Fresh comment UUID; reuse it when retrying the same comment"),
+    message: researchCommentText,
   }),
   z.strictObject({ kind: z.literal("resume_research"), id: z.string().uuid() }),
   z.strictObject({
@@ -307,7 +313,11 @@ export const commandRequest = z.strictObject({
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
   z.strictObject({ kind: z.literal("research_list"), state: researchState }),
-  z.strictObject({ kind: z.literal("research_entry"), entry: researchEntry }),
+  z.strictObject({
+    kind: z.literal("research_entry"),
+    entry: researchEntry,
+    comments: z.array(researchComment),
+  }),
   z.strictObject({ kind: z.literal("briefs"), state: briefState }),
   z.strictObject({ kind: z.literal("brief"), run: briefRun }),
   z.strictObject({

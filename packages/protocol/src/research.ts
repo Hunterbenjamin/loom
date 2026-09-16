@@ -68,3 +68,15 @@ export const researchState = z.strictObject({
   runningId: z.string().uuid().nullable(),
 });
 export type ResearchState = z.infer<typeof researchState>;
+
+export const researchCommentText = z.string().trim().min(1).max(16384);
+export const researchComment = z.strictObject({
+  id: z.string().uuid(),
+  entryId: z.string().uuid(),
+  author: z.enum(["human", "main", "agent"]),
+  text: researchCommentText,
+  at: z.string().datetime(),
+  delivered: z.boolean(),
+});
+export type ResearchComment = z.infer<typeof researchComment>;
+export const mentionsLoom = (text: string): boolean => /@loom\b/i.test(text);

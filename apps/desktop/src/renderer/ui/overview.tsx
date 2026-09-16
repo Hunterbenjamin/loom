@@ -5,6 +5,7 @@ import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, taskFindings, taskRuns } from "../store/selectors.js";
 import { ActivityList } from "./activity.js";
 import { Byline } from "./byline.js";
+import { CommentComposer } from "./comment-composer.js";
 import {
   formatTokenUsage,
   RUN_STATUS_LABELS,
@@ -288,47 +289,20 @@ function CommentBox({
   disabled: boolean;
   run(command: PullRequestCommand): Promise<boolean>;
 }) {
-  const [comment, setComment] = useState("");
-  const attempt = useRef<{ body: string; requestId: string } | null>(null);
   return (
-    <form
-      className="pr-comment-box"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        if (disabled || !comment.trim()) return;
-        const body = comment.trim();
-        if (attempt.current?.body !== body)
-          attempt.current = { body, requestId: crypto.randomUUID() };
-        if (
-          await run({
-            kind: "comment_pull_request",
-            repoId: row.repoId,
-            number: row.number,
-            ...attempt.current,
-          })
-        ) {
-          setComment("");
-          attempt.current = null;
-        }
-      }}
-    >
-      <textarea
-        aria-label="PR comment"
-        placeholder="Leave a comment…"
-        value={comment}
-        disabled={disabled}
-        onChange={(event) => setComment(event.target.value)}
-        rows={2}
-      />
-      <button
-        type="submit"
-        aria-label="Post comment"
-        title="Post comment"
-        disabled={disabled || !comment.trim()}
-      >
-        ↑
-      </button>
-    </form>
+    <CommentComposer
+      disabled={disabled}
+      label="PR comment"
+      post={(body, requestId) =>
+        run({
+          kind: "comment_pull_request",
+          repoId: row.repoId,
+          number: row.number,
+          body,
+          requestId,
+        })
+      }
+    />
   );
 }
 

@@ -127,6 +127,25 @@ export function createAgentMcp(deps: AgentMcpDeps) {
           };
         if (name === "inspect_task")
           return inspectTask(deps.store, input.taskId as TaskId, deps.adapters);
+        if (name === "comment_research") {
+          const command = leadCommand(name, input);
+          if (command.kind !== "comment_research")
+            throw new Error("Invalid research command");
+          const entry = await deps.research.comment(
+            command.id,
+            command.message,
+            command.requestId,
+            "main",
+          );
+          return {
+            ok: true,
+            result: {
+              kind: "research_entry",
+              entry,
+              comments: deps.store.research.comments(entry.id),
+            },
+          };
+        }
         return deps.command(leadCommand(name, input));
       },
     },

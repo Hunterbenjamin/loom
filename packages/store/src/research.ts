@@ -1,6 +1,8 @@
 import {
+  type ResearchComment,
   type ResearchEntry,
   type ResearchState,
+  researchComment,
   researchEntry,
 } from "@loom/protocol";
 import type Database from "better-sqlite3";
@@ -8,6 +10,39 @@ import { z } from "zod";
 
 export class ResearchStore {
   constructor(private readonly db: Database.Database) {}
+  comments(id: string): ResearchComment[] {
+    return this.db
+      .prepare(
+        "SELECT value FROM research_comments WHERE entry_id=? ORDER BY sequence",
+      )
+      .pluck()
+      .all(id)
+      .map((raw) => researchComment.parse(JSON.parse(z.string().parse(raw))));
+  }
+  getComment(id: string): ResearchComment | null {
+    const raw = this.db
+      .prepare("SELECT value FROM research_comments WHERE id=?")
+      .pluck()
+      .get(id);
+    return raw === undefined
+      ? null
+      : researchComment.parse(JSON.parse(z.string().parse(raw)));
+  }
+  appendComment(value: ResearchComment): void {
+    const comment = researchComment.parse(value);
+    this.db
+      .prepare(
+        "INSERT INTO research_comments(id,entry_id,value) VALUES (?,?,?)",
+      )
+      .run(comment.id, comment.entryId, JSON.stringify(comment));
+  }
+  markDelivered(id: string): void {
+    this.db
+      .prepare(
+        "UPDATE research_comments SET value=json_set(value, '$.delivered', json('true')) WHERE id=?",
+      )
+      .run(id);
+  }
   get(id: string): ResearchEntry | null {
     const raw = this.db
       .prepare("SELECT value FROM research WHERE id=?")
