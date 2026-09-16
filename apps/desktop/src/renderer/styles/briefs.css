@@ -72,3 +72,21 @@
   font-size: 12px;
   line-height: 1.5;
 }
+
+.research-request {
+  gap: 12px;
+  align-items: center;
+}
+.research-request textarea {
+  flex: 1;
+  min-height: 64px;
+  resize: vertical;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+.research-error {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

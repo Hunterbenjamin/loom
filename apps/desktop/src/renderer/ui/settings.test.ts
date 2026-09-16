@@ -224,3 +224,40 @@ test("a shortcut is recorded from a key press, including prefix sequences, and c
     }),
   );
 });
+
+test("Research settings switch provider, model and reasoning together and save depth", async () => {
+  const { section, host, send, settle } = await mount();
+  await section("Agents");
+  const provider = host.querySelector(
+    "#setting-research-provider",
+  ) as HTMLSelectElement;
+  expect(provider.value).toBe("codex");
+  await act(async () => {
+    provider.value = "claude";
+    provider.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await settle();
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      kind: "update_settings",
+      patch: {
+        research: {
+          provider: "claude",
+          model: MODEL_CATALOG.providers.claude.models[0],
+          reasoningEffort: null,
+        },
+      },
+    }),
+  );
+  const depth = host.querySelector(
+    "#setting-research-depth",
+  ) as HTMLSelectElement;
+  await act(async () => {
+    depth.value = "deep";
+    depth.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await settle();
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({ patch: { research: { depth: "deep" } } }),
+  );
+});

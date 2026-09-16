@@ -24,7 +24,10 @@ import {
   type ViewId,
 } from "./ui-state.js";
 
-type TaskViewId = Exclude<ViewId, "pull-requests" | "settings" | "briefs">;
+type TaskViewId = Exclude<
+  ViewId,
+  "pull-requests" | "settings" | "briefs" | "research"
+>;
 
 const taskViewNames = {
   all: "all",
@@ -35,7 +38,12 @@ const taskViewNames = {
 } as const satisfies Record<TaskViewId, ViewName>;
 
 function taskViewName(view: ViewId): ViewName | null {
-  if (view === "pull-requests" || view === "settings" || view === "briefs")
+  if (
+    view === "pull-requests" ||
+    view === "settings" ||
+    view === "briefs" ||
+    view === "research"
+  )
     return null;
   return taskViewNames[view];
 }
@@ -318,7 +326,7 @@ export const viewCounts = memo1(
   (
     snapshot: Snapshot,
     repo: string,
-  ): Record<Exclude<ViewId, "briefs">, number> => {
+  ): Record<Exclude<ViewId, "briefs" | "research">, number> => {
     const counts = {
       all: 0,
       "needs-you": 0,

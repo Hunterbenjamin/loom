@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { createBriefResearch } from "./research.js";
+import { createBriefResearch } from "./brief-research.js";
 
 test.skipIf(process.env.LOOM_REAL_PROVIDERS !== "1")(
   "web-only research returns a validated brief from the real provider",

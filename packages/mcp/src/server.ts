@@ -224,9 +224,13 @@ export function createMcpServer(
             io: "input",
           }) as { type: "object" },
           annotations: {
-            readOnlyHint: ["list_tasks", "inspect_task", "list_repos"].includes(
-              name,
-            ),
+            readOnlyHint: [
+              "list_tasks",
+              "inspect_task",
+              "list_repos",
+              "list_research",
+              "read_research",
+            ].includes(name),
             destructiveHint: false,
             openWorldHint: false,
           },

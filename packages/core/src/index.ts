@@ -18,6 +18,7 @@ export { inFlightTurnId } from "./lifecycle.js";
 export type * from "./mcp.js";
 export type * from "./observations.js";
 export type * from "./reconcile.js";
+export * from "./research.js";
 export * from "./settings.js";
 export { deriveStatus } from "./status.js";
 export * from "./task-context.js";

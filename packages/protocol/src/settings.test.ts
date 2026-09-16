@@ -28,3 +28,22 @@ it("Main model is writable independently and retired Operator settings are rejec
     false,
   );
 });
+
+it("research has its own strict profile outside pipeline roles", () => {
+  expect(
+    settingsPatch.parse({
+      research: {
+        provider: "codex",
+        model: "gpt-5.6-sol",
+        reasoningEffort: "high",
+        depth: "deep",
+      },
+    }).research?.depth,
+  ).toBe("deep");
+  expect(settingsPatch.safeParse({ roles: { research: {} } }).success).toBe(
+    false,
+  );
+  expect(
+    settingsPatch.safeParse({ research: { depth: "unbounded" } }).success,
+  ).toBe(false);
+});

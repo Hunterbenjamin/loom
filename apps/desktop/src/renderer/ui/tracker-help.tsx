@@ -66,7 +66,8 @@ export function TrackerHelp({ onClose }: { onClose(): void }) {
 
 export function WhichKey() {
   const detail = useStore(
-    (s) => !!(s.ui.openTask || s.ui.openPr || s.ui.openBrief),
+    (s) =>
+      !!(s.ui.openTask || s.ui.openPr || s.ui.openBrief || s.ui.openResearch),
   );
   const list = useStore((s) => s.ui.view !== "settings");
   return (

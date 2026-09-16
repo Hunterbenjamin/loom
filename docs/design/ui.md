@@ -143,3 +143,17 @@ Daily brief lists recent runs and opens an edition in the shared detail layout. 
 items, sources, evidence/limitations and practical next steps. Pause schedule and Run now act through
 authenticated commands. The page is a disposable cache: [architecture](../architecture.md#daily-ai-builder-brief)
 owns schedule, research limits and interrupted-run behavior.
+
+## Research
+
+Research is a separate sidebar destination, available through `g e`, the command palette and
+keyboard help. A request box starts on-demand web research; settings under Agents → Research
+choose provider, model, reasoning and depth for the next request. Only one request runs at a time.
+History groups entries by month, supports filtering and keyboard selection, and opens the shared
+detail layout with the original question, rendered markdown and clickable sources. Running,
+failed and interrupted entries remain visible with their status and explanation.
+
+Saved-by-Main entries are labeled in the list and detail and explicitly make no live-web
+verification claim. Archive hides an entry from the default history; the Archived toggle lists
+archived entries, which remain fully readable and can be unarchived. Window state and polling are
+disposable; documents, archive state and running identity belong to the coordinator.

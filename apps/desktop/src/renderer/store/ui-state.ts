@@ -13,7 +13,8 @@ export type ViewId =
   | "done"
   | "pull-requests"
   | "settings"
-  | "briefs";
+  | "briefs"
+  | "research";
 export type Pane = "list" | "board";
 export type TabId = "overview" | "plan" | "diff" | "terminal";
 export type SortKey =
@@ -47,6 +48,7 @@ export interface UiState {
   openPr: { repoId: PullRequestRow["repoId"]; number: number } | null;
   /** The brief open over the Daily brief list. */
   openBrief: string | null;
+  openResearch: string | null;
   view: ViewId;
   pane: Pane;
   /** Coordinator projection; empty only when no repository is registered. */
@@ -80,6 +82,7 @@ export const initialUi: UiState = {
   prCursor: null,
   openPr: null,
   openBrief: null,
+  openResearch: null,
   view: "all",
   pane: "list",
   repo: "",

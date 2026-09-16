@@ -210,6 +210,55 @@ function RoleReset({ context, role }: { context: FieldContext; role: Role }) {
   );
 }
 
+function ResearchSettings({ context }: { context: FieldContext }) {
+  const provider = useField(context, "research.provider");
+  const model = useField(context, "research.model");
+  const reasoning = useField(context, "research.reasoningEffort");
+  const depth = useField(context, "research.depth");
+  const selected = provider.value as Provider;
+  const catalog = provider.document.modelCatalog.providers[selected];
+  return (
+    <Group
+      title="Research"
+      description="On-demand web research. Changes apply to the next run."
+    >
+      <Row field={provider} label="Provider">
+        <Select
+          field={{
+            ...provider,
+            save: (value) =>
+              provider.save(value, {
+                "research.model":
+                  provider.document.modelCatalog.providers[value as Provider]
+                    ?.models[0],
+                "research.reasoningEffort": value === "codex" ? "medium" : null,
+              }),
+          }}
+          options={[...PROVIDER_VALUES]}
+        />
+      </Row>
+      <Row field={model} label="Model">
+        <Select field={model} options={catalog?.models ?? []} />
+      </Row>
+      <Row field={reasoning} label="Reasoning">
+        <Select
+          field={reasoning}
+          options={catalog?.reasoning ?? []}
+          disabled={selected === "claude"}
+          empty={selected === "claude" ? "Provider default" : undefined}
+        />
+      </Row>
+      <Row
+        field={depth}
+        label="Depth"
+        description="Quick: 10 steps / 30k tokens; standard: 30 / 100k; deep: 60 / 200k. Claude uses equivalent $0.90 / $3 / $6 spending limits."
+      >
+        <Select field={depth} options={["quick", "standard", "deep"]} />
+      </Row>
+    </Group>
+  );
+}
+
 function Agents({ context }: { context: FieldContext }) {
   const main = useField(context, "main.model");
   const roleErrors = ROLES.flatMap((role) =>
@@ -282,6 +331,7 @@ function Agents({ context }: { context: FieldContext }) {
           <AccessRow key={role} context={context} role={role} />
         ))}
       </Group>
+      <ResearchSettings context={context} />
       <Group title="Main">
         <Row
           field={main}

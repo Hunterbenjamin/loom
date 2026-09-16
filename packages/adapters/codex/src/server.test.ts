@@ -345,3 +345,20 @@ it("a fresh adapter resumes and reads the existing thread after coordinator reco
     await first.stopServer();
   }
 });
+
+it("retires the recorded research server on restart without launching a replacement", async () => {
+  const owner = new TaskServer(directory, executable);
+  await owner.start();
+  const processInfo = JSON.parse(
+    await readFile(join(directory, "fake-process.json"), "utf8"),
+  );
+  try {
+    const restarted = new TaskServer(directory, executable);
+    await restarted.stopRecorded();
+    expect(() => process.kill(processInfo.pid, 0)).toThrow();
+    await restarted.stopRecorded();
+    expect(restarted.running).toBe(false);
+  } finally {
+    await owner.stop();
+  }
+});

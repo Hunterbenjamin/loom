@@ -219,3 +219,36 @@ scalar rules, defaults and unknown-key stripping, including omission of derived 
 reasons. MCP keeps agent-only input rules locally. Sharing a shape never silently changes which
 existing rows or wire frames can be read. Type-equality and boundary compatibility tests enforce
 these contracts.
+
+## On-demand research
+
+The coordinator's `Research` owner accepts one instance-wide run at a time. A second start is
+refused with the running entry ID; repeating the same request ID returns its existing record.
+There is no queue or schedule. SQLite migration 0012 stores independent Research documents:
+question, title, markdown body, HTTP(S) sources, provenance, status and archive timestamp. Archive
+changes visibility without deleting content. Main's `save_research` stores completed documents
+with `origin=main`, without a provider session or a claim of live-web verification. The four Main
+research tools reuse validated coordinator commands; task-run tokens cannot invoke them.
+
+Research settings are instance-wide and captured on each start, outside pipeline roles. Both
+providers implement the same `ResearchSession` contract and validate with `researchDocument`.
+Claude shares the brief's web-only SDK runner, but has its own schema and limits. The brief still
+uses 30 turns, $3 and its existing editorial contract. Codex uses Loom's app-server transport and
+CLI credentials, not the separately billed Responses deep-research API. Its private server and
+home are outside every task's server directory; thread and turn have no environments or workspace
+roots, read-only sandbox, no MCP, no shell/image/collaboration tools, and live web search.
+
+Quick/standard/deep allow 10/30/60 steps with ceilings of 30k/100k/200k tokens. Claude maps these to
+SDK maxTurns and $0.90/$3/$6 spending limits; these are budget equivalents, not exact token caps.
+Codex's one app-server turn contains the model's research loop: completed web lookups count against
+the step limit, and cumulative token notifications enforce the token ceiling. The adapter interrupts
+the owned turn on budget exhaustion or abort and closes its server. Only a successful live web tool
+result (Claude) or completed raw web-search response item (Codex) qualifies as live lookup evidence.
+Fetched pages are explicitly untrusted data in the prompt. Prose, invalid output and oversized
+bodies fail instead of being repaired or truncated into documents; diagnostic provider text is
+retained in the failed entry, bounded to 120k characters.
+
+Run identity is stored before launch. Claude's UUID is preallocated; Codex's returned thread ID is
+stored before its first turn. On restart the private recorded research server is retired using its
+verified process identity, and all running entries, including archived ones, become interrupted.
+No agent is automatically replayed. Closing a window has no effect on a running job.
