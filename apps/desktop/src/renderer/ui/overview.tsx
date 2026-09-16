@@ -4,6 +4,7 @@ import { type ReactNode, useRef, useState } from "react";
 import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, taskFindings, taskRuns } from "../store/selectors.js";
 import { ActivityList } from "./activity.js";
+import { Byline } from "./byline.js";
 import {
   formatTokenUsage,
   RUN_STATUS_LABELS,
@@ -40,22 +41,47 @@ export function Overview({
   onFile(path: string): void;
 }) {
   const pr = row?.detail;
+  const implementer = useStore((state) =>
+    state.snapshot.runs
+      .filter(
+        (run) =>
+          run.taskId === (task?.id ?? row?.taskId) &&
+          run.origin === "loom" &&
+          run.role === "implementer" &&
+          run.launchedAt !== null,
+      )
+      .sort(
+        (a, b) =>
+          b.round - a.round ||
+          (b.launchedAt ?? "").localeCompare(a.launchedAt ?? ""),
+      )[0],
+  );
   const title = task?.title ?? pr?.title ?? "";
   return (
     <div className="pr-overview">
       <main className="pr-story">
         <h1>{title}</h1>
-        {pr ? (
-          <div className="pr-byline">
-            <span className="pr-avatar">
-              {(pr.author ?? "?").slice(0, 2).toUpperCase()}
-            </span>
-            <span>{pr.author ?? "Unknown author"}</span>
-            <span className="faint">·</span>
-            <span className="mono faint" title={`${pr.base} ← ${pr.head}`}>
-              {pr.base} ← {pr.head}
-            </span>
-          </div>
+        {implementer || pr ? (
+          <Byline
+            name={
+              implementer
+                ? `${implementer.provider === "codex" ? "Codex" : "Claude Code"} implementer`
+                : (pr?.author ?? "Unknown author")
+            }
+            agent={!!implementer}
+            model={implementer?.model}
+            title={
+              pr
+                ? `Opened on GitHub by ${pr.author ?? "Unknown author"}`
+                : undefined
+            }
+          >
+            {pr ? (
+              <span className="mono faint" title={`${pr.base} ← ${pr.head}`}>
+                {pr.base} ← {pr.head}
+              </span>
+            ) : null}
+          </Byline>
         ) : null}
         {task ? (
           <section className="pr-description">

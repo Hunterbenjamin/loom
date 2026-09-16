@@ -23,7 +23,7 @@ const completed: BriefRun = {
   status: "completed",
   startedAt: "2026-09-14T23:00:00.000Z",
   finishedAt: "2026-09-14T23:05:00.000Z",
-  model: "fake",
+  model: "claude-sonnet-4-6",
   error: null,
   content: {
     headline: "A useful workflow experiment",
@@ -145,6 +145,11 @@ test("the history lists each brief by headline, and a click opens it in the Revi
   expect(detail?.querySelector(".pr-rail")?.textContent).toContain(
     "Parallel development",
   );
+  const byline = detail?.querySelector(".pr-byline");
+  expect(byline?.textContent).toContain("Loom brief agent · sonnet");
+  expect(byline?.textContent).toContain("Daily edition");
+  expect(byline?.querySelector(".pr-avatar svg")).not.toBeNull();
+  expect(byline?.querySelector('[title="claude-sonnet-4-6"]')).not.toBeNull();
   expect(detail?.textContent).toContain("Why it matters to you");
   expect(detail?.textContent).toContain("Practitioner experience");
   expect(detail?.querySelector("a")?.href).toBe(
@@ -204,4 +209,15 @@ test("brief filtering and keyboard endpoints open the visible brief", async () =
   await act(async () => press("Enter"));
   expect(h.store.getState().ui.openBrief).toBe(second.id);
   expect(h.store.getState().ui.openTask).toBeNull();
+});
+
+test("a brief with no recorded model keeps an honest agent byline", async () => {
+  const { host, row } = await mount([
+    { ...completed, model: "", trigger: "manual" },
+  ]);
+  await act(async () => row(completed.id).click());
+  const byline = host.querySelector(".pr-byline");
+  expect(byline?.textContent).toContain("Loom brief agent · Model not recorded");
+  expect(byline?.textContent).toContain("Manual run");
+  expect(byline?.querySelector(".pr-avatar svg")).not.toBeNull();
 });

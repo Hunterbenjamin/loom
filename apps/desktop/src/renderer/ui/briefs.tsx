@@ -7,6 +7,7 @@ import type {
 } from "@loom/protocol";
 import { useEffect, useRef, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
+import { Byline } from "./byline.js";
 import { DetailLayout } from "./detail-layout.js";
 import { ListGroupHeader, ListRow } from "./list-rows.js";
 import { useTrackerActions } from "./tracker-actions.js";
@@ -353,15 +354,15 @@ function BriefDetail({
         <main className="pr-story">
           <h1>{title}</h1>
           {current ? (
-            <div className="pr-byline faint">
-              <span>{dateLabel(current.startedAt)}</span>
-              <span>·</span>
-              <span>
+            <Byline name="Loom brief agent" agent model={current.model}>
+              <span className="faint">{dateLabel(current.startedAt)}</span>
+              <span className="faint">·</span>
+              <span className="faint">
                 {current.trigger === "scheduled"
                   ? "Daily edition"
                   : "Manual run"}
               </span>
-            </div>
+            </Byline>
           ) : null}
           {current?.status === "running" ? (
             <p className="pr-description" role="status">
@@ -455,7 +456,6 @@ function BriefDetail({
                   Finished {dateLabel(current.finishedAt)}
                 </div>
               ) : null}
-              <div className="pr-property faint">{current.model}</div>
             </section>
           ) : null}
           {content?.items.length ? (
