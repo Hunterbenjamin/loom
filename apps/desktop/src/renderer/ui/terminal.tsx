@@ -20,6 +20,11 @@ import { shallowArray, useStore, useStoreApi } from "../store/react.js";
 import { issueKeyFor, terminalsForTask } from "../store/selectors.js";
 import { kittyEncode } from "./kitty.js";
 import {
+  createScrollMatcher,
+  scrollDistance,
+  typingScrollCommand,
+} from "./scroll-keys.js";
+import {
   historyRequest,
   type PaneViewport,
   terminalCrop,
@@ -497,13 +502,26 @@ export const TerminalSession = memo(function TerminalSession({
     window.loom.terms[panelId ?? id] = terminal;
 
     let scrolling = false;
-    let pendingG = false;
+    const matcher = createScrollMatcher(true);
+    const leaveScroll = () => {
+      scrolling = false;
+      matcher.reset();
+      setScrollMode(false);
+      terminal.scrollToBottom();
+    };
+    terminal.onScroll(() => {
+      if (alternate || terminal.buffer.active.type === "alternate") return;
+      scrolling =
+        terminal.buffer.active.viewportY < terminal.buffer.active.baseY;
+      if (!scrolling) matcher.reset();
+      setScrollMode(scrolling);
+    });
     setScrollMode(false);
     window.loom.terminalControllers ??= {};
     window.loom.terminalControllers[panelId ?? id] = {
       enterScrollMode() {
         scrolling = true;
-        pendingG = false;
+        matcher.reset();
         setScrollMode(true);
         refreshFlags();
         terminal.focus();
@@ -514,38 +532,24 @@ export const TerminalSession = memo(function TerminalSession({
       // Workbench's window capture listener owns bindings across every focus
       // surface. It consumes them before xterm/kitty; never run a second matcher.
       if (event.defaultPrevented) return false;
-      const pageKey = event.key === "PageUp" || event.key === "PageDown";
-      if (scrolling || (event.shiftKey && pageKey)) {
-        event.preventDefault();
+      if (scrolling || typingScrollCommand(event)) {
         if (event.type !== "keydown") return false;
-        const page = viewportRef.current?.height ?? terminal.rows;
-        const plain = !event.ctrlKey && !event.metaKey && !event.altKey;
-        const wasG = pendingG;
-        pendingG = false;
-        if (plain && (event.key === "Escape" || event.key === "q")) {
-          scrolling = false;
-          setScrollMode(false);
-          terminal.scrollToBottom();
-        } else if (plain && pageKey) {
-          scrollBy(event.key === "PageUp" ? -page : page);
-        } else if (plain && (event.key === "j" || event.key === "k")) {
-          scrollBy(event.key === "j" ? 1 : -1);
-        } else if (
-          event.ctrlKey &&
-          !event.metaKey &&
-          !event.altKey &&
-          (event.key === "d" || event.key === "u")
-        ) {
-          scrollBy(
-            (event.key === "d" ? 1 : -1) * Math.max(1, Math.floor(page / 2)),
-          );
-        } else if (plain && event.key === "g") {
-          pendingG = !wasG;
-          if (wasG && !alternate) terminal.scrollToTop();
-        } else if (plain && event.key === "G" && !alternate) {
-          terminal.scrollToBottom();
+        const command = scrolling
+          ? matcher.match(event)
+          : typingScrollCommand(event);
+        if (command) {
+          event.preventDefault();
+          const page = viewportRef.current?.height ?? terminal.rows;
+          if (command === "leave") leaveScroll();
+          else if (command === "top") {
+            if (!alternate) terminal.scrollToTop();
+          } else if (command === "bottom") {
+            if (!alternate) leaveScroll();
+          } else if (command !== "pending")
+            scrollBy(scrollDistance(command, page));
+          return false;
         }
-        return false;
+        leaveScroll();
       }
       if (
         settings.current.onKey?.(event, () =>
@@ -562,7 +566,7 @@ export const TerminalSession = memo(function TerminalSession({
 
     let enterTimer: number | undefined;
     terminal.onData((data) => {
-      if (scrolling) return;
+      if (scrolling) leaveScroll();
       window.loomTerminal.write(id, data);
       if (data.includes("\r")) {
         window.clearTimeout(enterTimer);

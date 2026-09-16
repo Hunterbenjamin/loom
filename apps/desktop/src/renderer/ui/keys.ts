@@ -5,6 +5,7 @@ import { selectedPullRequests } from "../store/pull-requests.js";
 import { cursorRows, selectedRows } from "../store/selectors.js";
 import type { Store } from "../store/store.js";
 import { STAGES } from "./format.js";
+import { typingScrollCommand } from "./scroll-keys.js";
 import { hasTrackerAction, runTrackerAction } from "./tracker-actions.js";
 import {
   eventKey,
@@ -20,7 +21,9 @@ export function typing(target: EventTarget | null): boolean {
   return (
     TYPING.has(element.tagName) ||
     element.isContentEditable ||
-    !!element.closest(".xterm, [contenteditable]:not([contenteditable=false])")
+    !!element.closest(
+      ".xterm, .chat-window, [contenteditable]:not([contenteditable=false])",
+    )
   );
 }
 
@@ -178,7 +181,10 @@ export function createShortcutHandler(
       setPending(false);
       return;
     }
-    if (typing(event.composedPath()[0] ?? event.target)) {
+    const target = event.composedPath()[0] ?? event.target;
+    const ownsKeys =
+      target instanceof Element && target.closest(".xterm, .chat-window");
+    if (ownsKeys || (typing(target) && !typingScrollCommand(event))) {
       setPending(false);
       return;
     }

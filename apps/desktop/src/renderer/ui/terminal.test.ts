@@ -25,9 +25,25 @@ vi.mock("@xterm/xterm", () => ({
     handler = (_event: KeyboardEvent) => true;
     data = (_data: string) => {};
     buffer = { active: { type: "normal", viewportY: 50, baseY: 100 } };
-    scrollLines = vi.fn();
-    scrollToTop = vi.fn();
-    scrollToBottom = vi.fn();
+    scroll = () => {};
+    onScroll(fn: () => void) {
+      this.scroll = fn;
+    }
+    scrollLines = vi.fn((lines: number) => {
+      this.buffer.active.viewportY = Math.max(
+        0,
+        Math.min(100, this.buffer.active.viewportY + lines),
+      );
+      this.scroll();
+    });
+    scrollToTop = vi.fn(() => {
+      this.buffer.active.viewportY = 0;
+      this.scroll();
+    });
+    scrollToBottom = vi.fn(() => {
+      this.buffer.active.viewportY = 100;
+      this.scroll();
+    });
     csi = new Map<string, (params: number[]) => boolean>();
     parser = {
       registerCsiHandler: (
@@ -281,7 +297,7 @@ function scrollHarness() {
     data: (data: string) => void;
     scrollLines: ReturnType<typeof vi.fn>;
     scrollToTop: ReturnType<typeof vi.fn>;
-    scrollToBottom: ReturnType<typeof vi.fn>;
+    scrollToBottom: ReturnType<typeof vi.fn<() => void>>;
     csi: Map<string, (params: number[]) => boolean>;
   };
   const controller = Object.values(window.loom.terminalControllers ?? {})[0];
@@ -308,8 +324,8 @@ test("scroll mode consumes input, navigates history and exits to normal input", 
   press("k");
   press("d", { ctrlKey: true });
   press("u", { ctrlKey: true });
-  press("PageUp");
-  press("PageDown");
+  press(" ", { shiftKey: true });
+  press(" ");
   expect(terminal.scrollLines.mock.calls).toEqual([
     [1],
     [-1],
@@ -320,18 +336,22 @@ test("scroll mode consumes input, navigates history and exits to normal input", 
   ]);
   press("g");
   press("x");
+  expect(host.textContent).not.toContain("SCROLL");
+  expect(window.loomTerminal.write).toHaveBeenLastCalledWith(
+    expect.any(String),
+    "x",
+  );
+  act(() => controller.enterScrollMode());
   press("g");
   expect(terminal.scrollToTop).not.toHaveBeenCalled();
   press("g");
   expect(terminal.scrollToTop).toHaveBeenCalledOnce();
   press("G", { shiftKey: true });
-  expect(terminal.scrollToBottom).toHaveBeenCalledOnce();
-  press("Enter", { shiftKey: true });
-  terminal.data("paste");
-  expect(window.loomTerminal.write).not.toHaveBeenCalled();
+  expect(host.textContent).not.toContain("SCROLL");
+  act(() => controller.enterScrollMode());
   expect(press("Escape").defaultPrevented).toBe(true);
   expect(host.textContent).not.toContain("SCROLL");
-  expect(terminal.scrollToBottom).toHaveBeenCalledTimes(2);
+  expect(terminal.scrollToBottom).toHaveBeenCalledTimes(3);
   for (const key of ["j", "k", "q", "Escape", "PageUp"]) {
     press(key);
     expect(window.loomTerminal.write).toHaveBeenLastCalledWith(
@@ -342,20 +362,26 @@ test("scroll mode consumes input, navigates history and exits to normal input", 
   act(() => controller.enterScrollMode());
   press("q");
   expect(host.textContent).not.toContain("SCROLL");
-  expect(terminal.scrollToBottom).toHaveBeenCalledTimes(3);
+  expect(terminal.scrollToBottom).toHaveBeenCalledTimes(4);
 });
 
-test("shift page keys and the wheel share viewer scrolling without entering scroll mode", () => {
+test("shift page keys and the wheel enter reading mode and the bottom leaves it", () => {
   const { host, terminal, press } = scrollHarness();
   expect(press("PageUp", { shiftKey: true }).defaultPrevented).toBe(true);
   press("PageDown", { shiftKey: true });
-  host
-    .querySelector(".terminal-viewport")
-    ?.dispatchEvent(
-      new WheelEvent("wheel", { deltaY: -48, bubbles: true, cancelable: true }),
-    );
+  act(() =>
+    host.querySelector(".terminal-viewport")?.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaY: -48,
+        bubbles: true,
+        cancelable: true,
+      }),
+    ),
+  );
   expect(terminal.scrollLines.mock.calls).toEqual([[-24], [24], [-2]]);
   expect(window.loomTerminal.write).not.toHaveBeenCalled();
+  expect(host.textContent).toContain("SCROLL");
+  act(() => terminal.scrollToBottom());
   expect(host.textContent).not.toContain("SCROLL");
 });
 

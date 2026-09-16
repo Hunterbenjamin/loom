@@ -7,6 +7,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useStore, useStoreApi } from "../store/react.js";
+import {
+  createScrollMatcher,
+  type ScrollCommand,
+  scrollDistance,
+  typingScrollCommand,
+} from "../ui/scroll-keys.js";
 import { conversationIndicator } from "../workbench/agents.js";
 import { Status } from "../workbench/status.js";
 
@@ -140,10 +146,12 @@ export function ChatWindow() {
   const [showJump, setShowJump] = useState(false);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
-  const conversation = useRef<HTMLDivElement>(null);
+  const conversation = useRef<HTMLElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const following = useRef(true);
+  const scrollMatcher = useRef(createScrollMatcher());
+  const readingInsertion = useRef<number | null>(null);
   const key = target ? conversationKey(target) : "";
   const mainUnread = useStore((s) => s.mainFinished);
   const header = state.conversations.find(
@@ -167,7 +175,16 @@ export function ChatWindow() {
         : "Agent";
   const prefixError = /^[!/]/.test(text.trimStart());
   useLayoutEffect(() => {
-    if (composer.current) resizeChatComposer(composer.current);
+    if (composer.current) {
+      resizeChatComposer(composer.current);
+      if (readingInsertion.current !== null) {
+        composer.current.setSelectionRange(
+          readingInsertion.current,
+          readingInsertion.current,
+        );
+        readingInsertion.current = null;
+      }
+    }
     // Pin to the bottom after every render, not only when the item count
     // changes: the transcript is capped at its last 300 items and streamed
     // text updates items in place, so the count often stays the same.
@@ -352,6 +369,25 @@ export function ChatWindow() {
     const element = conversation.current;
     if (element) element.scrollTop = element.scrollHeight;
   };
+  const returnToComposer = () => {
+    scrollMatcher.current.reset();
+    jumpToLatest();
+    composer.current?.focus({ preventScroll: true });
+  };
+  const scrollConversation = (command: ScrollCommand) => {
+    const element = conversation.current;
+    if (!element) return;
+    if (command === "leave" || command === "bottom") return returnToComposer();
+    element.scrollTop =
+      command === "top"
+        ? 0
+        : element.scrollTop +
+          scrollDistance(
+            command,
+            element.clientHeight,
+            CHAT_COMPOSER_LINE_HEIGHT,
+          );
+  };
   return (
     <section
       className={`chat-window${view === "expanded" ? " expanded" : ""}`}
@@ -423,9 +459,39 @@ export function ChatWindow() {
           ×
         </button>
       </header>
-      <div
+      <section
         ref={conversation}
         className="chat-conversation"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: The scrollable transcript is a keyboard reading surface.
+        tabIndex={0}
+        aria-label="Chat transcript"
+        onBlur={() => scrollMatcher.current.reset()}
+        onKeyDown={(event) => {
+          if (
+            event.target !== event.currentTarget ||
+            event.nativeEvent.isComposing
+          )
+            return;
+          const command = scrollMatcher.current.match(event);
+          if (command) {
+            event.preventDefault();
+            if (command !== "pending") scrollConversation(command);
+          } else if (
+            event.key.length === 1 &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey
+          ) {
+            event.preventDefault();
+            const input = composer.current;
+            if (!input || input.disabled) return;
+            const start = input.selectionStart;
+            const end = input.selectionEnd;
+            readingInsertion.current = start + event.key.length;
+            setText(text.slice(0, start) + event.key + text.slice(end));
+            returnToComposer();
+          }
+        }}
         onScroll={() => {
           const element = conversation.current;
           if (!element) return;
@@ -434,6 +500,9 @@ export function ChatWindow() {
             24;
           following.current = atBottom;
           setShowJump(!atBottom);
+          if (!atBottom) element.focus({ preventScroll: true });
+          else if (document.activeElement === element)
+            composer.current?.focus({ preventScroll: true });
         }}
       >
         {header?.truncated && (
@@ -573,7 +642,7 @@ export function ChatWindow() {
             Jump to latest
           </button>
         )}
-      </div>
+      </section>
       <fieldset
         className="chat-composer"
         onDragOver={(event) => event.preventDefault()}
@@ -620,12 +689,10 @@ export function ChatWindow() {
             if (images.length) void stageFiles(images);
           }}
           onKeyDown={(e) => {
-            if (e.key === "PageUp" || e.key === "PageDown") {
+            const command = typingScrollCommand(e);
+            if (command) {
               e.preventDefault();
-              const element = conversation.current;
-              if (element)
-                element.scrollTop +=
-                  (e.key === "PageUp" ? -1 : 1) * element.clientHeight * 0.9;
+              scrollConversation(command);
             } else if (e.metaKey && e.key === "ArrowDown") {
               e.preventDefault();
               jumpToLatest();

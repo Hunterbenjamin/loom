@@ -4,6 +4,8 @@ import {
   type KeybindingsState,
 } from "../../shared/keybindings.js";
 
+import { scrollBindings } from "../ui/scroll-keys.js";
+
 export const ShortcutsHelp = ({
   bindings,
   close,
@@ -19,11 +21,12 @@ export const ShortcutsHelp = ({
           <kbd>{formatBindings(bindings.config, action.id)}</kbd> {action.label}
         </p>
       ))}
-      <p>
-        Terminal scroll mode: j/k line, Ctrl+d/Ctrl+u half page, PageUp/PageDown
-        page, gg/G top/bottom. Esc or q returns to the bottom and exits.
-        Shift+PageUp/PageDown scroll a page in any mode.
-      </p>
+      <h3>Terminal reading mode</h3>
+      {scrollBindings.map((entry) => (
+        <p key={entry.id}>
+          <kbd>{entry.keys.join(" / ")}</kbd> {entry.label}
+        </p>
+      ))}
       <p>
         Prefix expires after {bindings.config.prefixTimeoutMs / 1000} seconds.
         Escape cancels. Modifier keys preserve the prefix; unknown suffixes pass
