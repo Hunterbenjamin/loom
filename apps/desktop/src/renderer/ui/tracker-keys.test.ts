@@ -56,7 +56,7 @@ test("section chords, view toggle and help", () => {
   key("?");
   expect(help).toHaveBeenCalledOnce();
   key("c");
-  expect(store.getState().ui.createIssue).toBe(true);
+  expect(store.getState().ui.createPalette).toBe(true);
 });
 test("prefix waits without timeout and Escape or unmapped keys cancel", () => {
   vi.useFakeTimers();
@@ -87,14 +87,14 @@ test("typing, terminals, composition and dialogs own all keys", () => {
     key("?", target);
     key("k", target, { metaKey: true });
     expect(store.getState().ui.view).toBe("all");
-    expect(store.getState().ui.createIssue).toBe(false);
+    expect(store.getState().ui.createPalette).toBe(false);
     expect(store.getState().ui.palette).toBe(false);
   }
   key("c", document.body, { isComposing: true });
   document.body.innerHTML = "<dialog open></dialog>";
   key("c");
   key("?");
-  expect(store.getState().ui.createIssue).toBe(false);
+  expect(store.getState().ui.createPalette).toBe(false);
   expect(help).not.toHaveBeenCalled();
 });
 test("detail actions dispatch by id; removed keys and repeated approval do nothing", () => {
@@ -130,7 +130,7 @@ test("detail actions dispatch by id; removed keys and repeated approval do nothi
   for (const removed of ["E", "t", "A", "C"]) key(removed);
   expect(edit).toHaveBeenCalledOnce();
   expect(change).toHaveBeenCalledOnce();
-  expect(store.getState().ui.createIssue).toBe(false);
+  expect(store.getState().ui.createPalette).toBe(false);
   expect(store.getState().ui.cursor).toBe(2);
   key("s");
   expect(store.getState().ui.stagePicker).toBe(true);

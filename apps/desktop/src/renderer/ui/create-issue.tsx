@@ -16,12 +16,7 @@ function acknowledged(outcome: AckOutcome) {
   return outcome.result;
 }
 
-export function CreateIssue() {
-  const open = useStore((s) => s.ui.createIssue);
-  return open ? <CreateIssueDialog /> : null;
-}
-
-function CreateIssueDialog() {
+export function CreateIssueDialog() {
   const store = useStoreApi();
   const repos = useStore((s) => s.snapshot.repos);
   const settings = useStore((s) => s.settings);
@@ -110,7 +105,7 @@ function CreateIssueDialog() {
         ),
       );
     else if (dirty) setDiscard(true);
-    else store.setCreateIssue(false);
+    else store.setCreate(null);
   };
   const submit = async () => {
     if (!valid || submitting.current) return;
@@ -166,7 +161,7 @@ function CreateIssueDialog() {
   return (
     <dialog
       ref={dialog}
-      className="create-issue-dialog"
+      className="create-dialog"
       aria-labelledby="create-issue-title"
       onCancel={(e) => {
         e.preventDefault();
@@ -326,14 +321,14 @@ function CreateIssueDialog() {
           </p>
         )}
         {error && (
-          <p role="alert" className="issue-error">
+          <p role="alert" className="create-error">
             {error}
           </p>
         )}
         {discard ? (
           <>
             <p role="alert">Discard this issue draft?</p>
-            <div className="issue-actions">
+            <div className="create-actions">
               <button
                 ref={keepEditing}
                 type="button"
@@ -344,13 +339,13 @@ function CreateIssueDialog() {
               >
                 Keep editing
               </button>
-              <button type="button" onClick={() => store.setCreateIssue(false)}>
+              <button type="button" onClick={() => store.setCreate(null)}>
                 Discard draft
               </button>
             </div>
           </>
         ) : (
-          <div className="issue-actions">
+          <div className="create-actions">
             <span className="faint">⌘Enter to submit</span>
             <span className="spacer" />
             <button type="button" disabled={busy} onClick={cancel}>

@@ -13,13 +13,13 @@ import { selectedRows } from "./store/selectors.js";
 import { VIEWS } from "./store/ui-state.js";
 import { BoardView } from "./ui/board.js";
 import { BriefsView } from "./ui/briefs.js";
-import { CreateIssue } from "./ui/create-issue.js";
+import { CreateDialog } from "./ui/creatables.js";
 import { Detail } from "./ui/detail.js";
 import { InboxView } from "./ui/inbox.js";
 import { useShortcuts } from "./ui/keys.js";
 import { LeadBar } from "./ui/lead.js";
 import { ListView } from "./ui/list.js";
-import { Palette, StagePicker } from "./ui/palette.js";
+import { CreatePalette, Palette, StagePicker } from "./ui/palette.js";
 import { PullRequestsView } from "./ui/pull-requests.js";
 import { ResearchView } from "./ui/research.js";
 import { SettingsView } from "./ui/settings.js";
@@ -225,7 +225,8 @@ export function App() {
       <LeadBar surface="tracker" onMainClose={focusContent} />
       <Palette />
       <StagePicker />
-      <CreateIssue />
+      <CreatePalette />
+      <CreateDialog />
       {toast ? <div className="toast">{toast}</div> : null}
     </div>
   );

@@ -59,7 +59,7 @@ export function ChangePlanDialog({
   return (
     <dialog
       ref={dialog}
-      className="create-issue-dialog pr-confirm"
+      className="create-dialog pr-confirm"
       aria-labelledby="issue-change-plan-title"
       onKeyDown={(event) => event.stopPropagation()}
       onCancel={(event) => {
@@ -153,7 +153,7 @@ export function RequestChangesDialog({
   return (
     <dialog
       ref={dialog}
-      className="create-issue-dialog pr-confirm"
+      className="create-dialog pr-confirm"
       aria-labelledby="issue-request-changes-title"
       onKeyDown={(event) => event.stopPropagation()}
       onCancel={(event) => {
@@ -229,7 +229,7 @@ export function ConfirmIssueApproval({
   return (
     <dialog
       ref={dialog}
-      className="create-issue-dialog pr-confirm"
+      className="create-dialog pr-confirm"
       aria-labelledby="issue-approve-title"
       onKeyDown={(event) => event.stopPropagation()}
       onCancel={(event) => {
@@ -285,7 +285,7 @@ export function ConfirmPlanApproval({
   return (
     <dialog
       ref={dialog}
-      className="create-issue-dialog pr-confirm"
+      className="create-dialog pr-confirm"
       aria-labelledby="confirm-plan-title"
       onCancel={(event) => {
         event.preventDefault();

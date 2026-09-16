@@ -25,8 +25,6 @@ export function ResearchView() {
   const cursor = useStore((s) => s.ui.cursor);
   const [state, setState] = useState<ResearchState | null>(null);
   const [entry, setEntry] = useState<ResearchEntry | null>(null);
-  const [question, setQuestion] = useState("");
-  const [directory, setDirectory] = useState("");
   const [followUp, setFollowUp] = useState("");
   const [archived, setArchived] = useState(false);
   const [error, setError] = useState("");
@@ -82,10 +80,6 @@ export function ResearchView() {
       if (!result.ok) throw new Error(result.error.message);
       if (result.result.kind === "research_entry") {
         setEntry(result.result.entry);
-        if (command.kind === "start_research") {
-          setQuestion("");
-          store.openResearch(result.result.entry.id);
-        }
       }
       await refreshResearch.current?.();
       setError("");
@@ -141,45 +135,7 @@ export function ResearchView() {
   const current = entry?.id === open ? entry : null;
   return (
     <>
-      <form
-        className="list-toolbar research-request"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (question.trim())
-            void act({
-              kind: "start_research",
-              id: crypto.randomUUID(),
-              question,
-              directory,
-            });
-        }}
-      >
-        <input
-          aria-label="Research directory"
-          placeholder="Absolute directory to read"
-          value={directory}
-          onChange={(event) => setDirectory(event.target.value)}
-          required
-        />
-        <textarea
-          aria-label="Research question"
-          placeholder="What would you like to research?"
-          maxLength={10000}
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-        />
-        <button
-          type="submit"
-          disabled={
-            !connected ||
-            busy ||
-            !!state?.runningId ||
-            !question.trim() ||
-            !directory.trim()
-          }
-        >
-          {state?.runningId ? "Researching…" : "Research"}
-        </button>
+      <div className="list-toolbar">
         <label>
           <input
             type="checkbox"
@@ -191,7 +147,7 @@ export function ResearchView() {
           />
           Archived
         </label>
-      </form>
+      </div>
       <div className="list reviews-list" data-testid="research-list">
         {!connected ? (
           <p className="pad" role="status">
@@ -208,7 +164,7 @@ export function ResearchView() {
           <p className="pad faint">
             {archived
               ? "No archived research."
-              : "Ask a question, or ask Main to save research from your conversation."}
+              : "Create research from the create palette, or ask Main to save research from your conversation."}
           </p>
         ) : null}
         {months.map((month) => (

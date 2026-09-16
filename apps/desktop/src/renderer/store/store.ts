@@ -18,6 +18,7 @@ import type {
 } from "@loom/protocol";
 import { repoId as parseRepoId } from "@loom/protocol";
 import { emptySnapshot } from "../live/snapshot.js";
+import type { CreatableId } from "../ui/creatables.js";
 import { applyProtocol as applyProtocolState } from "./apply-protocol.js";
 import { chatActions } from "./chat.js";
 import { commandActions } from "./commands.js";
@@ -256,12 +257,19 @@ export function createStore(
     toggleTheme: () =>
       setUi({ theme: state.ui.theme === "dark" ? "light" : "dark" }),
     setPalette: (palette: boolean) => setUi({ palette }),
-    setCreateIssue: (createIssue: boolean) =>
-      setUi({ createIssue, palette: false, stagePicker: false }),
+    setCreate: (create: CreatableId | null) =>
+      setUi({
+        create,
+        createPalette: false,
+        palette: false,
+        stagePicker: false,
+      }),
+    setCreatePalette: (createPalette: boolean) =>
+      setUi({ createPalette, palette: false, stagePicker: false }),
     selectCreatedTask(id: TaskId, todo: boolean) {
       pendingSelection = id;
       setUi({
-        createIssue: false,
+        create: null,
         openPr: null,
         view: "all",
         pane: "list",

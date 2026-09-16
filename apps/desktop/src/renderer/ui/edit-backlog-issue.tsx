@@ -34,7 +34,7 @@ export function EditBacklogIssue({
   return (
     <dialog
       ref={dialog}
-      className="create-issue-dialog pr-confirm backlog-editor"
+      className="create-dialog pr-confirm backlog-editor"
       aria-label="Edit backlog issue"
       onCancel={(event) => {
         event.preventDefault();

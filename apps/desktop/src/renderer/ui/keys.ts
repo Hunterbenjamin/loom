@@ -41,8 +41,9 @@ export function runTrackerCommand(
   }
   if (id === "help") return showHelp();
   if (id === "palette") return store.setPalette(!ui.palette);
-  if (id === "create") return store.setCreateIssue(true);
+  if (id === "create") return store.setCreatePalette(true);
   if (id === "close") {
+    if (ui.createPalette) return store.setCreatePalette(false);
     if (ui.palette) return store.setPalette(false);
     if (ui.stagePicker) return store.setStagePicker(false);
     if (ui.openPr) return store.openPullRequest(null);
@@ -215,7 +216,7 @@ export function createShortcutHandler(
       event.defaultPrevented ||
       event.isComposing ||
       document.querySelector("dialog[open]") ||
-      ui.createIssue
+      ui.create
     ) {
       setPending(false);
       return;
@@ -233,7 +234,7 @@ export function createShortcutHandler(
       event.preventDefault();
       return;
     }
-    if (ui.palette || ui.stagePicker) {
+    if (ui.createPalette || ui.palette || ui.stagePicker) {
       setPending(false);
       if (key === "Escape") {
         event.preventDefault();
