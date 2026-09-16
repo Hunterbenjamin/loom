@@ -159,6 +159,25 @@ test("fake app-server receives isolated read-only thread and output schema, and 
     outputSchema: { type: "object", required: ["title", "body", "sources"] },
   });
 });
+test("the output schema carries no string format OpenAI rejects", async () => {
+  const { run, calls } = await setup();
+  await run();
+  const schema = calls.find((call) => call.method === "turn/start")?.params as {
+    outputSchema: unknown;
+  };
+  const formats: unknown[] = [];
+  const walk = (value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) return value.forEach(walk);
+    const node = value as Record<string, unknown>;
+    if ("format" in node) formats.push(node.format);
+    Object.values(node).forEach(walk);
+  };
+  walk(schema.outputSchema);
+  // The document's source URLs are z.url(), which emits format: "uri"; OpenAI refuses that
+  // schema with invalid_json_schema, so the request never reaches the model.
+  expect(formats).not.toContain("uri");
+});
 test("rejects prose and documents without observed live web success", async () => {
   await expect((await setup({ web: false })).run()).rejects.toThrow(
     "live web lookup",

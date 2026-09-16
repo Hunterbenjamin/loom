@@ -27,6 +27,35 @@ export const researchConfig = {
     tool_suggest: false,
   },
 };
+/** OpenAI's structured outputs accept only a fixed set of string formats (date-time, date, time,
+ * duration, email, hostname, ipv4, ipv6, uuid), so a schema carrying `format: "uri"` is refused
+ * with `invalid_json_schema`. Drop the unsupported formats here, where that provider limit lives;
+ * the returned document is still parsed against the zod schema, which validates the URL itself. */
+const OPENAI_STRING_FORMATS = new Set([
+  "date-time",
+  "date",
+  "time",
+  "duration",
+  "email",
+  "hostname",
+  "ipv4",
+  "ipv6",
+  "uuid",
+]);
+export function codexOutputSchema(schema: z.ZodType) {
+  return z.json().parse(
+    z.toJSONSchema(schema, {
+      override: ({ jsonSchema }) => {
+        if (
+          typeof jsonSchema.format === "string" &&
+          !OPENAI_STRING_FORMATS.has(jsonSchema.format)
+        )
+          delete jsonSchema.format;
+      },
+    }),
+  );
+}
+
 const researchThread = z.object({
   thread: z.object({
     turns: z.array(
@@ -116,7 +145,7 @@ export async function runCodexResearch(
       runtimeWorkspaceRoots: [],
       model: request.model,
       effort: request.reasoningEffort,
-      outputSchema: z.json().parse(z.toJSONSchema(researchDocument)),
+      outputSchema: codexOutputSchema(researchDocument),
     };
     const result = await connection.rpc("turn/start", params, turnResult);
     turnId = result.turn.id;
