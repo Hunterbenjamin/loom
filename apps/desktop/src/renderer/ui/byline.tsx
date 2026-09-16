@@ -20,6 +20,7 @@ export function Byline({
       <span className="pr-avatar" aria-hidden="true">
         {agent ? (
           <svg
+            aria-hidden="true"
             width="16"
             height="16"
             viewBox="0 0 16 16"

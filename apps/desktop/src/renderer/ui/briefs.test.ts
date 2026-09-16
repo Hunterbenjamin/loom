@@ -131,9 +131,7 @@ test("manual run starts from the empty state, lists the running brief and disabl
 
 test("the history lists each brief by headline, and a click opens it in the Reviews layout", async () => {
   const { host, send, store, button, row } = await mount([completed]);
-  expect(row(completed.id).textContent).toContain(
-    "A useful workflow experiment",
-  );
+  expect(row(completed.id).textContent).toContain("A useful workflow experiment");
   expect(host.querySelector('[data-testid="brief-detail"]')).toBeNull();
 
   await act(async () => row(completed.id).click());
@@ -152,9 +150,7 @@ test("the history lists each brief by headline, and a click opens it in the Revi
   expect(byline?.querySelector('[title="claude-sonnet-4-6"]')).not.toBeNull();
   expect(detail?.textContent).toContain("Why it matters to you");
   expect(detail?.textContent).toContain("Practitioner experience");
-  expect(detail?.querySelector("a")?.href).toBe(
-    "https://example.invalid/paper",
-  );
+  expect(detail?.querySelector("a")?.href).toBe("https://example.invalid/paper");
 
   await act(async () => button("Daily brief").click());
   expect(host.querySelector('[data-testid="brief-detail"]')).toBeNull();
@@ -217,7 +213,9 @@ test("a brief with no recorded model keeps an honest agent byline", async () => 
   ]);
   await act(async () => row(completed.id).click());
   const byline = host.querySelector(".pr-byline");
-  expect(byline?.textContent).toContain("Loom brief agent · Model not recorded");
+  expect(byline?.textContent).toContain(
+    "Loom brief agent · Model not recorded",
+  );
   expect(byline?.textContent).toContain("Manual run");
   expect(byline?.querySelector(".pr-avatar svg")).not.toBeNull();
 });
