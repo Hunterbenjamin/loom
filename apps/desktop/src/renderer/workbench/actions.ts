@@ -18,7 +18,7 @@ type KeyEvent = KeyStroke & {
   repeat?: boolean;
   isComposing?: boolean;
 };
-/** One matcher per Workbench window; modifier presses must not cancel sequences. */
+/** One matcher per window; modifier presses must not cancel sequences. */
 export function bindingMatcher(
   config: KeybindingsConfig,
   dispatch: (action: KeybindingAction) => void,
@@ -44,10 +44,8 @@ export function bindingMatcher(
       cancel();
       if (matchesChord("Escape", event)) return true;
       const action = find(event, true);
-      if (action) {
-        dispatch(action.id);
-        return true;
-      }
+      if (action) dispatch(action.id);
+      return true;
     }
     const action = find(event, false);
     if (action) {

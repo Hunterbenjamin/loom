@@ -285,9 +285,9 @@ test("standard scroll bindings repeat, expose hints, and stay paused while typin
     false,
   );
   expect(formatKeys("half-page-down")).toBe("Ctrl+D");
-  expect(formatKeys("page-up")).toBe("Shift+Space / Shift+PageUp");
+  expect(formatKeys("page-up")).toBe("Shift+Space / Shift+PageUp / ⌘ArrowUp");
   expect(keyHint("page-up")["aria-keyshortcuts"]).toBe(
-    "Shift+Space Shift+PageUp",
+    "Shift+Space Shift+PageUp Meta+ArrowUp",
   );
 });
 

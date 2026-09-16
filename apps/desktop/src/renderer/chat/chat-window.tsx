@@ -472,6 +472,11 @@ export function ChatWindow() {
             event.nativeEvent.isComposing
           )
             return;
+          if (event.metaKey && event.key === "ArrowDown") {
+            event.preventDefault();
+            jumpToLatest();
+            return;
+          }
           const command = scrollMatcher.current.match(event);
           if (command) {
             event.preventDefault();
@@ -690,12 +695,12 @@ export function ChatWindow() {
           }}
           onKeyDown={(e) => {
             const command = typingScrollCommand(e);
-            if (command) {
-              e.preventDefault();
-              scrollConversation(command);
-            } else if (e.metaKey && e.key === "ArrowDown") {
+            if (e.metaKey && e.key === "ArrowDown") {
               e.preventDefault();
               jumpToLatest();
+            } else if (command) {
+              e.preventDefault();
+              scrollConversation(command);
             } else if (e.key === "Escape") store.setChatView("minimized");
             else if (
               e.key === "Enter" &&

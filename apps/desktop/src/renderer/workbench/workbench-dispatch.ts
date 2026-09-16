@@ -3,6 +3,7 @@ import type { PaneView } from "@loom/protocol";
 import type { Dispatch, SetStateAction } from "react";
 import type { KeybindingsState } from "../../shared/keybindings.js";
 import type { useStoreApi } from "../store/react.js";
+import { enterFocusedScrollMode } from "../ui/terminal.js";
 import { spaces } from "./selectors.js";
 import type { Panel, Tab } from "./tabs.js";
 
@@ -59,8 +60,7 @@ export const workbenchDispatch = (options: DispatchOptions) =>
     } = options;
     const tab = tabs.find((candidate) => candidate.id === active);
     if (action === "commands") return setPalette((value) => !value);
-    if (action === "scroll-mode")
-      return window.loom.terminalControllers?.[focused]?.enterScrollMode();
+    if (action === "scroll-mode") return enterFocusedScrollMode();
     if (action === "literal") {
       // The prefix chord itself, as the byte a terminal would have received: Ctrl+Space is NUL,
       // Ctrl+<letter> is that control character.

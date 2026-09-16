@@ -17,12 +17,16 @@ export function kittyEncode(event: {
   ctrlKey: boolean;
 }): string | null {
   const code = KITTY_CODES[event.key];
-  if (code === undefined) return null;
   const modifiers =
     1 +
     (event.shiftKey ? 1 : 0) +
     (event.altKey ? 2 : 0) +
     (event.ctrlKey ? 4 : 0);
   if (modifiers === 1) return null;
+  // xterm treats Shift+PageUp/Down as local scroll commands. Once Loom refuses reading
+  // on an alternate screen, send the modified paging key to the program instead.
+  if (event.key === "PageUp" || event.key === "PageDown")
+    return `\u001b[${event.key === "PageUp" ? 5 : 6};${modifiers}~`;
+  if (code === undefined) return null;
   return `\u001b[${code};${modifiers}u`;
 }

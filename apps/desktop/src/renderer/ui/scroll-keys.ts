@@ -6,8 +6,16 @@ export const scrollBindings = [
   { id: "scroll-up", keys: ["k"], label: "Scroll up" },
   { id: "half-page-down", keys: ["Control+d"], label: "Half page down" },
   { id: "half-page-up", keys: ["Control+u"], label: "Half page up" },
-  { id: "page-down", keys: ["Space", "Shift+PageDown"], label: "Page down" },
-  { id: "page-up", keys: ["Shift+Space", "Shift+PageUp"], label: "Page up" },
+  {
+    id: "page-down",
+    keys: ["Space", "Shift+PageDown", "Meta+ArrowDown"],
+    label: "Page down",
+  },
+  {
+    id: "page-up",
+    keys: ["Shift+Space", "Shift+PageUp", "Meta+ArrowUp"],
+    label: "Page up",
+  },
   { id: "top", keys: ["g g"], label: "Scroll to top" },
   { id: "bottom", keys: ["G"], label: "Scroll to bottom" },
   {
@@ -25,7 +33,10 @@ export function typingScrollCommand(event: KeyEvent): ScrollCommand | null {
   return (
     scrollBindings.find((entry) =>
       entry.keys.some(
-        (binding) => binding.startsWith("Shift+Page") && binding === key,
+        (binding) =>
+          (binding.startsWith("Shift+Page") ||
+            binding.startsWith("Meta+Arrow")) &&
+          binding === key,
       ),
     )?.id ?? null
   );

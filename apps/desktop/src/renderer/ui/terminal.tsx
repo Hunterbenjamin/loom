@@ -21,6 +21,7 @@ import { issueKeyFor, terminalsForTask } from "../store/selectors.js";
 import { kittyEncode } from "./kitty.js";
 import {
   createScrollMatcher,
+  type ScrollCommand,
   scrollDistance,
   typingScrollCommand,
 } from "./scroll-keys.js";
@@ -34,7 +35,12 @@ const THEMES = {
   dark: { background: "#0b0c0e", foreground: "#d8dbde", cursor: "#7aa2f7" },
   light: { background: "#ffffff", foreground: "#1b1e23", cursor: "#3563c7" },
 };
-export type TerminalController = { enterScrollMode: () => void };
+export type TerminalController = { enterScrollMode: () => Promise<boolean> };
+
+export function enterFocusedScrollMode() {
+  const id = window.loom.focusedTerminal;
+  if (id) void window.loom.terminalControllers?.[id]?.enterScrollMode();
+}
 
 export const TerminalHistoryContext = createContext(10_000);
 
@@ -234,6 +240,7 @@ export const TerminalSession = memo(function TerminalSession({
   const [status, setStatus] = useState("starting...");
   const [command, setCommand] = useState("");
   const [scrollMode, setScrollMode] = useState(false);
+  const [scrollNotice, setScrollNotice] = useState("");
 
   const settings = useRef({ label, theme, onKey });
   settings.current = { label, theme, onKey };
@@ -316,7 +323,7 @@ export const TerminalSession = memo(function TerminalSession({
         })
         .catch(() => {});
     };
-    const scrollBy = (lines: number, pointer?: WheelEvent) => {
+    const scrollWheel = (lines: number, pointer: WheelEvent) => {
       if (Date.now() - askedAt > 250) refreshFlags();
       const active = terminal.buffer?.active;
       const up = lines < 0;
@@ -329,21 +336,13 @@ export const TerminalSession = memo(function TerminalSession({
         return;
       }
       terminal.scrollToBottom();
-      // Keyboard scrolls target the center of the focused pane in a cropped viewer.
-      const crop = viewportRef.current;
-      let col =
-        Math.floor((crop?.left ?? 0) + (crop?.width ?? terminal.cols) / 2) + 1;
-      let row =
-        Math.floor((crop?.top ?? 0) + (crop?.height ?? terminal.rows) / 2) + 1;
-      if (pointer) {
-        const screen = element.querySelector<HTMLElement>(".xterm-screen");
-        const box = screen?.getBoundingClientRect();
-        if (!box?.width || !box.height) return;
-        const cell = (fraction: number, count: number) =>
-          Math.min(count, Math.max(1, Math.floor(fraction * count) + 1));
-        col = cell((pointer.clientX - box.left) / box.width, terminal.cols);
-        row = cell((pointer.clientY - box.top) / box.height, terminal.rows);
-      }
+      const screen = element.querySelector<HTMLElement>(".xterm-screen");
+      const box = screen?.getBoundingClientRect();
+      if (!box?.width || !box.height) return;
+      const cell = (fraction: number, count: number) =>
+        Math.min(count, Math.max(1, Math.floor(fraction * count) + 1));
+      const col = cell((pointer.clientX - box.left) / box.width, terminal.cols);
+      const row = cell((pointer.clientY - box.top) / box.height, terminal.rows);
       const button = up ? 64 : 65;
       for (let i = 0; i < Math.abs(lines); i++)
         window.loomTerminal.write(id, `\x1b[<${button};${col};${row}M`);
@@ -356,7 +355,7 @@ export const TerminalSession = memo(function TerminalSession({
         1,
         Math.min(10, Math.round(Math.abs(event.deltaY) / 24)),
       );
-      scrollBy(event.deltaY < 0 ? -steps : steps, event);
+      scrollWheel(event.deltaY < 0 ? -steps : steps, event);
     };
     element.addEventListener("wheel", onWheel, {
       capture: true,
@@ -432,6 +431,7 @@ export const TerminalSession = memo(function TerminalSession({
             return;
           }
           spawned = true;
+          refreshFlags();
           // A layout resize can land while the spawn request is in flight.
           sendSize();
           setCommand(result.command);
@@ -501,9 +501,22 @@ export const TerminalSession = memo(function TerminalSession({
     window.loom.terms ??= {};
     window.loom.terms[panelId ?? id] = terminal;
 
+    const controllerId = panelId ?? id;
+    const onFocus = () => {
+      window.loom.focusedTerminal = controllerId;
+    };
+    element.addEventListener("focusin", onFocus);
     let scrolling = false;
+    let entryVersion = 0;
+    let noticeTimer: number | undefined;
+    const notice = (message: string) => {
+      setScrollNotice(message);
+      window.clearTimeout(noticeTimer);
+      noticeTimer = window.setTimeout(() => setScrollNotice(""), 4000);
+    };
     const matcher = createScrollMatcher(true);
     const leaveScroll = () => {
+      entryVersion++;
       scrolling = false;
       matcher.reset();
       setScrollMode(false);
@@ -518,35 +531,132 @@ export const TerminalSession = memo(function TerminalSession({
     });
     setScrollMode(false);
     window.loom.terminalControllers ??= {};
-    window.loom.terminalControllers[panelId ?? id] = {
-      enterScrollMode() {
+    const checkScrollMode = async () => {
+      const version = entryVersion;
+      terminal.focus();
+      try {
+        const flags = await window.loomTerminal.paneFlags?.(id);
+        if (!flags) throw new Error("Pane flags unavailable");
+        if (
+          disposed ||
+          version !== entryVersion ||
+          window.loom.focusedTerminal !== controllerId
+        )
+          return false;
+        alternate =
+          flags.alternate || terminal.buffer.active.type === "alternate";
+        askedAt = Date.now();
+        if (alternate) {
+          scrolling = false;
+          matcher.reset();
+          setScrollMode(false);
+          notice(
+            "This program uses the alternate screen; viewer scrollback is unavailable.",
+          );
+          return false;
+        }
+        setScrollNotice("");
         scrolling = true;
         matcher.reset();
         setScrollMode(true);
-        refreshFlags();
-        terminal.focus();
-      },
+        return true;
+      } catch (error) {
+        if (!disposed) notice(`Cannot read pane flags: ${String(error)}`);
+        return false;
+      }
     };
-
+    let entry: Promise<boolean> | null = null;
+    const enterScrollMode = () => {
+      entry ??= checkScrollMode().finally(() => {
+        entry = null;
+      });
+      return entry;
+    };
+    const onBlur = () => {
+      entryVersion++;
+    };
+    element.addEventListener("focusout", onBlur);
+    window.loom.terminalControllers[controllerId] = { enterScrollMode };
+    const read = (command: ScrollCommand | "pending") => {
+      const page = viewportRef.current?.height ?? terminal.rows;
+      if (command === "leave" || command === "bottom") leaveScroll();
+      else if (command === "top") terminal.scrollToTop();
+      else if (command !== "pending")
+        terminal.scrollLines(scrollDistance(command, page));
+    };
+    // xterm's handler is synchronous, but pane flags are owned by the host. Re-dispatch a
+    // refused paging key through xterm so the program gets its native encoding unchanged.
+    const refusedKeys = new WeakSet<KeyboardEvent>();
+    const replayKey = (event: KeyboardEvent, refused: boolean) => {
+      if (
+        disposed ||
+        !event.target ||
+        event.target !== document.activeElement ||
+        window.loom.focusedTerminal !== controllerId
+      )
+        return;
+      const replay = new KeyboardEvent("keydown", {
+        key: event.key,
+        code: event.code,
+        keyCode: event.keyCode,
+        location: event.location,
+        isComposing: event.isComposing,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+        repeat: event.repeat,
+        bubbles: true,
+        cancelable: true,
+      });
+      if (refused) refusedKeys.add(replay);
+      event.target.dispatchEvent(replay);
+      // xterm defers unmodified uppercase letters to keypress for macOS IMEs. Synthetic
+      // keydown has no browser-generated keypress, so complete that same input sequence.
+      if (
+        !replay.defaultPrevented &&
+        event.key.length === 1 &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        const press = new KeyboardEvent("keypress", {
+          key: event.key,
+          code: event.code,
+          charCode: event.key.charCodeAt(0),
+          keyCode: event.key.charCodeAt(0),
+          shiftKey: event.shiftKey,
+          bubbles: true,
+          cancelable: true,
+        });
+        if (refused) refusedKeys.add(press);
+        event.target.dispatchEvent(press);
+      }
+    };
     terminal.attachCustomKeyEventHandler((event) => {
-      // Workbench's window capture listener owns bindings across every focus
-      // surface. It consumes them before xterm/kitty; never run a second matcher.
+      // The window capture listener owns bindings before xterm/kitty.
       if (event.defaultPrevented) return false;
-      if (scrolling || typingScrollCommand(event)) {
+      const refused = refusedKeys.has(event);
+      if (entry && !refused) {
+        if (event.type === "keydown") {
+          event.preventDefault();
+          void entry.then((entered) => replayKey(event, !entered));
+        }
+        return false;
+      }
+      const typingCommand = typingScrollCommand(event);
+      if (!refused && (scrolling || typingCommand)) {
         if (event.type !== "keydown") return false;
-        const command = scrolling
-          ? matcher.match(event)
-          : typingScrollCommand(event);
+        const command = scrolling ? matcher.match(event) : typingCommand;
         if (command) {
           event.preventDefault();
-          const page = viewportRef.current?.height ?? terminal.rows;
-          if (command === "leave") leaveScroll();
-          else if (command === "top") {
-            if (!alternate) terminal.scrollToTop();
-          } else if (command === "bottom") {
-            if (!alternate) leaveScroll();
-          } else if (command !== "pending")
-            scrollBy(scrollDistance(command, page));
+          if (scrolling) read(command);
+          else {
+            void enterScrollMode().then((entered) => {
+              if (entered) read(command);
+              else if (alternate) replayKey(event, true);
+            });
+          }
           return false;
         }
         leaveScroll();
@@ -566,6 +676,7 @@ export const TerminalSession = memo(function TerminalSession({
 
     let enterTimer: number | undefined;
     terminal.onData((data) => {
+      entryVersion++;
       if (scrolling) leaveScroll();
       window.loomTerminal.write(id, data);
       if (data.includes("\r")) {
@@ -662,10 +773,15 @@ export const TerminalSession = memo(function TerminalSession({
       disposed = true;
       window.clearTimeout(timer);
       window.clearTimeout(enterTimer);
+      window.clearTimeout(noticeTimer);
       observer.disconnect();
       fitViewport.current = null;
       element.removeEventListener("wheel", onWheel, { capture: true });
       element.removeEventListener("mousedown", onMouseDown);
+      element.removeEventListener("focusin", onFocus);
+      element.removeEventListener("focusout", onBlur);
+      if (window.loom.focusedTerminal === controllerId)
+        delete window.loom.focusedTerminal;
       document.removeEventListener("mouseup", onMouseUp);
       if (window.loom.term === terminal) window.loom.term = null;
       delete window.loom.terms?.[panelId ?? id];
@@ -684,6 +800,7 @@ export const TerminalSession = memo(function TerminalSession({
           {command || "..."}
         </span>
         {scrollMode && <span role="status">SCROLL</span>}
+        {scrollNotice && <span role="status">{scrollNotice}</span>}
         <span>{status}</span>
       </div>
       <div className="terminal-host" data-testid="terminal">

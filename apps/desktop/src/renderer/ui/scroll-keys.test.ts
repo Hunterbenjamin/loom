@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
 import { expect, test } from "vitest";
-import { createScrollMatcher, scrollBindings } from "./scroll-keys.js";
+import {
+  createScrollMatcher,
+  scrollBindings,
+  typingScrollCommand,
+} from "./scroll-keys.js";
 
 test("every reading binding matches, including the two-key top sequence", () => {
   for (const entry of scrollBindings) {
@@ -13,6 +17,7 @@ test("every reading binding matches, including the two-key top sequence", () => 
           new KeyboardEvent("keydown", {
             key: last === "Space" ? " " : last,
             ctrlKey: parts.includes("Control"),
+            metaKey: parts.includes("Meta"),
             shiftKey: parts.includes("Shift") || last === "G",
           }),
         );
@@ -35,4 +40,19 @@ test("plain keys do not match with modifiers, and q types in chat", () => {
   expect(
     createScrollMatcher().match(new KeyboardEvent("keydown", { key: "q" })),
   ).toBeNull();
+});
+
+test("only dedicated paging chords enter reading mode from typing", () => {
+  for (const [key, modifiers, expected] of [
+    ["ArrowUp", { metaKey: true }, "page-up"],
+    ["ArrowDown", { metaKey: true }, "page-down"],
+    ["PageUp", { shiftKey: true }, "page-up"],
+    ["PageDown", { shiftKey: true }, "page-down"],
+    [" ", {}, null],
+    ["j", {}, null],
+    ["PageUp", {}, null],
+  ] as const)
+    expect(
+      typingScrollCommand(new KeyboardEvent("keydown", { key, ...modifiers })),
+    ).toBe(expected);
 });
