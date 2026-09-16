@@ -7,7 +7,7 @@ import {
   transitionSchema,
 } from "./entity-schemas.js";
 import { dataRow, ownedRow, readEntities, upsertEntity } from "./records.js";
-import { decode } from "./schema-helpers.js";
+import { decode, text } from "./schema-helpers.js";
 
 export class TaskQueries {
   constructor(private readonly db: Database.Database) {}
@@ -45,6 +45,16 @@ export class TaskQueries {
       .prepare("SELECT data FROM tasks ORDER BY id")
       .all()
       .map((r) => decode(taskSchema, dataRow.parse(r).data));
+  }
+  /** Tasks whose worktree, and with it their pane workspace, has not been removed. */
+  liveWorktreeTaskIds(): TaskId[] {
+    return this.db
+      .prepare(
+        "SELECT task_id FROM worktrees WHERE json_extract(data, '$.removedAt') IS NULL ORDER BY task_id",
+      )
+      .pluck()
+      .all()
+      .map((v) => text.parse(v) as TaskId);
   }
   tasksByStage(stage: Stage): Task[] {
     return this.db
