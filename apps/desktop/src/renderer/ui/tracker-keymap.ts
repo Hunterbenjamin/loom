@@ -82,13 +82,20 @@ export const trackerKeymap = [
     group: "Lists and board",
     scope: "list",
   },
-  {
-    id: "filter",
-    keys: ["/"],
-    label: "Filter list",
-    group: "Lists and board",
-    scope: "list",
-  },
+  ...(
+    [
+      ["expand-item", "l", "Open row / expand section / load more"],
+      ["collapse-section", "h", "Collapse section and select its header"],
+      ["next-section", "}", "Next section"],
+      ["previous-section", "{", "Previous section"],
+    ] as const
+  ).map(([id, key, label]) => ({
+    id,
+    keys: [key],
+    label,
+    group: "Issue list",
+    scope: "issue-list" as const,
+  })),
   {
     id: "view",
     keys: ["v"],

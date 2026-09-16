@@ -1,10 +1,15 @@
 import { displayName } from "@loom/core";
-import { Command } from "cmdk";
+import { Command, defaultFilter } from "cmdk";
 import { useEffect, useState } from "react";
 import { selectedDetailTask } from "../store/detail-selection.js";
 import { inboxRows } from "../store/inbox.js";
 import { useStore, useStoreApi } from "../store/react.js";
-import { cursorRows, issueKeyFor, selectedRows } from "../store/selectors.js";
+import {
+  cursorItems,
+  issueKeyFor,
+  type Row,
+  selectedRows,
+} from "../store/selectors.js";
 import type { State } from "../store/store.js";
 import { VIEWS } from "../store/ui-state.js";
 import { ChimeMuteCommand } from "../workbench/chime.js";
@@ -24,11 +29,34 @@ export function paletteIssueTarget(state: State) {
     ["briefs", "research", "settings", "pull-requests"].includes(ui.view)
   )
     return null;
-  const rows =
-    ui.view === "needs-you" && ui.pane === "list"
-      ? inboxRows(state)
-      : cursorRows(state);
-  return rows[ui.cursor ?? -1]?.task.id ?? null;
+  if (ui.view === "needs-you" && ui.pane === "list")
+    return inboxRows(state)[ui.cursor ?? -1]?.task.id ?? null;
+  const item = cursorItems(state)[ui.cursor ?? -1];
+  return item?.kind === "row" ? item.row.task.id : null;
+}
+
+export const paletteIssueValue = (
+  row: Row,
+  repos: State["snapshot"]["repos"],
+) =>
+  `${issueKeyFor(row.task, repos)} ${row.task.number} ${row.task.name ?? ""} ${row.task.title}`;
+
+export function paletteIssueRows(
+  rows: Row[],
+  repos: State["snapshot"]["repos"],
+  query: string,
+) {
+  const search = query.trim();
+  if (!search) return rows.slice(0, 60);
+  return rows
+    .map((row) => ({
+      row,
+      score: defaultFilter(paletteIssueValue(row, repos), search),
+    }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 60)
+    .map(({ row }) => row);
 }
 
 export function Palette() {
@@ -45,6 +73,16 @@ export function Palette() {
       ["all", "needs-you"].includes(s.ui.view),
   );
   const pane = useStore((s) => s.ui.pane);
+  const canNavigateSections = useStore(
+    (s) =>
+      s.ui.pane === "list" &&
+      s.ui.view !== "needs-you" &&
+      !["briefs", "research", "settings", "pull-requests"].includes(
+        s.ui.view,
+      ) &&
+      !s.ui.openTask &&
+      !s.ui.openPr,
+  );
   const repos = useStore((s) => s.snapshot.repos);
   const [value, setValue] = useState("");
 
@@ -194,11 +232,27 @@ export function Palette() {
             </Command.Item>
           </Command.Group>
 
+          <Command.Group heading="Issue list">
+            {canNavigateSections &&
+              trackerKeymap
+                .filter((entry) => entry.scope === "issue-list")
+                .map((entry) => (
+                  <Command.Item
+                    key={entry.id}
+                    onSelect={() =>
+                      run(() => runTrackerCommand(store, entry.id))
+                    }
+                  >
+                    {entry.label} <kbd>{formatKeys(entry.id)}</kbd>
+                  </Command.Item>
+                ))}
+          </Command.Group>
+
           <Command.Group heading="Issues">
-            {rows.slice(0, 60).map((row) => (
+            {paletteIssueRows(rows, repos, value).map((row) => (
               <Command.Item
                 key={row.task.id}
-                value={`${issueKeyFor(row.task, repos)} ${row.task.number} ${row.task.name ?? ""} ${row.task.title}`}
+                value={paletteIssueValue(row, repos)}
                 onSelect={() => run(() => store.open(row.task.id))}
               >
                 <span className="mono faint">

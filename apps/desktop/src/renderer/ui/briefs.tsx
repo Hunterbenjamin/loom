@@ -80,7 +80,6 @@ export function BriefsView() {
   const store = useStoreApi();
   const connection = useStore((s) => s.connection);
   const cursor = useStore((s) => s.ui.cursor);
-  const query = useStore((s) => s.ui.filterQuery);
   const open = useStore((s) => s.ui.openBrief);
   const [state, setState] = useState<BriefState | null>(null);
   const [error, setError] = useState("");
@@ -142,11 +141,7 @@ export function BriefsView() {
   const running = state?.runs.some((item) => item.status === "running");
   const openSummary = state?.runs.find((item) => item.id === open);
 
-  const rows = (state?.runs ?? []).filter((run) =>
-    `${rowText(run)} ${dateLabel(run.startedAt)} ${run.status}`
-      .toLowerCase()
-      .includes(query.trim().toLowerCase()),
-  );
+  const rows = state?.runs ?? [];
   const select = (index: number) => {
     store.setCursor(
       rows.length ? Math.max(0, Math.min(rows.length - 1, index)) : null,
