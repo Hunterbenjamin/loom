@@ -607,11 +607,17 @@ test("configured MCP port wins over the Main recipe and recovery refreshes both 
   await second.start();
   const url = `http://127.0.0.1:${mcpPort}/mcp`;
   expect(second.mcpUrl?.toString()).toBe(url);
-  for (const settingsPath of [saved.settingsPath, runRecipe.settingsPath])
-    expect(settings).toHaveBeenCalledWith(
-      settingsPath,
-      expect.objectContaining({ type: "http", url }),
-    );
+  // A run's rewrite also carries its role's web access; Main's call passes neither.
+  expect(settings).toHaveBeenCalledWith(
+    saved.settingsPath,
+    expect.objectContaining({ type: "http", url }),
+  );
+  expect(settings).toHaveBeenCalledWith(
+    runRecipe.settingsPath,
+    expect.objectContaining({ type: "http", url }),
+    undefined,
+    expect.any(Boolean),
+  );
   expect(second.leadFor(h.repo.id).sessionId).toBe(saved.sessionId);
   expect(
     h.paneHost.launches.filter(
