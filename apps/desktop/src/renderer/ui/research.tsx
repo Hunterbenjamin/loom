@@ -6,10 +6,17 @@ import type {
 } from "@loom/protocol";
 import { useEffect, useRef, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
+import { Byline } from "./byline.js";
 import { DetailLayout } from "./detail-layout.js";
 import { ListGroupHeader, ListRow } from "./list-rows.js";
 import { PrMarkdown } from "./pull-request-overview.js";
 import { useTrackerActions } from "./tracker-actions.js";
+
+const dateLabel = (at: string) =>
+  new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(at));
 
 export function ResearchView() {
   const store = useStoreApi();
@@ -250,105 +257,154 @@ export function ResearchView() {
         >
           <div className="pr-overview">
             <main className="pr-story">
-              {error ? <p role="alert">{error}</p> : null}
+              {error ? (
+                <div className="pr-feedback" role="alert">
+                  {error}
+                </div>
+              ) : null}
               <h1>
                 {current?.document?.title ?? current?.question ?? "Loading…"}
               </h1>
               {current ? (
-                <>
-                  <p className="faint">
-                    {current.origin === "main"
-                      ? "Saved by Main · From a conversation; no live-web verification claimed"
-                      : `${current.provider} · ${current.model} · ${current.status}`}
-                  </p>
-                  <p>{current.question}</p>
-                  {current.origin === "agent" ? (
-                    <>
-                      <p>
-                        Scope: {current.directory} · Agent:{" "}
-                        {current.observedStatus}
-                      </p>
-                      {current.pane ? (
-                        <p>Research terminal is available in Workbench.</p>
-                      ) : null}
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void act({ kind: "resume_research", id: current.id })
-                        }
-                      >
-                        Resume terminal
-                      </button>
-                      <form
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          if (followUp.trim()) {
-                            void act({
-                              kind: "extend_research",
-                              id: current.id,
-                              message: followUp,
-                            });
-                            setFollowUp("");
-                          }
-                        }}
-                      >
-                        <textarea
-                          aria-label="Research follow-up"
-                          value={followUp}
-                          onChange={(event) => setFollowUp(event.target.value)}
-                          maxLength={16384}
-                        />
-                        <button
-                          type="submit"
-                          disabled={
-                            busy ||
-                            current.observedStatus !== "idle" ||
-                            !followUp.trim()
-                          }
-                        >
-                          Follow up
-                        </button>
-                      </form>
-                    </>
-                  ) : null}
-                  {current.status === "running" ? (
-                    <p role="status">
-                      The agent is reading your directory and researching the
-                      web. The document is saved when the agent submits it.
-                    </p>
-                  ) : null}
-                  {current.error ? (
-                    <p className="research-error" role="alert">
-                      {current.error}
-                    </p>
-                  ) : null}
-                  {current.document ? (
-                    <PrMarkdown body={current.document.body} />
-                  ) : null}
-                </>
+                <Byline
+                  name={current.origin === "main" ? "Main" : "Research agent"}
+                  agent
+                  model={current.model ?? undefined}
+                  title={
+                    current.origin === "main"
+                      ? "Saved from a conversation; no live-web verification claimed"
+                      : (current.provider ?? undefined)
+                  }
+                >
+                  <span className="faint">{dateLabel(current.startedAt)}</span>
+                  <span className="faint">·</span>
+                  <span className="faint">
+                    {current.origin === "main" ? "Saved by Main" : "Researched"}
+                  </span>
+                </Byline>
               ) : null}
-            </main>
-            <aside className="pr-rail">
+              {current?.origin === "main" ? (
+                <p className="pr-description faint">
+                  Saved from a conversation; no live-web verification claimed.
+                </p>
+              ) : null}
               {current ? (
-                <>
-                  <h3>{current.status}</h3>
-                  <button
-                    type="button"
-                    disabled={busy || !connected}
-                    onClick={() =>
-                      void act({
-                        kind: "set_research_archived",
-                        id: current.id,
-                        archived: !current.archivedAt,
-                      })
-                    }
-                  >
-                    {current.archivedAt ? "Unarchive" : "Archive"}
-                  </button>
-                </>
+                <section className="pr-description">
+                  <h3>Question</h3>
+                  <p>{current.question}</p>
+                </section>
+              ) : null}
+              {current?.status === "running" ? (
+                <p className="pr-description" role="status">
+                  The agent is reading your directory and researching the web.
+                  The document is saved when the agent submits it.
+                </p>
+              ) : null}
+              {current?.error ? (
+                <p className="pr-description" role="alert">
+                  {current.error}
+                </p>
               ) : null}
               {current?.document ? (
+                <section className="pr-description">
+                  <PrMarkdown body={current.document.body} />
+                </section>
+              ) : null}
+              {current?.origin === "agent" ? (
+                <section className="pr-description research-followups">
+                  <h3>Follow up</h3>
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (!followUp.trim()) return;
+                      void act({
+                        kind: "extend_research",
+                        id: current.id,
+                        message: followUp,
+                      });
+                      setFollowUp("");
+                    }}
+                  >
+                    <textarea
+                      aria-label="Research follow-up"
+                      placeholder="Ask the agent to dig further; it keeps this document and adds to it."
+                      value={followUp}
+                      onChange={(event) => setFollowUp(event.target.value)}
+                      maxLength={16384}
+                      rows={3}
+                    />
+                    <div className="research-followup-actions">
+                      <span className="faint">
+                        {current.observedStatus === "idle"
+                          ? "Agent is idle"
+                          : `Agent is ${current.observedStatus}`}
+                      </span>
+                      <button
+                        type="submit"
+                        disabled={
+                          busy ||
+                          current.observedStatus !== "idle" ||
+                          !followUp.trim()
+                        }
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </form>
+                </section>
+              ) : null}
+            </main>
+            <aside className="pr-rail" aria-label="Properties">
+              {current ? (
+                <section>
+                  <h3>Status</h3>
+                  <div className="pr-property">{current.status}</div>
+                  {current.origin === "agent" ? (
+                    <div className="pr-property faint">
+                      Agent {current.observedStatus}
+                    </div>
+                  ) : null}
+                  <div className="pr-property faint">
+                    Started {dateLabel(current.startedAt)}
+                  </div>
+                  {current.finishedAt ? (
+                    <div className="pr-property faint">
+                      Finished {dateLabel(current.finishedAt)}
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+              {current?.origin === "agent" ? (
+                <section>
+                  <h3>Run</h3>
+                  {current.provider ? (
+                    <div className="pr-property">
+                      {current.provider} · {current.model}
+                    </div>
+                  ) : null}
+                  {current.directory ? (
+                    <div
+                      className="pr-property mono faint"
+                      title={current.directory}
+                    >
+                      {current.directory}
+                    </div>
+                  ) : null}
+                  {current.pane ? (
+                    <button
+                      type="button"
+                      className="pr-property"
+                      disabled={busy}
+                      onClick={() =>
+                        void act({ kind: "resume_research", id: current.id })
+                      }
+                    >
+                      Open terminal in Workbench
+                    </button>
+                  ) : null}
+                </section>
+              ) : null}
+              {current?.document?.sources.length ? (
                 <section>
                   <h3>Sources</h3>
                   <ul className="brief-sources">
@@ -367,6 +423,25 @@ export function ResearchView() {
                       </li>
                     ))}
                   </ul>
+                </section>
+              ) : null}
+              {current ? (
+                <section>
+                  <h3>Actions</h3>
+                  <button
+                    type="button"
+                    className="pr-property"
+                    disabled={busy || !connected}
+                    onClick={() =>
+                      void act({
+                        kind: "set_research_archived",
+                        id: current.id,
+                        archived: !current.archivedAt,
+                      })
+                    }
+                  >
+                    {current.archivedAt ? "Unarchive" : "Archive"}
+                  </button>
                 </section>
               ) : null}
             </aside>
