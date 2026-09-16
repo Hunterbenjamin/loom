@@ -77,6 +77,8 @@
 }
 
 .main {
+  /* Programmatic keyboard destination; child controls keep their focus rings. */
+  outline: none;
   display: flex;
   flex-direction: column;
   min-width: 0;

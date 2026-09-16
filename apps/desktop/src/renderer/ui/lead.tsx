@@ -11,10 +11,12 @@ import { Status } from "../workbench/status.js";
 
 export function LeadBar({
   onAttention,
+  onMainClose,
   keybindingStatus,
   surface,
 }: {
   onAttention?: () => void;
+  onMainClose?: () => void;
   keybindingStatus?: ReactNode;
   surface: "tracker" | "workbench";
 }) {
@@ -57,9 +59,12 @@ export function LeadBar({
     if (active && mainOpen && status !== "working") store.markMainRead();
   }, [active, mainOpen, status, store]);
   useEffect(() => {
-    if (active && mainWasOpen.current && !mainOpen) toggle.current?.focus();
+    if (active && mainWasOpen.current && !mainOpen) {
+      if (onMainClose) onMainClose();
+      else toggle.current?.focus();
+    }
     mainWasOpen.current = active && mainOpen;
-  }, [active, mainOpen]);
+  }, [active, mainOpen, onMainClose]);
   return (
     <>
       {active ? <ChatWindow /> : null}

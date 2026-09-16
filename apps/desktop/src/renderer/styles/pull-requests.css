@@ -47,6 +47,8 @@
   z-index: 20;
 }
 .pr-page-head {
+  /* Programmatic keyboard destination; child controls keep their focus rings. */
+  outline: none;
   display: flex;
   align-items: center;
   gap: 14px;
