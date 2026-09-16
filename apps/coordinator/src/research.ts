@@ -476,7 +476,13 @@ export class Research {
             sessionId: recipe.sessionId,
             cwd: recipe.cwd,
           });
-    return usage ? usage.input + usage.output : null;
+    // Only work counts against the budget. Cumulative input re-sends the whole conversation every
+    // turn and is mostly cache reads, so charging it spends the budget on context replay: a run
+    // that had produced 659 output tokens reported 116,283 input, 89,600 of it cached, and was
+    // killed against the 100,000 standard budget.
+    return usage
+      ? usage.input - usage.cachedInput + usage.output + usage.reasoning
+      : null;
   }
   async refresh(provider?: "claude" | "codex"): Promise<void> {
     await this.exclusive(async () => {
