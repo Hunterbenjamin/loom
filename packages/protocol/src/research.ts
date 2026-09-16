@@ -8,10 +8,23 @@ export const researchDocument = z.strictObject({
     .array(
       z.strictObject({
         title: z.string().trim().min(1).max(300),
+        // A source is either a page or a file the run read inside its own directory. Local
+        // citations are relative paths, which cannot name anything outside that scope the way an
+        // absolute path or a file:// URL could, and which stay readable once the document moves.
         url: z
-          .url()
+          .string()
+          .trim()
+          .min(1)
           .max(2000)
-          .refine((url) => /^https?:\/\//.test(url), "HTTP(S) source required"),
+          .refine(
+            (value) =>
+              /^https?:\/\//.test(value) ||
+              (!/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) &&
+                !value.startsWith("/") &&
+                !value.startsWith("\\") &&
+                !value.split(/[/\\]/).includes("..")),
+            "Source must be an HTTP(S) link or a path inside the research directory",
+          ),
       }),
     )
     .min(1)

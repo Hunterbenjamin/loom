@@ -14,10 +14,22 @@ test("research accommodates a short answer and a survey, with bounded HTTP sourc
       body: "A long survey.\n".repeat(5000),
     }).body.length,
   ).toBeGreaterThan(50000);
+  // A local run cites files it read, so a relative path inside its directory is a source; a
+  // scheme or an absolute path could name anything on the machine and is not.
+  expect(
+    researchDocument.parse({
+      ...document,
+      sources: [
+        { title: "keybindings.ts", url: "packages/core/src/keybindings.ts" },
+      ],
+    }).sources[0]!.url,
+  ).toBe("packages/core/src/keybindings.ts");
   for (const url of [
     "file:///etc/passwd",
     "javascript:alert(1)",
     "ftp://example.org",
+    "/etc/passwd",
+    "../outside/secrets.txt",
   ])
     expect(
       researchDocument.safeParse({

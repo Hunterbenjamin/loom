@@ -354,9 +354,16 @@ export function ResearchView() {
                   <ul className="brief-sources">
                     {current.document.sources.map((source) => (
                       <li key={source.url}>
-                        <a href={source.url} target="_blank" rel="noreferrer">
-                          {source.title}
-                        </a>
+                        {/^https?:\/\//.test(source.url) ? (
+                          <a href={source.url} target="_blank" rel="noreferrer">
+                            {source.title}
+                          </a>
+                        ) : (
+                          // A local citation is a path in the run's directory, not a link.
+                          <span className="mono" title={source.url}>
+                            {source.title}
+                          </span>
+                        )}
                       </li>
                     ))}
                   </ul>
