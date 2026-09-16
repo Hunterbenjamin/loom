@@ -5,7 +5,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
 import { pane } from "../../../../../packages/protocol/src/pane-fixture.js";
-import { inputId, questionId, transitionId } from "../fixtures/ids.js";
+import { approvalId, inputId, questionId, transitionId } from "../fixtures/ids.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
 import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
@@ -1145,4 +1145,98 @@ test("issue-only detail credits its implementer and does not invent a missing mo
   expect(h.host.querySelector(".pr-byline")?.textContent).toBe(
     "Claude Code implementer · Model not recorded",
   );
+});
+
+test("Plan reads as a document with ordered steps and separate properties", () => {
+  const h = setup("plan");
+  const plan = h.snapshot.plans[h.task.id]!;
+  plan.nonGoals = ["No workflow changes"];
+  plan.steps = Array.from({ length: 13 }, (_, index) => ({
+    title: `Step ${index + 1}`,
+    detail: `Detail ${index + 1}`,
+  }));
+  plan.areas = ["desktop/ui"];
+  plan.acceptanceCriteria = ["Readable sequence"];
+  plan.testPlan = ["Check keys"];
+  plan.risks = ["Long content"];
+  plan.openQuestions = ["Any questions?"];
+  h.store.setTab("plan");
+  h.render();
+  const story = h.host.querySelector(".pr-overview > main.pr-story")!;
+  expect(
+    [...story.querySelectorAll("section > h3")].map((h) => h.textContent),
+  ).toEqual([
+    "Goal",
+    "Non-goals",
+    "Steps",
+    "Acceptance criteria",
+    "Test plan",
+    "Risks",
+    "Open questions",
+  ]);
+  const steps = story.querySelectorAll("ol > li");
+  expect(steps).toHaveLength(13);
+  expect(steps[12]?.textContent).toBe("Step 13Detail 13");
+  expect(story.querySelector(".panel")).toBeNull();
+  for (const text of [
+    plan.goal,
+    ...plan.nonGoals,
+    ...plan.acceptanceCriteria,
+    ...plan.testPlan,
+    ...plan.risks,
+    ...plan.openQuestions,
+  ]) {
+    expect(story.textContent).toContain(text);
+  }
+  const rail = h.host.querySelector("aside.pr-rail")!;
+  expect(rail.textContent).toContain("Not approved");
+  expect(rail.textContent).toContain("plan v9");
+  expect(rail.querySelector(".chip.mono")?.textContent).toBe("desktop/ui");
+  expect(story.textContent).not.toContain("desktop/ui");
+});
+
+test.each([false, true])(
+  "Plan retains approval version and void reason (voided: %s)",
+  (voided) => {
+    const h = setup("plan");
+    h.snapshot.approvals = [{
+      id: approvalId("plan-layout"),
+      taskId: h.task.id,
+      kind: "plan",
+      planVersion: 8,
+      createdAt: h.snapshot.now,
+      voidedAt: voided ? h.snapshot.now : null,
+      voidReason: voided ? "plan_changed" : null,
+    }];
+    h.store.setTab("plan");
+    h.render();
+    const rail = h.host.querySelector("aside.pr-rail")!;
+    expect(
+      rail.querySelector(voided ? ".chip.danger" : ".chip.good")?.textContent,
+    ).toBe(voided ? "voided: plan_changed" : "approved");
+    expect(rail.textContent).toContain("plan v8");
+    expect(rail.textContent).toContain("plan v9");
+  },
+);
+
+test("Plan keeps detail keyboard scrolling on the page body", async () => {
+  const { createShortcutHandler } = await import("./keys.js");
+  const h = setup("plan");
+  h.store.open(h.task.id);
+  h.store.setTab("plan");
+  h.render();
+  const body = h.host.querySelector<HTMLElement>('[data-tab-body="plan"]')!;
+  const handler = createShortcutHandler(h.store);
+  const key = (key: string) =>
+    act(() =>
+      handler(new KeyboardEvent("keydown", { key, cancelable: true })),
+    );
+  key("j");
+  expect(body.scrollTop).toBe(60);
+  key("k");
+  expect(body.scrollTop).toBe(0);
+  body.scrollTop = 240;
+  key("g");
+  key("g");
+  expect(body.scrollTop).toBe(0);
 });
