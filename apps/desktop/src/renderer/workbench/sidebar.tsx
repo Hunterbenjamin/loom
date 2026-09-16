@@ -473,6 +473,43 @@ export function Sidebar({
                     },
                   },
                   {
+                    // Without this a row that is not an open panel cannot be closed at all:
+                    // Cmd+W closes the focused panel, and the sidebar had no close of its own,
+                    // so a finished agent's pane or a leftover scratch terminal stayed forever.
+                    label:
+                      menu.kind === "space" ? "Close space" : "Close terminal",
+                    disabled: !menuRows.length,
+                    run: () => {
+                      const rows = menuRows;
+                      if (!rows.length) return;
+                      if (
+                        menu.kind === "space" &&
+                        !window.confirm(
+                          `Close ${menuName ?? "this space"} and every terminal in it?`,
+                        )
+                      )
+                        return;
+                      for (const target of menu.kind === "space"
+                        ? rows.slice(0, 1)
+                        : rows)
+                        void store
+                          .command({
+                            kind: "close_terminal",
+                            target: {
+                              hostGeneration: target.hostGeneration,
+                              sessionName: target.sessionName,
+                              windowId: target.windowId,
+                              paneId: target.paneId,
+                            },
+                            scope: menu.kind === "space" ? "session" : "pane",
+                          })
+                          .then((outcome) => {
+                            if (!outcome.ok)
+                              window.alert(outcome.error.message);
+                          });
+                    },
+                  },
+                  {
                     label: "Rename",
                     disabled: !liveRows.length || !renameAllowed,
                     run: () => {

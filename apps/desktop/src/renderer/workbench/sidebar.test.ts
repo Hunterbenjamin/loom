@@ -456,3 +456,76 @@ test.each([false, true])(
     }
   },
 );
+
+test("a sidebar row can close its terminal, which is the only way to clear a leftover pane", async () => {
+  const store = createStore(undefined, "test");
+  const scratch = {
+    ...pane,
+    id: JSON.stringify([pane.hostGeneration, "%9"]),
+    paneId: "%9",
+    sessionName: "Research",
+    sessionId: "$9",
+    windowName: "shell",
+    spaceTitle: "Codex",
+    tabTitle: "Research",
+    runId: null,
+    taskId: null,
+  };
+  store.applyProtocol(
+    stateFromSnapshot(meta, {
+      ...emptySnapshotBody(),
+      repos: snapshot().repos,
+      projects: snapshot().projects,
+      panes: [scratch],
+    }),
+  );
+  const command = vi.spyOn(store, "command").mockResolvedValue({
+    ok: true,
+    result: { kind: "terminal_closed" },
+  } as never);
+  window.loomHost = {
+    chooseRepository: vi.fn(),
+    interactive: vi.fn(),
+  } as unknown as typeof window.loomHost;
+  const element = document.createElement("div");
+  document.body.append(element);
+  const root = createRoot(element);
+  try {
+    await act(async () =>
+      root.render(
+        createElement(StoreProvider, {
+          store,
+          // biome-ignore lint/correctness/noChildrenProp: Provider requires typed children.
+          children: createElement(Sidebar, {
+            filter: "",
+            selected: scratch,
+            choose: vi.fn(),
+            openGroup: vi.fn(),
+            hidePanels: vi.fn(),
+            copyAttach: vi.fn(),
+            openPinned: vi.fn(),
+          }),
+        }),
+      ),
+    );
+    const row = [...element.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("Research"),
+    );
+    // The row menu opens on right-click, which is the only place a close action can live for a
+    // pane that is not an open panel.
+    await act(async () =>
+      row?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })),
+    );
+    const close = [...element.querySelectorAll("button")].find((button) =>
+      button.textContent?.startsWith("Close"),
+    );
+    expect(close, "the row menu offers a close action").toBeTruthy();
+    await act(async () => close?.click());
+    expect(command).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "close_terminal" }),
+    );
+  } finally {
+    await act(async () => root.unmount());
+    element.remove();
+  }
+});
