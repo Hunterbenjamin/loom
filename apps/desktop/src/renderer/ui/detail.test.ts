@@ -1058,3 +1058,91 @@ test("plan confirmation refuses a changed version", async () => {
   await act(async () => confirm?.click());
   expect(sender).not.toHaveBeenCalled();
 });
+
+test("detail credits the latest launched Loom implementer, even after review", () => {
+  const h = setup("merge");
+  const original = h.snapshot.runs[0];
+  if (!original) throw new Error("Missing run");
+  const implementation = {
+    ...original,
+    taskId: h.task.id,
+    role: "implementer" as const,
+    origin: "loom" as const,
+    provider: "codex" as const,
+    model: "gpt-6-astra",
+    round: 1,
+    launchedAt: h.snapshot.now,
+  };
+  h.snapshot.runs = [
+    { ...implementation, id: "older" as never, round: 0, model: "old" },
+    implementation,
+    {
+      ...implementation,
+      id: "review" as never,
+      role: "reviewer",
+      model: "review-model",
+    },
+    {
+      ...implementation,
+      id: "external" as never,
+      origin: "external",
+      round: 2,
+    },
+    { ...implementation, id: "pending" as never, round: 3, launchedAt: null },
+  ];
+  const row = buildPullRequestDetails(h.snapshot.pullRequests)[0];
+  if (!row) throw new Error("Missing PR");
+  row.taskId = h.task.id;
+  row.repoId = h.task.repoId;
+  row.detail.author = "github-opener";
+  h.task.prNumber = row.number;
+  h.store.getState().pullRequestDetails = [row];
+  h.render();
+  const byline = h.host.querySelector(".pr-byline");
+  expect(byline?.textContent).toBe(
+    `Codex implementer · astra·${row.detail.base} ← ${row.detail.head}`,
+  );
+  expect(byline?.querySelector(".pr-avatar svg")).not.toBeNull();
+  expect(byline?.querySelector('[title="gpt-6-astra"]')).not.toBeNull();
+  expect(
+    byline?.querySelector('[title="Opened on GitHub by github-opener"]'),
+  ).not.toBeNull();
+});
+
+test("detail retains the GitHub author when no implementation run is recorded", () => {
+  const h = setup("merge");
+  h.snapshot.runs = [];
+  const row = buildPullRequestDetails(h.snapshot.pullRequests)[0];
+  if (!row) throw new Error("Missing PR");
+  row.taskId = h.task.id;
+  row.repoId = h.task.repoId;
+  row.detail.author = "github-opener";
+  h.task.prNumber = row.number;
+  h.store.getState().pullRequestDetails = [row];
+  h.render();
+  const byline = h.host.querySelector(".pr-byline");
+  expect(byline?.textContent).toContain("github-opener");
+  expect(byline?.querySelector(".pr-avatar")?.textContent).toBe("GI");
+  expect(byline?.querySelector("svg")).toBeNull();
+});
+
+test("issue-only detail credits its implementer and does not invent a missing model", () => {
+  const h = setup("ci");
+  const run = h.snapshot.runs[0];
+  if (!run) throw new Error("Missing run");
+  h.snapshot.runs = [
+    {
+      ...run,
+      taskId: h.task.id,
+      role: "implementer",
+      origin: "loom",
+      provider: "claude",
+      model: "",
+      launchedAt: h.snapshot.now,
+    },
+  ];
+  h.render();
+  expect(h.host.querySelector(".pr-byline")?.textContent).toBe(
+    "Claude Code implementer · Model not recorded",
+  );
+});
