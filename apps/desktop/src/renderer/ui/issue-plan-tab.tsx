@@ -16,68 +16,77 @@ export function IssuePlanTab({ task }: { task: Task }) {
     );
   }
   return (
-    <div className="pad">
-      <div className="section-title">Goal</div>
-      <div>{plan.goal}</div>
-      {approval ? (
-        <div className="panel" style={{ marginTop: 12 }}>
-          <span className={`chip ${approval.voidedAt ? "danger" : "good"}`}>
-            {approval.voidedAt ? `voided: ${approval.voidReason}` : "approved"}
-          </span>{" "}
-          plan v{approval.kind === "plan" ? approval.planVersion : 0}
-        </div>
-      ) : null}
-      <div className="section-title">Non-goals</div>
-      <ul className="plain">
-        {plan.nonGoals.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-      <div className="section-title">Steps</div>
-      {plan.steps.map((step, index) => (
-        <div className="panel" key={step.title}>
-          <strong>
-            {index + 1}. {step.title}
-          </strong>
-          <div className="dim">{step.detail}</div>
-        </div>
-      ))}
-      <div className="section-title">Areas</div>
-      <div className="detail-meta">
-        {plan.areas.map((area) => (
-          <span className="chip mono" key={area}>
-            {area}
-          </span>
-        ))}
-      </div>
-      <div className="section-title">Acceptance criteria</div>
-      <ul className="plain">
-        {plan.acceptanceCriteria.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-      <div className="section-title">Test plan</div>
-      <ul className="plain">
-        {plan.testPlan.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-      <div className="section-title">Risks</div>
-      <ul className="plain">
-        {plan.risks.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-      {plan.openQuestions.length > 0 ? (
-        <>
-          <div className="section-title">Open questions</div>
-          <ul className="plain">
-            {plan.openQuestions.map((item) => (
-              <li key={item}>{item}</li>
+    <div className="pr-overview issue-plan">
+      <main className="pr-story">
+        <section className="pr-description">
+          <h3>Goal</h3>
+          <div>{plan.goal}</div>
+        </section>
+        <PlanList title="Non-goals" items={plan.nonGoals} />
+        <section className="pr-description">
+          <h3>Steps</h3>
+          <ol className="issue-plan-steps">
+            {plan.steps.map((step) => (
+              <li key={step.title}>
+                <strong>{step.title}</strong>
+                <div className="dim">{step.detail}</div>
+              </li>
             ))}
-          </ul>
-        </>
-      ) : null}
+          </ol>
+        </section>
+        <PlanList title="Acceptance criteria" items={plan.acceptanceCriteria} />
+        <PlanList title="Test plan" items={plan.testPlan} />
+        <PlanList title="Risks" items={plan.risks} />
+        {plan.openQuestions.length > 0 ? (
+          <PlanList title="Open questions" items={plan.openQuestions} />
+        ) : null}
+      </main>
+      <aside className="pr-rail" aria-label="Plan properties">
+        <section>
+          <h3>Approval</h3>
+          {approval ? (
+            <div className="pr-property overview-status">
+              <span className={`chip ${approval.voidedAt ? "danger" : "good"}`}>
+                {approval.voidedAt
+                  ? `voided: ${approval.voidReason}`
+                  : "approved"}
+              </span>
+              <span>
+                plan v{approval.kind === "plan" ? approval.planVersion : 0}
+              </span>
+            </div>
+          ) : (
+            <div className="pr-property faint">Not approved</div>
+          )}
+        </section>
+        <section>
+          <h3>Version</h3>
+          <div className="pr-property">plan v{plan.version}</div>
+        </section>
+        <section>
+          <h3>Areas</h3>
+          <div className="detail-meta">
+            {plan.areas.map((area) => (
+              <span className="chip mono" key={area}>
+                {area}
+              </span>
+            ))}
+          </div>
+        </section>
+      </aside>
     </div>
+  );
+}
+
+function PlanList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <section className="pr-description">
+      <h3>{title}</h3>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </section>
   );
 }

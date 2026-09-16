@@ -460,7 +460,7 @@ test("the project picker has no All option and keeps add/select errors inline", 
   expect(h.store.getState().ui.repo).toBe("repo-loom");
 });
 
-test("the project picker clears the shared titlebar inset and remains interactive", () => {
+test("the project picker follows window controls and keeps its inset chevron interactive", () => {
   const style = document.createElement("style");
   style.textContent = [
     readFileSync(join(import.meta.dirname, "../styles/theme.css"), "utf8"),
@@ -473,14 +473,25 @@ test("the project picker clears the shared titlebar inset and remains interactiv
     const h = setup({ open: false });
     const top = h.get<HTMLElement>(".sidebar-top");
     const picker = h.get<HTMLSelectElement>('[aria-label="Repository"]');
-    expect(getComputedStyle(top).paddingTop).toBe("calc(30px + 8px)");
+    for (const inset of [true, false, true]) {
+      document.documentElement.dataset.windowControlsInset = String(inset);
+      expect(getComputedStyle(top).paddingTop).toBe(
+        `calc(${inset ? 30 : 0}px + 8px)`,
+      );
+    }
     expect(getComputedStyle(top).getPropertyValue("--test-app-region")).toBe(
       "drag",
     );
     expect(getComputedStyle(picker).getPropertyValue("--test-app-region")).toBe(
       "no-drag",
     );
+    const chevron = h.get<SVGElement>(".repo-chevron");
+    expect(chevron.getAttribute("aria-hidden")).toBe("true");
+    expect(getComputedStyle(chevron).pointerEvents).toBe("none");
+    expect(getComputedStyle(chevron).right).toBe("10px");
+    expect(getComputedStyle(picker).paddingRight).toBe("30px");
   } finally {
+    delete document.documentElement.dataset.windowControlsInset;
     style.remove();
   }
 });
