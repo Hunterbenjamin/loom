@@ -216,7 +216,8 @@ test.each(["tracker", "workbench"] as const)(
       // The palette exception must not intercept this chord while a dialog owns focus.
       expect(press(tab, "k", { metaKey: true }).defaultPrevented).toBe(false);
       press(tab, "c");
-      expect(store.getState().ui.createIssue).toBe(false);
+      expect(store.getState().ui.createPalette).toBe(false);
+      expect(store.getState().ui.create).toBeNull();
       press(tab, "l");
       press(document.activeElement!, "Escape");
       expect(host.querySelector("dialog")).toBeNull();
