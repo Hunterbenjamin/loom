@@ -95,8 +95,7 @@ export function reviewGroups(state: {
   ui: State["ui"];
   snapshot: Pick<State["snapshot"], "pullRequests">;
 }) {
-  const { repo, prTab, filterQuery, prSections, prCompletedCount } = state.ui;
-  const needle = filterQuery.trim().toLowerCase();
+  const { repo, prTab, prSections, prCompletedCount } = state.ui;
   const groups = REVIEW_SECTIONS.map(({ id, label }) => ({
     id,
     label,
@@ -106,14 +105,7 @@ export function reviewGroups(state: {
     remaining: 0,
   }));
   for (const pr of state.snapshot.pullRequests) {
-    if (
-      pr.repoId !== repo ||
-      (needle &&
-        !`#${pr.number} ${pr.title} ${pr.head} ${pr.base} ${pr.author ?? ""} ${pr.taskId ?? ""}`
-          .toLowerCase()
-          .includes(needle))
-    )
-      continue;
+    if (pr.repoId !== repo) continue;
     const group = groups.find((g) => g.id === sectionFor(pr, prTab));
     group?.rows.push(pr);
   }

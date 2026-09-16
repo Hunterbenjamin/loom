@@ -43,7 +43,6 @@ export interface UiState {
   prTab: "for-you" | "created";
   prSections: Partial<Record<ReviewSection, boolean>>;
   prCompletedCount: number;
-  filterQuery: string;
   prCursor: number | null;
   openPr: { repoId: PullRequestRow["repoId"]; number: number } | null;
   /** The brief open over the Daily brief list. */
@@ -78,7 +77,6 @@ export const initialUi: UiState = {
   prTab: "for-you",
   prSections: {},
   prCompletedCount: 20,
-  filterQuery: "",
   prCursor: null,
   openPr: null,
   openBrief: null,

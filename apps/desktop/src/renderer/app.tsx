@@ -19,7 +19,6 @@ import { InboxView } from "./ui/inbox.js";
 import { useShortcuts } from "./ui/keys.js";
 import { LeadBar } from "./ui/lead.js";
 import { ListView } from "./ui/list.js";
-import { TrackerFilter } from "./ui/list-rows.js";
 import { Palette, StagePicker } from "./ui/palette.js";
 import { PullRequestsView } from "./ui/pull-requests.js";
 import { ResearchView } from "./ui/research.js";
@@ -189,9 +188,6 @@ export function App() {
             flexDirection: "column",
           }}
         >
-          {view !== "settings" && view !== "pull-requests" ? (
-            <TrackerFilter />
-          ) : null}
           {view === "research" ? (
             <ResearchView />
           ) : view === "briefs" ? (

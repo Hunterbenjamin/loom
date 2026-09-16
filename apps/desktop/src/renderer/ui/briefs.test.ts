@@ -185,7 +185,7 @@ test("failed research stays readable and can be run again", async () => {
   expect(button("Run now").disabled).toBe(false);
 });
 
-test("brief filtering and keyboard endpoints open the visible brief", async () => {
+test("brief keyboard endpoints open the visible brief", async () => {
   const { createShortcutHandler } = await import("./keys.js");
   const second = {
     ...completed,
@@ -203,8 +203,7 @@ test("brief filtering and keyboard endpoints open the visible brief", async () =
   press("g");
   press("g");
   expect(h.store.getState().ui.cursor).toBe(0);
-  act(() => h.store.setFilterQuery("failed"));
-  expect(h.host.querySelectorAll("[data-brief]")).toHaveLength(1);
+  expect(h.host.querySelectorAll("[data-brief]")).toHaveLength(2);
   press("j");
   await act(async () => press("Enter"));
   expect(h.store.getState().ui.openBrief).toBe(second.id);

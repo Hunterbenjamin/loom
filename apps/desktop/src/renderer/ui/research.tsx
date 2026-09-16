@@ -16,7 +16,6 @@ export function ResearchView() {
   const connected = useStore((s) => s.connection === "connected");
   const open = useStore((s) => s.ui.openResearch);
   const cursor = useStore((s) => s.ui.cursor);
-  const query = useStore((s) => s.ui.filterQuery);
   const [state, setState] = useState<ResearchState | null>(null);
   const [entry, setEntry] = useState<ResearchEntry | null>(null);
   const [question, setQuestion] = useState("");
@@ -90,11 +89,7 @@ export function ResearchView() {
       setBusy(false);
     }
   };
-  const rows = (state?.entries ?? []).filter((row) =>
-    `${row.title ?? row.question} ${row.status}`
-      .toLowerCase()
-      .includes(query.trim().toLowerCase()),
-  );
+  const rows = state?.entries ?? [];
   const select = (index: number) =>
     store.setCursor(
       rows.length ? Math.max(0, Math.min(index, rows.length - 1)) : null,

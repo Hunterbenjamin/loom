@@ -1,74 +1,13 @@
-import {
-  type KeyboardEvent,
-  type ReactNode,
-  type RefObject,
-  useRef,
-} from "react";
-import { useStore, useStoreApi } from "../store/react.js";
-import { useTrackerActions } from "./tracker-actions.js";
-import { keyHint } from "./tracker-keymap.js";
+import type { KeyboardEvent, ReactNode } from "react";
 
 export function stopButtonShortcut(event: KeyboardEvent<HTMLButtonElement>) {
   if (event.key === "Enter" || event.key === " ") event.stopPropagation();
 }
 
-export function ListToolbar({
-  children,
-  query,
-  onQuery,
-  inputRef,
-  label = "Filter",
-}: {
-  children?: ReactNode;
-  query?: string;
-  onQuery?: (value: string) => void;
-  inputRef?: RefObject<HTMLInputElement | null>;
-  label?: string;
-}) {
-  const ownRef = useRef<HTMLInputElement>(null);
-  const search = inputRef ?? ownRef;
-  useTrackerActions({ filter: () => search.current?.focus() });
+export function ListToolbar({ children }: { children?: ReactNode }) {
   return (
     <div className="list-toolbar reviews-toolbar">
       <div className="list-segments reviews-tabs">{children}</div>
-      {onQuery ? (
-        <div className="list-search reviews-search" data-active={!!query}>
-          <input
-            ref={search}
-            data-tracker-search
-            aria-label={label}
-            placeholder={`${label}…`}
-            value={query}
-            onChange={(event) => onQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                onQuery("");
-                event.currentTarget.blur();
-                event.stopPropagation();
-              }
-            }}
-          />
-          <button
-            type="button"
-            aria-label={label}
-            {...keyHint("filter", label)}
-            onClick={() => search.current?.focus()}
-            onKeyDown={stopButtonShortcut}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              aria-hidden="true"
-            >
-              <path d="M2 4h12M4 8h8M6 12h4" />
-            </svg>
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -78,16 +17,19 @@ export function ListGroupHeader({
   count,
   collapsed,
   onToggle,
+  cursor = false,
 }: {
   label: string;
   count: number;
   collapsed: boolean;
   onToggle?: () => void;
+  cursor?: boolean;
 }) {
   return (
     <button
       type="button"
       className="list-group reviews-group"
+      data-cursor={cursor}
       aria-expanded={!collapsed}
       onClick={onToggle}
       onKeyDown={stopButtonShortcut}
@@ -154,26 +96,23 @@ export function ListRow({
 }
 
 export function LoadMore({
+  cursor = false,
   label,
   onClick,
 }: {
   label: string;
   onClick: () => void;
+  cursor?: boolean;
 }) {
   return (
     <button
       type="button"
       className="list-load-more"
+      data-cursor={cursor}
       onClick={onClick}
       onKeyDown={stopButtonShortcut}
     >
       {label}
     </button>
   );
-}
-
-export function TrackerFilter() {
-  const store = useStoreApi();
-  const query = useStore((state) => state.ui.filterQuery);
-  return <ListToolbar query={query} onQuery={store.setFilterQuery} />;
 }

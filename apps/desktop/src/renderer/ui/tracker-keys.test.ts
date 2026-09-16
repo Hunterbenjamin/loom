@@ -2,7 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { buildSnapshot } from "../fixtures/index.js";
 import { createFixtureStore as createStore } from "../fixtures/store.js";
-import { cursorRows, selectedRows } from "../store/selectors.js";
+import { cursorItems, selectedRows } from "../store/selectors.js";
 import { boardCursor, createShortcutHandler } from "./keys.js";
 import { registerTrackerActions } from "./tracker-actions.js";
 
@@ -164,25 +164,26 @@ test("diff file keys leave j/k for scrolling and hunk keys take precedence", () 
   key("j");
   expect(scroll).toHaveBeenCalledOnce();
 });
-test("list endpoints, filter action and adjacent issues preserve the detail tab", () => {
+test("list endpoints, removed slash and adjacent issues preserve the detail tab", () => {
   const { store, key } = setup();
-  const focus = vi.fn();
-  cleanups.push(registerTrackerActions(store, { filter: focus }));
-  key("/");
-  expect(focus).toHaveBeenCalledOnce();
-  const rows = cursorRows(store.getState());
+  expect(key("/").defaultPrevented).toBe(false);
+  const rows = cursorItems(store.getState());
   key("G");
   expect(store.getState().ui.cursor).toBe(rows.length - 1);
   key("g");
   key("g");
   expect(store.getState().ui.cursor).toBe(0);
+  key("j");
   key("Enter");
+  const issues = rows.flatMap((item) =>
+    item.kind === "row" ? [item.row] : [],
+  );
   store.setTab("plan");
   key("]");
-  expect(store.getState().ui.openTask).toBe(rows[1]!.task.id);
+  expect(store.getState().ui.openTask).toBe(issues[1]!.task.id);
   expect(store.getState().ui.tab).toBe("plan");
   key("[");
-  expect(store.getState().ui.openTask).toBe(rows[0]!.task.id);
+  expect(store.getState().ui.openTask).toBe(issues[0]!.task.id);
 });
 test("board movement stays in columns, skips empty ones and handles stale cursors", () => {
   const { store, key } = setup();
@@ -207,6 +208,8 @@ test("stage and palette issue commands use visible selection and ignore non-issu
   const { inboxRows } = await import("../store/inbox.js");
   const { store } = setup();
   store.setCursor(0);
+  expect(paletteIssueTarget(store.getState())).toBeNull();
+  store.setCursor(1);
   expect(paletteIssueTarget(store.getState())).not.toBeNull();
   for (const view of [
     "briefs",
@@ -319,4 +322,59 @@ test("modified pages work in detail inputs but never in terminal or chat", () =>
   }
   expect(up).toHaveBeenCalledOnce();
   expect(down).toHaveBeenCalledOnce();
+});
+
+test("board h/l keep moving columns and section keys stay out of Inbox", () => {
+  const { store, key } = setup();
+  store.setPane("board");
+  key("j");
+  const rows = selectedRows(store.getState());
+  const first = store.getState().ui.cursor;
+  key("l");
+  expect(rows[store.getState().ui.cursor!]!.task.stage).not.toBe(
+    rows[first!]!.task.stage,
+  );
+  key("h");
+  expect(store.getState().ui.cursor).toBe(first);
+  store.setView("needs-you");
+  store.setPane("list");
+  for (const letter of ["h", "l", "}", "{"])
+    expect(key(letter).defaultPrevented).toBe(false);
+});
+
+test("palette matches issues beyond its initial sixty by key, number, name and title", async () => {
+  const { paletteIssueRows } = await import("./palette.js");
+  const { store } = setup();
+  const source = selectedRows(store.getState())[0]!;
+  const rows = Array.from({ length: 80 }, (_, index) => ({
+    ...source,
+    task: {
+      ...source.task,
+      number: 9000 + index,
+      name: `Name${index}`,
+      title: `Title${index}`,
+    },
+  }));
+  const repos = store.getState().snapshot.repos;
+  expect(paletteIssueRows(rows, repos, "")).toHaveLength(60);
+  for (const query of ["LOOM-9079", "9079", "Name79", "Title79"])
+    expect(paletteIssueRows(rows, repos, query)).toContain(rows[79]);
+});
+
+test("exact palette matches outrank more than sixty weak fuzzy matches", async () => {
+  const { paletteIssueRows } = await import("./palette.js");
+  const { store } = setup();
+  const source = selectedRows(store.getState())[0]!;
+  const weak = Array.from({ length: 70 }, () => ({
+    ...source,
+    task: { ...source.task, title: "a long b long c" },
+  }));
+  const exact = { ...source, task: { ...source.task, title: "abc" } };
+  expect(
+    paletteIssueRows(
+      [...weak, exact],
+      store.getState().snapshot.repos,
+      "abc",
+    )[0],
+  ).toBe(exact);
 });

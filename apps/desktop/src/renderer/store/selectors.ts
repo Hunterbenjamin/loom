@@ -311,15 +311,15 @@ export function selectedListItems(state: State): ListItem[] {
   return groupRows(selectedRows(state), state.ui.listSections);
 }
 
-const listTaskRows = memo1((items: ListItem[]): Row[] =>
-  items.flatMap((item) => (item.kind === "row" ? [item.row] : [])),
+const wrapRows = memo1((rows: Row[]): ListItem[] =>
+  rows.map((row) => ({ kind: "row", row })),
 );
 
 /** Cursor consumers must agree with the rendered ordering and visibility. */
-export function cursorRows(state: State): Row[] {
+export function cursorItems(state: State): ListItem[] {
   return state.ui.pane === "list" && state.ui.view !== "needs-you"
-    ? listTaskRows(selectedListItems(state))
-    : selectedRows(state);
+    ? selectedListItems(state)
+    : wrapRows(selectedRows(state));
 }
 
 export const viewCounts = memo1(
@@ -357,11 +357,7 @@ export function selectedRows(state: State): Row[] {
     state.ui.repo,
     state.inbox,
   );
-  return filterTaskRows(
-    sortRows(rows, state.ui.sort, state.ui.descending),
-    state.ui.filterQuery,
-    state.snapshot.repos,
-  );
+  return sortRows(rows, state.ui.sort, state.ui.descending);
 }
 
 export function taskRuns(snapshot: Snapshot, task: Task): Run[] {
@@ -397,20 +393,23 @@ export function taskFindings(snapshot: Snapshot, task: Task): Finding[] {
   return snapshot.findings.filter((finding) => finding.taskId === task.id);
 }
 
-const filterTaskRows = memo1(
-  (rows: Row[], query: string, repos: Snapshot["repos"]) => {
-    const needle = query.trim().toLowerCase();
-    return needle
-      ? rows.filter((row) => taskMatches(row.task, query, repos))
-      : rows;
-  },
-);
-export function taskMatches(
-  task: Task,
-  query: string,
-  repos: Snapshot["repos"],
-): boolean {
-  return `${issueKeyFor(task, repos)} ${task.title} ${task.description} ${task.stage}`
-    .toLowerCase()
-    .includes(query.trim().toLowerCase());
+/** Stable identity shared by the virtualizer and selection reconciliation. */
+export const listItemKey = (item: ListItem): string =>
+  item.kind === "row" ? item.row.task.id : `${item.kind}-${item.stage}`;
+
+export function retainedCursor(
+  items: ListItem[],
+  selected: ListItem | undefined,
+): number | null {
+  if (!selected) return null;
+  const index = items.findIndex(
+    (item) => listItemKey(item) === listItemKey(selected),
+  );
+  if (index >= 0) return index;
+  const stage =
+    selected.kind === "row" ? selected.row.task.stage : selected.stage;
+  const header = items.findIndex(
+    (item) => item.kind === "header" && item.stage === stage,
+  );
+  return header >= 0 ? header : null;
 }

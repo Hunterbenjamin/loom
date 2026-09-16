@@ -2,7 +2,7 @@ import type { ClientState, PatchFrame } from "@loom/protocol";
 import { repoId as parseRepoId } from "@loom/protocol";
 import { projectSnapshot } from "../live/snapshot.js";
 import { selectedPullRequests } from "./pull-requests.js";
-import { cursorRows } from "./selectors.js";
+import { cursorItems, retainedCursor } from "./selectors.js";
 import type { State } from "./store.js";
 import { resetUiForRepo, revealStage } from "./ui-state.js";
 
@@ -21,10 +21,12 @@ export function applyProtocol(
     state.ui.prCursor === null
       ? undefined
       : selectedPullRequests(state)[state.ui.prCursor];
-  const selectedTask =
+  const selectedItem =
     state.ui.view === "needs-you" || state.ui.cursor === null
       ? undefined
-      : cursorRows(state)[state.ui.cursor]?.task.id;
+      : cursorItems(state)[state.ui.cursor];
+  const selectedTask =
+    selectedItem?.kind === "row" ? selectedItem.row.task.id : undefined;
   const selectedStage = state.snapshot.tasks.find(
     (task) => task.id === selectedTask,
   )?.stage;
@@ -90,15 +92,14 @@ export function applyProtocol(
     };
   }
 
-  if (selectedTask && !repoChanged) {
+  if (selectedItem && !repoChanged) {
     const stageChanged =
+      selectedTask !== undefined &&
       next.snapshot.tasks.find((task) => task.id === selectedTask)?.stage !==
-      selectedStage;
-    if (stageChanged) next = revealStage(next, selectedTask);
-    const cursor = cursorRows(next).findIndex(
-      (row) => row.task.id === selectedTask,
-    );
-    if (cursor >= 0)
+        selectedStage;
+    if (stageChanged && selectedTask) next = revealStage(next, selectedTask);
+    const cursor = retainedCursor(cursorItems(next), selectedItem);
+    if (cursor !== next.ui.cursor || stageChanged)
       next = {
         ...next,
         ui: {

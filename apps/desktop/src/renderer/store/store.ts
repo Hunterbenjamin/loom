@@ -24,7 +24,7 @@ import { commandActions } from "./commands.js";
 import { issueEditActions } from "./issue-actions.js";
 import { paneActivity } from "./pane-transitions.js";
 import { pullRequestActions } from "./pull-requests.js";
-import { cursorRows } from "./selectors.js";
+import { cursorItems, retainedCursor } from "./selectors.js";
 import type { Snapshot } from "./snapshot.js";
 import {
   applyPendingSelection,
@@ -87,7 +87,10 @@ export function createStore(
       const applied = applyPendingSelection(
         state,
         pendingSelection,
-        (next, id) => cursorRows(next).findIndex((row) => row.task.id === id),
+        (next, id) =>
+          cursorItems(next).findIndex(
+            (item) => item.kind === "row" && item.row.task.id === id,
+          ),
       );
       state = applied.state;
       if (applied.selected) pendingSelection = null;
@@ -173,8 +176,10 @@ export function createStore(
     openBrief: (openBrief: string | null) => setUi({ openBrief }),
     setPane: (pane: Pane) => setUi({ pane, cursor: null }),
     toggleListSection(stage: Stage) {
+      const selected = cursorItems(state)[state.ui.cursor ?? -1];
       const section = state.ui.listSections[stage];
-      setUi({
+      const ui = {
+        ...state.ui,
         listSections: {
           ...state.ui.listSections,
           [stage]: {
@@ -182,12 +187,15 @@ export function createStore(
             collapsed: !sectionCollapsed(state.ui.listSections, stage),
           },
         },
-        cursor: null,
-      });
+      };
+      const next = { ...state, ui };
+      setUi({ ...ui, cursor: retainedCursor(cursorItems(next), selected) });
     },
     loadMoreListSection(stage: "done" | "canceled") {
+      const selected = cursorItems(state)[state.ui.cursor ?? -1];
       const section = state.ui.listSections[stage];
-      setUi({
+      const ui = {
+        ...state.ui,
         listSections: {
           ...state.ui.listSections,
           [stage]: {
@@ -196,7 +204,9 @@ export function createStore(
               (section?.visibleCount ?? LIST_PAGE_SIZE) + LIST_PAGE_SIZE,
           },
         },
-      });
+      };
+      const next = { ...state, ui };
+      setUi({ ...ui, cursor: retainedCursor(cursorItems(next), selected) });
     },
     async setRepo(repo: string) {
       if (!state.snapshot.repos.some((item) => item.id === repo))
@@ -222,8 +232,6 @@ export function createStore(
           : { sort, descending: sort === "time" },
       );
     },
-    setFilterQuery: (filterQuery: string) =>
-      setUi({ filterQuery, prCursor: null, cursor: null }),
     setCursor: (cursor: number | null) => setUi({ cursor }),
     moveCursor(delta: number, length: number) {
       if (length === 0) return;

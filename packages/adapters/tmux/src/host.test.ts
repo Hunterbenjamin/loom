@@ -819,9 +819,19 @@ while True:
       await delay(150);
       first.stdin.write("alpha\n");
       second.stdin.write("bravo\n");
-      await until(async () =>
-        (await readFile(join(dir, "a.txt"), "utf8").catch(() => "")).includes(
-          "alpha",
+      // The panes write independently: a.txt becoming ready says nothing about b.txt.
+      await Promise.all(
+        (
+          [
+            ["a.txt", "alpha"],
+            ["b.txt", "bravo"],
+          ] as const
+        ).map(([file, text]) =>
+          until(async () =>
+            (await readFile(join(dir, file), "utf8").catch(() => "")).includes(
+              text,
+            ),
+          ),
         ),
       );
       expect(await readFile(join(dir, "a.txt"), "utf8")).toBe("alpha\n");

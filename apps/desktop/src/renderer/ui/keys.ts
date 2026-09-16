@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { selectedDetailTask } from "../store/detail-selection.js";
 import { inboxRows, reasonTab } from "../store/inbox.js";
 import { selectedPullRequests } from "../store/pull-requests.js";
-import { cursorRows, selectedRows } from "../store/selectors.js";
+import { cursorItems, selectedRows } from "../store/selectors.js";
 import type { Store } from "../store/store.js";
 import { STAGES } from "./format.js";
 import { typingScrollCommand } from "./scroll-keys.js";
@@ -72,7 +72,9 @@ export function runTrackerCommand(
       const rows =
         ui.view === "needs-you" && ui.pane === "list"
           ? inboxRows(state)
-          : cursorRows(state);
+          : cursorItems(state).flatMap((item) =>
+              item.kind === "row" ? [item.row] : [],
+            );
       const unique = rows.filter(
         (row, index) =>
           rows.findIndex((other) => other.task.id === row.task.id) === index,
@@ -102,11 +104,37 @@ export function runTrackerCommand(
   const review = ui.view === "pull-requests";
   const rows = review
     ? selectedPullRequests(state)
-    : (inbox ?? cursorRows(state));
+    : (inbox ?? cursorItems(state));
   const cursor = review ? ui.prCursor : ui.cursor;
   const setCursor = review ? store.setPrCursor : store.setCursor;
   const board = ui.pane === "board" && !review && !inbox;
-  if (id === "open") {
+  const items = cursorItems(state);
+  const issueList = !board && !review && !inbox;
+  if (issueList && (id === "next-section" || id === "previous-section")) {
+    const headers = items.flatMap((item, index) =>
+      item.kind === "header" ? [index] : [],
+    );
+    const next =
+      id === "next-section"
+        ? headers.find((index) => index > (cursor ?? -1))
+        : headers.findLast((index) => index < (cursor ?? items.length));
+    if (next !== undefined) store.setCursor(next);
+    return;
+  }
+  if (issueList && id === "collapse-section") {
+    const item = items[cursor ?? -1];
+    if (!item) return;
+    const stage = item.kind === "row" ? item.row.task.stage : item.stage;
+    const header = items.findIndex(
+      (item) => item.kind === "header" && item.stage === stage,
+    );
+    store.setCursor(header);
+    const entry = items[header];
+    if (entry?.kind === "header" && !entry.collapsed)
+      store.toggleListSection(stage);
+    return;
+  }
+  if (id === "open" || (id === "expand-item" && issueList)) {
     if (review) {
       const pr = selectedPullRequests(state)[cursor ?? -1];
       if (pr) store.openPullRequest({ repoId: pr.repoId, number: pr.number });
@@ -121,8 +149,15 @@ export function runTrackerCommand(
           run?.id ?? null,
         );
       } else {
-        const row = cursorRows(state)[cursor ?? -1];
-        if (row) store.open(row.task.id);
+        const item = items[cursor ?? -1];
+        if (item?.kind === "row") store.open(item.row.task.id);
+        else if (item?.kind === "header" && item.collapsed)
+          store.toggleListSection(item.stage);
+        else if (item?.kind === "load-more") {
+          // Inserting the page at this stop makes its index the first newly revealed row.
+          store.loadMoreListSection(item.stage);
+          store.setCursor(cursor);
+        }
       }
     }
     return;
@@ -240,7 +275,12 @@ export function createShortcutHandler(
         (entry.scope === "detail" && detail) ||
         (entry.scope === "issue" && issue) ||
         (entry.scope === "list" && !detail && ui.view !== "settings") ||
-        (entry.scope === "board" && !detail && ui.pane === "board" && issue),
+        (entry.scope === "board" && !detail && ui.pane === "board" && issue) ||
+        (entry.scope === "issue-list" &&
+          !detail &&
+          ui.pane === "list" &&
+          issue &&
+          ui.view !== "needs-you"),
     );
     if (!entry) return;
     if (
@@ -266,6 +306,9 @@ export function createShortcutHandler(
     if (
       !detail &&
       (repeatable.includes(entry.id) ||
+        entry.id === "next-section" ||
+        entry.id === "previous-section" ||
+        entry.id === "collapse-section" ||
         entry.id === "first-row" ||
         entry.id === "last-row") &&
       event.target instanceof HTMLElement
