@@ -6,6 +6,7 @@ import { App } from "../app.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { StoreProvider } from "../store/react.js";
+import { cursorRows } from "../store/selectors.js";
 import { WindowModeContext } from "../window-mode.js";
 import { LeadBar } from "./lead.js";
 
@@ -85,7 +86,109 @@ test("Cmd+J opens a floating Main chat without mounting a terminal", async () =>
   expect(
     host.querySelector(".lead-toggle")?.getAttribute("aria-expanded"),
   ).toBe("false");
-  expect(document.activeElement).toBe(host.querySelector(".lead-toggle"));
+  expect(document.activeElement).toBe(host.querySelector(".main"));
+});
+
+test.each(["Escape", "Cmd+J", "Minimize chat", "Close chat", "Main toggle"])(
+  "%s returns Main focus to the tracker so Enter opens the selected issue",
+  async (dismiss) => {
+    const { store, host } = mount();
+    act(() => store.setCursor(0));
+    const selected = cursorRows(store.getState())[0]!.task.id;
+    const toggle = host.querySelector<HTMLButtonElement>(".lead-toggle")!;
+    // Include the case where opening Main starts with focus on its button.
+    toggle.focus();
+    await act(async () => {
+      if (dismiss === "Escape") {
+        toggle.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "j",
+            metaKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      } else toggle.click();
+    });
+    const composer = host.querySelector<HTMLTextAreaElement>(
+      ".chat-composer textarea",
+    )!;
+    composer.focus();
+    await act(async () => {
+      if (dismiss === "Escape" || dismiss === "Cmd+J") {
+        composer.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: dismiss === "Escape" ? "Escape" : "j",
+            metaKey: dismiss === "Cmd+J",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      } else {
+        const button =
+          dismiss === "Main toggle"
+            ? toggle
+            : host.querySelector<HTMLButtonElement>(
+                `[aria-label="${dismiss}"]`,
+              )!;
+        button.focus();
+        button.click();
+      }
+    });
+    expect(host.querySelector(".chat-window")).toBeNull();
+    expect(document.activeElement).toBe(host.querySelector(".main"));
+    // Wheel scrolling does not run a tracker key or clear control focus.
+    document.activeElement!.dispatchEvent(
+      new WheelEvent("wheel", { bubbles: true }),
+    );
+    const enter = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => document.activeElement!.dispatchEvent(enter));
+    expect(enter.defaultPrevented).toBe(true);
+    expect(store.getState().ui.openTask).toBe(selected);
+    expect(host.querySelector(".chat-window")).toBeNull();
+    expect(document.activeElement).toBe(host.querySelector(".pr-page-head"));
+  },
+);
+
+test("closing Main in a detail returns focus to its keyboard scroll target", async () => {
+  const { store, host } = mount();
+  await act(async () => store.open(cursorRows(store.getState())[0]!.task.id));
+  const header = host.querySelector<HTMLElement>(".pr-page-head")!;
+  await act(async () => store.toggleMainChat());
+  host.querySelector<HTMLTextAreaElement>(".chat-composer textarea")!.focus();
+  await act(async () => store.setChatView("minimized"));
+  expect(document.activeElement).toBe(header);
+  const body = host.querySelector<HTMLElement>(".pr-page-body")!;
+  const before = body.scrollTop;
+  await act(async () =>
+    header.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "j",
+        bubbles: true,
+        cancelable: true,
+      }),
+    ),
+  );
+  expect(body.scrollTop).toBe(before + 60);
+});
+
+test("a deliberately focused Main button retains native Enter activation", () => {
+  const { store, host } = mount();
+  const toggle = host.querySelector<HTMLButtonElement>(".lead-toggle")!;
+  toggle.focus();
+  const enter = new KeyboardEvent("keydown", {
+    key: "Enter",
+    bubbles: true,
+    cancelable: true,
+  });
+  toggle.dispatchEvent(enter);
+  expect(enter.defaultPrevented).toBe(false);
+  expect(store.getState().ui.openTask).toBeNull();
+  expect(toggle.tabIndex).toBe(0);
 });
 
 test("Open terminal asks the Workbench to select Main", async () => {
