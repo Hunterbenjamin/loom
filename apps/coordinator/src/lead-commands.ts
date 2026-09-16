@@ -38,6 +38,7 @@ export function leadHandlers(deps: LeadCommandDeps): Handlers<LeadKind> {
     steer_lead_message: async (command) => {
       const lead = deps.lead(command.repoId);
       const result = await lead.steerMessage(command.clientMessageId);
+      deps.conversations.republish({ kind: "lead", repoId: command.repoId });
       deps.conversations.hint(lead.sessionId);
       return { ok: true, result: { kind: "lead_message", ...result } };
     },
@@ -66,6 +67,7 @@ export function leadHandlers(deps: LeadCommandDeps): Handlers<LeadKind> {
         withAttachedFiles(command.text, attachments),
         command.when ?? "now",
       );
+      deps.conversations.republish({ kind: "lead", repoId: command.repoId });
       deps.conversations.hint(lead.sessionId);
       return { ok: true, result: { kind: "lead_message", ...result } };
     },

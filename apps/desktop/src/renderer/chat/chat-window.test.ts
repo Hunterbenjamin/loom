@@ -429,7 +429,13 @@ test("lead send, prefix rejection, delivery state and prompt answer are wired", 
       attachmentIds: [],
     }),
   );
-  expect(host.querySelector(".chat-send")?.textContent).toContain("delivered");
+  // A delivered message reads as the human's message, with no state label under it.
+  expect(host.querySelector(".chat-send.delivered")?.textContent).toBe(
+    "waiting",
+  );
+  // The message just sent shows at once, before the coordinator has published it.
+  expect(host.querySelector(".chat-send.sent")?.textContent).toBe("ship it");
+  expect(input?.value).toBe("");
 
   await act(async () =>
     [...host.querySelectorAll<HTMLButtonElement>(".chat-prompt button")]
@@ -442,6 +448,70 @@ test("lead send, prefix rejection, delivery state and prompt answer are wired", 
     choice: 1,
     expectedDialog: { requestId: "dialog-1", at: readAt },
   });
+});
+
+test("a sent message shows at once, the published copy replaces it, and a rejected send says why", async () => {
+  const conversation = header();
+  const { host, send, store } = mount(conversation);
+  let settle: (outcome: AckOutcome) => void = () => {};
+  send.mockImplementationOnce(
+    () => new Promise<AckOutcome>((resolve) => (settle = resolve)),
+  );
+  const input = host.querySelector<HTMLTextAreaElement>("textarea");
+  await act(async () => enter(input, "hello there"));
+  await act(async () =>
+    host
+      .querySelector<HTMLButtonElement>('[aria-label="Send message"]')
+      ?.click(),
+  );
+  const sent = () =>
+    [...host.querySelectorAll(".chat-send")].map((e) => e.textContent);
+  expect(sent()).toEqual(["hello there"]);
+  const [[first]] = send.mock.calls as unknown as [
+    [{ clientMessageId: string }],
+  ];
+  const id = first.clientMessageId;
+  await act(async () =>
+    settle({ ok: true, result: { kind: "lead_message", id, state: "sent" } }),
+  );
+  await act(async () =>
+    store.applyProtocol(
+      stateFromSnapshot(meta, {
+        ...snapshot(),
+        conversations: [
+          {
+            ...conversation,
+            sends: [
+              {
+                id,
+                text: "hello there",
+                state: "sent",
+                at: readAt,
+                reason: null,
+                when: "now",
+              },
+            ],
+          },
+        ],
+        conversationItems: [],
+      }),
+    ),
+  );
+  expect(sent()).toEqual(["hello there"]);
+
+  send.mockImplementationOnce(async () => ({
+    ok: false,
+    error: { code: "unavailable", message: "Disconnected", details: [] },
+  }));
+  await act(async () => enter(input, "second"));
+  await act(async () =>
+    host
+      .querySelector<HTMLButtonElement>('[aria-label="Send message"]')
+      ?.click(),
+  );
+  const failed = host.querySelector(".chat-send.failed");
+  expect(failed?.textContent).toContain("second");
+  expect(failed?.textContent).toContain("Disconnected");
 });
 
 test("a failed send renders its state and delivery reason", () => {
