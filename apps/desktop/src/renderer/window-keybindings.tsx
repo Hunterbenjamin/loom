@@ -8,6 +8,10 @@ import {
   useRef,
   useState,
 } from "react";
+import type { WindowMode } from "../shared/ipc.js";
+import { defaultKeybindings } from "../shared/keybindings.js";
+import { useStoreApi } from "./store/react.js";
+import { togglePalette } from "./ui/keys.js";
 import { enterFocusedScrollMode } from "./ui/terminal.js";
 import {
   useKeybindingListener,
@@ -25,7 +29,19 @@ const WindowKeybindingsContext = createContext<
   | null
 >(null);
 
-export function WindowKeybindings({ children }: { children: ReactNode }) {
+/**
+ * One listener for the editable bindings in both windows. The Tracker and the Workbench stay
+ * mounted together (hidden when not shown), so an action goes to the mode on screen: the palette
+ * chord opens the visible window's palette, and Workbench-only actions fire only in the Workbench.
+ */
+export function WindowKeybindings({
+  mode,
+  children,
+}: {
+  mode: WindowMode;
+  children?: ReactNode;
+}) {
+  const store = useStoreApi();
   const state = useKeybindings();
   const [help, setHelp] = useState(false);
   const showHelp = useCallback(() => setHelp(true), []);
@@ -36,7 +52,8 @@ export function WindowKeybindings({ children }: { children: ReactNode }) {
     dispatch(action) {
       if (action === "scroll-mode") enterFocusedScrollMode();
       else if (action === "help") showHelp();
-      else workbench.current?.(action);
+      else if (mode === "workbench") workbench.current?.(action);
+      else if (action === "commands") togglePalette(store);
     },
   });
   return (
@@ -59,6 +76,13 @@ export function useWorkbenchKeybindings(dispatch: Dispatch) {
     };
   }, [workbench, dispatch]);
   return context;
+}
+
+/** The effective bindings for display; the defaults where no window provider is mounted. */
+export function useKeybindingsConfig() {
+  return (
+    useContext(WindowKeybindingsContext)?.bindings.config ?? defaultKeybindings
+  );
 }
 
 export function useWindowKeybindings() {

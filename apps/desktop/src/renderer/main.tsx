@@ -125,7 +125,7 @@ function Boot() {
 
   const app = (
     <StoreProvider store={store}>
-      <WindowKeybindings>
+      <WindowKeybindings mode={mode}>
         <TerminalSettings>
           <WindowModeContext value={mode}>
             <PaneChime />

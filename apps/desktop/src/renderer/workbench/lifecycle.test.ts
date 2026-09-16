@@ -218,7 +218,7 @@ async function harness(
         // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
         children: createElement(
           WindowKeybindings,
-          null,
+          { mode: "workbench" },
           createElement(Workbench),
         ),
       }),

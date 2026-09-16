@@ -27,6 +27,11 @@ export function typing(target: EventTarget | null): boolean {
   );
 }
 
+/** The `commands` binding in the Tracker: opens the command palette, or closes it. */
+export function togglePalette(store: Store) {
+  store.setPalette(!store.getState().ui.palette);
+}
+
 export function runTrackerCommand(
   store: Store,
   id: TrackerActionId,
@@ -40,7 +45,6 @@ export function runTrackerCommand(
     return;
   }
   if (id === "help") return showHelp();
-  if (id === "palette") return store.setPalette(!ui.palette);
   if (id === "create") return store.setCreatePalette(true);
   if (id === "close") {
     if (ui.createPalette) return store.setCreatePalette(false);

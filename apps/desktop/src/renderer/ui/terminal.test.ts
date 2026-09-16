@@ -184,7 +184,7 @@ function renderTerminal(snapshot: Snapshot) {
         // biome-ignore lint/correctness/noChildrenProp: The provider requires children in its typed props.
         children: createElement(
           WindowKeybindings,
-          null,
+          { mode: "tracker" },
           createElement(TerminalTab, { task, theme: "dark" }),
         ),
       }),

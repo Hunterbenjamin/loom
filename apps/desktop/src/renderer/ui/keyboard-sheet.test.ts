@@ -9,6 +9,7 @@ import { createFixtureStore } from "../fixtures/store.js";
 import { StoreProvider, useStoreApi } from "../store/react.js";
 import {
   useWindowKeybindings,
+  useWorkbenchKeybindings,
   WindowKeybindings,
 } from "../window-keybindings.js";
 import { WindowModeContext } from "../window-mode.js";
@@ -189,7 +190,7 @@ test.each(["tracker", "workbench"] as const)(
             { value: mode },
             createElement(
               WindowKeybindings,
-              null,
+              { mode },
               mode === "tracker"
                 ? createElement(TrackerOpener)
                 : createElement(
@@ -225,3 +226,63 @@ test.each(["tracker", "workbench"] as const)(
     }
   },
 );
+
+function WorkbenchDispatcher({
+  dispatch,
+}: {
+  dispatch: (action: string) => void;
+}) {
+  useWorkbenchKeybindings(dispatch);
+  return createElement("button", { type: "button" }, "Terminal surface");
+}
+
+test("the palette chord opens the palette of the window on screen, and Workbench chords stay in the Workbench", async () => {
+  window.loomHost = {
+    keybindings: async () => defaultKeybindingsState,
+    onKeybindingsChanged: () => () => {},
+  } as unknown as typeof window.loomHost;
+  for (const mode of ["tracker", "workbench"] as const) {
+    const { root, host } = mount();
+    const store = createFixtureStore(buildSnapshot(2));
+    const dispatch = vi.fn();
+    // Both surfaces stay mounted in one window; only the mode on screen may act.
+    await act(async () =>
+      root.render(
+        createElement(StoreProvider, {
+          store,
+          // biome-ignore lint/correctness/noChildrenProp: Typed provider requires children.
+          children: createElement(
+            WindowModeContext,
+            { value: mode },
+            createElement(
+              WindowKeybindings,
+              { mode },
+              createElement(TrackerOpener),
+              createElement(WorkbenchDispatcher, { dispatch }),
+            ),
+          ),
+        }),
+      ),
+    );
+    const surface = host.querySelector("button")!;
+    surface.focus();
+    expect(press(surface, "k", { metaKey: true }).defaultPrevented).toBe(true);
+    if (mode === "tracker") {
+      expect(store.getState().ui.palette).toBe(true);
+      expect(dispatch).not.toHaveBeenCalled();
+      press(surface, "k", { metaKey: true });
+      expect(store.getState().ui.palette).toBe(false);
+      // Ctrl+K is not the configured chord: it no longer opens anything.
+      press(surface, "k", { ctrlKey: true });
+      expect(store.getState().ui.palette).toBe(false);
+      press(surface, "t", { metaKey: true });
+      expect(dispatch).not.toHaveBeenCalled();
+    } else {
+      expect(dispatch).toHaveBeenCalledWith("commands");
+      expect(store.getState().ui.palette).toBe(false);
+      press(surface, "t", { metaKey: true });
+      expect(dispatch).toHaveBeenLastCalledWith("new");
+    }
+    act(() => root.unmount());
+  }
+});

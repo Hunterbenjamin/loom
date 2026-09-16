@@ -58,7 +58,11 @@ function mount() {
       createElement(StoreProvider, {
         store,
         // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
-        children: createElement(WindowKeybindings, null, createElement(App)),
+        children: createElement(
+          WindowKeybindings,
+          { mode: "tracker" },
+          createElement(App),
+        ),
       }),
     ),
   );
@@ -284,7 +288,11 @@ test("an empty Tracker offers Open repository without opening Main", async () =>
       createElement(StoreProvider, {
         store,
         // biome-ignore lint/correctness/noChildrenProp: StoreProvider requires children in its typed props.
-        children: createElement(WindowKeybindings, null, createElement(App)),
+        children: createElement(
+          WindowKeybindings,
+          { mode: "tracker" },
+          createElement(App),
+        ),
       }),
     ),
   );
