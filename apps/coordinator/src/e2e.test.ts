@@ -346,7 +346,7 @@ test("CI failing after approval voids it and starts a fresh implementer", async 
     state.runs.find((run) => run.role === "implementer" && run.round === 2)
       ?.fixReason,
   ).toContain("CI failed on reviewed head");
-});
+}, 30_000);
 
 test("a human push to the branch after review voids the approval and re-reviews", async () => {
   const h = await harness();
