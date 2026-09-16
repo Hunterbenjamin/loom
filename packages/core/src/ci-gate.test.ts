@@ -145,9 +145,7 @@ describe("CI gate before review", () => {
         expect.objectContaining({
           runId: "t1/implementer/1",
           purpose: "initial",
-          text: expect.stringContaining(
-            "fresh implementer fix-round session 1",
-          ),
+          text: expect.stringContaining("submit_for_review"),
         }),
       ]),
     );

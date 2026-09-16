@@ -51,6 +51,13 @@ test.each([
     ...tools,
   ])
     expect(prompt).toContain(value);
+  expect(prompt).toContain("3-round review cap");
+  expect(prompt).toContain("Call `get_task_context` first");
+  if (role === "implementer") {
+    expect(prompt).toContain("fresh fix-round session");
+    expect(prompt).toContain("reason, base-to-HEAD diff and blocking work");
+    expect(prompt).toContain("do not rely on an earlier implementer transcript");
+  }
   expect(prompt.includes("Assisted-by: codex:gpt-6-astra")).toBe(
     role === "implementer",
   );

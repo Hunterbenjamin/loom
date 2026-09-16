@@ -58,7 +58,7 @@
       "mode": "interactive"
     },
     "steps": [
-      { "expect": "message", "match": "fresh implementer fix-round session" },
+      { "expect": "message", "match": "submit_for_review" },
       {
         "git": "commit",
         "files": { "example.txt": "fixed implementation\n" },
