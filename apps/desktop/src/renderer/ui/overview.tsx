@@ -41,20 +41,21 @@ export function Overview({
   onFile(path: string): void;
 }) {
   const pr = row?.detail;
-  const implementer = useStore((state) =>
-    state.snapshot.runs
-      .filter(
-        (run) =>
-          run.taskId === (task?.id ?? row?.taskId) &&
-          run.origin === "loom" &&
-          run.role === "implementer" &&
-          run.launchedAt !== null,
-      )
-      .sort(
-        (a, b) =>
-          b.round - a.round ||
-          (b.launchedAt ?? "").localeCompare(a.launchedAt ?? ""),
-      )[0],
+  const implementer = useStore(
+    (state) =>
+      state.snapshot.runs
+        .filter(
+          (run) =>
+            run.taskId === (task?.id ?? row?.taskId) &&
+            run.origin === "loom" &&
+            run.role === "implementer" &&
+            run.launchedAt !== null,
+        )
+        .sort(
+          (a, b) =>
+            b.round - a.round ||
+            (b.launchedAt ?? "").localeCompare(a.launchedAt ?? ""),
+        )[0],
   );
   const title = task?.title ?? pr?.title ?? "";
   return (
