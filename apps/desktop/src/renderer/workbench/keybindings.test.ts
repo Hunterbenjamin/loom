@@ -49,6 +49,7 @@ vi.mock("@xterm/xterm", () => ({
     }
     scrollToBottom() {}
     onResize() {}
+    onScroll() {}
     write() {}
     focus() {
       this.textarea.focus();
@@ -272,7 +273,10 @@ test("Prefix [ enters the focused terminal's scroll mode and can be rebound", as
       "SCROLL",
     );
     await h.press(h.terminal, "x");
-    expect(window.loomTerminal.write).not.toHaveBeenCalled();
+    expect(window.loomTerminal.write).toHaveBeenLastCalledWith(
+      expect.any(String),
+      "x",
+    );
     await h.press(h.terminal, "q");
     expect(h.element.querySelector(".terminal-bar")?.textContent).not.toContain(
       "SCROLL",

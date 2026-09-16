@@ -530,8 +530,8 @@ test("composer page keys scroll the conversation and Cmd+Down restores following
   await act(async () => enter(input, "draft"));
   scroller.scrollTop = 600;
   input.setSelectionRange(2, 2);
-  await press("PageUp");
-  expect(scroller.scrollTop).toBe(330);
+  await press("PageUp", { shiftKey: true });
+  expect(scroller.scrollTop).toBe(300);
   expect(input.selectionStart).toBe(2);
   expect(host.querySelector(".chat-jump-latest")).not.toBeNull();
   const stream = (text: string) =>
@@ -545,14 +545,73 @@ test("composer page keys scroll the conversation and Cmd+Down restores following
       ),
     );
   await stream("new output");
-  expect(scroller.scrollTop).toBe(330);
-  await press("PageDown");
+  expect(scroller.scrollTop).toBe(300);
+  await press("PageDown", { shiftKey: true });
   expect(scroller.scrollTop).toBe(600);
-  await press("PageUp");
+  await press("PageUp", { shiftKey: true });
   await press("ArrowDown", { metaKey: true });
   expect(scroller.scrollTop).toBe(1000);
   expect(host.querySelector(".chat-jump-latest")).toBeNull();
   scroller.scrollTop = 600;
   await stream("more output");
   expect(scroller.scrollTop).toBe(1000);
+});
+
+test("reading keys navigate, typing preserves the draft and bare PageUp stays native", async () => {
+  const { host } = mount(header(), [item()]);
+  const transcript = host.querySelector<HTMLDivElement>(".chat-conversation")!;
+  const input = host.querySelector<HTMLTextAreaElement>("textarea")!;
+  Object.defineProperties(transcript, {
+    scrollHeight: { configurable: true, value: 2000 },
+    clientHeight: { configurable: true, value: 300 },
+    scrollTop: { configurable: true, writable: true, value: 500 },
+  });
+  await act(async () => enter(input, "draft"));
+  input.setSelectionRange(2, 2);
+  transcript.scrollTop = 500;
+  await act(async () => transcript.dispatchEvent(new Event("scroll")));
+  expect(document.activeElement).toBe(transcript);
+  const press = async (key: string, init: KeyboardEventInit = {}) => {
+    await act(async () =>
+      transcript.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        }),
+      ),
+    );
+  };
+  await press("j");
+  expect(transcript.scrollTop).toBe(520);
+  await press("k");
+  expect(transcript.scrollTop).toBe(500);
+  await press("d", { ctrlKey: true });
+  expect(transcript.scrollTop).toBe(650);
+  await press("u", { ctrlKey: true });
+  await press(" ");
+  expect(transcript.scrollTop).toBe(800);
+  await press(" ", { shiftKey: true });
+  expect(transcript.scrollTop).toBe(500);
+  await press("g");
+  await press("g");
+  expect(transcript.scrollTop).toBe(0);
+  await press("q");
+  expect(document.activeElement).toBe(input);
+  expect(input.value).toBe("drqaft");
+  expect(input.selectionStart).toBe(3);
+  transcript.focus();
+  await press("Escape");
+  expect(document.activeElement).toBe(input);
+  transcript.focus();
+  await press("G", { shiftKey: true });
+  expect(document.activeElement).toBe(input);
+  const event = new KeyboardEvent("keydown", {
+    key: "PageUp",
+    bubbles: true,
+    cancelable: true,
+  });
+  await act(async () => input.dispatchEvent(event));
+  expect(event.defaultPrevented).toBe(false);
 });

@@ -1,3 +1,6 @@
+import { scrollBindings } from "./scroll-keys.js";
+
+export { eventKey } from "./event-key.js";
 /** Tracker bindings are separate from editable Workbench bindings. */
 export const trackerKeymap = [
   {
@@ -134,62 +137,13 @@ export const trackerKeymap = [
     group: "Detail",
     scope: "detail" as const,
   })),
-  {
-    id: "scroll-down",
-    keys: ["j"],
-    label: "Scroll down",
-    group: "Detail",
-    scope: "detail",
-  },
-  {
-    id: "scroll-up",
-    keys: ["k"],
-    label: "Scroll up",
-    group: "Detail",
-    scope: "detail",
-  },
-  {
-    id: "half-page-down",
-    keys: ["Control+d"],
-    label: "Half page down",
-    group: "Detail",
-    scope: "detail",
-  },
-  {
-    id: "half-page-up",
-    keys: ["Control+u"],
-    label: "Half page up",
-    group: "Detail",
-    scope: "detail",
-  },
-  {
-    id: "page-down",
-    keys: ["Space"],
-    label: "Page down",
-    group: "Detail",
-    scope: "detail",
-  },
-  {
-    id: "page-up",
-    keys: ["Shift+Space"],
-    label: "Page up",
-    group: "Detail",
-    scope: "detail",
-  },
-  {
-    id: "top",
-    keys: ["g g"],
-    label: "Scroll to top",
-    group: "Detail",
-    scope: "detail",
-  },
-  {
-    id: "bottom",
-    keys: ["G"],
-    label: "Scroll to bottom",
-    group: "Detail",
-    scope: "detail",
-  },
+  ...scrollBindings.map((entry) => ({
+    id: entry.id,
+    keys: entry.keys,
+    label: entry.label,
+    group: "Reading",
+    scope: entry.id === "leave" ? ("terminal" as const) : ("detail" as const),
+  })),
   {
     id: "activity",
     keys: ["z"],
@@ -335,8 +289,4 @@ export function keyHint(id: TrackerActionId, label?: string | null) {
         )
         .join(" ") || undefined,
   };
-}
-export function eventKey(event: KeyboardEvent): string {
-  const key = event.key === " " ? "Space" : event.key;
-  return `${event.metaKey ? "Meta+" : ""}${event.ctrlKey ? "Control+" : ""}${event.altKey ? "Alt+" : ""}${event.shiftKey && (key.length > 1 || event.metaKey || event.ctrlKey || event.altKey) ? "Shift+" : ""}${key}`;
 }

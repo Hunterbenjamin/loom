@@ -75,6 +75,14 @@ test("help is a labeled modal with the complete map and Escape dismissal", () =>
       dialog.querySelector(`[data-key-id="${entry.id}"]`)?.textContent,
     ).toContain(entry.label);
   expect(dialog.textContent).toContain("⌘Enter");
+  expect(
+    [...dialog.querySelectorAll("h3")].map((el) => el.textContent),
+  ).toEqual([...new Set(trackerKeymap.map((entry) => entry.group))]);
+  expect(dialog.querySelectorAll("kbd")).toHaveLength(trackerKeymap.length);
+  expect(document.activeElement).toBe(
+    dialog.querySelector(".tracker-help-body"),
+  );
+  expect(dialog.querySelector(".tracker-help-body")?.scrollTop).toBe(0);
   act(() => dialog.dispatchEvent(new Event("cancel", { cancelable: true })));
   expect(close).toHaveBeenCalledOnce();
 });

@@ -285,6 +285,32 @@ test("standard scroll bindings repeat, expose hints, and stay paused while typin
     false,
   );
   expect(formatKeys("half-page-down")).toBe("Ctrl+D");
-  expect(formatKeys("page-up")).toBe("Shift+Space");
-  expect(keyHint("page-up")["aria-keyshortcuts"]).toBe("Shift+Space");
+  expect(formatKeys("page-up")).toBe("Shift+Space / Shift+PageUp");
+  expect(keyHint("page-up")["aria-keyshortcuts"]).toBe(
+    "Shift+Space Shift+PageUp",
+  );
+});
+
+test("modified pages work in detail inputs but never in terminal or chat", () => {
+  const { store, key } = setup();
+  store.open(store.getState().snapshot.tasks[0]!.id);
+  const up = vi.fn(),
+    down = vi.fn();
+  cleanups.push(
+    registerTrackerActions(store, { "page-up": up, "page-down": down }),
+  );
+  document.body.innerHTML =
+    '<input><div class="xterm"><textarea></textarea></div><div class="chat-window"><textarea></textarea></div>';
+  for (const letter of ["PageUp", "PageDown"]) {
+    expect(
+      key(letter, document.querySelector("input")!, { shiftKey: true })
+        .defaultPrevented,
+    ).toBe(true);
+    for (const input of document.querySelectorAll("textarea"))
+      expect(key(letter, input, { shiftKey: true }).defaultPrevented).toBe(
+        false,
+      );
+  }
+  expect(up).toHaveBeenCalledOnce();
+  expect(down).toHaveBeenCalledOnce();
 });

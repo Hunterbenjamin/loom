@@ -4,11 +4,14 @@ import { useStore } from "../store/react.js";
 import { formatKeys, trackerKeymap } from "./tracker-keymap.js";
 
 export function TrackerHelp({ onClose }: { onClose(): void }) {
+  const body = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const previous = document.activeElement;
     const dialog = ref.current;
     dialog?.showModal();
+    body.current?.focus({ preventScroll: true });
+    if (body.current) body.current.scrollTop = 0;
     return () => {
       dialog?.close();
       if (previous instanceof HTMLElement && previous.isConnected)
@@ -18,7 +21,7 @@ export function TrackerHelp({ onClose }: { onClose(): void }) {
   return (
     <dialog
       ref={ref}
-      className="create-issue-dialog"
+      className="tracker-help"
       aria-labelledby="tracker-keys-title"
       onCancel={(event) => {
         event.preventDefault();
@@ -26,23 +29,34 @@ export function TrackerHelp({ onClose }: { onClose(): void }) {
       }}
     >
       <h2 id="tracker-keys-title">Tracker keyboard shortcuts</h2>
-      <dl>
-        {trackerKeymap.map((entry) => (
-          <div key={entry.id} data-key-id={entry.id}>
-            <dt>
-              <strong>
-                {entry.group}: {entry.label}
-              </strong>
-            </dt>
-            <dd>{formatKeys(entry.id)}</dd>
-          </div>
-        ))}
-      </dl>
-      <p>
-        All tracker keys, including ⌘Enter, pause in inputs, editors and
-        terminals. Dialogs own their keys. Tab / Shift+Tab focus controls; Enter
-        / Space activate them.
-      </p>
+      <div className="tracker-help-body" ref={body} tabIndex={-1}>
+        <div className="tracker-help-grid">
+          {[...new Set(trackerKeymap.map((entry) => entry.group))].map(
+            (group) => (
+              <section key={group}>
+                <h3>{group}</h3>
+                <dl>
+                  {trackerKeymap
+                    .filter((entry) => entry.group === group)
+                    .map((entry) => (
+                      <div key={entry.id} data-key-id={entry.id}>
+                        <dt>{entry.label}</dt>
+                        <dd>
+                          <kbd>{formatKeys(entry.id)}</kbd>
+                        </dd>
+                      </div>
+                    ))}
+                </dl>
+              </section>
+            ),
+          )}
+        </div>
+        <p>
+          Reading page shortcuts work while typing. Other tracker keys pause in
+          inputs, editors and terminals. Dialogs own their keys. Tab / Shift+Tab
+          focus controls; Enter / Space activate them.
+        </p>
+      </div>
       <button type="button" onClick={onClose}>
         Close
       </button>

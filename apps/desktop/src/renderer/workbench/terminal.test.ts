@@ -22,6 +22,7 @@ vi.mock("@xterm/xterm", () => ({
     attachCustomKeyEventHandler() {}
     onData() {}
     onResize() {}
+    onScroll() {}
     resize(cols: number, rows: number) {
       this.cols = cols;
       this.rows = rows;
