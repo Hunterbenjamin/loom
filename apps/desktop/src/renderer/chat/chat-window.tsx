@@ -142,7 +142,8 @@ export function ChatWindow() {
   const view = useStore((s) => s.ui.chatView);
   const state = useStore((s) => s);
   const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
+  // Messages the human has sent that the coordinator has not published yet (or that failed).
+  const [localSends, setLocalSends] = useState<Conversation["sends"]>([]);
   const [showJump, setShowJump] = useState(false);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -244,25 +245,43 @@ export function ChatWindow() {
     }
   };
   // While a turn runs, new messages queue for after it; each queued message can steer instead.
-  const send = async () => {
+  // The message shows the moment it is sent, before the coordinator has recorded, pasted and
+  // re-read it; the published send with the same id (or, for a run, the same text) replaces it.
+  const send = () => {
     const when = header?.status === "working" ? "after_turn" : "now";
     const value =
       text.trim() ||
       (attachments.length ? "Please review the attached files." : "");
-    if (!value || prefixError || sending) return;
-    setSending(true);
+    if (!value || prefixError) return;
+    const id = crypto.randomUUID();
+    const attachmentIds = attachments.map((value) => value.id);
+    setLocalSends((current) => [
+      ...current.filter((send) => send.state === "failed" || !published(send)),
+      {
+        id,
+        text: value,
+        state: "sent",
+        at: new Date().toISOString() as Conversation["sends"][number]["at"],
+        reason: null,
+        when,
+      },
+    ]);
+    setText("");
+    setAttachments([]);
+    following.current = true;
+    setShowJump(false);
     const outcome =
       target.kind === "lead"
-        ? await store.command({
+        ? store.command({
             kind: "send_lead_message",
             repoId: target.repoId,
             text: value,
-            clientMessageId: crypto.randomUUID(),
+            clientMessageId: id,
             when,
-            attachmentIds: attachments.map((value) => value.id),
+            attachmentIds,
           })
         : run && task
-          ? await store.command({
+          ? store.command({
               kind: "human",
               taskId: task.id,
               command: {
@@ -270,7 +289,7 @@ export function ChatWindow() {
                 runId: run.id,
                 text: value,
                 when,
-                attachmentIds: attachments.map((value) => value.id),
+                attachmentIds,
                 expectedRun: {
                   sessionEpoch: run.sessionEpoch,
                   attempts: run.attempts,
@@ -278,13 +297,20 @@ export function ChatWindow() {
               },
             })
           : null;
-    if (outcome?.ok) {
-      setText("");
-      setAttachments([]);
-      following.current = true;
-      setShowJump(false);
+    if (!outcome) {
+      setLocalSends((current) => current.filter((send) => send.id !== id));
+      return;
     }
-    setSending(false);
+    void outcome.then((result) => {
+      if (result.ok) return;
+      setLocalSends((current) =>
+        current.map((send) =>
+          send.id === id
+            ? { ...send, state: "failed", reason: result.error.message }
+            : send,
+        ),
+      );
+    });
   };
   const steer = (id: string) => {
     if (target.kind === "lead")
@@ -362,7 +388,20 @@ export function ChatWindow() {
         },
       });
   };
-  const timeline = chatTimeline(header?.sends ?? [], items);
+  const publishedSends = header?.sends ?? [];
+  // A run's send gets its id from the coordinator, so it is recognised by text and time instead.
+  const published = (send: Conversation["sends"][number]) =>
+    publishedSends.some(
+      (candidate) =>
+        candidate.id === send.id ||
+        (target.kind === "run" &&
+          candidate.text === send.text &&
+          Date.parse(candidate.at) >= Date.parse(send.at) - SEND_CLOCK_SKEW_MS),
+    );
+  const pendingSends = localSends.filter(
+    (send) => send.state === "failed" || !published(send),
+  );
+  const timeline = chatTimeline([...publishedSends, ...pendingSends], items);
   const jumpToLatest = () => {
     following.current = true;
     setShowJump(false);
@@ -548,14 +587,9 @@ export function ChatWindow() {
                 title={entry.send.reason ?? undefined}
               >
                 {entry.send.text}
-                <small>
-                  {waiting
-                    ? "Queued · sends when this turn ends"
-                    : entry.send.state}
-                  {!waiting && entry.send.reason
-                    ? ` · ${entry.send.reason}`
-                    : ""}
-                  {waiting ? (
+                {waiting ? (
+                  <small>
+                    Queued · sends when this turn ends
                     <button
                       type="button"
                       className="chat-steer"
@@ -563,8 +597,14 @@ export function ChatWindow() {
                     >
                       Steer now
                     </button>
-                  ) : null}
-                </small>
+                  </small>
+                ) : entry.send.state === "failed" ||
+                  entry.send.state === "refused" ? (
+                  <small>
+                    {entry.send.state}
+                    {entry.send.reason ? ` · ${entry.send.reason}` : ""}
+                  </small>
+                ) : null}
               </div>
             );
           }
@@ -708,7 +748,7 @@ export function ChatWindow() {
               !e.nativeEvent.isComposing
             ) {
               e.preventDefault();
-              void send();
+              send();
             }
           }}
         />
@@ -768,10 +808,9 @@ export function ChatWindow() {
               disabled={
                 (!text.trim() && !attachments.length) ||
                 prefixError ||
-                sending ||
                 header?.status === "stopped"
               }
-              onClick={() => void send()}
+              onClick={send}
             >
               ↑
             </button>

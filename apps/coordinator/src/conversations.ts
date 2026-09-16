@@ -64,6 +64,15 @@ export class ConversationViews {
       )
         void this.refresh(scope);
   }
+  /**
+   * Republishes the last read with the store's current sends, so a message the human just sent
+   * shows at once instead of after the next provider read (two `claude agents` spawns, a paste
+   * settle, hook and transcript reads). The read that follows the hint replaces it.
+   */
+  republish(target: ConversationTarget): void {
+    const latest = this.latest.get(conversationKey(target));
+    if (latest) this.publish(...latest);
+  }
   hint(sessionId: string | null): void {
     if (!sessionId) return;
     for (const scope of this.active.values()) {
