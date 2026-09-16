@@ -56,7 +56,9 @@ test.each([
   if (role === "implementer") {
     expect(prompt).toContain("fresh fix-round session");
     expect(prompt).toContain("reason, base-to-HEAD diff and blocking work");
-    expect(prompt).toContain("do not rely on an earlier implementer transcript");
+    expect(prompt).toContain(
+      "do not rely on an earlier implementer transcript",
+    );
   }
   expect(prompt.includes("Assisted-by: codex:gpt-6-astra")).toBe(
     role === "implementer",
