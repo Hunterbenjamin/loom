@@ -130,8 +130,9 @@ export function runTrackerCommand(
     );
     store.setCursor(header);
     const entry = items[header];
-    if (entry?.kind === "header" && !entry.collapsed)
-      store.toggleListSection(stage);
+    // One key both ways: from a row the section is open, so this collapses it; on a collapsed
+    // header it expands again, so h never becomes a no-op the human has to follow with l.
+    if (entry?.kind === "header") store.toggleListSection(stage);
     return;
   }
   if (id === "open" || (id === "expand-item" && issueList)) {

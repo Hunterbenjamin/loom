@@ -283,6 +283,15 @@ test.each(["Enter", "l"])(
   },
 );
 
+test("h collapses an open section and expands it again", () => {
+  const h = setup();
+  key("j");
+  const stage = () => h.store.getState().ui.listSections;
+  key("h");
+  expect(stage()).toMatchObject({ in_progress: { collapsed: true } });
+  key("h");
+  expect(stage().in_progress?.collapsed ?? false).toBe(false);
+});
 test("collapsed sections remain reachable and large sections take one jump", () => {
   const h = setup();
   act(() => {

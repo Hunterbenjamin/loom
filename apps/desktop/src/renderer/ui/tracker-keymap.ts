@@ -85,7 +85,7 @@ export const trackerKeymap = [
   ...(
     [
       ["expand-item", "l", "Open row / expand section / load more"],
-      ["collapse-section", "h", "Collapse section and select its header"],
+      ["collapse-section", "h", "Collapse or expand section"],
       ["next-section", "}", "Next section"],
       ["previous-section", "{", "Previous section"],
     ] as const
