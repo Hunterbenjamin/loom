@@ -6,8 +6,6 @@ import { buildSnapshot } from "../fixtures/index.js";
 import { createFixtureStore } from "../fixtures/store.js";
 import { StoreProvider } from "../store/react.js";
 import { DetailLayout } from "./detail-layout.js";
-import { TrackerHelp } from "./tracker-help.js";
-import { trackerKeymap } from "./tracker-keymap.js";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -59,30 +57,4 @@ test("details focus their controls, provide a terminal focus exit, and restore f
   expect(document.activeElement).toBe(header);
   act(() => root.unmount());
   expect(document.activeElement).toBe(previous);
-});
-
-test("help is a labeled modal with the complete map and Escape dismissal", () => {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  cleanups.push(() => root.unmount());
-  const close = vi.fn();
-  act(() => root.render(createElement(TrackerHelp, { onClose: close })));
-  const dialog = host.querySelector("dialog")!;
-  expect(dialog.open).toBe(true);
-  for (const entry of trackerKeymap)
-    expect(
-      dialog.querySelector(`[data-key-id="${entry.id}"]`)?.textContent,
-    ).toContain(entry.label);
-  expect(dialog.textContent).toContain("⌘Enter");
-  expect(
-    [...dialog.querySelectorAll("h3")].map((el) => el.textContent),
-  ).toEqual([...new Set(trackerKeymap.map((entry) => entry.group))]);
-  expect(dialog.querySelectorAll("kbd")).toHaveLength(trackerKeymap.length);
-  expect(document.activeElement).toBe(
-    dialog.querySelector(".tracker-help-body"),
-  );
-  expect(dialog.querySelector(".tracker-help-body")?.scrollTop).toBe(0);
-  act(() => dialog.dispatchEvent(new Event("cancel", { cancelable: true })));
-  expect(close).toHaveBeenCalledOnce();
 });

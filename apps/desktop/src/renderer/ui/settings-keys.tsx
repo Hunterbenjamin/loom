@@ -19,55 +19,14 @@ import {
   useField,
 } from "./settings-fields.js";
 
-const GROUPS: { title: string; actions: KeybindingAction[] }[] = [
-  {
-    title: "Panels",
-    actions: [
-      "split-right",
-      "split-down",
-      "left",
-      "down",
-      "up",
-      "right",
-      "zoom",
-      "close",
-    ],
-  },
-  {
-    title: "Tabs",
-    actions: [
-      "new",
-      "next",
-      "previous",
-      ...Array.from(
-        { length: 9 },
-        (_, i) => `tab-${i + 1}` as KeybindingAction,
-      ),
-    ],
-  },
-  {
-    title: "Spaces",
-    actions: [
-      "new-space",
-      "close-space",
-      ...Array.from(
-        { length: 9 },
-        (_, i) => `space-${i + 1}` as KeybindingAction,
-      ),
-    ],
-  },
-  {
-    title: "Agents",
-    actions: [
-      "jump",
-      ...Array.from(
-        { length: 9 },
-        (_, i) => `agent-${i + 1}` as KeybindingAction,
-      ),
-    ],
-  },
-  { title: "App", actions: ["commands", "help", "literal"] },
-];
+const GROUPS = [
+  ...new Set(KEYBINDING_ACTIONS.map((action) => action.group)),
+].map((title) => ({
+  title,
+  actions: KEYBINDING_ACTIONS.filter((action) => action.group === title).map(
+    (action) => action.id,
+  ),
+}));
 const LABELS = new Map<string, string>(
   KEYBINDING_ACTIONS.map((action) => [action.id, action.label]),
 );
