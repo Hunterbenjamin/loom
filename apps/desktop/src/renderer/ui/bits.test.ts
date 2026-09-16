@@ -43,7 +43,7 @@ describe("RunDot", () => {
     return span;
   }
 
-  test("a finished run is blue until read, and Done or Canceled issues are always grey", () => {
+  test("a finished run is blue until read, Merging shows progress, and Done or Canceled issues are grey", () => {
     const fixture = buildSnapshot();
     const base = fixture.runs[0];
     if (!base) throw new Error("No run in fixture");
@@ -55,6 +55,12 @@ describe("RunDot", () => {
     };
     expect(renderDot(finished).className).toContain("finished");
     expect(renderDot(finished, { read: true }).className).toContain("idle");
+    for (const read of [false, true]) {
+      const merging = renderDot(finished, { stage: "merging", read });
+      expect(merging.className).toContain("working");
+      expect(merging.getAttribute("aria-label")).toBe("Merging");
+      expect(merging.closest<HTMLElement>("[title]")?.title).toBe("Merging");
+    }
     expect(renderDot(finished, { stage: "done" }).className).toContain("idle");
     expect(
       renderDot({ ...base, status: "working" }, { stage: "canceled" })
@@ -62,10 +68,13 @@ describe("RunDot", () => {
     ).toContain("idle");
   });
 
-  test("renders faint dot when no run", () => {
+  test("renders faint dot when no run unless the issue is merging", () => {
     const dot = renderDot(null);
     expect(dot.className).toContain("dot");
     expect(dot.className).toContain("faint");
+    const merging = renderDot(null, { stage: "merging" });
+    expect(merging.className).toContain("working");
+    expect(merging.getAttribute("aria-label")).toBe("Merging");
   });
 
   test("renders the working spinner glyph for working status", () => {
