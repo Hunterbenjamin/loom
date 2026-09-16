@@ -1,5 +1,10 @@
 import { expect, test } from "vitest";
-import { researchDocument, researchEntry } from "./research.js";
+import {
+  mentionsLoom,
+  researchComment,
+  researchDocument,
+  researchEntry,
+} from "./research.js";
 
 const document = {
   title: "Answer",
@@ -64,4 +69,32 @@ test("entry round trips provenance and archive time", () => {
     document,
   };
   expect(researchEntry.parse(JSON.parse(JSON.stringify(entry)))).toEqual(entry);
+});
+
+test("comments validate attribution, timestamps and text bounds; mentions match anywhere without prefixes", () => {
+  const comment = {
+    id: "00000000-0000-4000-8000-000000000001",
+    entryId: "00000000-0000-4000-8000-000000000002",
+    author: "human",
+    text: "x",
+    at: "2026-09-16T00:00:00.000Z",
+    delivered: false,
+  };
+  expect(researchComment.parse(comment)).toEqual(comment);
+  expect(
+    researchComment.safeParse({ ...comment, text: "x".repeat(16384) }).success,
+  ).toBe(true);
+  for (const change of [
+    { text: " " },
+    { text: "x".repeat(16385) },
+    { author: "other" },
+    { at: "today" },
+  ])
+    expect(researchComment.safeParse({ ...comment, ...change }).success).toBe(
+      false,
+    );
+  for (const text of ["@loom", "Please @LoOm continue", "(@LOOM)"])
+    expect(mentionsLoom(text)).toBe(true);
+  for (const text of ["loom", "@loomer", "@loom2", "@loom_extra"])
+    expect(mentionsLoom(text)).toBe(false);
 });

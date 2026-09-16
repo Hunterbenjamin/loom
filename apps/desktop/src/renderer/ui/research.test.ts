@@ -1,5 +1,10 @@
 // @vitest-environment happy-dom
-import type { AckOutcome, Command, ResearchEntry } from "@loom/protocol";
+import type {
+  AckOutcome,
+  Command,
+  ResearchComment,
+  ResearchEntry,
+} from "@loom/protocol";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
@@ -7,6 +12,7 @@ import { buildSnapshot } from "../fixtures/index.js";
 import { createFixtureStore } from "../fixtures/store.js";
 import { StoreProvider } from "../store/react.js";
 import { ResearchView } from "./research.js";
+import { runTrackerAction } from "./tracker-actions.js";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -36,11 +42,15 @@ const saved: ResearchEntry = {
     sources: [{ title: "Documentation", url: "https://example.org/keys" }],
   },
 };
-async function mount(entries: ResearchEntry[]) {
+async function mount(
+  entries: ResearchEntry[],
+  comments: ResearchComment[] = [],
+) {
   const store = createFixtureStore(buildSnapshot());
   const send = vi.fn(async (command: Command): Promise<AckOutcome> => {
     if (
       command.kind === "read_research" ||
+      command.kind === "comment_research" ||
       command.kind === "set_research_archived"
     ) {
       const entry = entries.find((entry) => entry.id === command.id);
@@ -49,7 +59,11 @@ async function mount(entries: ResearchEntry[]) {
         entry.archivedAt = command.archived ? "2026-09-16T01:00:00.000Z" : null;
       return {
         ok: true,
-        result: { kind: "research_entry", entry: structuredClone(entry) },
+        result: {
+          kind: "research_entry",
+          entry: structuredClone(entry),
+          comments,
+        },
       };
     }
     if (command.kind === "list_research")
@@ -144,4 +158,79 @@ test("running and interrupted entries stay readable", async () => {
   await act(async () => store.openResearch(entry.id));
   expect(host.textContent).toContain("interrupted");
   expect(host.textContent).toContain("Coordinator stopped before completion");
+});
+
+test("running research renders an ordered thread with the shared keyboard composer enabled", async () => {
+  const entry = {
+    ...saved,
+    origin: "agent" as const,
+    status: "running" as const,
+    observedStatus: "working" as const,
+  };
+  const comments: ResearchComment[] = ["human", "main", "agent"].map(
+    (author, index) => ({
+      id: `00000000-0000-4000-8000-00000000000${index + 2}`,
+      entryId: entry.id,
+      author: author as ResearchComment["author"],
+      text: `Comment ${index}`,
+      at: `2026-09-16T00:00:0${index}.000Z`,
+      delivered: true,
+    }),
+  );
+  const { host, store, send } = await mount([entry], comments);
+  await act(async () => store.openResearch(entry.id));
+  expect(
+    [...host.querySelectorAll(".pr-activity li")].map((li) => li.textContent),
+  ).toEqual([
+    expect.stringContaining("You"),
+    expect.stringContaining("Main"),
+    expect.stringContaining("Research agent"),
+  ]);
+  const textarea = host.querySelector(
+    ".pr-comment-box textarea",
+  ) as HTMLTextAreaElement;
+  expect(textarea.disabled).toBe(false);
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )!.set!.call(textarea, "Please @loom continue");
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () =>
+    textarea.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        ctrlKey: true,
+        bubbles: true,
+      }),
+    ),
+  );
+  expect(send).toHaveBeenCalledWith({
+    kind: "comment_research",
+    id: entry.id,
+    message: "Please @loom continue",
+  });
+  expect(textarea.value).toBe("");
+});
+
+test("reading actions expand the thread and scroll the detail", async () => {
+  const comments: ResearchComment[] = Array.from({ length: 5 }, (_, i) => ({
+    id: `00000000-0000-4000-8000-00000000000${i + 2}`,
+    entryId: saved.id,
+    author: "human",
+    text: `Note ${i}`,
+    at: saved.startedAt,
+    delivered: true,
+  }));
+  const { host, store } = await mount([saved], comments);
+  await act(async () => store.openResearch(saved.id));
+  expect(host.querySelectorAll(".pr-activity li")).toHaveLength(3);
+  await act(async () => {
+    expect(runTrackerAction(store, "activity")).toBe(true);
+  });
+  expect(host.querySelectorAll(".pr-activity li")).toHaveLength(5);
+  const body = host.querySelector(".pr-page-body") as HTMLElement;
+  runTrackerAction(store, "scroll-down");
+  expect(body.scrollTop).toBe(60);
 });

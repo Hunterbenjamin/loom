@@ -109,7 +109,7 @@ test("scope and concurrency refusals, failed follow-up preserves the document", 
   await h.coordinator.research.submit(entry.id, document);
   h.providers.finish(session, "completed");
   await h.coordinator.research.refresh();
-  await h.coordinator.research.extend(entry.id, "Compare more keys");
+  await h.coordinator.research.comment(entry.id, "@loom Compare more keys");
   h.providers.confirm(session);
   h.providers.finish(session, "failed", {
     kind: "provider failed",
@@ -121,6 +121,13 @@ test("scope and concurrency refusals, failed follow-up preserves the document", 
     status: "failed",
     error: "provider failed",
   });
+  expect(h.store.research.comments(entry.id).map((c) => c.text)).toEqual([
+    "Started research.",
+    "Submitted the research document.",
+    "@loom Compare more keys",
+    "Started follow-up research.",
+    "Research failed: provider failed",
+  ]);
 });
 test("depth enforces observed token limits without publishing partial output", async () => {
   const h = await setup();
@@ -289,7 +296,7 @@ test("Claude research launches its recorded session in a pane and keeps failed f
   ).toBe(false);
   h.providers.finish(session, "completed");
   await h.coordinator.research.refresh();
-  await h.coordinator.research.extend(entry.id, "Add examples");
+  await h.coordinator.research.comment(entry.id, "@loom Add examples");
   expect(h.providers.confirm(session)?.text).toContain(document.body);
   h.providers.finish(session, "failed", {
     kind: "test failure",
@@ -306,6 +313,7 @@ test("recovery reconnects a surviving provider session and resumes its pane with
   const h = await setup();
   const { entry, session } = await start(h);
   h.providers.confirm(session);
+  await h.coordinator.research.comment(entry.id, "Please @LoOm add examples");
   await h.coordinator.research.stop();
   const { RecipeStore } = await import("./recipes.js");
   const { Research } = await import("./research.js");
@@ -344,4 +352,153 @@ test("recovery reconnects a surviving provider session and resumes its pane with
   await owner.resume(entry.id);
   expect(send).not.toHaveBeenCalled();
   expect(h.providers.get(session).queue).toEqual([]);
+  await owner.submit(entry.id, document);
+  h.providers.finish(session, "completed");
+  await owner.refresh();
+  await owner.refresh();
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send.mock.calls[0]?.[0].text).toContain("Please @LoOm add examples");
+  expect(owner.read(entry.id).status).toBe("running");
+  expect(h.store.research.comments(entry.id).every((c) => c.delivered)).toBe(
+    true,
+  );
+});
+
+test("notes send nothing; queued mentions drain once in order and completed entries reopen", async () => {
+  const h = await setup();
+  const { entry, recipe, session } = await start(h);
+  const adapter = await h.adapters.codex(recipe.taskId);
+  const send = vi.spyOn(adapter, "startTurn");
+  h.providers.confirm(session);
+  await h.coordinator.research.comment(entry.id, "A note about @loomer");
+  await h.coordinator.research.comment(entry.id, "First, @LoOm compare more");
+  await h.coordinator.research.comment(entry.id, "@loom then add examples");
+  expect(send).not.toHaveBeenCalled();
+  expect(
+    h.store.research.comments(entry.id).filter((c) => !c.delivered),
+  ).toHaveLength(2);
+  await h.coordinator.research.submit(entry.id, document);
+  await h.coordinator.research.refresh();
+  expect(send).not.toHaveBeenCalled(); // submit is not provider idle
+  h.providers.finish(session, "completed");
+  await h.coordinator.research.refresh();
+  await h.coordinator.research.refresh();
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send.mock.calls[0]?.[0].text).toContain(document.body);
+  expect(h.coordinator.research.read(entry.id).status).toBe("running");
+  h.providers.confirm(session);
+  await h.coordinator.research.submit(entry.id, {
+    ...document,
+    body: "Revised",
+  });
+  h.providers.finish(session, "completed");
+  await h.coordinator.research.refresh();
+  expect(send).toHaveBeenCalledTimes(2);
+  h.providers.confirm(session);
+  await h.coordinator.research.submit(entry.id, document);
+  h.providers.finish(session, "completed");
+  await h.coordinator.research.refresh();
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(h.coordinator.research.read(entry.id).status).toBe("completed");
+  expect(
+    h.store.research
+      .comments(entry.id)
+      .filter((c) => c.text === "Submitted a revised document."),
+  ).toHaveLength(2);
+});
+
+test("Main comments are attributed at the authenticated MCP boundary; saved entries accept notes only", async () => {
+  const h = await setup();
+  const id = randomUUID();
+  h.coordinator.research.save(id, "Saved", document);
+  await h.coordinator.research.comment(id, "Human note");
+  await expect(
+    h.coordinator.research.comment(id, "@loom continue"),
+  ).rejects.toThrow("no agent session");
+  const { createAgentMcp } = await import("./agent-mcp.js");
+  const { leadInputSchemas } = await import("@loom/mcp");
+  expect(
+    leadInputSchemas.comment_research!.safeParse({
+      id,
+      message: "note",
+      author: "human",
+    }).success,
+  ).toBe(false);
+  const mcp = createAgentMcp({
+    store: h.store,
+    adapters: h.adapters,
+    recipes: h.coordinator.recipes,
+    research: h.coordinator.research,
+    leads: new Map(),
+    leadFor: () => ({}),
+    repoById: () => h.repo,
+    now: () => h.clock.now(),
+    loop: {},
+    log: () => {},
+    reportAdapterFailure: () => {},
+  } as unknown as Parameters<typeof createAgentMcp>[0]);
+  await mcp.leadHost.invoke(
+    "comment_research",
+    { id, message: "Main note" },
+    h.repo.id,
+  );
+  expect(h.store.research.comments(id).map((c) => [c.author, c.text])).toEqual([
+    ["human", "Human note"],
+    ["main", "Main note"],
+  ]);
+});
+
+test("a provider hint releases queued research on another idle entry", async () => {
+  const h = await setup();
+  const first = await start(h);
+  h.providers.confirm(first.session);
+  await h.coordinator.research.submit(first.entry.id, document);
+  h.providers.finish(first.session, "completed");
+  await h.coordinator.research.refresh();
+  const second = await start(h);
+  h.providers.confirm(second.session);
+  await h.coordinator.research.comment(
+    first.entry.id,
+    "@loom continue after the other run",
+  );
+  expect(h.store.research.comments(first.entry.id).at(-1)?.delivered).toBe(
+    false,
+  );
+  await h.coordinator.research.submit(second.entry.id, document);
+  h.providers.finish(second.session, "completed");
+  // No refresh or new hint from the idle first entry: the second entry's hint drains it.
+  await vi.waitFor(() =>
+    expect(h.providers.get(first.session).queue).toHaveLength(1),
+  );
+  expect(h.coordinator.research.read(first.entry.id).status).toBe("running");
+  expect(h.providers.get(first.session).queue[0]?.text).toContain(
+    "@loom continue after the other run",
+  );
+});
+
+test("failed dispatch is recorded once and never replaces or replays the submitted document", async () => {
+  const h = await setup();
+  const { entry, recipe, session } = await start(h);
+  h.providers.confirm(session);
+  await h.coordinator.research.submit(entry.id, document);
+  h.providers.finish(session, "completed");
+  await h.coordinator.research.refresh();
+  const adapter = await h.adapters.codex(recipe.taskId);
+  const send = vi
+    .spyOn(adapter, "startTurn")
+    .mockRejectedValue(new Error("Delivery failed"));
+  await h.coordinator.research.comment(entry.id, "@loom more");
+  await h.coordinator.research.refresh();
+  await h.coordinator.research.refresh();
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(h.coordinator.research.read(entry.id)).toMatchObject({
+    status: "failed",
+    document,
+  });
+  expect(h.store.research.comments(entry.id).at(-1)?.text).toBe(
+    "Research failed: Delivery failed",
+  );
+  expect(h.store.research.comments(entry.id).every((c) => c.delivered)).toBe(
+    true,
+  );
 });
