@@ -1,12 +1,12 @@
 import { displayName } from "@loom/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { finishedKey } from "../store/pane-transitions.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import {
-  cursorRows,
   issueKeyFor,
   type ListItem,
+  listItemKey,
   selectedListItems,
 } from "../store/selectors.js";
 import type { SortKey } from "../store/ui-state.js";
@@ -31,29 +31,18 @@ const HEADINGS: { key: SortKey; label: string }[] = [
 
 function ListViewComponent() {
   const store = useStoreApi();
-  const rows = useStore(cursorRows);
   const items = useStore(selectedListItems);
   const cursor = useStore((s) => s.ui.cursor);
-  const sections = useStore((s) => s.ui.listSections);
-  const previousSections = useRef(sections);
   const selectionVersion = useStore((s) => s.ui.selectionVersion);
-  const previousSelection = useRef(selectionVersion);
   const sort = useStore((s) => s.ui.sort);
   const descending = useStore((s) => s.ui.descending);
   const scroller = useRef<HTMLDivElement>(null);
-  // Built once per render so a scroll frame never does a linear scan per visible row.
-  const indexOfRow = useMemo(
-    () => new Map(rows.map((row, index) => [row, index])),
-    [rows],
-  );
 
   const virtual = useVirtualizer({
     count: items.length,
     getItemKey: (index) => {
       const item = items[index] as ListItem;
-      return item.kind === "row"
-        ? item.row.task.id
-        : `${item.kind}-${item.stage}`;
+      return listItemKey(item);
     },
     getScrollElement: () => scroller.current,
     estimateSize: () => 40,
@@ -62,21 +51,10 @@ function ListViewComponent() {
     scrollPaddingStart: 28,
   });
 
-  // The cursor is an index into `rows`; find where that row landed among the headers.
-  const cursorItem = items.findIndex(
-    (item) =>
-      item.kind === "row" && cursor !== null && item.row === rows[cursor],
-  );
-
+  // biome-ignore lint/correctness/useExhaustiveDependencies: explicit selection must scroll even when its index is unchanged.
   useEffect(() => {
-    // Toggling a section must not scroll back to the reset task cursor.
-    const sectionsChanged = previousSections.current !== sections;
-    previousSections.current = sections;
-    const selectionChanged = previousSelection.current !== selectionVersion;
-    previousSelection.current = selectionVersion;
-    if ((!sectionsChanged || selectionChanged) && cursorItem >= 0)
-      virtual.scrollToIndex(cursorItem, { align: "auto" });
-  }, [cursorItem, virtual, sections, selectionVersion]);
+    if (cursor !== null) virtual.scrollToIndex(cursor, { align: "auto" });
+  }, [cursor, virtual, selectionVersion]);
 
   return (
     <>
@@ -121,6 +99,7 @@ function ListViewComponent() {
               >
                 {entry.kind === "header" ? (
                   <ListGroupHeader
+                    cursor={cursor === item.index}
                     label={`${stageLabel(entry.stage)} · `}
                     count={entry.count}
                     collapsed={entry.collapsed}
@@ -128,15 +107,12 @@ function ListViewComponent() {
                   />
                 ) : entry.kind === "load-more" ? (
                   <LoadMore
+                    cursor={cursor === item.index}
                     label={`Load ${entry.count} more`}
                     onClick={() => store.loadMoreListSection(entry.stage)}
                   />
                 ) : (
-                  <Row
-                    index={indexOfRow.get(entry.row) ?? 0}
-                    item={entry}
-                    cursor={cursor}
-                  />
+                  <Row index={item.index} item={entry} cursor={cursor} />
                 )}
               </div>
             );

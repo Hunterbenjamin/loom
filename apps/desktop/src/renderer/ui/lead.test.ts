@@ -6,7 +6,7 @@ import { App } from "../app.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { StoreProvider } from "../store/react.js";
-import { cursorRows } from "../store/selectors.js";
+import { cursorItems, listItemKey, selectedRows } from "../store/selectors.js";
 import { WindowModeContext } from "../window-mode.js";
 import { LeadBar } from "./lead.js";
 
@@ -93,8 +93,8 @@ test.each(["Escape", "Cmd+J", "Minimize chat", "Close chat", "Main toggle"])(
   "%s returns Main focus to the tracker so Enter opens the selected issue",
   async (dismiss) => {
     const { store, host } = mount();
-    act(() => store.setCursor(0));
-    const selected = cursorRows(store.getState())[0]!.task.id;
+    act(() => store.setCursor(1));
+    const selected = listItemKey(cursorItems(store.getState())[1]!);
     const toggle = host.querySelector<HTMLButtonElement>(".lead-toggle")!;
     // Include the case where opening Main starts with focus on its button.
     toggle.focus();
@@ -156,7 +156,7 @@ test.each(["Escape", "Cmd+J", "Minimize chat", "Close chat", "Main toggle"])(
 
 test("closing Main in a detail returns focus to its keyboard scroll target", async () => {
   const { store, host } = mount();
-  await act(async () => store.open(cursorRows(store.getState())[0]!.task.id));
+  await act(async () => store.open(selectedRows(store.getState())[0]!.task.id));
   const header = host.querySelector<HTMLElement>(".pr-page-head")!;
   await act(async () => store.toggleMainChat());
   host.querySelector<HTMLTextAreaElement>(".chat-composer textarea")!.focus();

@@ -10,6 +10,8 @@ import { StoreProvider } from "../store/react.js";
 import { useShortcuts } from "./keys.js";
 import { ListView } from "./list.js";
 
+const { scrollToIndex } = vi.hoisted(() => ({ scrollToIndex: vi.fn() }));
+
 // Only layout is mocked: happy-dom has no viewport measurements.
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (options: {
@@ -24,7 +26,7 @@ vi.mock("@tanstack/react-virtual", () => ({
         start: index * 32,
         size: 32,
       })),
-    scrollToIndex() {},
+    scrollToIndex,
   }),
 }));
 (
@@ -233,36 +235,98 @@ test("loads successive pages independently and retains totals and loaded rows ac
   expect(h.host.querySelectorAll(".list-load-more")).toHaveLength(1);
 });
 
-test("j/k and Enter use only expanded, loaded rows in displayed order", () => {
+test.each(["Enter", "l"])(
+  "j/k visit rendered items and %s loads the next page",
+  (activate) => {
+    const h = setup();
+    const selected = () => h.host.querySelector('[data-cursor="true"]');
+    key("j");
+    expect(scrollToIndex).toHaveBeenLastCalledWith(
+      h.store.getState().ui.cursor,
+      {
+        align: "auto",
+      },
+    );
+    expect(selected()).toBe(h.button("In progress · 1"));
+    key("j");
+    expect(selected()?.getAttribute("data-task")).toBe("active");
+    key("Enter");
+    expect(h.store.getState().ui.openTask).toBe("active");
+    key("Escape");
+    key("h");
+    expect(scrollToIndex).toHaveBeenLastCalledWith(
+      h.store.getState().ui.cursor,
+      {
+        align: "auto",
+      },
+    );
+    expect(selected()).toBe(h.button("In progress · 1"));
+    expect(selected()?.getAttribute("aria-expanded")).toBe("false");
+    key("l");
+    expect(selected()?.getAttribute("aria-expanded")).toBe("true");
+    for (let i = 0; i < 3; i++) key("}");
+    expect(selected()).toBe(h.button("Done · 46"));
+    for (let i = 0; i < 11; i++) key("j");
+    expect(selected()).toBe(h.button("Load 10 more"));
+    key("j");
+    expect(selected()).toBe(h.button("Canceled · 46"));
+    key("k");
+    key(activate);
+    expect(h.rows("done")).toHaveLength(20);
+    expect(selected()?.getAttribute("data-task")).toBe("done-10");
+    key("}");
+    expect(selected()).toBe(h.button("Canceled · 46"));
+    key("Enter");
+    expect(h.rows("canceled")).toHaveLength(10);
+    key("{");
+    expect(selected()).toBe(h.button("Done · 46"));
+  },
+);
+
+test("collapsed sections remain reachable and large sections take one jump", () => {
   const h = setup();
-  expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
-  key("Enter");
-  expect(h.store.getState().ui.openTask).toBeNull();
-  act(() => h.button("Done · 46").click());
-  act(() => h.button("Canceled · 46").click());
-  expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
+  act(() => {
+    for (let i = 0; i < 4; i++) h.store.loadMoreListSection("done");
+    for (const stage of ["in_progress", "ci", "in_review", "done"] as const)
+      h.store.toggleListSection(stage);
+  });
+  for (const label of [
+    "In progress · 1",
+    "CI · 1",
+    "In review · 1",
+    "Done · 46",
+    "Canceled · 46",
+  ]) {
+    key("j");
+    expect(h.host.querySelector('[data-cursor="true"]')).toBe(h.button(label));
+  }
+  key("{");
+  key("l");
+  expect(h.rows("done")).toHaveLength(46);
   key("j");
-  expect(
-    h.host.querySelector('[data-cursor="true"]')?.getAttribute("data-task"),
-  ).toBe("active");
-  key("Enter");
-  expect(h.store.getState().ui.openTask).toBe("active");
-  key("Escape");
+  key("}");
+  expect(h.host.querySelector('[data-cursor="true"]')).toBe(
+    h.button("Canceled · 46"),
+  );
+});
+
+test("mouse section changes retain the selected item or its header", () => {
+  const h = setup();
+  key("G");
+  act(() => h.button("Load 10 more").click());
+  expect(h.host.querySelector('[data-cursor="true"]')).toBe(
+    h.button("Canceled · 46"),
+  );
   key("k");
-  expect(
-    h.host.querySelector('[data-cursor="true"]')?.getAttribute("data-task"),
-  ).toBe("active");
-  for (let i = 0; i < 30; i++) key("j");
-  key("Enter");
-  expect(h.store.getState().ui.openTask).toBe("canceled-9");
-  key("Escape");
-  act(() => h.button("Canceled · 46").click());
-  act(() => h.button("In progress · 1").click());
-  act(() => h.button("CI · 1").click());
-  act(() => h.button("In review · 1").click());
-  key("j");
-  key("Enter");
-  expect(h.store.getState().ui.openTask).toBeNull();
+  act(() => h.button("Load 10 more").click());
+  expect(h.host.querySelector('[data-cursor="true"]')).toBe(
+    h.button("Load 10 more"),
+  );
+  key("k");
+  act(() => h.button("Done · 46").click());
+  expect(h.host.querySelector('[data-cursor="true"]')).toBe(
+    h.button("Done · 46"),
+  );
 });
 
 test("view changes and mouse movement clear the keyboard cursor", () => {
