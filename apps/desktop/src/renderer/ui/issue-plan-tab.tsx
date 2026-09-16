@@ -26,8 +26,8 @@ export function IssuePlanTab({ task }: { task: Task }) {
         <section className="pr-description">
           <h3>Steps</h3>
           <ol className="issue-plan-steps">
-            {plan.steps.map((step, index) => (
-              <li key={`${index}:${step.title}`}>
+            {plan.steps.map((step) => (
+              <li key={step.title}>
                 <strong>{step.title}</strong>
                 <div className="dim">{step.detail}</div>
               </li>
@@ -47,7 +47,9 @@ export function IssuePlanTab({ task }: { task: Task }) {
           {approval ? (
             <div className="pr-property overview-status">
               <span className={`chip ${approval.voidedAt ? "danger" : "good"}`}>
-                {approval.voidedAt ? `voided: ${approval.voidReason}` : "approved"}
+                {approval.voidedAt
+                  ? `voided: ${approval.voidReason}`
+                  : "approved"}
               </span>
               <span>
                 plan v{approval.kind === "plan" ? approval.planVersion : 0}

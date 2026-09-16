@@ -5,7 +5,12 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
 import { pane } from "../../../../../packages/protocol/src/pane-fixture.js";
-import { approvalId, inputId, questionId, transitionId } from "../fixtures/ids.js";
+import {
+  approvalId,
+  inputId,
+  questionId,
+  transitionId,
+} from "../fixtures/ids.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { toSnapshot } from "../fixtures/protocol.js";
 import { buildPullRequestDetails } from "../fixtures/pull-requests.js";
@@ -1199,15 +1204,17 @@ test.each([false, true])(
   "Plan retains approval version and void reason (voided: %s)",
   (voided) => {
     const h = setup("plan");
-    h.snapshot.approvals = [{
-      id: approvalId("plan-layout"),
-      taskId: h.task.id,
-      kind: "plan",
-      planVersion: 8,
-      createdAt: h.snapshot.now,
-      voidedAt: voided ? h.snapshot.now : null,
-      voidReason: voided ? "plan_changed" : null,
-    }];
+    h.snapshot.approvals = [
+      {
+        id: approvalId("plan-layout"),
+        taskId: h.task.id,
+        kind: "plan",
+        planVersion: 8,
+        createdAt: h.snapshot.now,
+        voidedAt: voided ? h.snapshot.now : null,
+        voidReason: voided ? "plan_changed" : null,
+      },
+    ];
     h.store.setTab("plan");
     h.render();
     const rail = h.host.querySelector("aside.pr-rail")!;
@@ -1228,9 +1235,7 @@ test("Plan keeps detail keyboard scrolling on the page body", async () => {
   const body = h.host.querySelector<HTMLElement>('[data-tab-body="plan"]')!;
   const handler = createShortcutHandler(h.store);
   const key = (key: string) =>
-    act(() =>
-      handler(new KeyboardEvent("keydown", { key, cancelable: true })),
-    );
+    act(() => handler(new KeyboardEvent("keydown", { key, cancelable: true })));
   key("j");
   expect(body.scrollTop).toBe(60);
   key("k");
