@@ -197,6 +197,30 @@ test("restart preserves running identity and documents without replaying a promp
   ).toBe(true);
 });
 
+test("restart leaves finished research alone until a comment reopens it", async () => {
+  const h = await setup();
+  const { entry, session } = await start(h);
+  h.providers.confirm(session);
+  await h.coordinator.research.submit(entry.id, document);
+  h.providers.finish(session, "completed");
+  await h.coordinator.research.refresh();
+  expect(h.coordinator.research.read(entry.id).status).toBe("completed");
+  const next = await h.restart();
+  cleanup.splice(0);
+  cleanup.push(() => next.close());
+  const codex = vi.spyOn(next.adapters, "codex");
+  await next.coordinator.research.recover();
+  await next.coordinator.research.refresh();
+  expect(codex).not.toHaveBeenCalled();
+  expect(next.coordinator.research.read(entry.id).status).toBe("completed");
+  await next.coordinator.research.comment(
+    entry.id,
+    "@loom add examples",
+    randomUUID(),
+  );
+  expect(codex).toHaveBeenCalled();
+});
+
 test.each(["before recipe", "before Codex session", "before Claude recipe"])(
   "restart releases an incomplete launch %s without replay",
   async (boundary) => {
