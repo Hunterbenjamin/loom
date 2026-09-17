@@ -1,19 +1,13 @@
 import { scrollBindings } from "./scroll-keys.js";
 
 export { eventKey } from "./event-key.js";
-/** Tracker bindings are separate from editable Workbench bindings. */
+/** Tracker bindings are separate from editable Workbench bindings. The command palette is not
+ * here: its chord is the editable `commands` binding, the same in both windows. */
 export const trackerKeymap = [
   {
     id: "help",
     keys: ["?"],
     label: "Keyboard map",
-    group: "Everywhere",
-    scope: "global",
-  },
-  {
-    id: "palette",
-    keys: ["Meta+k", "Control+k"],
-    label: "Command palette",
     group: "Everywhere",
     scope: "global",
   },

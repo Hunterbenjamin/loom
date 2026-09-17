@@ -121,7 +121,7 @@ async function harness(panes = [pane]) {
         // biome-ignore lint/correctness/noChildrenProp: Typed provider requires children.
         children: createElement(
           WindowKeybindings,
-          null,
+          { mode: "workbench" },
           createElement(Workbench),
           createElement(WindowKeyboardSheet),
         ),

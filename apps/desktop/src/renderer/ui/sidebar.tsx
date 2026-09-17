@@ -1,12 +1,15 @@
 import { useState } from "react";
+import { formatBindings } from "../../shared/keybindings.js";
+import { useKeybindingsConfig } from "../keybindings-context.js";
 import { reviewNeedsHuman } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { viewCounts } from "../store/selectors.js";
 import { VIEWS } from "../store/ui-state.js";
-import { formatKeys, keyHint } from "./tracker-keymap.js";
+import { keyHint } from "./tracker-keymap.js";
 
 export function Sidebar() {
   const store = useStoreApi();
+  const keybindings = useKeybindingsConfig();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const choose = async (value: string) => {
@@ -160,7 +163,7 @@ export function Sidebar() {
           {theme === "dark" ? "Light theme" : "Dark theme"}
         </button>
         <span className="spacer" />
-        <kbd>{formatKeys("palette")}</kbd>
+        <kbd>{formatBindings(keybindings, "commands")}</kbd>
       </div>
     </nav>
   );
