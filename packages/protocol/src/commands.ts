@@ -111,7 +111,7 @@ export const setTitle = z.strictObject({
 export const command = z.union([
   z.strictObject({
     kind: z.literal("list_research"),
-    archived: z.boolean().optional(),
+    archived: z.union([z.boolean(), z.literal("all")]).optional(),
   }),
   z.strictObject({ kind: z.literal("read_research"), id: z.string().uuid() }),
   z.strictObject({

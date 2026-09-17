@@ -279,3 +279,19 @@
   outline: 1px solid var(--text-dim);
   outline-offset: -1px;
 }
+
+.research-list .list-row-open > .text {
+  max-width: 70ch;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.research-list .list-row-age {
+  flex: none;
+  width: auto;
+  white-space: nowrap;
+}
+.research-list .review-status {
+  flex: none;
+}

@@ -80,7 +80,7 @@ export class ResearchStore {
     this.put(updated);
     return updated;
   }
-  state(archived = false): ResearchState {
+  state(archived: boolean | "all" = false): ResearchState {
     return {
       entries: this.list({ archived }).map(({ document, ...entry }) => ({
         ...entry,

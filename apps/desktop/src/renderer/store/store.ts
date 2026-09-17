@@ -176,6 +176,24 @@ export function createStore(
     openResearch: (openResearch: string | null) => setUi({ openResearch }),
     openBrief: (openBrief: string | null) => setUi({ openBrief }),
     setPane: (pane: Pane) => setUi({ pane, cursor: null }),
+    toggleBriefSection(section: string) {
+      setUi({
+        briefSections: {
+          ...state.ui.briefSections,
+          [section]: !(state.ui.briefSections[section] ?? false),
+        },
+      });
+    },
+    toggleResearchSection(section: "active" | "archived") {
+      setUi({
+        researchSections: {
+          ...state.ui.researchSections,
+          [section]: !(
+            state.ui.researchSections[section] ?? section === "archived"
+          ),
+        },
+      });
+    },
     toggleListSection(stage: Stage) {
       const selected = cursorItems(state)[state.ui.cursor ?? -1];
       const section = state.ui.listSections[stage];

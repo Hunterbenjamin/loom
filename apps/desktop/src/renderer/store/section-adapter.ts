@@ -1,5 +1,11 @@
+import { useLayoutEffect, useRef } from "react";
+import { useTrackerActions } from "../ui/tracker-actions.js";
 import { selectedReviewItems } from "./pull-requests.js";
-import { runSectionCommand, type SectionAdapter } from "./section-list.js";
+import {
+  retainedCursor,
+  runSectionCommand,
+  type SectionAdapter,
+} from "./section-list.js";
 import { selectedListItems } from "./selectors.js";
 import type { State, Store } from "./store.js";
 
@@ -43,4 +49,44 @@ export function sectionAdapter(store: Store) {
     loadMore: store.loadMoreListSection,
     open: (row) => store.open(row.task.id),
   });
+}
+
+/** Component-local projections share the same navigation and identity retention as store lists. */
+export function useSectionAdapter<R, S extends string, P extends S>(
+  adapter: SectionAdapter<R, S, P>,
+  enabled: boolean,
+) {
+  const previous = useRef(adapter.items);
+  const cursor =
+    previous.current === adapter.items
+      ? adapter.cursor
+      : retainedCursor(adapter.items, previous.current[adapter.cursor ?? -1]);
+  useLayoutEffect(() => {
+    previous.current = adapter.items;
+    if (cursor !== adapter.cursor) adapter.setCursor(cursor);
+  }, [adapter, cursor]);
+  const actions = [
+    "next-row",
+    "previous-row",
+    "first-row",
+    "last-row",
+    "open",
+    "expand-item",
+    "collapse-section",
+    "next-section",
+    "previous-section",
+  ] as const;
+  useTrackerActions(
+    enabled
+      ? Object.fromEntries(
+          actions.map((action) => [
+            action,
+            () => {
+              runSectionCommand({ ...adapter, cursor }, action);
+            },
+          ]),
+        )
+      : {},
+  );
+  return cursor;
 }

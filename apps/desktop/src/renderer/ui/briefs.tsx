@@ -1,15 +1,13 @@
-import type {
-  BriefContent,
-  BriefRun,
-  BriefRunSummary,
-  BriefState,
-  Command,
-} from "@loom/protocol";
-import { useEffect, useRef, useState } from "react";
+import type { BriefContent, BriefRun, BriefRunSummary } from "@loom/protocol";
+import { useEffect, useMemo, useState } from "react";
+import { useBriefState } from "../store/brief-state.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { useSectionAdapter } from "../store/section-adapter.js";
+import { historySectionItems } from "../store/section-list.js";
 import { Byline } from "./byline.js";
 import { DetailLayout } from "./detail-layout.js";
 import { ListGroupHeader, ListRow } from "./list-rows.js";
+import { ResearchGlyph as BriefGlyph, statusLabels } from "./research-glyph.js";
 import { useTrackerActions } from "./tracker-actions.js";
 
 const TIME_ZONE = "Asia/Makassar";
@@ -31,12 +29,6 @@ const categoryLabels: Record<
   business: "Business",
   research: "Research",
 };
-const statusLabels: Record<BriefRunSummary["status"], string> = {
-  running: "Researching",
-  completed: "Completed",
-  failed: "Failed",
-  interrupted: "Interrupted",
-};
 const format = (at: string, options: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat(undefined, {
     timeZone: TIME_ZONE,
@@ -54,108 +46,46 @@ function rowText(run: BriefRunSummary): string {
   return "Brief";
 }
 
-function BriefGlyph({ status }: { status: BriefRunSummary["status"] }) {
-  const [symbol, tone] =
-    status === "completed"
-      ? ["✓", "good"]
-      : status === "running"
-        ? ["●", "attention"]
-        : status === "failed"
-          ? ["×", "danger"]
-          : ["◌", ""];
-  return (
-    <span
-      className={`review-status ${tone}`}
-      role="img"
-      aria-label={statusLabels[status]}
-      title={statusLabels[status]}
-    >
-      {symbol}
-    </span>
-  );
-}
-
 /** The Daily brief page: its history as a list, and the open brief over it. */
 export function BriefsView() {
   const store = useStoreApi();
   const connection = useStore((s) => s.connection);
   const cursor = useStore((s) => s.ui.cursor);
   const open = useStore((s) => s.ui.openBrief);
-  const [state, setState] = useState<BriefState | null>(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const submitting = useRef(false);
+  const { state, error } = useBriefState();
   const connected = connection === "connected";
-  useEffect(() => {
-    if (!connected) {
-      setError("Waiting for the coordinator…");
-      return;
-    }
-    let disposed = false;
-    let loading = false;
-    const refresh = async () => {
-      if (loading) return;
-      loading = true;
-      try {
-        const result = await store.command({ kind: "get_briefs" });
-        if (disposed) return;
-        if (!result.ok) throw new Error(result.error.message);
-        if (result.result.kind === "briefs") {
-          setState(result.result.state);
-          setError("");
-        }
-      } catch (error) {
-        if (!disposed)
-          setError(
-            error instanceof Error ? error.message : "Could not load briefs",
-          );
-      } finally {
-        loading = false;
-      }
-    };
-    void refresh();
-    const timer = setInterval(() => void refresh(), 5000);
-    return () => {
-      disposed = true;
-      clearInterval(timer);
-    };
-  }, [store, connected]);
-  const act = async (command: Command) => {
-    if (submitting.current) return;
-    submitting.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      const result = await store.command(command);
-      if (!result.ok) throw new Error(result.error.message);
-      const refreshed = await store.command({ kind: "get_briefs" });
-      if (!refreshed.ok) throw new Error(refreshed.error.message);
-      if (refreshed.result.kind === "briefs") setState(refreshed.result.state);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Action failed");
-    } finally {
-      submitting.current = false;
-      setBusy(false);
-    }
-  };
-  const running = state?.runs.some((item) => item.status === "running");
+  const sections = useStore((s) => s.ui.briefSections);
   const openSummary = state?.runs.find((item) => item.id === open);
 
-  const rows = state?.runs ?? [];
-  const select = (index: number) => {
-    store.setCursor(
-      rows.length ? Math.max(0, Math.min(rows.length - 1, index)) : null,
+  const items = useMemo(() => {
+    const months = new Map<string, BriefRunSummary[]>();
+    for (const run of state?.runs ?? []) {
+      const label = format(run.startedAt, { month: "long", year: "numeric" });
+      const runs = months.get(label) ?? [];
+      runs.push(run);
+      months.set(label, runs);
+    }
+    return historySectionItems(
+      [...months].map(([id, rows]) => ({
+        id,
+        rows,
+        collapsed: sections[id] ?? false,
+      })),
     );
-  };
-  useTrackerActions({
-    "next-row": () => select(cursor === null ? 0 : cursor + 1),
-    "previous-row": () => select(cursor === null ? 0 : cursor - 1),
-    "first-row": () => select(0),
-    "last-row": () => select(rows.length - 1),
-    open: () => {
-      const row = rows[cursor ?? -1];
-      if (row) store.openBrief(row.id);
+  }, [state, sections]);
+  const selected = useSectionAdapter(
+    {
+      items,
+      cursor,
+      setCursor: store.setCursor,
+      toggle: store.toggleBriefSection,
+      loadMore: () => {},
+      open: (run) => store.openBrief(run.id),
     },
+    !open,
+  );
+  const rows = items.flatMap((item) => (item.kind === "row" ? [item.row] : []));
+  useTrackerActions({
     ...(open
       ? {
           "next-issue": () => {
@@ -171,53 +101,15 @@ export function BriefsView() {
         }
       : {}),
   });
-  const cursorId = rows[cursor ?? -1]?.id;
+  const cursorKey = items[selected ?? -1]?.key;
   useEffect(() => {
-    if (cursorId)
-      document
-        .getElementById(`brief-row-${cursorId}`)
-        ?.scrollIntoView({ block: "nearest" });
-  }, [cursorId]);
-  const months: { label: string; runs: BriefRunSummary[] }[] = [];
-  for (const run of rows) {
-    const label = format(run.startedAt, { month: "long", year: "numeric" });
-    const last = months.at(-1);
-    if (last?.label === label) last.runs.push(run);
-    else months.push({ label, runs: [run] });
-  }
-
+    if (!cursorKey) return;
+    document
+      .querySelector('.briefs-list [data-cursor="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [cursorKey]);
   return (
     <>
-      <div className="list-toolbar briefs-toolbar">
-        <span className="faint">
-          Daily at 7:00 a.m. · {TIME_ZONE} · Claude Sonnet, $3 limit per run
-        </span>
-        <span className="spacer" />
-        <label className="briefs-schedule">
-          <input
-            type="checkbox"
-            checked={state?.schedule.enabled ?? false}
-            disabled={!state || busy}
-            onChange={(event) =>
-              void act({
-                kind: "set_brief_schedule",
-                enabled: event.target.checked,
-              })
-            }
-          />
-          Daily schedule
-        </label>
-        <button
-          type="button"
-          className="briefs-run"
-          disabled={busy || running || !state}
-          onClick={() =>
-            void act({ kind: "run_brief", id: crypto.randomUUID() })
-          }
-        >
-          {running ? "Researching…" : "Run now"}
-        </button>
-      </div>
       <div className="list reviews-list briefs-list" data-testid="briefs-list">
         {error ? (
           <p className="pad" role="alert">
@@ -230,38 +122,43 @@ export function BriefsView() {
           </div>
         ) : !state.runs.length ? (
           <div className="pad faint" role="status">
-            Your first brief will appear here. Run it now or wait for the
-            morning edition. Loom’s coordinator must be running; after sleep,
-            today’s missed brief runs when it wakes.
+            Your first brief will appear here. Run a daily brief from the create
+            palette (c) or wait for the morning edition. Loom’s coordinator must
+            be running; after sleep, today’s missed brief runs when it wakes.
           </div>
         ) : null}
-        {months.map((month) => (
-          <div key={month.label}>
+        {items.map((item, index) =>
+          item.kind === "header" ? (
             <ListGroupHeader
-              label={month.label}
-              count={month.runs.length}
-              collapsed={false}
+              key={item.key}
+              label={item.section}
+              count={item.count}
+              collapsed={item.collapsed}
+              cursor={selected === index}
+              onToggle={() => store.toggleBriefSection(item.section)}
             />
-            {month.runs.map((run) => (
-              <ListRow
-                key={run.id}
-                cursor={cursorId === run.id}
-                onOpen={() => store.openBrief(run.id)}
-                leading={<BriefGlyph status={run.status} />}
-                text={rowText(run)}
-                title={rowText(run)}
-                data-brief={run.id}
-                id={`brief-row-${run.id}`}
-                meta={
-                  <span>
-                    {run.trigger === "scheduled" ? "Daily" : "Manual"}
-                  </span>
-                }
-                age={format(run.startedAt, { month: "short", day: "numeric" })}
-              />
-            ))}
-          </div>
-        ))}
+          ) : item.kind === "row" ? (
+            <ListRow
+              key={item.key}
+              cursor={selected === index}
+              onOpen={() => store.openBrief(item.row.id)}
+              leading={<BriefGlyph status={item.row.status} />}
+              text={rowText(item.row)}
+              title={rowText(item.row)}
+              data-brief={item.row.id}
+              id={`brief-row-${item.row.id}`}
+              meta={
+                <span>
+                  {item.row.trigger === "scheduled" ? "Daily" : "Manual"}
+                </span>
+              }
+              age={format(item.row.startedAt, {
+                month: "short",
+                day: "numeric",
+              })}
+            />
+          ) : null,
+        )}
       </div>
       {open ? (
         <BriefDetail

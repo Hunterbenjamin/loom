@@ -100,7 +100,7 @@ test("one modal contains every source entry once, with effective bindings and sc
         .querySelector(`[data-key-id="${id}"]`)
         ?.closest("section")
         ?.querySelector("h3")?.textContent,
-    ).toBe("Issues and Review");
+    ).toBe("Sections");
   }
   expect(host.textContent).toContain("Cmd+U");
   expect(host.textContent).toContain("4.2 seconds");

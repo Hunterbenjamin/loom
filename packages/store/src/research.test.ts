@@ -66,6 +66,15 @@ test("0014 retains existing documents; comments are isolated, ordered and surviv
     );
     expect(store.comments(other.id)).toHaveLength(1);
     expect(store.get(entry.id)).toEqual(entry);
+    store.setArchived(other.id, "2026-09-17T00:00:00.000Z");
+    expect(store.state().entries.map((row) => row.id)).toEqual([entry.id]);
+    expect(store.state(true).entries.map((row) => row.id)).toEqual([other.id]);
+    expect(
+      store
+        .state("all")
+        .entries.map((row) => row.id)
+        .sort(),
+    ).toEqual([entry.id, other.id].sort());
   } finally {
     db.close();
     rmSync(root, { recursive: true, force: true });

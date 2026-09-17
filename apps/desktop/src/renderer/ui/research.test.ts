@@ -73,7 +73,11 @@ async function mount(
           kind: "research_list",
           state: {
             entries: entries
-              .filter((entry) => !!entry.archivedAt === !!command.archived)
+              .filter(
+                (entry) =>
+                  command.archived === "all" ||
+                  !!entry.archivedAt === !!command.archived,
+              )
               .map(({ document, ...entry }) => ({
                 ...entry,
                 title: document?.title ?? null,
@@ -104,11 +108,15 @@ async function mount(
   });
   return { store, host, send };
 }
-test("lists by month, renders markdown and sources, and archives without losing the open document", async () => {
+test("lists Active and Archived, renders markdown and sources, and archives without losing the open document", async () => {
   const { host, store } = await mount([structuredClone(saved)]);
-  expect(host.querySelector("form.list-toolbar")).toBeNull();
+  expect(host.querySelector(".list-toolbar")).toBeNull();
   expect(host.querySelector('[aria-label="Research question"]')).toBeNull();
-  expect(host.textContent).toContain("September 2026");
+  expect(host.querySelectorAll(".list-group")).toHaveLength(2);
+  expect(
+    host.querySelectorAll(".list-group")[1]?.getAttribute("aria-expanded"),
+  ).toBe("false");
+  expect(host.querySelector('input[type="checkbox"]')).toBeNull();
   expect(host.textContent).toContain("Saved by Main");
   await act(async () => store.openResearch(saved.id));
   expect(host.querySelector("strong")?.textContent).toBe("Modes");
@@ -128,7 +136,7 @@ test("lists by month, renders markdown and sources, and archives without losing 
   ).toContain("Modes change key meanings");
   await act(async () => store.openResearch(null));
   await act(async () =>
-    (host.querySelector('input[type="checkbox"]') as HTMLInputElement).click(),
+    (host.querySelectorAll(".list-group")[1] as HTMLButtonElement).click(),
   );
   expect(
     host.querySelector('[data-testid="research-list"]')?.textContent,
@@ -136,6 +144,63 @@ test("lists by month, renders markdown and sources, and archives without losing 
   await act(async () => store.openResearch(saved.id));
   expect(host.textContent).toContain("Unarchive");
 });
+test("detail keys follow visible Active then Archived order and skip collapsed sections", async () => {
+  const { createShortcutHandler } = await import("./keys.js");
+  const archived = {
+    ...saved,
+    id: "00000000-0000-4000-8000-000000000002",
+    startedAt: "2026-09-15T00:00:00.000Z",
+    archivedAt: "2026-09-16T01:00:00.000Z",
+  };
+  const older = {
+    ...saved,
+    id: "00000000-0000-4000-8000-000000000003",
+    startedAt: "2026-09-14T00:00:00.000Z",
+  };
+  const { host, store } = await mount([saved, archived, older]);
+  act(() => store.setView("research"));
+  const handler = createShortcutHandler(store);
+  const press = async (key: string) => {
+    await act(async () => handler(new KeyboardEvent("keydown", { key })));
+    return store.getState().ui.openResearch;
+  };
+  await act(async () => store.openResearch(saved.id));
+  expect(await press("]")).toBe(older.id);
+  expect(await press("]")).toBe(older.id);
+  expect(await press("[")).toBe(saved.id);
+  expect(await press("[")).toBe(saved.id);
+
+  await act(async () => store.openResearch(null));
+  await act(async () =>
+    (host.querySelectorAll(".list-group")[1] as HTMLButtonElement).click(),
+  );
+  expect([...host.querySelectorAll(".list-row")].map((row) => row.id)).toEqual([
+    `research-${saved.id}`,
+    `research-${older.id}`,
+    `research-${archived.id}`,
+  ]);
+  await act(async () => store.openResearch(saved.id));
+  expect(await press("]")).toBe(older.id);
+  expect(await press("]")).toBe(archived.id);
+  expect(await press("]")).toBe(archived.id);
+  expect(await press("[")).toBe(older.id);
+
+  await act(async () => store.openResearch(null));
+  await act(async () =>
+    (host.querySelectorAll(".list-group")[0] as HTMLButtonElement).click(),
+  );
+  await act(async () => store.openResearch(archived.id));
+  expect(await press("[")).toBe(archived.id);
+  await act(async () => store.openResearch(null));
+  await act(async () =>
+    (host.querySelectorAll(".list-group")[1] as HTMLButtonElement).click(),
+  );
+  expect(host.querySelector(".list-row")).toBeNull();
+  expect(host.textContent).not.toContain(
+    "Create research from the create palette",
+  );
+});
+
 test("running and interrupted entries stay readable", async () => {
   const entry: ResearchEntry = {
     ...saved,
@@ -274,4 +339,82 @@ test("an uncertain comment retry keeps its request ID until success", async () =
   expect(attempts[0]).toMatchObject({ requestId: expect.any(String) });
   expect(attempts[1]).toEqual(attempts[0]);
   expect(textarea.value).toBe("");
+});
+
+test("archive is registration-gated, reconciles the answer, and survives section toggles without refetching", async () => {
+  const { createShortcutHandler } = await import("./keys.js");
+  const h = await mount([{ ...saved, origin: "agent" }]);
+  act(() => h.store.setView("research"));
+  const handler = createShortcutHandler(h.store);
+  const press = async (key: string) => {
+    const event = new KeyboardEvent("keydown", { key, cancelable: true });
+    await act(async () => handler(event));
+    return event;
+  };
+  expect((await press("a")).defaultPrevented).toBe(false);
+  await press("j");
+  expect((await press("a")).defaultPrevented).toBe(false);
+  await press("j");
+  expect(h.host.querySelector(".list-row-meta")).toBeNull();
+  expect(
+    h.host.querySelector('.review-status[aria-label="Completed"]'),
+  ).not.toBeNull();
+  let acknowledge!: (value: AckOutcome) => void;
+  h.send.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  await press("a");
+  expect(h.host.querySelector(".list-row")).not.toBeNull();
+  await act(async () =>
+    acknowledge({
+      ok: false,
+      error: { code: "invalid_input", message: "Archive refused", details: [] },
+    }),
+  );
+  expect(h.host.querySelector('[role="alert"]')?.textContent).toBe(
+    "Archive refused",
+  );
+  expect(h.host.querySelector(".list-row")).not.toBeNull();
+  await press("a");
+  expect(h.send).toHaveBeenCalledWith({
+    kind: "set_research_archived",
+    id: saved.id,
+    archived: true,
+  });
+  expect(h.host.querySelector(".list-row")).toBeNull();
+  const reads = h.send.mock.calls.filter(
+    ([c]) => c.kind === "list_research",
+  ).length;
+  await press("}");
+  await press("l");
+  expect(h.host.querySelector(".list-row")).not.toBeNull();
+  await press("h");
+  await press("Enter");
+  expect(
+    h.send.mock.calls.filter(([c]) => c.kind === "list_research"),
+  ).toHaveLength(reads);
+  expect(h.send).toHaveBeenCalledWith({
+    kind: "list_research",
+    archived: "all",
+  });
+  await press("j");
+  await press("Enter");
+  expect(h.store.getState().ui.openResearch).toBe(saved.id);
+  await press("a");
+  expect(h.send).toHaveBeenCalledWith({
+    kind: "set_research_archived",
+    id: saved.id,
+    archived: false,
+  });
+  expect(h.store.getState().ui.openResearch).toBe(saved.id);
+  expect(
+    h.host.querySelector('[data-testid="research-detail"]'),
+  ).not.toBeNull();
+  await act(async () => h.store.openResearch(null));
+  expect(
+    h.host.querySelectorAll(".list-group")[1]?.getAttribute("aria-expanded"),
+  ).toBe("true");
 });
