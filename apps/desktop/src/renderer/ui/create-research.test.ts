@@ -27,6 +27,7 @@ function setup() {
         throw new Error("Unexpected command");
       const entry: ResearchEntry = {
         id: command.id,
+        name: command.name!,
         question: command.question,
         directory: command.directory,
         origin: "agent",
@@ -129,6 +130,7 @@ test("Cmd+Enter sends a fresh UUID and opens the acknowledged entry in Research"
       kind: "start_research",
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       directory: "/tmp/research",
+      name: "How does it work?",
       question: "How does it work?",
     });
     if (command.kind !== "start_research")
@@ -204,6 +206,26 @@ test("pending submission prevents duplicate commands and dismissal", async () =>
     resolve({
       ok: false,
       error: { code: "guard_failed", message: "Refused", details: [] },
+    }),
+  );
+});
+
+test("name follows the question until edited", async () => {
+  const h = setup();
+  h.change("#research-question", "Compare\n keybindings (details)");
+  expect(h.get<HTMLInputElement>("#research-name").value).toBe(
+    "Compare keybindings",
+  );
+  h.change("#research-name", "Keyboard modes");
+  h.change("#research-question", "A different question");
+  expect(h.get<HTMLInputElement>("#research-name").value).toBe(
+    "Keyboard modes",
+  );
+  await h.submit();
+  expect(h.send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      name: "Keyboard modes",
+      question: "A different question",
     }),
   );
 });

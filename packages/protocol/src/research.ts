@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+export const researchName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(32)
+  .regex(/^[^\r\n]*$/, "Name must be one line");
+
 export const researchQuestion = z.string().trim().min(1).max(10000);
 export const researchDocument = z.strictObject({
   title: z.string().trim().min(1).max(300),
@@ -33,6 +40,7 @@ export const researchDocument = z.strictObject({
 export type ResearchDocument = z.infer<typeof researchDocument>;
 export const researchEntry = z.strictObject({
   id: z.string().uuid(),
+  name: researchName,
   question: researchQuestion,
   origin: z.enum(["agent", "main"]),
   status: z.enum(["running", "completed", "failed", "interrupted"]),

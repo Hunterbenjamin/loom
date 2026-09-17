@@ -173,7 +173,7 @@ export class PaneInventory {
           row.attention =
             research.observedStatus === "waiting" ||
             research.status === "failed";
-          row.paneTitle = research.document?.title ?? "Research";
+          row.paneTitle = research.name;
         }
         // Share each cwd read (including failures) for this refresh only. The next
         // poll or hint must observe branch switches and recover unreadable paths.
