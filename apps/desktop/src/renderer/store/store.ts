@@ -12,6 +12,7 @@ import type {
   PaneView,
   PatchFrame,
   PullRequestDetailRow,
+  RepoFiles,
   RunTarget,
   SettingsDocument,
   TaskInbox,
@@ -237,12 +238,46 @@ export function createStore(
       });
       if (!outcome.ok) throw new Error(outcome.error.message);
     },
+    dismissRepoOnboarding() {
+      setUi({ onboardingRepo: null });
+    },
+    async checkRepoFiles(repo: string): Promise<RepoFiles> {
+      if (!send) throw new Error("Coordinator is disconnected");
+      const outcome = await send({
+        kind: "check_repo_files",
+        repoId: parseRepoId.parse(repo),
+      });
+      if (!outcome.ok) throw new Error(outcome.error.message);
+      if (outcome.result.kind !== "repo_files")
+        throw new Error("Expected repository files");
+      return outcome.result.files;
+    },
+    async startRepoOnboarding(repo: string) {
+      if (!send) throw new Error("Coordinator is disconnected");
+      const outcome = await send({
+        kind: "start_repo_onboarding",
+        repoId: parseRepoId.parse(repo),
+      });
+      if (!outcome.ok) throw new Error(outcome.error.message);
+      if (outcome.result.kind !== "task_created")
+        throw new Error("Expected drafting issue");
+      setUi({
+        openTask: outcome.result.taskId,
+        openPr: null,
+        openRun: null,
+        openReason: null,
+        tab: "overview",
+        view: "all",
+      });
+    },
     async addRepo() {
       const folder = await window.loomHost.chooseRepository();
       if (!folder) return;
       if (!send) throw new Error("Coordinator is disconnected");
       const outcome = await send({ kind: "add_repo", ...folder });
       if (!outcome.ok) throw new Error(outcome.error.message);
+      if (outcome.result.kind === "repo_added")
+        setUi({ onboardingRepo: outcome.result.repoId });
     },
     setSort(sort: SortKey) {
       setUi(

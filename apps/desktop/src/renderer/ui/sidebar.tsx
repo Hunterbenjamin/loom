@@ -5,6 +5,7 @@ import { reviewNeedsHuman } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { viewCounts } from "../store/selectors.js";
 import { VIEWS } from "../store/ui-state.js";
+import { RepositoryFiles } from "./repo-files.js";
 import { keyHint } from "./tracker-keymap.js";
 
 export function Sidebar() {
@@ -26,6 +27,7 @@ export function Sidebar() {
       setBusy(false);
     }
   };
+  const onboardingRepo = useStore((s) => s.ui.onboardingRepo);
   const connection = useStore((s) => s.connection);
   const needsYou = useStore((s) =>
     s.snapshot.tasks
@@ -87,6 +89,14 @@ export function Sidebar() {
       {error ? (
         <div className="pad" role="alert">
           {error}
+        </div>
+      ) : null}
+      {onboardingRepo ? (
+        <div className="repo-onboarding">
+          <RepositoryFiles key={onboardingRepo} repoId={onboardingRepo} />
+          <button type="button" onClick={() => store.dismissRepoOnboarding()}>
+            Dismiss
+          </button>
         </div>
       ) : null}
       <div className="sidebar-views">

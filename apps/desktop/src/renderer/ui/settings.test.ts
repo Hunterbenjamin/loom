@@ -403,3 +403,44 @@ test("prefix wait explicitly saves null for no timeout and the default duration 
     );
   }
 });
+
+test("repository settings re-checks file status and shows parse reasons", async () => {
+  const h = await mount();
+  let complete = false;
+  h.send.mockImplementation(async () => ({
+    ok: true,
+    result: {
+      kind: "repo_files",
+      repoId: h.repo.id,
+      files: [
+        { file: "AGENTS.md", status: complete ? "present" : "missing" },
+        { file: "CLAUDE.md", status: "present" },
+        complete
+          ? { file: "WORKFLOW.md", status: "present" }
+          : {
+              file: "WORKFLOW.md",
+              status: "unusable",
+              reason: "WORKFLOW.md defines test twice",
+            },
+      ],
+    },
+  }));
+  await h.section("Workflow");
+  await act(async () => h.button(h.repo.github).click());
+  const group = h.group("Repository files");
+  expect(group.querySelectorAll("li")).toHaveLength(3);
+  expect(group.textContent).toContain("WORKFLOW.md defines test twice");
+  expect(h.button("Draft files as a PR", group)).toBeDefined();
+  complete = true;
+  await act(async () => h.button("Re-check", group).click());
+  expect(h.send).toHaveBeenLastCalledWith({
+    kind: "check_repo_files",
+    repoId: h.repo.id,
+  });
+  expect(group.textContent).not.toContain("Draft files as a PR");
+  expect(group.textContent).toContain("AGENTS.md: present");
+  h.send.mockRejectedValueOnce(new Error("Read failed"));
+  await act(async () => h.button("Re-check", group).click());
+  expect(group.textContent).toContain("Read failed");
+  expect(group.textContent).not.toContain("AGENTS.md: present");
+});

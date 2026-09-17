@@ -43,6 +43,7 @@ import { LeadSession } from "./lead.js";
 import { leadHandlers } from "./lead-commands.js";
 import type { Loop } from "./loop.js";
 import { PullRequestCache } from "./observe.js";
+import { onboardingHandlers } from "./onboarding.js";
 import { handlePullRequestCommand } from "./pull-requests.js";
 import { RecipeStore } from "./recipes.js";
 import { type RecoveryReport, recover } from "./recovery.js";
@@ -230,6 +231,11 @@ export class Coordinator {
         conversations: this.views.conversationViews,
         publishLead: () => this.views.publishLead(),
         refreshInventory: () => this.views.inventory.refresh(),
+      }),
+      ...onboardingHandlers({
+        repos: () => this.store.repos(),
+        workflow: this.workflow,
+        taskInputs: this.taskInputs,
       }),
       ...repoHandlers({
         store: this.store,

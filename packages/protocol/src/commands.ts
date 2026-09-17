@@ -108,7 +108,22 @@ export const setTitle = z.strictObject({
   title: displayTitle,
 });
 
+export const repoFileStatus = z.strictObject({
+  file: z.enum(["AGENTS.md", "CLAUDE.md", "WORKFLOW.md"]),
+  status: z.enum(["present", "missing", "unusable"]),
+  reason: z.string().optional(),
+});
+export type RepoFileStatus = z.output<typeof repoFileStatus>;
+export const repoFiles = z.tuple([
+  repoFileStatus,
+  repoFileStatus,
+  repoFileStatus,
+]);
+export type RepoFiles = z.output<typeof repoFiles>;
+
 export const command = z.union([
+  z.strictObject({ kind: z.literal("check_repo_files"), repoId }),
+  z.strictObject({ kind: z.literal("start_repo_onboarding"), repoId }),
   z.strictObject({
     kind: z.literal("list_research"),
     archived: z.union([z.boolean(), z.literal("all")]).optional(),
@@ -312,6 +327,7 @@ export const commandRequest = z.strictObject({
 
 /** What an acknowledged request returns. One arm per request kind, plus `subscribe`. */
 export const ackResult = z.union([
+  z.strictObject({ kind: z.literal("repo_files"), repoId, files: repoFiles }),
   z.strictObject({ kind: z.literal("research_list"), state: researchState }),
   z.strictObject({
     kind: z.literal("research_entry"),
