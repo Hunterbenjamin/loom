@@ -61,8 +61,11 @@ executable, arguments, model, access, environment and MCP credentials outside th
 Retries retain the captured recipe; explicit run replacement uses current effective settings.
 
 Provider status, issue stage and attention are separate facts. A failed owner read means unknown,
-not ended. Native approval/request identities are scoped to their session and connection generation;
-a resolved or stale request cannot be answered by replaying an old UI action.
+not ended. An interactive Claude session missing from `claude agents` is also unknown until
+its pane is confirmed absent or dead: `SessionStart` can arrive before registry registration.
+The existing unknown-status grace raises observability attention while the process remains alive;
+it does not relaunch the run. Native approval/request identities are scoped to their session and
+connection generation; a resolved or stale request cannot be answered by replaying an old UI action.
 
 ### Conversation and usage
 

@@ -616,8 +616,15 @@ export class ScenarioDriver {
     if ("status" in step) providers.status(p.sessionId, step.status);
     else if ("turn" in step)
       providers.finish(p.sessionId, step.turn, step.error);
-    else if ("crash" in step) providers.crash(p.sessionId);
-    else if ("dropDelivery" in step)
+    else if ("crash" in step) {
+      providers.crash(p.sessionId);
+      const run = store
+        .loadTaskState(p.taskId)
+        .runs.find((r) => r.id === p.runId);
+      // An interactive Claude crash exits its pane process; registry absence alone is unknown.
+      if (run?.provider === "claude" && run.mode === "interactive" && run.pane)
+        this.harness.paneHost.exit(run.pane, 1);
+    } else if ("dropDelivery" in step)
       providers.get(p.sessionId).dropDelivery = true;
     else if ("duplicate" in step) providers.hints.duplicate();
     else if ("rateLimit" in step)
