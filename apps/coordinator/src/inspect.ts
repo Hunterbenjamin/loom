@@ -102,7 +102,7 @@ export function inspectTask(store: Store, taskId: TaskId, adapters?: Adapters) {
         ? [{ kind: "plan", planVersion: state.plan?.version ?? null }]
         : []),
       ...(task.stage === "awaiting_approval"
-        ? [{ kind: "merge", headSha: state.worktree?.git?.headSha ?? null }]
+        ? [{ kind: "merge", headSha: state.review?.lastReviewedHead ?? null }]
         : []),
       ...runs
         .filter((run) => run.endedAt === null)
