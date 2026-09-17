@@ -84,7 +84,7 @@ export function BriefsView() {
     },
     !open,
   );
-  const rows = state?.runs ?? [];
+  const rows = items.flatMap((item) => (item.kind === "row" ? [item.row] : []));
   useTrackerActions({
     ...(open
       ? {

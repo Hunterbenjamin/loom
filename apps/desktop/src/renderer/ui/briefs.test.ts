@@ -267,6 +267,43 @@ test("month headers are cursor stops, collapse retains selection, and jumps span
   ).toBe(older.id);
 });
 
+test("detail keys skip collapsed months in both directions", async () => {
+  const { createShortcutHandler } = await import("./keys.js");
+  const august = {
+    ...completed,
+    id: "00000000-0000-4000-8000-000000000003",
+    startedAt: "2026-08-15T00:00:00.000Z",
+  };
+  const july = {
+    ...completed,
+    id: "00000000-0000-4000-8000-000000000004",
+    startedAt: "2026-07-15T00:00:00.000Z",
+  };
+  const { host, store } = await mount([completed, august, july]);
+  act(() => store.setView("briefs"));
+  const handler = createShortcutHandler(store);
+  const press = async (key: string) => {
+    await act(async () => handler(new KeyboardEvent("keydown", { key })));
+    return store.getState().ui.openBrief;
+  };
+  await act(async () =>
+    (host.querySelectorAll(".list-group")[1] as HTMLButtonElement).click(),
+  );
+  await act(async () => store.openBrief(completed.id));
+  expect(await press("]")).toBe(july.id);
+  expect(await press("]")).toBe(july.id);
+  expect(await press("[")).toBe(completed.id);
+  expect(await press("[")).toBe(completed.id);
+  await act(async () => store.openBrief(null));
+  await act(async () =>
+    (host.querySelectorAll(".list-group")[1] as HTMLButtonElement).click(),
+  );
+  await act(async () => store.openBrief(completed.id));
+  expect(await press("]")).toBe(august.id);
+  expect(await press("]")).toBe(july.id);
+  expect(await press("[")).toBe(august.id);
+});
+
 test("a poll adding a month retains the selected brief by identity", async () => {
   vi.useFakeTimers();
   const h = await mount([completed]);

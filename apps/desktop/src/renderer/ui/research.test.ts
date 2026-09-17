@@ -144,6 +144,63 @@ test("lists Active and Archived, renders markdown and sources, and archives with
   await act(async () => store.openResearch(saved.id));
   expect(host.textContent).toContain("Unarchive");
 });
+test("detail keys follow visible Active then Archived order and skip collapsed sections", async () => {
+  const { createShortcutHandler } = await import("./keys.js");
+  const archived = {
+    ...saved,
+    id: "00000000-0000-4000-8000-000000000002",
+    startedAt: "2026-09-15T00:00:00.000Z",
+    archivedAt: "2026-09-16T01:00:00.000Z",
+  };
+  const older = {
+    ...saved,
+    id: "00000000-0000-4000-8000-000000000003",
+    startedAt: "2026-09-14T00:00:00.000Z",
+  };
+  const { host, store } = await mount([saved, archived, older]);
+  act(() => store.setView("research"));
+  const handler = createShortcutHandler(store);
+  const press = async (key: string) => {
+    await act(async () => handler(new KeyboardEvent("keydown", { key })));
+    return store.getState().ui.openResearch;
+  };
+  await act(async () => store.openResearch(saved.id));
+  expect(await press("]")).toBe(older.id);
+  expect(await press("]")).toBe(older.id);
+  expect(await press("[")).toBe(saved.id);
+  expect(await press("[")).toBe(saved.id);
+
+  await act(async () => store.openResearch(null));
+  await act(async () =>
+    (host.querySelectorAll(".list-group")[1] as HTMLButtonElement).click(),
+  );
+  expect([...host.querySelectorAll(".list-row")].map((row) => row.id)).toEqual([
+    `research-${saved.id}`,
+    `research-${older.id}`,
+    `research-${archived.id}`,
+  ]);
+  await act(async () => store.openResearch(saved.id));
+  expect(await press("]")).toBe(older.id);
+  expect(await press("]")).toBe(archived.id);
+  expect(await press("]")).toBe(archived.id);
+  expect(await press("[")).toBe(older.id);
+
+  await act(async () => store.openResearch(null));
+  await act(async () =>
+    (host.querySelectorAll(".list-group")[0] as HTMLButtonElement).click(),
+  );
+  await act(async () => store.openResearch(archived.id));
+  expect(await press("[")).toBe(archived.id);
+  await act(async () => store.openResearch(null));
+  await act(async () =>
+    (host.querySelectorAll(".list-group")[1] as HTMLButtonElement).click(),
+  );
+  expect(host.querySelector(".list-row")).toBeNull();
+  expect(host.textContent).not.toContain(
+    "Create research from the create palette",
+  );
+});
+
 test("running and interrupted entries stay readable", async () => {
   const entry: ResearchEntry = {
     ...saved,

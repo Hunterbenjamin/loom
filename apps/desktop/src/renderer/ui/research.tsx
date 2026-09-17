@@ -128,7 +128,7 @@ export function ResearchView() {
     },
     !open,
   );
-  const rows = state?.entries ?? [];
+  const rows = items.flatMap((item) => (item.kind === "row" ? [item.row] : []));
   const current = entry?.id === open ? entry : null;
   const item = items[selected ?? -1];
   const target = open ? current : item?.kind === "row" ? item.row : null;
@@ -177,7 +177,7 @@ export function ResearchView() {
           </p>
         ) : null}
         {connected && !state ? <p className="pad">Loading research…</p> : null}
-        {state && !rows.length ? (
+        {state && !state.entries.length ? (
           <p className="pad faint">
             Create research from the create palette, or ask Main to save
             research from your conversation.
