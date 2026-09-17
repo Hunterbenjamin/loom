@@ -83,9 +83,10 @@ export function App() {
           : selectedRows(s).length,
   );
   const needsYou = useStore(attentionCount);
+  const instance = useStore((s) => s.instance);
   useEffect(() => {
-    document.title = `Loom · ${needsYou} need you`;
-  }, [needsYou]);
+    document.title = `Loom (${instance}) · ${needsYou} need you`;
+  }, [needsYou, instance]);
   const task = useStore((s) =>
     s.ui.openTask
       ? (s.snapshot.tasks.find(

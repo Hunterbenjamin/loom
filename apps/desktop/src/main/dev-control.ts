@@ -59,9 +59,11 @@ export function devControls(
     for (const key of [
       "LOOM_DATA_ROOT",
       "LOOM_TMUX_BIN",
-      "LOOM_BIND_PORT",
+      "LOOM_BIND",
       "LOOM_MCP_PORT",
       "LOOM_HOOK_PORT",
+      "LOOM_RENDERER_PORT",
+      "LOOM_DEBUG_PORT",
     ]) {
       if (env[key] !== undefined) args.push("-e", `${key}=${env[key]}`);
     }

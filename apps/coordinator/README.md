@@ -58,6 +58,8 @@ Required environment:
 | `LOOM_MCP_PORT` | Optional stable MCP port, default bind port + 1 |
 | `LOOM_HOOK_PORT` | Optional stable Claude-hook port, default bind port + 2 |
 
+For a second checkout and desktop listener configuration, see [instances](../../docs/instances.md).
+
 Set credentials privately; never put actual tokens in commands, logs or repository files. Occupied
 stable ports fail startup rather than changing endpoints under live runs. Restart after changing
 process environment. Settings precedence and scope are documented in

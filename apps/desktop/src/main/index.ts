@@ -47,6 +47,15 @@ ipcMain.handle("app:choose-repository", async (event) => {
 });
 
 const connection = connectionFromEnvironment(process.env);
+const instanceName =
+  connection.mode === "live" ? connection.instance : "unconfigured";
+const applicationName = `Loom (${instanceName})`;
+app.setName(applicationName);
+if (connection.mode === "live")
+  app.setPath(
+    "userData",
+    join(connection.dataRoot, connection.instance, "desktop"),
+  );
 
 // node-pty is a native CommonJS addon; electron-vite externalizes it, so require it directly.
 const require = createRequire(import.meta.url);
@@ -363,6 +372,7 @@ function wire(): void {
 async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
   const window = new BrowserWindow({
     show: true,
+    title: applicationName,
     width: Number(process.env.LOOM_WIDTH ?? 1440),
     height: Number(process.env.LOOM_HEIGHT ?? 900),
     minWidth: 960,
@@ -375,6 +385,11 @@ async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
       sandbox: false,
       backgroundThrottling: false,
     },
+  });
+  window.on("page-title-updated", (event, title) => {
+    if (title.startsWith(applicationName)) return;
+    event.preventDefault();
+    window.setTitle(applicationName);
   });
   syncWindowChrome(window);
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -432,7 +447,7 @@ async function createWindow(mode: WindowMode): Promise<BrowserWindow> {
   return window;
 }
 
-app.setAboutPanelOptions({ applicationName: "Loom" });
+app.setAboutPanelOptions({ applicationName });
 
 app.whenReady().then(async () => {
   // Electron's default File menu binds Cmd+W to Close Window, which quits a one-window app and

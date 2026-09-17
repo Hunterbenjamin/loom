@@ -60,6 +60,11 @@ test.each([
       LOOM_INSTANCE: instance,
       LOOM_TMUX_BIN: "/custom/tmux",
       LOOM_DATA_ROOT: "/custom/data",
+      LOOM_BIND: "127.0.0.1:47810",
+      LOOM_MCP_PORT: "47811",
+      LOOM_HOOK_PORT: "47812",
+      LOOM_RENDERER_PORT: "5174",
+      LOOM_DEBUG_PORT: "9223",
     };
     try {
       const result = devControls(appPath, false, env).run(command);
@@ -80,6 +85,16 @@ test.each([
           "LOOM_DATA_ROOT=/custom/data",
           "-e",
           "LOOM_TMUX_BIN=/custom/tmux",
+          "-e",
+          "LOOM_BIND=127.0.0.1:47810",
+          "-e",
+          "LOOM_MCP_PORT=47811",
+          "-e",
+          "LOOM_HOOK_PORT=47812",
+          "-e",
+          "LOOM_RENDERER_PORT=5174",
+          "-e",
+          "LOOM_DEBUG_PORT=9223",
           `scripts/dev.sh ${scriptArgs}`,
         ],
         { cwd: root, env, detached: true, stdio: "ignore" },

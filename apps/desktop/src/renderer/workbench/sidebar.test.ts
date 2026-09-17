@@ -70,6 +70,7 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
     );
   try {
     await act(async () => render());
+    expect(element.querySelector(".instance-badge")?.textContent).toBe("test");
     const space = element.querySelector<HTMLElement>(
       '[aria-label="Fix delivery race"]',
     );
@@ -406,7 +407,7 @@ test.each([false, true])(
           available,
         );
         expect(
-          items().some((item) => item.textContent === "Sync dev instance"),
+          items().some((item) => item.textContent === "Sync instance"),
         ).toBe(available);
         expect(
           items().some(
@@ -425,7 +426,7 @@ test.each([false, true])(
           await openMenu();
           await act(async () =>
             items()
-              .find((item) => item.textContent === "Sync dev instance")
+              .find((item) => item.textContent === "Sync instance")
               ?.click(),
           );
           expect(devControl).toHaveBeenLastCalledWith("sync");
@@ -438,7 +439,7 @@ test.each([false, true])(
           ?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })),
       );
       expect(element.querySelector('[role="menu"]')?.textContent).not.toContain(
-        "Sync dev instance",
+        "Sync instance",
       );
       expect(element.querySelector('[role="menu"]')?.textContent).not.toContain(
         "Restart coordinator",

@@ -122,8 +122,25 @@ export class ProtocolServer {
       this.accept(socket, header?.match(/^Bearer (.+)$/)?.[1] ?? null);
     });
     await new Promise<void>((resolve, reject) => {
-      http.once("error", reject);
-      http.listen(this.deps.bind.port, this.deps.bind.host, resolve);
+      const failed = (error: NodeJS.ErrnoException) => {
+        wss.close();
+        reject(
+          error.code === "EADDRINUSE"
+            ? new Error(
+                `Address ${this.deps.bind.host}:${this.deps.bind.port} is in use; set LOOM_BIND to a different value`,
+                { cause: error },
+              )
+            : error,
+        );
+      };
+      // ws forwards the HTTP server's error; handle both emitters during startup.
+      wss.once("error", failed);
+      http.once("error", failed);
+      http.listen(this.deps.bind.port, this.deps.bind.host, () => {
+        http.removeListener("error", failed);
+        wss.removeListener("error", failed);
+        resolve();
+      });
     });
     const listening = http.address();
     if (!listening || typeof listening === "string")
