@@ -130,3 +130,42 @@ test("custom prefix, timeout and direct literal are honored; expiry is checked e
   expect(h.handle(key("z"))).toBe(false);
   h.cancel();
 });
+
+test("no timeout creates no timer, waits indefinitely, and preserves cancellation and literal prefix", () => {
+  const config = structuredClone(defaultKeybindings);
+  config.prefixTimeoutMs = null;
+  const h = harness(config);
+  h.handle(prefix);
+  expect(vi.getTimerCount()).toBe(0);
+  vi.advanceTimersByTime(365 * 24 * 60 * 60 * 1000);
+  expect(h.armed).toHaveBeenLastCalledWith(true);
+  expect(h.handle(key("x"))).toBe(true);
+  expect(h.dispatch).toHaveBeenLastCalledWith("close");
+  for (const cancel of [() => h.handle(key("Escape")), h.cancel]) {
+    h.handle(prefix);
+    cancel();
+    expect(h.armed).toHaveBeenLastCalledWith(false);
+    expect(h.handle(key("x"))).toBe(false);
+  }
+  h.handle(prefix);
+  h.handle(prefix);
+  expect(h.dispatch).toHaveBeenLastCalledWith("literal");
+  h.handle(prefix);
+  h.handle(key("e"));
+  expect(h.armed).toHaveBeenLastCalledWith(false);
+  expect(h.handle(key("x"))).toBe(false);
+});
+
+test("window matcher leaves Tracker sequences alone and dispatches direct and prefixed go-to bindings", () => {
+  const config = structuredClone(defaultKeybindings);
+  config.bindings["go-research"] = ["g r", "Cmd+R", "Prefix r"];
+  const h = harness(config);
+  expect(h.handle(key("g"))).toBe(false);
+  expect(h.handle(key("r"))).toBe(false);
+  h.handle(key("r", { metaKey: true }));
+  expect(h.dispatch).toHaveBeenLastCalledWith("go-research");
+  h.handle(prefix);
+  h.handle(key("r"));
+  expect(h.dispatch).toHaveBeenCalledTimes(2);
+  expect(h.dispatch).toHaveBeenLastCalledWith("go-research");
+});

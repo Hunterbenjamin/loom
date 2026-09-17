@@ -42,7 +42,7 @@ commands are not replayed after a disconnect.
 `?` in Tracker and `Prefix ?` in either window open the same [Keyboard map](../../apps/desktop/src/renderer/ui/keyboard-sheet.tsx).
 It always starts on Everywhere, with shared reading keys and entry points; Tracker and Workbench
 tabs show surface-specific keys from their original maps. Arrow keys or h/l change tabs, reading
-keys scroll, and Escape or Close restores focus. Tracker keys are fixed; configured bindings,
+keys scroll, and Escape or Close restores focus. Go to keys are editable in Settings → Keyboard; other Tracker keys are fixed. Configured bindings,
 their path, prefix timeout and errors are shown alongside the editable Workbench map. Shortcuts follow the active list, board or detail and pause in inputs and terminals.
 `Prefix q` leaves terminal input and returns focus to Tracker navigation.
 
@@ -143,7 +143,20 @@ Escape cancels the prefix and cannot be its action suffix.
 
 Settings owns bindings, prefix and timeout; the palette and shortcut help show effective values.
 Defaults and the chord grammar live in [core/keybindings.ts](../../packages/core/src/keybindings.ts).
-The default prefix is Ctrl+Space, with a three-second timeout. Common suffixes are `|`/`-` to split,
+Go to actions default to `g i` Issues, `g n` Inbox, `g r` Review, `g d` Daily brief,
+`g e` Research and `g s` Settings. They share the editable action configuration.
+A binding is a modified chord, `Prefix <chord>`, or (for Go to only) `<leader> <chord>`.
+Two-key sequences work only in Tracker outside inputs, editors and terminals; modified chords
+and Prefix bindings work in either window and return Workbench to Tracker. Record two keys on a
+Go to row; to swap bindings, remove the old bindings and then record each on its new action.
+Configured sequences beat fixed Tracker keys, including `g g`; the keyboard map, sidebar, palette
+and pending-key overlay show effective values. Duplicate bindings, reserved chords, sequence strokes
+conflicting with the prefix or a direct binding, Escape within a sequence, and unmodified
+single-key Go to bindings are rejected.
+
+The default prefix is Ctrl+Space, with a three-second timeout. Settings offers **Timed**
+(100–60000 ms) or **Until the next key (no timeout)**. The latter stores `null`, arms without
+a timer, and remains armed until the next key, Escape or window blur. Common suffixes are `|`/`-` to split,
 `h j k l` to focus, `c` for a new terminal, `n`/`p` for tabs, `x` to close and `z` to zoom. Repeating
 the prefix sends it literally. Escape/blur cancels; an armed prefix consumes its next key even when no binding matches.
 

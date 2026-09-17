@@ -3,7 +3,10 @@ import { KEYBINDING_ACTIONS } from "@loom/core";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
-import { defaultKeybindingsState } from "../../shared/keybindings.js";
+import {
+  defaultKeybindingsState,
+  type KeybindingsState,
+} from "../../shared/keybindings.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { createFixtureStore } from "../fixtures/store.js";
 import { StoreProvider, useStoreApi } from "../store/react.js";
@@ -15,8 +18,11 @@ import {
 import { WindowModeContext } from "../window-mode.js";
 import { KeyboardSheet, WindowKeyboardSheet } from "./keyboard-sheet.js";
 import { useShortcuts } from "./keys.js";
+import { Palette } from "./palette.js";
 import { scrollBindings } from "./scroll-keys.js";
+import { Sidebar } from "./sidebar.js";
 import { trackerKeymap } from "./tracker-keymap.js";
+import { WhichKey } from "./which-key.js";
 
 // These tests exercise window shortcuts, not WebGL or terminal rendering.
 vi.mock("./terminal.js", () => ({
@@ -68,6 +74,7 @@ test("one modal contains every source entry once, with effective bindings and sc
   bindings.config.bindings.new = ["Cmd+U"];
   bindings.config.bindings["terminal-focus"] = ["Prefix e"];
   bindings.config.prefixTimeoutMs = 4200;
+  bindings.config.bindings["go-briefs"] = ["g b"];
   bindings.path = "/fixture/keybindings.json";
   bindings.error = "Invalid configuration";
   act(() =>
@@ -103,6 +110,12 @@ test("one modal contains every source entry once, with effective bindings and sc
         ?.querySelector("h3")?.textContent,
     ).toBe("Sections");
   }
+  expect(
+    host.querySelector('[data-key-id="go-briefs"]')?.textContent,
+  ).toContain("g b");
+  expect(
+    host.querySelector('[data-key-id="go-briefs"]')?.textContent,
+  ).not.toContain("g d");
   expect(host.textContent).toContain("Cmd+U");
   const leave = host.querySelector('[data-action-id="terminal-focus"]');
   expect(leave?.closest('[role="tabpanel"]')?.id).toBe("keyboard-panel-0");
@@ -110,7 +123,9 @@ test("one modal contains every source entry once, with effective bindings and sc
   expect(host.textContent).toContain("4.2 seconds");
   expect(host.textContent).toContain(bindings.path);
   expect(host.textContent).toContain("Escape cancels");
-  expect(host.textContent).toContain("unknown suffixes pass through");
+  expect(host.textContent).toContain(
+    "the next key is consumed even if unbound",
+  );
   expect(host.textContent).toContain("fixed in code");
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(
     bindings.error,
@@ -302,4 +317,65 @@ test("the palette chord opens the palette of the window on screen, and Workbench
     }
     act(() => root.unmount());
   }
+});
+
+function TrackerHints() {
+  const store = useStoreApi();
+  const pending = useShortcuts(store);
+  return createElement(
+    "div",
+    null,
+    createElement(Sidebar),
+    createElement(Palette),
+    pending ? createElement(WhichKey, { leader: pending }) : null,
+  );
+}
+
+test("live go-to changes update Tracker dispatch, sidebar, palette and pending-key hints together", async () => {
+  const { root, host } = mount();
+  const store = createFixtureStore(buildSnapshot(2));
+  let changed = (_bindings: KeybindingsState) => {};
+  window.loomHost = {
+    keybindings: async () => defaultKeybindingsState,
+    onKeybindingsChanged: (listener: typeof changed) => {
+      changed = listener;
+      return () => {};
+    },
+  } as unknown as typeof window.loomHost;
+  await act(async () =>
+    root.render(
+      createElement(StoreProvider, {
+        store,
+        // biome-ignore lint/correctness/noChildrenProp: Typed provider requires children.
+        children: createElement(
+          WindowKeybindings,
+          { mode: "tracker" },
+          createElement(TrackerHints),
+        ),
+      }),
+    ),
+  );
+  const config = structuredClone(defaultKeybindingsState);
+  config.config.bindings["go-briefs"] = ["g b"];
+  config.config.bindings["go-research"] = ["g r"];
+  config.config.bindings["go-pull-requests"] = ["g e"];
+  await act(async () => changed(config));
+  expect(host.querySelector('[title="Daily brief (g b)"]')).not.toBeNull();
+  expect(host.querySelector('[title="Research (g r)"]')).not.toBeNull();
+  expect(host.querySelector('[title="Daily brief (g d)"]')).toBeNull();
+  press(document.body, "g");
+  const overlay = host.querySelector(".tracker-which-key");
+  expect(overlay?.textContent).toContain("g b");
+  expect(overlay?.textContent).toContain("g r");
+  expect(overlay?.textContent).not.toContain("g d");
+  press(document.body, "b");
+  expect(store.getState().ui.view).toBe("briefs");
+  expect(host.querySelector(".tracker-which-key")).toBeNull();
+  press(document.body, "g");
+  press(document.body, "d");
+  expect(store.getState().ui.view).toBe("briefs");
+  await act(async () => store.setPalette(true));
+  const palette = host.querySelector("[cmdk-root]");
+  expect(palette?.textContent).toContain("Daily brief g b");
+  expect(palette?.textContent).toContain("Research g r");
 });

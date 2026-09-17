@@ -116,7 +116,7 @@ export function App() {
 
   return (
     <div className="shell">
-      {pendingKey ? <WhichKey /> : null}
+      {pendingKey ? <WhichKey leader={pendingKey} /> : null}
       <Sidebar />
       <div className="main" ref={content} tabIndex={-1}>
         <header className="topbar">

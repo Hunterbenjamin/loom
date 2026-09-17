@@ -1,4 +1,18 @@
+export const GO_TO_ACTIONS = [
+  { id: "go-all", group: "Go to", label: "Issues" },
+  { id: "go-needs-you", group: "Go to", label: "Inbox" },
+  { id: "go-pull-requests", group: "Go to", label: "Review" },
+  { id: "go-briefs", group: "Go to", label: "Daily brief" },
+  { id: "go-research", group: "Go to", label: "Research" },
+  { id: "go-settings", group: "Go to", label: "Settings" },
+] as const;
+export type GoToAction = (typeof GO_TO_ACTIONS)[number]["id"];
+export function isGoToAction(action: string): action is GoToAction {
+  return GO_TO_ACTIONS.some(({ id }) => id === action);
+}
+
 export const KEYBINDING_ACTIONS = [
+  ...GO_TO_ACTIONS,
   { id: "split-right", group: "Panels", label: "Split right" },
   { id: "split-down", group: "Panels", label: "Split down" },
   { id: "left", group: "Panels", label: "Focus left" },
@@ -148,12 +162,18 @@ export const bindingChord = (binding: string) =>
 
 export const DEFAULT_KEYBINDINGS: {
   prefix: string | null;
-  prefixTimeoutMs: number;
+  prefixTimeoutMs: number | null;
   bindings: Record<KeybindingAction, string[]>;
 } = {
   prefix: "Ctrl+Space",
   prefixTimeoutMs: 3000,
   bindings: {
+    "go-all": ["g i"],
+    "go-needs-you": ["g n"],
+    "go-pull-requests": ["g r"],
+    "go-briefs": ["g d"],
+    "go-research": ["g e"],
+    "go-settings": ["g s"],
     "split-right": ["Cmd+D", "Prefix |"],
     "split-down": ["Cmd+Shift+D", "Prefix -"],
     left: ["Cmd+Alt+ArrowLeft", "Prefix h"],
@@ -202,3 +222,87 @@ export const DEFAULT_KEYBINDINGS: {
     "space-9": ["Prefix 9"],
   },
 };
+
+/** Tracker sequences have two chords; Prefix bindings belong to the window matcher. */
+export function bindingSequence(binding: string): [string, string] | null {
+  if (isPrefixBinding(binding)) return null;
+  const parts = binding.split(" ");
+  return parts.length === 2 && parts.every((part) => parseChord(part))
+    ? [parts[0]!, parts[1]!]
+    : null;
+}
+
+export function bindingIdentity(binding: string): string {
+  const sequence = bindingSequence(binding);
+  return JSON.stringify(
+    sequence
+      ? sequence.map(parseChord)
+      : [isPrefixBinding(binding), parseChord(bindingChord(binding))],
+  );
+}
+
+export function validateKeybindings(config: {
+  prefix: string | null;
+  bindings: Record<string, string[]>;
+}): { path: string[]; message: string }[] {
+  const issues: { path: string[]; message: string }[] = [];
+  const normalized = (chord: string) => JSON.stringify(parseChord(chord));
+  const reserved = ["Cmd+Shift+W", "Cmd+J"].map(normalized);
+  const prefix = normalized(config.prefix ?? "");
+  const escapeChord = normalized("Escape");
+  const seen = new Set<string>();
+  const direct = new Set(
+    Object.values(config.bindings)
+      .flat()
+      .filter((b) => !isPrefixBinding(b) && !bindingSequence(b))
+      .map(normalized),
+  );
+  for (const [action, bindings] of Object.entries(config.bindings)) {
+    for (const value of bindings) {
+      const sequence = bindingSequence(value);
+      const prefixed = isPrefixBinding(value);
+      const chord = parseChord(bindingChord(value));
+      const identity = bindingIdentity(value);
+      const problem = (() => {
+        if (!sequence && !chord) return "Invalid binding";
+        if (sequence && !isGoToAction(action))
+          return "Two-key sequences are only available for Go to actions";
+        if (prefixed && !config.prefix) return "Prefix binding needs a prefix";
+        if (seen.has(identity)) return "Duplicate binding";
+        if (sequence && sequence.some((c) => normalized(c) === escapeChord))
+          return "Escape cancels a sequence";
+        if (prefixed && normalized(bindingChord(value)) === escapeChord)
+          return "Escape cancels the prefix";
+        const chords = sequence ?? [bindingChord(value)];
+        if (
+          chords.some(
+            (c) =>
+              reserved.includes(normalized(c)) ||
+              (!prefixed && normalized(c) === prefix),
+          )
+        )
+          return "Chord conflicts with the prefix or a reserved app shortcut";
+        // Window shortcuts capture both strokes before Tracker's listener.
+        if (sequence && sequence.some((c) => direct.has(normalized(c))))
+          return "Sequence chord conflicts with a direct binding";
+        if (
+          isGoToAction(action) &&
+          !prefixed &&
+          !sequence &&
+          chord &&
+          !chord.ctrlKey &&
+          !chord.metaKey &&
+          !chord.altKey
+        )
+          return "Go to actions need a two-key sequence, a prefix binding or a modified chord";
+        return null;
+      })();
+      if (problem)
+        issues.push({ path: ["bindings", action], message: problem });
+      seen.add(identity);
+    }
+  }
+  if (config.prefix && reserved.includes(prefix))
+    issues.push({ path: ["prefix"], message: "Reserved app shortcut" });
+  return issues;
+}

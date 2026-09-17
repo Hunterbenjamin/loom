@@ -1,4 +1,15 @@
+import {
+  bindingSequence,
+  isGoToAction,
+  matchesChord,
+  parseChord,
+} from "@loom/core";
 import { useEffect, useState } from "react";
+import {
+  defaultKeybindings,
+  type KeybindingsConfig,
+} from "../../shared/keybindings.js";
+import { useKeybindingsConfig } from "../keybindings-context.js";
 import { selectedDetailTask } from "../store/detail-selection.js";
 import { inboxRows, reasonTab } from "../store/inbox.js";
 import { selectedPullRequests } from "../store/pull-requests.js";
@@ -11,8 +22,8 @@ import { typingScrollCommand } from "./scroll-keys.js";
 import { hasTrackerAction, runTrackerAction } from "./tracker-actions.js";
 import {
   eventKey,
+  getTrackerKeymap,
   type TrackerActionId,
-  trackerKeymap,
 } from "./tracker-keymap.js";
 
 const TYPING = new Set(["INPUT", "TEXTAREA", "SELECT"]);
@@ -156,10 +167,12 @@ export function runTrackerCommand(
 export function createShortcutHandler(
   store: Store,
   showHelp: () => void = () => {},
-  onPending: (pending: boolean) => void = () => {},
+  onPending: (pending: string | null) => void = () => {},
+  config: KeybindingsConfig = defaultKeybindings,
 ) {
-  let pending = false;
-  const setPending = (value: boolean) => {
+  const trackerKeymap = getTrackerKeymap(config);
+  let pending: string | null = null;
+  const setPending = (value: string | null) => {
     pending = value;
     onPending(value);
   };
@@ -171,39 +184,50 @@ export function createShortcutHandler(
       document.querySelector("dialog[open]") ||
       ui.create
     ) {
-      setPending(false);
+      setPending(null);
       return;
     }
     const target = event.composedPath()[0] ?? event.target;
     const ownsKeys =
       target instanceof Element && target.closest(".xterm, .chat-window");
     if (ownsKeys || (typing(target) && !typingScrollCommand(event))) {
-      setPending(false);
+      setPending(null);
       return;
     }
     const key = eventKey(event);
     if (pending && key === "Escape") {
-      setPending(false);
+      setPending(null);
       event.preventDefault();
       return;
     }
     if (ui.createPalette || ui.palette || ui.stagePicker) {
-      setPending(false);
+      setPending(null);
       if (key === "Escape") {
         event.preventDefault();
         runTrackerCommand(store, "close");
       }
       return;
     }
-    let sequence = key;
-    if (pending) {
-      sequence = `g ${key}`;
-      setPending(false);
-      event.preventDefault();
-    } else if (key === "g") {
-      setPending(true);
-      event.preventDefault();
+    if (["Control", "Meta", "Alt", "Shift", "AltGraph"].includes(event.key))
       return;
+    const leader = pending;
+    if (leader) {
+      if (event.repeat) {
+        event.preventDefault();
+        return;
+      }
+      setPending(null);
+      event.preventDefault();
+    } else {
+      const sequence = trackerKeymap
+        .flatMap((entry) => entry.keys)
+        .map(bindingSequence)
+        .find((parts) => parts && matchesChord(parts[0], event));
+      if (sequence) {
+        if (!event.repeat) setPending(sequence[0]);
+        event.preventDefault();
+        return;
+      }
     }
     const detail = !!(
       ui.openTask ||
@@ -215,7 +239,16 @@ export function createShortcutHandler(
       ? !!selectedDetailTask(store.getState())
       : !["pull-requests", "briefs", "research", "settings"].includes(ui.view);
     const candidates = trackerKeymap.filter((entry) =>
-      (entry.keys as readonly string[]).includes(sequence),
+      entry.keys.some((binding) => {
+        const parts = bindingSequence(binding);
+        if (leader)
+          return (
+            !!parts &&
+            matchesChord(parts[0], parseChord(leader)!) &&
+            matchesChord(parts[1], event)
+          );
+        return !isGoToAction(entry.id) && binding === key;
+      }),
     );
     // Registered diff actions own these keys even when no file/hunk is available.
     const diff = candidates.find((entry) => entry.scope === "diff");
@@ -270,28 +303,30 @@ export function createShortcutHandler(
       event.target.blur();
     runTrackerCommand(store, entry.id, showHelp);
   };
-  return Object.assign(handler, { cancel: () => setPending(false) });
+  return Object.assign(handler, { cancel: () => setPending(null) });
 }
 const noHelp = () => {};
 export function useShortcuts(
   store: Store,
   showHelp: () => void = noHelp,
-): boolean {
-  const [pending, setPending] = useState(false);
+): string | null {
+  const config = useKeybindingsConfig();
+  const [pending, setPending] = useState<string | null>(null);
   useEffect(() => {
-    const handler = createShortcutHandler(store, showHelp, setPending);
+    const handler = createShortcutHandler(store, showHelp, setPending, config);
     window.addEventListener("keydown", handler);
     const cancel = handler.cancel;
     window.addEventListener("blur", cancel);
     window.addEventListener("pointerdown", cancel);
     window.addEventListener("focusin", cancel);
+    setPending(null);
     return () => {
       window.removeEventListener("keydown", handler);
       window.removeEventListener("blur", cancel);
       window.removeEventListener("pointerdown", cancel);
       window.removeEventListener("focusin", cancel);
     };
-  }, [store, showHelp]);
+  }, [store, showHelp, config]);
   return pending;
 }
 

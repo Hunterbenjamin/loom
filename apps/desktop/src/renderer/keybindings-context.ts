@@ -9,6 +9,7 @@ export type Dispatch = (action: KeybindingAction) => void;
 export const WindowKeybindingsContext = createContext<
   | (ReturnType<typeof useKeybindings> & {
       help: boolean;
+      dispatch: Dispatch;
       showHelp(): void;
       closeHelp(): void;
       workbench: { current: Dispatch | null };

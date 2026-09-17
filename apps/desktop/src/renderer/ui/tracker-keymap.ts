@@ -1,9 +1,15 @@
+import { bindingIdentity, GO_TO_ACTIONS, type GoToAction } from "@loom/core";
+import {
+  defaultKeybindings,
+  formatBindings,
+  type KeybindingsConfig,
+} from "../../shared/keybindings.js";
 import { scrollBindings } from "./scroll-keys.js";
 
 export { eventKey } from "./event-key.js";
-/** Tracker bindings are separate from editable Workbench bindings. The command palette is not
- * here: its chord is the editable `commands` binding, the same in both windows. */
-export const trackerKeymap = [
+
+/** Contextual Tracker keys; editable Go to keys are derived from the window config below. */
+const fixedTrackerKeymap = [
   {
     id: "help",
     keys: ["?"],
@@ -25,22 +31,6 @@ export const trackerKeymap = [
     group: "Everywhere",
     scope: "global",
   },
-  ...(
-    [
-      ["all", "i", "Issues"],
-      ["needs-you", "n", "Inbox"],
-      ["pull-requests", "r", "Review"],
-      ["briefs", "d", "Daily brief"],
-      ["research", "e", "Research"],
-      ["settings", "s", "Settings"],
-    ] as const
-  ).map(([view, key, label]) => ({
-    id: `go-${view}` as const,
-    keys: [`g ${key}`],
-    label,
-    group: "Go to",
-    scope: "global" as const,
-  })),
   {
     id: "next-row",
     keys: ["j"],
@@ -259,11 +249,39 @@ export const trackerKeymap = [
     scope: "diff",
   },
 ] as const;
-export type TrackerActionId = (typeof trackerKeymap)[number]["id"];
-export function formatKeys(id: TrackerActionId): string {
-  return trackerKeymap
-    .find((entry) => entry.id === id)!
-    .keys.map((key) =>
+export type TrackerActionId =
+  | (typeof fixedTrackerKeymap)[number]["id"]
+  | GoToAction;
+export function getTrackerKeymap(config: KeybindingsConfig) {
+  const goTo = GO_TO_ACTIONS.map((action) => ({
+    ...action,
+    keys: config.bindings[action.id],
+    scope: "global" as const,
+  }));
+  const configured = new Set(
+    goTo.flatMap((entry) => entry.keys).map(bindingIdentity),
+  );
+  return [
+    ...goTo,
+    ...fixedTrackerKeymap.map((entry) => ({
+      ...entry,
+      keys: entry.keys.filter(
+        (key) => !key.includes(" ") || !configured.has(bindingIdentity(key)),
+      ),
+    })),
+  ];
+}
+export const trackerKeymap = getTrackerKeymap(defaultKeybindings);
+export function formatKeys(
+  id: TrackerActionId,
+  config = defaultKeybindings,
+): string {
+  const go = GO_TO_ACTIONS.find((action) => action.id === id);
+  if (go) return formatBindings(config, go.id);
+  const keys = getTrackerKeymap(config).find((entry) => entry.id === id)!.keys;
+  if (!keys.length) return "Unbound";
+  return keys
+    .map((key) =>
       key
         .replace(
           /Meta\+([a-z])/,
@@ -279,10 +297,14 @@ export function formatKeys(id: TrackerActionId): string {
     )
     .join(" / ");
 }
-export function keyHint(id: TrackerActionId, label?: string | null) {
-  const entry = trackerKeymap.find((entry) => entry.id === id)!;
+export function keyHint(
+  id: TrackerActionId,
+  label?: string | null,
+  config = defaultKeybindings,
+) {
+  const entry = getTrackerKeymap(config).find((entry) => entry.id === id)!;
   return {
-    title: `${label ?? entry.label} (${formatKeys(id)})`,
+    title: `${label ?? entry.label} (${formatKeys(id, config)})`,
     "aria-keyshortcuts":
       entry.keys
         .filter((key) => !key.includes(" "))

@@ -96,7 +96,7 @@ export function Sidebar() {
             type="button"
             className="view-item"
             aria-current={view === item.id ? "page" : undefined}
-            {...keyHint(`go-${item.id}`, item.hint)}
+            {...keyHint(`go-${item.id}`, item.hint, keybindings)}
             data-view={item.id}
             onClick={() => store.setView(item.id)}
           >
@@ -117,7 +117,7 @@ export function Sidebar() {
         <button
           type="button"
           className="view-item"
-          {...keyHint("go-briefs")}
+          {...keyHint("go-briefs", undefined, keybindings)}
           data-view="briefs"
           aria-current={view === "briefs" ? "page" : undefined}
           onClick={() => store.setView("briefs")}
@@ -128,7 +128,7 @@ export function Sidebar() {
         <button
           type="button"
           className="view-item"
-          {...keyHint("go-research")}
+          {...keyHint("go-research", undefined, keybindings)}
           data-view="research"
           aria-current={view === "research" ? "page" : undefined}
           onClick={() => store.setView("research")}
@@ -141,7 +141,7 @@ export function Sidebar() {
           className="view-item"
           data-view="settings"
           aria-current={view === "settings" ? "page" : undefined}
-          {...keyHint("go-settings")}
+          {...keyHint("go-settings", undefined, keybindings)}
           onClick={() => store.setView("settings")}
         >
           <ViewIcon view="settings" />

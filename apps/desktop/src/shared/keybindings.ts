@@ -1,12 +1,15 @@
 import {
   bindingChord,
+  bindingSequence,
   DEFAULT_KEYBINDINGS,
+  GO_TO_ACTIONS,
   isPrefixBinding,
   KEYBINDING_ACTIONS,
   type KeybindingAction,
   type KeyStroke,
   matchesChord,
   parseChord,
+  validateKeybindings,
 } from "@loom/core";
 import { z } from "zod";
 
@@ -18,21 +21,28 @@ const binding = z
   .string()
   .max(90)
   .refine(
-    (value) => parseChord(bindingChord(value)) !== null,
+    (value) =>
+      bindingSequence(value) !== null ||
+      parseChord(bindingChord(value)) !== null,
     "Invalid binding",
   );
 export const keybindingsConfig = z
   .strictObject({
     version: z.literal(1),
     prefix: chord.nullable(),
-    prefixTimeoutMs: z.number().int().min(100).max(60000),
+    prefixTimeoutMs: z.number().int().min(100).max(60000).nullable(),
     bindings: z.preprocess(
-      // Version 1 files predate terminal-focus. Add only the new action so saved
-      // shortcuts survive the upgrade; all other missing actions remain invalid.
+      // Upgrade version 1 files with newly introduced actions, preserving saved bindings.
       (raw) =>
         raw && typeof raw === "object" && !Array.isArray(raw)
           ? {
               "terminal-focus": DEFAULT_KEYBINDINGS.bindings["terminal-focus"],
+              ...Object.fromEntries(
+                GO_TO_ACTIONS.map(({ id }) => [
+                  id,
+                  DEFAULT_KEYBINDINGS.bindings[id],
+                ]),
+              ),
               ...raw,
             }
           : raw,
@@ -43,50 +53,8 @@ export const keybindingsConfig = z
     ),
   })
   .superRefine((config, ctx) => {
-    const seen = new Set<string>();
-    const reserved = ["Cmd+Shift+W", "Cmd+J"].map((c) =>
-      JSON.stringify(parseChord(c)),
-    );
-    for (const [action, bindings] of Object.entries(config.bindings)) {
-      for (const value of bindings) {
-        const sequence = isPrefixBinding(value);
-        const normalized = JSON.stringify(parseChord(bindingChord(value)));
-        const identity = `${sequence}:${normalized}`;
-        const problem =
-          sequence && !config.prefix
-            ? "Prefix binding needs a prefix"
-            : seen.has(identity)
-              ? "Duplicate binding"
-              : reserved.includes(normalized) ||
-                  (!sequence &&
-                    normalized ===
-                      JSON.stringify(parseChord(config.prefix ?? "")))
-                ? "Chord conflicts with the prefix or a reserved app shortcut"
-                : null;
-        if (problem)
-          ctx.addIssue({
-            code: "custom",
-            path: ["bindings", action],
-            message: problem,
-          });
-        if (sequence && normalized === JSON.stringify(parseChord("Escape")))
-          ctx.addIssue({
-            code: "custom",
-            path: ["bindings", action],
-            message: "Escape cancels the prefix",
-          });
-        seen.add(identity);
-      }
-    }
-    if (
-      config.prefix &&
-      reserved.includes(JSON.stringify(parseChord(config.prefix)))
-    )
-      ctx.addIssue({
-        code: "custom",
-        path: ["prefix"],
-        message: "Reserved app shortcut",
-      });
+    for (const issue of validateKeybindings(config))
+      ctx.addIssue({ code: "custom", ...issue });
   });
 export type KeybindingsConfig = z.output<typeof keybindingsConfig>;
 export const defaultKeybindings: KeybindingsConfig = keybindingsConfig.parse({
@@ -125,7 +93,11 @@ export function usesWorkbenchKey(
   return (
     !!(config.prefix && matchesChord(config.prefix, event)) ||
     Object.values(config.bindings).some((bindings) =>
-      bindings.some((b) => matchesChord(bindingChord(b), event)),
+      bindings.some((b) =>
+        (bindingSequence(b) ?? [bindingChord(b)]).some((chord) =>
+          matchesChord(chord, event),
+        ),
+      ),
     )
   );
 }

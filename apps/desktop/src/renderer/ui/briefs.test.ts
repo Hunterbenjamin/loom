@@ -200,7 +200,11 @@ test("brief keyboard endpoints open the visible brief", async () => {
   act(() => h.store.setView("briefs"));
   const handler = createShortcutHandler(h.store);
   const press = (key: string) =>
-    act(() => handler(new KeyboardEvent("keydown", { key })));
+    act(() =>
+      handler(
+        new KeyboardEvent("keydown", { key, shiftKey: /^[A-Z]$/.test(key) }),
+      ),
+    );
   press("G");
   expect(h.store.getState().ui.cursor).toBe(2);
   press("g");
@@ -238,7 +242,11 @@ test("month headers are cursor stops, collapse retains selection, and jumps span
   act(() => h.store.setView("briefs"));
   const handler = createShortcutHandler(h.store);
   const press = (key: string) =>
-    act(() => handler(new KeyboardEvent("keydown", { key })));
+    act(() =>
+      handler(
+        new KeyboardEvent("keydown", { key, shiftKey: /^[A-Z]$/.test(key) }),
+      ),
+    );
   press("j");
   expect(
     h.host.querySelector('.list-group[data-cursor="true"]')?.textContent,
@@ -283,7 +291,11 @@ test("detail keys skip collapsed months in both directions", async () => {
   act(() => store.setView("briefs"));
   const handler = createShortcutHandler(store);
   const press = async (key: string) => {
-    await act(async () => handler(new KeyboardEvent("keydown", { key })));
+    await act(async () =>
+      handler(
+        new KeyboardEvent("keydown", { key, shiftKey: /^[A-Z]$/.test(key) }),
+      ),
+    );
     return store.getState().ui.openBrief;
   };
   await act(async () =>

@@ -10,13 +10,10 @@ import {
   scrollBindings,
   scrollDistance,
 } from "./scroll-keys.js";
-import { formatKeys, trackerKeymap } from "./tracker-keymap.js";
+import { formatKeys, getTrackerKeymap } from "./tracker-keymap.js";
 
 const tabs = ["Everywhere", "Tracker", "Workbench"] as const;
 const readingIds = new Set<string>(scrollBindings.map((entry) => entry.id));
-const trackerEntries = trackerKeymap.filter(
-  (entry) => entry.id !== "help" && !readingIds.has(entry.id),
-);
 const sharedEntries = KEYBINDING_ACTIONS.filter(
   (entry) =>
     entry.id === "help" ||
@@ -24,7 +21,9 @@ const sharedEntries = KEYBINDING_ACTIONS.filter(
     entry.id === "terminal-focus",
 );
 const workbenchEntries = KEYBINDING_ACTIONS.filter(
-  (entry) => !sharedEntries.some((shared) => shared.id === entry.id),
+  (entry) =>
+    entry.group !== "Go to" &&
+    !sharedEntries.some((shared) => shared.id === entry.id),
 );
 
 function BindingRow({
@@ -41,7 +40,9 @@ function BindingRow({
   return (
     <div
       data-key-id={source === "tracker" ? id : undefined}
-      data-action-id={source === "workbench" ? id : undefined}
+      data-action-id={
+        source === "workbench" || id.startsWith("go-") ? id : undefined
+      }
     >
       <dt>{label}</dt>
       <dd>
@@ -65,6 +66,9 @@ export function KeyboardSheet({
   bindings: KeybindingsState;
   onClose(): void;
 }) {
+  const trackerEntries = getTrackerKeymap(bindings.config).filter(
+    (entry) => entry.id !== "help" && !readingIds.has(entry.id),
+  );
   const [selected, setSelected] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const panels = useRef<(HTMLDivElement | null)[]>([]);
@@ -222,7 +226,7 @@ export function KeyboardSheet({
                         source="tracker"
                         id={entry.id}
                         label={entry.label}
-                        keys={formatKeys(entry.id)}
+                        keys={formatKeys(entry.id, bindings.config)}
                       />
                     ))}
                   </dl>
@@ -236,8 +240,9 @@ export function KeyboardSheet({
           ) : index === 1 ? (
             <>
               <p>
-                Tracker keys are fixed in code. They follow the active list,
-                board or detail and pause in inputs, editors and terminals.
+                Go to keys are editable in Settings → Keyboard. Other Tracker
+                keys are fixed in code. They follow the active list, board or
+                detail and pause in inputs, editors and terminals.
               </p>
               <div className="keyboard-sheet-grid">
                 {[...new Set(trackerEntries.map((entry) => entry.group))].map(
@@ -255,7 +260,7 @@ export function KeyboardSheet({
                               source="tracker"
                               id={entry.id}
                               label={entry.label}
-                              keys={formatKeys(entry.id)}
+                              keys={formatKeys(entry.id, bindings.config)}
                             />
                           ))}
                       </dl>
@@ -274,9 +279,11 @@ export function KeyboardSheet({
               </p>
               <p>
                 Prefix: <kbd>{bindings.config.prefix ?? "Disabled"}</kbd>.
-                Prefix expires after {bindings.config.prefixTimeoutMs / 1000}{" "}
-                seconds. Escape cancels. Modifier keys preserve the prefix;
-                unknown suffixes pass through.
+                {bindings.config.prefixTimeoutMs === null
+                  ? "Prefix waits until the next key."
+                  : `Prefix expires after ${bindings.config.prefixTimeoutMs / 1000} seconds.`}{" "}
+                Escape cancels. Modifier keys preserve the prefix; the next key
+                is consumed even if unbound.
               </p>
               {bindings.error ? <p role="alert">{bindings.error}</p> : null}
               <div className="keyboard-sheet-grid">

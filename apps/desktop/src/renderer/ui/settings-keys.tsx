@@ -1,5 +1,8 @@
 import {
   bindingChord,
+  bindingIdentity,
+  bindingSequence,
+  isGoToAction,
   isPrefixBinding,
   KEYBINDING_ACTIONS,
   type KeybindingAction,
@@ -67,9 +70,6 @@ function chordFromEvent(event: KeyboardEvent): string | null {
   return parseChord(chord) ? chord : null;
 }
 
-const identity = (binding: string) =>
-  `${isPrefixBinding(binding)}:${JSON.stringify(parseChord(bindingChord(binding)))}`;
-
 function Keys({ chord }: { chord: string }) {
   const parts = chord.split("+");
   const key = parts.pop() ?? "";
@@ -93,6 +93,7 @@ function Binding({
   prefix: string | null;
   onRemove(): void;
 }) {
+  const sequence = bindingSequence(binding);
   return (
     <span className="settings-binding" title={binding}>
       {isPrefixBinding(binding) && prefix ? (
@@ -101,7 +102,15 @@ function Binding({
           <span className="settings-then">then</span>
         </>
       ) : null}
-      <Keys chord={bindingChord(binding)} />
+      {sequence ? (
+        <>
+          <Keys chord={sequence[0]} />
+          <span className="settings-then">then</span>
+          <Keys chord={sequence[1]} />
+        </>
+      ) : (
+        <Keys chord={bindingChord(binding)} />
+      )}
       <button
         type="button"
         className="settings-binding-remove"
@@ -117,6 +126,7 @@ function Binding({
 type Recording = {
   target: KeybindingAction | "prefix";
   afterPrefix: boolean;
+  leader?: string;
 };
 
 export function KeyboardSettings({ context }: { context: FieldContext }) {
@@ -164,7 +174,7 @@ export function KeyboardSettings({ context }: { context: FieldContext }) {
     const taken = (
       Object.entries(bindings) as [KeybindingAction, string[]][]
     ).find(([, list]) =>
-      list.some((item) => identity(item) === identity(binding)),
+      list.some((item) => bindingIdentity(item) === bindingIdentity(binding)),
     );
     if (taken) {
       setProblem({
@@ -210,8 +220,28 @@ export function KeyboardSettings({ context }: { context: FieldContext }) {
         setPrefix(chord);
         return cancel();
       }
+      if (recording.leader) {
+        add(
+          recording.target,
+          `${recording.leader} ${/^[A-Z]$/.test(chord) ? chord.toLowerCase() : chord}`,
+        );
+        return cancel();
+      }
       if (!recording.afterPrefix && prefix && matchesChord(prefix, event)) {
         setRecording({ ...recording, afterPrefix: true });
+        return;
+      }
+      if (
+        isGoToAction(recording.target) &&
+        !recording.afterPrefix &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
+        setRecording({
+          ...recording,
+          leader: /^[A-Z]$/.test(chord) ? chord.toLowerCase() : chord,
+        });
         return;
       }
       add(recording.target, recording.afterPrefix ? `Prefix ${chord}` : chord);
@@ -230,9 +260,9 @@ export function KeyboardSettings({ context }: { context: FieldContext }) {
   const recorder = (target: KeybindingAction | "prefix", label: string) =>
     recording?.target === target ? (
       <span className="settings-recording" role="status">
-        {recording.afterPrefix && prefix ? (
+        {recording.leader || (recording.afterPrefix && prefix) ? (
           <>
-            <Keys chord={prefix} /> then…
+            <Keys chord={recording.leader ?? prefix!} /> then…
           </>
         ) : (
           "Press keys… Esc to cancel"
@@ -299,7 +329,25 @@ export function KeyboardSettings({ context }: { context: FieldContext }) {
           label="Wait after prefix"
           description="How long the prefix stays armed."
         >
-          <TextInput field={timeout} kind="number" suffix="ms" />
+          <select
+            aria-label="Prefix wait"
+            className="settings-select"
+            disabled={!!timeout.locked}
+            value={timeout.value === null ? "indefinite" : "timed"}
+            onChange={(event) =>
+              timeout.save(
+                event.target.value === "indefinite"
+                  ? null
+                  : defaultKeybindings.prefixTimeoutMs,
+              )
+            }
+          >
+            <option value="timed">Timed</option>
+            <option value="indefinite">Until the next key (no timeout)</option>
+          </select>
+          {timeout.value !== null ? (
+            <TextInput field={timeout} kind="number" suffix="ms" />
+          ) : null}
         </Row>
       </Group>
       <div className="settings-keys-toolbar">
@@ -339,7 +387,15 @@ export function KeyboardSettings({ context }: { context: FieldContext }) {
         );
         if (!shown.length) return null;
         return (
-          <Group key={group.title} title={group.title}>
+          <Group
+            key={group.title}
+            title={group.title}
+            description={
+              group.title === "Go to"
+                ? "Record two keys for a Tracker sequence, or a modified chord or prefix shortcut for either window. To swap keys, remove the old bindings first, then record them on their new actions."
+                : undefined
+            }
+          >
             {shown.map((action) => {
               const changed =
                 JSON.stringify(bindings[action]) !==

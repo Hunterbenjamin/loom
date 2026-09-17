@@ -1,5 +1,6 @@
 import {
   bindingChord,
+  bindingSequence,
   isPrefixBinding,
   KEYBINDING_ACTIONS,
   type KeybindingAction,
@@ -53,9 +54,13 @@ export function bindingMatcher(
       return true;
     }
     if (config.prefix && matchesChord(config.prefix, event)) {
-      until = now() + config.prefixTimeoutMs;
+      until =
+        config.prefixTimeoutMs === null
+          ? Infinity
+          : now() + config.prefixTimeoutMs;
       armed(true);
-      timer = setTimeout(cancel, config.prefixTimeoutMs);
+      if (config.prefixTimeoutMs !== null)
+        timer = setTimeout(cancel, config.prefixTimeoutMs);
       return true;
     }
     return false;
@@ -64,6 +69,7 @@ export function bindingMatcher(
     KEYBINDING_ACTIONS.find((action) =>
       config.bindings[action.id].some(
         (b) =>
+          !bindingSequence(b) &&
           isPrefixBinding(b) === sequence &&
           matchesChord(bindingChord(b), event),
       ),

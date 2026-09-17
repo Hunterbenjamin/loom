@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
+
 import { afterEach, expect, test, vi } from "vitest";
+import { defaultKeybindings } from "../../shared/keybindings.js";
 import { buildSnapshot } from "../fixtures/index.js";
 import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { cursorItems, selectedRows } from "../store/selectors.js";
@@ -12,11 +14,11 @@ afterEach(() => {
   document.body.innerHTML = "";
   vi.useRealTimers();
 });
-function setup() {
+function setup(config = defaultKeybindings) {
   const store = createStore(buildSnapshot(20));
   const help = vi.fn();
   const pending = vi.fn();
-  const handler = createShortcutHandler(store, help, pending);
+  const handler = createShortcutHandler(store, help, pending, config);
   window.addEventListener("keydown", handler);
   cleanups.push(() => window.removeEventListener("keydown", handler));
   const key = (
@@ -26,6 +28,7 @@ function setup() {
   ) => {
     const event = new KeyboardEvent("keydown", {
       key,
+      shiftKey: /^[A-Z]$/.test(key),
       bubbles: true,
       cancelable: true,
       ...options,
@@ -62,11 +65,11 @@ test("prefix waits without timeout and Escape or unmapped keys cancel", () => {
   vi.useFakeTimers();
   const { store, key, pending } = setup();
   key("g");
-  expect(pending).toHaveBeenLastCalledWith(true);
+  expect(pending).toHaveBeenLastCalledWith("g");
   vi.advanceTimersByTime(60_000);
   key("n");
   expect(store.getState().ui.view).toBe("needs-you");
-  expect(pending).toHaveBeenLastCalledWith(false);
+  expect(pending).toHaveBeenLastCalledWith(null);
   for (const cancel of ["Escape", "q", "a", "b"]) {
     key("g");
     key(cancel);
@@ -406,4 +409,61 @@ test("local section and archive bindings require registration and leave issue ap
   store.open(store.getState().snapshot.tasks[0]!.id);
   key("a");
   expect(approve).toHaveBeenCalledOnce();
+});
+
+test("configured go-to sequences replace defaults, swap views and take precedence over fixed keys", async () => {
+  const config = structuredClone(defaultKeybindings);
+  config.bindings["go-briefs"] = ["g b"];
+  config.bindings["go-pull-requests"] = ["g e"];
+  config.bindings["go-research"] = ["g r"];
+  config.bindings["go-settings"] = ["v s"];
+  const { store, key, pending } = setup(config);
+  for (const [leader, suffix, view] of [
+    ["g", "b", "briefs"],
+    ["g", "r", "research"],
+    ["g", "e", "pull-requests"],
+    ["v", "s", "settings"],
+  ]) {
+    key(leader!);
+    expect(pending).toHaveBeenLastCalledWith(leader);
+    key(suffix!);
+    expect(store.getState().ui.view).toBe(view);
+  }
+  key("g");
+  key("d");
+  expect(store.getState().ui.view).toBe("settings");
+  store.setView("all");
+  store.setCursor(3);
+  key("g");
+  key("g");
+  expect(store.getState().ui.cursor).toBe(0);
+  const { formatKeys, keyHint, getTrackerKeymap } = await import(
+    "./tracker-keymap.js"
+  );
+  expect(formatKeys("go-briefs", config)).toBe("g b");
+  expect(keyHint("go-research", undefined, config).title).toBe(
+    "Research (g r)",
+  );
+  expect(
+    getTrackerKeymap(config).find((entry) => entry.id === "go-settings")?.keys,
+  ).toEqual(["v s"]);
+});
+
+test("configured g g beats first-row, and modified sequence leaders and suffixes match exactly", async () => {
+  const config = structuredClone(defaultKeybindings);
+  config.bindings["go-research"] = ["g g", "Ctrl+Y Shift+R"];
+  const { getTrackerKeymap, formatKeys } = await import("./tracker-keymap.js");
+  expect(
+    getTrackerKeymap(config).find((entry) => entry.id === "first-row")?.keys,
+  ).toEqual([]);
+  expect(formatKeys("first-row", config)).toBe("Unbound");
+  const { store, key } = setup(config);
+  key("g");
+  key("g");
+  expect(store.getState().ui.view).toBe("research");
+  store.setView("all");
+  key("y", document.body, { ctrlKey: true });
+  key("Shift", document.body, { shiftKey: true });
+  key("R", document.body, { shiftKey: true });
+  expect(store.getState().ui.view).toBe("research");
 });

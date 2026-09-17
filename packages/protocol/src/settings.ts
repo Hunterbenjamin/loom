@@ -72,7 +72,7 @@ export const settingsValues = z.strictObject({
     windowMode: z.enum(["tracker", "workbench"]),
     terminalHistoryLimit: z.number().int().positive(),
     keyPrefix: z.string().min(1).nullable(),
-    keyTimeoutMs: z.number().int().positive(),
+    keyTimeoutMs: z.number().int().min(100).max(60000).nullable(),
     keybindings: z.record(z.string().min(1), z.array(z.string().min(1))),
   }),
 });

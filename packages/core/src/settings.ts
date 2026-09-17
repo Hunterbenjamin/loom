@@ -4,6 +4,7 @@ import {
   DEFAULT_KEYBINDINGS,
   KEYBINDING_ACTIONS,
   parseChord,
+  validateKeybindings,
 } from "./keybindings.js";
 import type { ResearchDepth } from "./research.js";
 
@@ -91,7 +92,7 @@ export interface SettingsValues {
     windowMode: "tracker" | "workbench";
     terminalHistoryLimit: number;
     keyPrefix: string | null;
-    keyTimeoutMs: number;
+    keyTimeoutMs: number | null;
     keybindings: Record<string, string[]>;
   };
 }
@@ -544,36 +545,23 @@ export function validateSettings(values: SettingsValues): string[] {
     KEYBINDING_ACTIONS.some(({ id }) => !actions.includes(id))
   )
     errors.push("Key bindings must define every supported action exactly once");
-  const seenBindings = new Set<string>();
-  for (const [action, bindings] of Object.entries(
-    values.appearance.keybindings,
-  )) {
-    if (
-      !action ||
-      !Array.isArray(bindings) ||
-      bindings.some((item) => !item.trim())
-    )
-      errors.push(`Invalid key bindings for ${action}`);
-    for (const binding of bindings) {
-      const prefixed = binding.startsWith("Prefix ");
-      const chord = prefixed ? binding.slice(7) : binding;
-      if (parseChord(chord) === null)
-        errors.push(`Invalid key binding: ${binding}`);
-      if (prefixed && values.appearance.keyPrefix === null)
-        errors.push(`Prefix binding needs a prefix: ${binding}`);
-      const identity = `${prefixed}:${chord}`;
-      if (seenBindings.has(identity))
-        errors.push(`Duplicate key binding: ${binding}`);
-      seenBindings.add(identity);
-    }
-  }
+  errors.push(
+    ...validateKeybindings({
+      prefix: values.appearance.keyPrefix,
+      bindings: values.appearance.keybindings,
+    }).map((issue) => issue.message),
+  );
   if (
     !Number.isInteger(values.appearance.terminalHistoryLimit) ||
     values.appearance.terminalHistoryLimit < 1 ||
-    !Number.isInteger(values.appearance.keyTimeoutMs) ||
-    values.appearance.keyTimeoutMs < 1
+    (values.appearance.keyTimeoutMs !== null &&
+      (!Number.isInteger(values.appearance.keyTimeoutMs) ||
+        values.appearance.keyTimeoutMs < 100 ||
+        values.appearance.keyTimeoutMs > 60000))
   )
-    errors.push("Terminal history and key timeout must be positive");
+    errors.push(
+      "Terminal history must be positive; key timeout must be null or 100–60000 ms",
+    );
   return errors;
 }
 
