@@ -1,3 +1,4 @@
+import { suggestResearchName } from "@loom/core";
 import {
   type ResearchComment,
   type ResearchEntry,
@@ -10,6 +11,30 @@ import { z } from "zod";
 
 export class ResearchStore {
   constructor(private readonly db: Database.Database) {}
+  // Keep legacy names identical to creation suggestions: the whitespace and truncation
+  // rule belongs to core, so this backfill runs in TypeScript after SQL migrations.
+  backfillNames(): void {
+    this.db.transaction(() => {
+      const rows = this.db
+        .prepare(
+          "SELECT id, json_extract(value, '$.document.title') AS title, json_extract(value, '$.question') AS question FROM research WHERE json_extract(value, '$.name') IS NULL",
+        )
+        .all();
+      const update = this.db.prepare(
+        "UPDATE research SET value=json_set(value, '$.name', ?) WHERE id=?",
+      );
+      for (const raw of rows) {
+        const row = z
+          .object({
+            id: z.string(),
+            title: z.string().nullable(),
+            question: z.string(),
+          })
+          .parse(raw);
+        update.run(suggestResearchName(row.title ?? row.question), row.id);
+      }
+    })();
+  }
   comments(id: string): ResearchComment[] {
     return this.db
       .prepare(

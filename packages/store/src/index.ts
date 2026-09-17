@@ -61,6 +61,7 @@ export async function openStore(options: StoreOptions): Promise<
     db.pragma("synchronous = FULL");
     const migrationBackups = await migrate(db, join(dataDirectory, "backups"));
     const store = new Store(db, dataDirectory, options.config);
+    store.research.backfillNames();
     const startupRunning = store.outbox.runningAtStartup();
     store.hooks.prune(options.now ?? (new Date().toISOString() as IsoTime));
     store.repairArtifactFiles();

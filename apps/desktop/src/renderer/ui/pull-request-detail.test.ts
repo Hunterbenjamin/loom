@@ -73,15 +73,19 @@ function setup(change: Partial<PullRequestDetailRow["detail"]> = {}) {
   update();
   store.openPullRequest(selection);
   const sender = vi.fn(
-    async (
-      _command: import("@loom/protocol").Command,
-    ): Promise<AckOutcome> => ({
+    async (command: import("@loom/protocol").Command): Promise<AckOutcome> => ({
       ok: true,
-      result: {
-        kind: "pull_request_action",
-        command: "merge_pull_request",
-        ...selection,
-      },
+      result:
+        command.kind === "list_research"
+          ? {
+              kind: "research_list",
+              state: { entries: [], runningId: null },
+            }
+          : {
+              kind: "pull_request_action",
+              command: "merge_pull_request",
+              ...selection,
+            },
     }),
   );
   store.setSender(sender);
@@ -455,7 +459,7 @@ test("PR shortcuts reuse confirmation and guarded controls, while typing and dia
 
 test("palette exposes PR actions and disabled reasons, and merge opens the same confirmation", async () => {
   const h = setup({ checks: "pending" });
-  act(() => h.store.setPalette(true));
+  await act(async () => h.store.setPalette(true));
   const item = (action: string) => {
     const element = h.host.querySelector<HTMLElement>(
       `[cmdk-item][data-value^="pull-request-${action} "]`,
@@ -477,15 +481,28 @@ test("palette exposes PR actions and disabled reasons, and merge opens the same 
   await act(async () => item("merge").click());
   expect(h.store.getState().ui.palette).toBe(false);
   expect(h.host.querySelector("dialog")?.open).toBe(true);
-  expect(h.sender).not.toHaveBeenCalled();
+  expect(h.sender.mock.calls).toEqual([
+    [{ kind: "list_research", archived: "all" }],
+  ]);
   await h.click("Confirm squash merge");
-  expect(h.sender).toHaveBeenCalledOnce();
+  expect(h.sender.mock.calls).toEqual([
+    [{ kind: "list_research", archived: "all" }],
+    [
+      {
+        kind: "merge_pull_request",
+        repoId: h.row.repoId,
+        number: h.row.number,
+        matchHeadSha: h.row.detail.headSha,
+        deleteBranch: true,
+      },
+    ],
+  ]);
 });
 
 test("a pending command cannot be submitted again through shortcuts or the palette", async () => {
   const h = setup({ state: "closed" });
   let finish!: (outcome: AckOutcome) => void;
-  h.sender.mockImplementation(
+  h.sender.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         finish = resolve;
@@ -493,7 +510,7 @@ test("a pending command cannot be submitted again through shortcuts or the palet
   );
   press("d");
   press("d");
-  act(() => h.store.setPalette(true));
+  await act(async () => h.store.setPalette(true));
   act(() =>
     h.host
       .querySelector<HTMLElement>(
@@ -501,7 +518,16 @@ test("a pending command cannot be submitted again through shortcuts or the palet
       )
       ?.click(),
   );
-  expect(h.sender).toHaveBeenCalledOnce();
+  expect(h.sender.mock.calls).toEqual([
+    [
+      {
+        kind: "delete_branch",
+        repoId: h.row.repoId,
+        number: h.row.number,
+      },
+    ],
+    [{ kind: "list_research", archived: "all" }],
+  ]);
   await act(async () =>
     finish({
       ok: false,
@@ -1045,7 +1071,7 @@ test("Cmd+Enter respects merge guards, palette, composition, repeated keys and o
     press("Enter", window, { metaKey: true, ...extra });
     expect(h.host.querySelector("dialog")).toBeNull();
   }
-  act(() => h.store.setPalette(true));
+  await act(async () => h.store.setPalette(true));
   press("Enter", window, { metaKey: true });
   expect(h.host.querySelector("dialog")).toBeNull();
   act(() => {
@@ -1054,7 +1080,9 @@ test("Cmd+Enter respects merge guards, palette, composition, repeated keys and o
   });
   press("Enter", window, { metaKey: true });
   expect(h.host.querySelector("dialog")).toBeNull();
-  expect(h.sender).not.toHaveBeenCalled();
+  expect(h.sender.mock.calls).toEqual([
+    [{ kind: "list_research", archived: "all" }],
+  ]);
 });
 
 test("issue detail opens durable explicit PR links without a PR list cache and deduplicates its branch PR", () => {

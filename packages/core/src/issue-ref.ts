@@ -50,6 +50,10 @@ export function suggestName(title: string): string {
   return truncateName(withoutParenthetical || title);
 }
 
+export function suggestResearchName(question: string): string {
+  return suggestName(question.replace(/\s+/gu, " "));
+}
+
 export function runLabel(run: Pick<Run, "role" | "round">): string {
   const role = `${run.role[0]?.toUpperCase() ?? ""}${run.role.slice(1)}`;
   return run.round >= 2 ? `${role} · round ${run.round}` : role;

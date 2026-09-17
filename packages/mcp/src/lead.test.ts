@@ -221,6 +221,7 @@ test("Research tools are Main-only, validated and routed as coordinator commands
     expect(names).toContain(name);
   const input = {
     id: "00000000-0000-4000-8000-000000000001",
+    name: "Keybindings",
     question: "Compare keybindings",
     directory: "/repo",
   };

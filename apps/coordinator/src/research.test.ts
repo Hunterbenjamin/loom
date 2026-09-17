@@ -36,6 +36,7 @@ async function start(h: Harness) {
     h.repoRoot,
   );
   expect(entry.status, entry.error ?? "").toBe("running");
+  expect(entry.name).toBe("Compare keybindings");
   const recipe = h.coordinator.recipes
     .all()
     .find((r) => r.research?.id === entry.id)!;
@@ -612,4 +613,39 @@ test("human command retries keep one comment and one follow-up, rejecting confli
   await expect(
     handlers.comment_research({ ...request, id: other }),
   ).rejects.toThrow("another request");
+});
+
+test("creation stores supplied or suggested names and replay checks the name", async () => {
+  const h = await setup();
+  const owner = h.coordinator.research;
+  const id = randomUUID();
+  const entry = await owner.start(
+    id,
+    "Compare keybindings",
+    h.repoRoot,
+    "Keyboard modes",
+  );
+  expect(entry.name).toBe("Keyboard modes");
+  expect(await owner.start(id, entry.question, h.repoRoot, entry.name)).toEqual(
+    entry,
+  );
+  await expect(
+    owner.start(id, entry.question, h.repoRoot, "Other"),
+  ).rejects.toThrow("another request");
+  expect((await owner.submit(entry.id, document)).name).toBe(entry.name);
+  const saved = owner.save(
+    randomUUID(),
+    "A long\n question (details)",
+    document,
+    null,
+  );
+  expect(saved.name).toBe("A long question");
+  const supplied = owner.save(randomUUID(), "Full question", document, "Short");
+  expect(supplied.name).toBe("Short");
+  expect(owner.save(supplied.id, supplied.question, document, "Short")).toEqual(
+    supplied,
+  );
+  expect(() =>
+    owner.save(supplied.id, supplied.question, document, "Changed"),
+  ).toThrow("another request");
 });

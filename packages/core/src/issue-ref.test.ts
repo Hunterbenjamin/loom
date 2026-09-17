@@ -119,3 +119,15 @@ describe("task references", () => {
     });
   });
 });
+
+it("research suggestions normalize whitespace and share issue truncation", async () => {
+  const { suggestResearchName } = await import("./issue-ref.js");
+  expect(suggestResearchName("  Compare\n\t keyboard modes (details) ")).toBe(
+    "Compare keyboard modes",
+  );
+  expect(
+    suggestResearchName(
+      "Compare keyboard modes and their behavior across applications",
+    ),
+  ).toBe("Compare keyboard modes and…");
+});

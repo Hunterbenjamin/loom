@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import type { ResearchSummary } from "@loom/protocol";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test } from "vitest";
@@ -180,4 +181,70 @@ test("local sections and archive actions appear only while their page registers 
   act(() => h.store.setPalette(true));
   expect(h.host.textContent).not.toContain("Archive / unarchive research");
   expect(h.host.textContent).not.toContain("Collapse or expand section");
+});
+
+test("palette fetches on open, searches research questions and opens by stored name", async () => {
+  const h = setup();
+  const entry: ResearchSummary = {
+    id: "00000000-0000-4000-8000-000000000001",
+    name: "Keyboard modes",
+    question: "How does remapping work?",
+    title: "Full document title",
+    origin: "main",
+    status: "completed",
+    directory: null,
+    pane: null,
+    observedStatus: "unknown",
+    sessionId: null,
+    provider: null,
+    model: null,
+    startedAt: "2026-09-16T00:00:00.000Z",
+    finishedAt: null,
+    archivedAt: null,
+    error: null,
+  };
+  let reads = 0;
+  h.store.setSender(async (command) => {
+    expect(command).toEqual({ kind: "list_research", archived: "all" });
+    reads++;
+    return {
+      ok: true,
+      result: {
+        kind: "research_list",
+        state: { entries: [entry], runningId: null },
+      },
+    };
+  });
+  expect(reads).toBe(0);
+  await act(async () => h.store.setPalette(true));
+  expect(reads).toBe(1);
+  const input = h.host.querySelector<HTMLInputElement>("[cmdk-input]")!;
+  for (const query of ["Keyboard", "remapping"]) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(input, query);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const item = h.host.querySelector<HTMLElement>(
+      '[cmdk-group][data-value="Research"] [cmdk-item]',
+    );
+    expect(item?.textContent).toBe(entry.name);
+    expect(reads).toBe(1);
+  }
+  await act(async () =>
+    h.host
+      .querySelector<HTMLElement>(
+        '[cmdk-group][data-value="Research"] [cmdk-item]',
+      )!
+      .click(),
+  );
+  expect(h.store.getState().ui).toMatchObject({
+    palette: false,
+    view: "research",
+    openResearch: entry.id,
+  });
+  await act(async () => h.store.setPalette(true));
+  expect(reads).toBe(2);
 });

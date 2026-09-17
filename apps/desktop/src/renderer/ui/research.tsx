@@ -200,8 +200,8 @@ export function ResearchView() {
               cursor={selected === index}
               onOpen={() => store.openResearch(item.row.id)}
               leading={<ResearchGlyph status={item.row.status} />}
-              text={item.row.title ?? item.row.question}
-              title={item.row.title ?? item.row.question}
+              text={item.row.name}
+              title={item.row.question}
               meta={
                 item.row.origin === "main" ? <span>Saved by Main</span> : null
               }
@@ -221,9 +221,7 @@ export function ResearchView() {
                 Research
               </button>
               <span>›</span>
-              <span>
-                {current?.document?.title ?? current?.question ?? "Loading…"}
-              </span>
+              <span>{current?.name ?? "Loading…"}</span>
             </>
           }
         >
@@ -234,9 +232,7 @@ export function ResearchView() {
                   {error}
                 </div>
               ) : null}
-              <h1>
-                {current?.document?.title ?? current?.question ?? "Loading…"}
-              </h1>
+              <h1>{current?.name ?? "Loading…"}</h1>
               {current ? (
                 <Byline
                   name={current.origin === "main" ? "Main" : "Research agent"}
@@ -279,6 +275,7 @@ export function ResearchView() {
               ) : null}
               {current?.document ? (
                 <section className="pr-description">
+                  <h2>{current.document.title}</h2>
                   <PrMarkdown body={current.document.body} />
                 </section>
               ) : null}

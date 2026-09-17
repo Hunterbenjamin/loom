@@ -1,4 +1,5 @@
 import { displayName } from "@loom/core";
+import type { ResearchSummary } from "@loom/protocol";
 import { Command, defaultFilter } from "cmdk";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { useKeybindingsConfig } from "../keybindings-context.js";
@@ -80,6 +81,31 @@ export function Palette() {
   const canNavigateSections = useStore(hasSectionList);
   const repos = useStore((s) => s.snapshot.repos);
   const [value, setValue] = useState("");
+  const [research, setResearch] = useState<ResearchSummary[]>([]);
+  const [researchError, setResearchError] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setResearch([]);
+    setResearchError("");
+    void store.command({ kind: "list_research", archived: "all" }).then(
+      (outcome) => {
+        if (!active) return;
+        if (!outcome.ok) setResearchError(outcome.error.message);
+        else if (outcome.result.kind === "research_list")
+          setResearch(outcome.result.state.entries);
+      },
+      (error: unknown) => {
+        if (active)
+          setResearchError(
+            error instanceof Error ? error.message : String(error),
+          );
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [open, store]);
 
   useEffect(() => {
     if (!open) setValue("");
@@ -256,6 +282,24 @@ export function Palette() {
               ))}
           </Command.Group>
 
+          {researchError ? <p role="alert">{researchError}</p> : null}
+          <Command.Group heading="Research">
+            {research.map((entry) => (
+              <Command.Item
+                key={entry.id}
+                value={`research ${entry.id}`}
+                keywords={[entry.name, entry.question]}
+                onSelect={() =>
+                  run(() => {
+                    store.setView("research");
+                    store.openResearch(entry.id);
+                  })
+                }
+              >
+                {entry.name}
+              </Command.Item>
+            ))}
+          </Command.Group>
           <Command.Group heading="Issues">
             {paletteIssueRows(rows, repos, value).map((row) => (
               <Command.Item

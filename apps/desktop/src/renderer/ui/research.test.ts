@@ -23,6 +23,7 @@ afterEach(async () => {
 });
 const saved: ResearchEntry = {
   id: "00000000-0000-4000-8000-000000000001",
+  name: "Keyboard modes",
   question: "How do keybindings work?",
   directory: null,
   pane: null,
@@ -119,6 +120,9 @@ test("lists Active and Archived, renders markdown and sources, and archives with
   expect(host.querySelector('input[type="checkbox"]')).toBeNull();
   expect(host.textContent).toContain("Saved by Main");
   await act(async () => store.openResearch(saved.id));
+  expect(host.querySelector("h1")?.textContent).toBe(saved.name);
+  expect(host.querySelector("h2")?.textContent).toBe(saved.document!.title);
+  expect(host.textContent).toContain(saved.question);
   expect(host.querySelector("strong")?.textContent).toBe("Modes");
   expect(
     host.querySelector('a[href="https://example.org/keys"]'),
@@ -130,7 +134,7 @@ test("lists Active and Archived, renders markdown and sources, and archives with
   await act(async () => archive?.click());
   expect(
     host.querySelector('[data-testid="research-list"]')?.textContent,
-  ).not.toContain("Modes and keybindings");
+  ).not.toContain(saved.name);
   expect(
     host.querySelector('[data-testid="research-detail"]')?.textContent,
   ).toContain("Modes change key meanings");
@@ -140,7 +144,7 @@ test("lists Active and Archived, renders markdown and sources, and archives with
   );
   expect(
     host.querySelector('[data-testid="research-list"]')?.textContent,
-  ).toContain("Modes and keybindings");
+  ).toContain(saved.name);
   await act(async () => store.openResearch(saved.id));
   expect(host.textContent).toContain("Unarchive");
 });

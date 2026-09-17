@@ -1,3 +1,5 @@
+import { suggestResearchName } from "@loom/core";
+import { researchName } from "@loom/protocol";
 import { useEffect, useRef, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
 
@@ -10,6 +12,8 @@ export function CreateResearchDialog() {
   });
   const [directory, setDirectory] = useState(initialDirectory);
   const [question, setQuestion] = useState("");
+  const [editedName, setEditedName] = useState<string | null>(null);
+  const name = editedName ?? suggestResearchName(question);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [discard, setDiscard] = useState(false);
@@ -21,8 +25,10 @@ export function CreateResearchDialog() {
     connected &&
     !!directory.trim() &&
     !!question.trim() &&
+    researchName.safeParse(name).success &&
     question.length <= 10000;
-  const dirty = directory !== initialDirectory || question !== "";
+  const dirty =
+    directory !== initialDirectory || question !== "" || editedName !== null;
 
   useEffect(() => {
     const previous = document.activeElement;
@@ -55,6 +61,7 @@ export function CreateResearchDialog() {
         kind: "start_research",
         id: crypto.randomUUID(),
         directory: directory.trim(),
+        name: name.trim(),
         question: question.trim(),
       });
       if (!outcome.ok) throw new Error(outcome.error.message);
@@ -109,6 +116,14 @@ export function CreateResearchDialog() {
             placeholder="Absolute directory to read"
             value={directory}
             onChange={(event) => setDirectory(event.target.value)}
+          />
+          <label htmlFor="research-name">Name</label>
+          <input
+            id="research-name"
+            required
+            maxLength={32}
+            value={name}
+            onChange={(event) => setEditedName(event.target.value)}
           />
           <label htmlFor="research-question">Question</label>
           <textarea

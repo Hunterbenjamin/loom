@@ -7,6 +7,7 @@ import {
   RESEARCH_LIMITS,
   type RunId,
   type SettingsValues,
+  suggestResearchName,
   type TaskId,
   type WorktreePath,
 } from "@loom/core";
@@ -18,6 +19,7 @@ import {
   researchCommentText,
   researchDocument,
   researchEntry,
+  researchName,
   researchQuestion,
 } from "@loom/protocol";
 import type { Store } from "@loom/store";
@@ -144,6 +146,7 @@ export class Research {
     id: string,
     question: string,
     directory: string,
+    name: string | null = null,
   ): Promise<ResearchEntry> {
     return this.exclusive(async () => {
       if (!isAbsolute(directory) || !(await stat(directory)).isDirectory())
@@ -152,11 +155,15 @@ export class Research {
         );
       const cwd = (await realpath(directory)) as WorktreePath;
       const parsed = researchQuestion.parse(question);
+      const displayName = researchName.parse(
+        name ?? suggestResearchName(parsed),
+      );
       const existing = this.deps.store.research.get(id);
       if (existing) {
         if (
           existing.origin !== "agent" ||
           existing.question !== parsed ||
+          existing.name !== displayName ||
           existing.directory !== cwd
         )
           throw new Error("Research ID already belongs to another request");
@@ -168,6 +175,7 @@ export class Research {
       const prompt = documentPrompt(parsed, cwd, limits);
       const entry = researchEntry.parse({
         id,
+        name: displayName,
         question: parsed,
         directory: cwd,
         origin: "agent",
@@ -724,13 +732,19 @@ export class Research {
     id: string,
     question: string,
     document: ResearchDocument,
+    name: string | null = null,
   ): ResearchEntry {
     const parsed = researchDocument.parse(document);
+    const parsedQuestion = researchQuestion.parse(question);
+    const displayName = researchName.parse(
+      name ?? suggestResearchName(parsedQuestion),
+    );
     const existing = this.deps.store.research.get(id);
     if (existing) {
       if (
         existing.origin !== "main" ||
-        existing.question !== question.trim() ||
+        existing.question !== parsedQuestion ||
+        existing.name !== displayName ||
         JSON.stringify(existing.document) !== JSON.stringify(parsed)
       )
         throw new Error("Research ID already belongs to another request");
@@ -739,7 +753,8 @@ export class Research {
     const now = this.deps.now();
     const entry = researchEntry.parse({
       id,
-      question: researchQuestion.parse(question),
+      name: displayName,
+      question: parsedQuestion,
       document: parsed,
       origin: "main",
       status: "completed",
@@ -803,6 +818,7 @@ export function researchHandlers(deps: {
           command.id,
           command.question,
           command.directory,
+          command.name,
         ),
       ),
     comment_research: async (command) =>
@@ -817,7 +833,12 @@ export function researchHandlers(deps: {
       result(await deps.research.resume(command.id)),
     save_research: (command) =>
       result(
-        deps.research.save(command.id, command.question, command.document),
+        deps.research.save(
+          command.id,
+          command.question,
+          command.document,
+          command.name,
+        ),
       ),
     set_research_archived: (command) =>
       result(

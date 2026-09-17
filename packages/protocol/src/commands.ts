@@ -12,6 +12,7 @@ import {
   researchCommentText,
   researchDocument,
   researchEntry,
+  researchName,
   researchQuestion,
   researchState,
 } from "./research.js";
@@ -133,6 +134,11 @@ export const command = z.union([
     kind: z.literal("start_research"),
     directory: z.string().min(1),
     id: z.string().uuid(),
+    name: researchName
+      .nullable()
+      .describe(
+        "Supply a short, distinct display name (up to 32 characters); null derives one from the question.",
+      ),
     question: researchQuestion,
   }),
   z.strictObject({
@@ -148,6 +154,11 @@ export const command = z.union([
   z.strictObject({
     kind: z.literal("save_research"),
     id: z.string().uuid(),
+    name: researchName
+      .nullable()
+      .describe(
+        "Supply a short, distinct display name (up to 32 characters); null derives one from the question.",
+      ),
     question: researchQuestion,
     document: researchDocument,
   }),

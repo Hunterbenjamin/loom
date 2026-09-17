@@ -1,5 +1,6 @@
 import type { PaneObservation } from "@loom/core";
 import { FakePaneHost } from "@loom/fake-agent";
+import { researchEntry } from "@loom/protocol";
 import { expect, test, vi } from "vitest";
 import { fixture, now, run } from "../../../packages/core/test/fixtures.js";
 import { repo } from "../../../packages/store/test/fixtures.js";
@@ -285,4 +286,45 @@ test("renamed task spaces retain their task label even when only scratch panes r
     branch: state.task.branch,
     runId: null,
   });
+});
+
+test("research panes display the stored name before and after document submission", async () => {
+  const host = new FakePaneHost();
+  vi.spyOn(host, "listPanes").mockResolvedValue([
+    { ...observation, dead: false },
+  ]);
+  vi.spyOn(host, "listClients").mockResolvedValue([]);
+  const entry = researchEntry.parse({
+    id: "00000000-0000-4000-8000-000000000001",
+    name: "Keyboard modes",
+    question: "How do keybindings work?",
+    origin: "agent",
+    status: "running",
+    pane: observation.ref,
+    sessionId: null,
+    provider: "codex",
+    model: "test",
+    startedAt: now,
+    finishedAt: null,
+    archivedAt: null,
+    error: null,
+    document: null,
+  });
+  const inventory = new PaneInventory(
+    host,
+    { currentBranch: vi.fn().mockResolvedValue("main") },
+    () => ({ states: [], now, research: [entry] }),
+    vi.fn(),
+  );
+  await inventory.refresh();
+  expect(inventory.rows[0]?.paneTitle).toBe(entry.name);
+  entry.status = "completed";
+  entry.document = {
+    title: "A full document title",
+    body: "Body",
+    sources: [{ title: "Source", url: "https://example.org" }],
+  };
+  await inventory.refresh();
+  expect(inventory.rows[0]?.paneTitle).toBe(entry.name);
+  await inventory.stop();
 });

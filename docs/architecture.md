@@ -225,6 +225,14 @@ these contracts.
 
 ## On-demand research
 
+Each entry stores a one-line `name` of at most 32 characters at creation, independently of its
+question and document title. Main supplies a distinct name; null names are suggested from the
+question by core (collapse whitespace, drop a trailing parenthetical, truncate at a word boundary).
+The create dialog offers the same editable suggestion. Store startup backfills missing names from
+the document title or question using that helper, without changing existing names. Lists, detail
+headers and Workbench use the stored name; the palette fetches entries when opened and searches
+both name and question. The detail preserves the full question and document title.
+
 The coordinator's `Research` owner holds interactive sessions independently of task stages.
 `launchAgent` is the common provider launch path for tasks and research: it persists the private
 recipe and MCP identity before launching, records Codex's thread ID before its first turn, and

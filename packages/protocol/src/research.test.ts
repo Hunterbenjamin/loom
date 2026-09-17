@@ -5,6 +5,8 @@ import {
   researchComment,
   researchDocument,
   researchEntry,
+  researchName,
+  researchSummary,
 } from "./research.js";
 
 const document = {
@@ -54,6 +56,7 @@ test("research accommodates a short answer and a survey, with bounded HTTP sourc
 test("entry round trips provenance and archive time", () => {
   const entry = {
     id: "00000000-0000-4000-8000-000000000001",
+    name: "Short name",
     question: "Question",
     directory: null,
     pane: null,
@@ -70,6 +73,12 @@ test("entry round trips provenance and archive time", () => {
     document,
   };
   expect(researchEntry.parse(JSON.parse(JSON.stringify(entry)))).toEqual(entry);
+  const { document: doc, ...summary } = entry;
+  expect(researchSummary.parse({ ...summary, title: doc.title }).name).toBe(
+    entry.name,
+  );
+  const { name: _name, ...unnamed } = entry;
+  expect(researchEntry.safeParse(unnamed).success).toBe(false);
 });
 
 test("comments validate attribution, timestamps and text bounds; mentions match anywhere without prefixes", () => {
@@ -125,4 +134,10 @@ test("research list accepts both archive states in one request", () => {
   expect(
     command.safeParse({ kind: "list_research", archived: "archived" }).success,
   ).toBe(false);
+});
+
+test("research names are trimmed, bounded and single-line", () => {
+  expect(researchName.parse("  Short  ")).toBe("Short");
+  for (const name of ["", "  ", "a".repeat(33), "Two\nlines", "Two\rlines"])
+    expect(researchName.safeParse(name).success).toBe(false);
 });
