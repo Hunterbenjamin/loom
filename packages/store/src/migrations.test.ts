@@ -1,6 +1,8 @@
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveSettings } from "@loom/core";
+import { settingsValues } from "@loom/protocol";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { now, repo, required, richState, task } from "../test/fixtures.js";
@@ -517,4 +519,42 @@ it("0013 preserves Main documents and removes obsolete headless agent entries", 
   });
   await migrate(db, join(root, "backups"));
   expect(db.prepare("SELECT value FROM research").pluck().all()).toEqual(rows);
+});
+
+it("0016 removes retired test settings in every scope and preserves other values", async () => {
+  const db = open();
+  await migrate(db, join(root, "backups"), migrations.slice(0, 15));
+  const insert = db.prepare(
+    "INSERT INTO settings(scope, repo_id, version, data, updated_at) VALUES (?, ?, 7, ?, ?)",
+  );
+  for (const [scope, repoId, repository] of [
+    ["global", "", { baseBranch: "develop", serialTests: true }],
+    ["repository", "widgets", { baseBranch: "release", serialTests: false }],
+    ["repository", "other", { baseBranch: "main", serialTests: null }],
+    ["repository", "unchanged", { baseBranch: "stable" }],
+  ] as const)
+    insert.run(scope, repoId, JSON.stringify({ repository }), now);
+  await migrate(db, join(root, "backups"));
+  const rows = db.prepare("SELECT * FROM settings ORDER BY repo_id").all() as {
+    scope: string;
+    repo_id: string;
+    version: number;
+    data: string;
+    updated_at: string;
+  }[];
+  expect(rows.map((row) => JSON.parse(row.data))).toEqual(
+    ["develop", "main", "stable", "release"].map((baseBranch) => ({
+      repository: { baseBranch },
+    })),
+  );
+  for (const row of rows) {
+    expect(row.version).toBe(7);
+    expect(row.updated_at).toBe(now);
+    const { effective } = resolveSettings(JSON.parse(row.data), null, null);
+    expect(settingsValues.safeParse(effective).success).toBe(true);
+  }
+  expect(await migrate(db, join(root, "backups"))).toEqual([]);
+  expect(db.prepare("SELECT * FROM settings ORDER BY repo_id").all()).toEqual(
+    rows,
+  );
 });

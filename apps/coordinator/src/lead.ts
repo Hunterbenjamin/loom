@@ -15,6 +15,7 @@ import type {
   TaskId,
   WorktreePath,
 } from "@loom/core";
+import { repoKey } from "@loom/core";
 import { mainNoteSchema } from "@loom/mcp";
 import {
   type LeadState,
@@ -549,7 +550,12 @@ export class LeadSession {
       "--name",
       "Main",
       "--",
-      leadBrief(await this.note(), this.deps.repo.github, recipe.model),
+      leadBrief(
+        await this.note(),
+        this.deps.repo.github,
+        recipe.model,
+        repoKey(this.deps.repo),
+      ),
     );
     await this.save({ ...recipe, args, launched: true });
     const { workspaceId } = await this.deps.adapters.paneHost.ensureWorkspace({

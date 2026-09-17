@@ -1,3 +1,4 @@
+import { repoKey, type WorktreePath } from "@loom/core";
 import { expect, test } from "vitest";
 import { leadBrief, mainPanelBrief, roleBrief, taskBrief } from "./prompts.js";
 
@@ -5,8 +6,20 @@ import { leadBrief, mainPanelBrief, roleBrief, taskBrief } from "./prompts.js";
 // names an agent needs, without treating a particular sentence as an executable contract.
 test("Main receives the selected repository and a lossless saved note", () => {
   const note = 'Priority: releases.\n"Restart drill" is historical.';
-  const prompt = leadBrief(note, "example/repository", "claude-test-model");
-  expect(prompt).toContain("example/repository");
+  const repo = {
+    github: "example/widgets",
+    root: "/tmp/widgets" as WorktreePath,
+  };
+  const prompt = leadBrief(
+    note,
+    repo.github,
+    "claude-test-model",
+    repoKey(repo),
+  );
+  expect(prompt).toContain(repo.github);
+  expect(prompt).toContain("WIDGETS-12");
+  expect(prompt).not.toContain("LOOM-12");
+  expectRepositoryGuidance(prompt);
   expect(prompt).toContain("Assisted-by: claude:claude-test-model");
   expect(prompt).toContain(JSON.stringify(note));
   for (const tool of [
@@ -51,9 +64,15 @@ test.each([
     ...tools,
   ])
     expect(prompt).toContain(value);
+  expectRepositoryGuidance(prompt);
   expect(prompt).toContain("3-round review cap");
   expect(prompt).toContain("Call `get_task_context` first");
   if (role === "implementer") {
+    expect(prompt).toContain(
+      "Run only the test files that cover what you changed",
+    );
+    expect(prompt).toContain("no-check grace");
+    expect(prompt).not.toContain("CI is the check");
     expect(prompt).toContain("fresh fix-round session");
     expect(prompt).toContain("reason, base-to-HEAD diff and blocking work");
     expect(prompt).toContain(
@@ -73,3 +92,15 @@ test("task artifacts retain the human's title and description", () => {
   expect(brief).toContain("Example");
   expect(brief).toContain("Keep this detail.\nAnd this line.");
 });
+
+function expectRepositoryGuidance(prompt: string) {
+  for (const file of ["AGENTS.md", "CLAUDE.md", "WORKFLOW.md"])
+    expect(prompt).toContain(file);
+  for (const text of [
+    "scripts/dev.sh",
+    "Loom's principles",
+    "Loom's architecture",
+    "Loom's AGENTS.md",
+  ])
+    expect(prompt).not.toContain(text);
+}
