@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import { useStore } from "../store/react.js";
+import { CreateBriefDialog } from "./create-brief.js";
 import { CreateIssueDialog } from "./create-issue.js";
 import { CreateResearchDialog } from "./create-research.js";
 
@@ -16,6 +17,12 @@ export const CREATABLES = [
     label: "Research",
     description: "Create a research article from a question and directory.",
     Dialog: CreateResearchDialog,
+  },
+  {
+    id: "brief",
+    label: "Daily brief",
+    description: "Run now: research live sources for a daily brief.",
+    Dialog: CreateBriefDialog,
   },
 ] as const satisfies readonly {
   id: string;

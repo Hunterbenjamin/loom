@@ -8,6 +8,7 @@ import { StoreProvider } from "../store/react.js";
 import { CREATABLES, CreateDialog } from "./creatables.js";
 import { useShortcuts } from "./keys.js";
 import { CreatePalette, Palette } from "./palette.js";
+import { registerTrackerActions } from "./tracker-actions.js";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -121,11 +122,11 @@ test("command palette registers a direct creation command for every entry", () =
   }
 });
 
-test("section commands appear once for Issues and Review and use the active adapter", () => {
+test("section commands appear once for Sections and use the active adapter", () => {
   const h = setup();
   const commands = () => [
     ...h.host.querySelectorAll<HTMLElement>(
-      '[cmdk-group][data-value="Issues and Review"] [cmdk-item]',
+      '[cmdk-group][data-value="Sections"] [cmdk-item]',
     ),
   ];
   for (const view of ["all", "pull-requests"] as const) {
@@ -156,4 +157,27 @@ test("section commands appear once for Issues and Review and use the active adap
     h.store.setPane("board");
   });
   expect(commands()).toHaveLength(0);
+});
+
+test("local sections and archive actions appear only while their page registers them", () => {
+  const h = setup();
+  act(() => h.store.setView("research"));
+  let archived = false;
+  const remove = registerTrackerActions(h.store, {
+    archive: () => {
+      archived = true;
+    },
+    "collapse-section": () => {},
+  });
+  act(() => h.store.setPalette(true));
+  expect(h.host.textContent).toContain("Collapse or expand section");
+  const item = [...h.host.querySelectorAll<HTMLElement>("[cmdk-item]")].find(
+    (item) => item.textContent?.includes("Archive / unarchive research"),
+  );
+  act(() => item!.click());
+  expect(archived).toBe(true);
+  remove();
+  act(() => h.store.setPalette(true));
+  expect(h.host.textContent).not.toContain("Archive / unarchive research");
+  expect(h.host.textContent).not.toContain("Collapse or expand section");
 });

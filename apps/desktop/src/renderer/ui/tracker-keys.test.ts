@@ -378,3 +378,32 @@ test("exact palette matches outrank more than sixty weak fuzzy matches", async (
     )[0],
   ).toBe(exact);
 });
+
+test("local section and archive bindings require registration and leave issue approval intact", () => {
+  const { store, key } = setup();
+  store.setView("research");
+  for (const letter of ["a", "h", "l", "}", "{"])
+    expect(key(letter).defaultPrevented).toBe(false);
+  const archive = vi.fn();
+  const collapse = vi.fn();
+  const remove = registerTrackerActions(store, {
+    archive,
+    "collapse-section": collapse,
+  });
+  expect(key("h").defaultPrevented).toBe(true);
+  expect(collapse).toHaveBeenCalledOnce();
+  key("a");
+  key("a", document.body, { repeat: true });
+  expect(archive).toHaveBeenCalledOnce();
+  store.openResearch("entry");
+  key("a");
+  expect(archive).toHaveBeenCalledTimes(2);
+  remove();
+  store.setView("all");
+  expect(key("a").defaultPrevented).toBe(false);
+  const approve = vi.fn();
+  cleanups.push(registerTrackerActions(store, { approve }));
+  store.open(store.getState().snapshot.tasks[0]!.id);
+  key("a");
+  expect(approve).toHaveBeenCalledOnce();
+});

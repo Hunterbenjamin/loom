@@ -11,6 +11,7 @@ import {
 import type { SettingsDocument } from "@loom/protocol";
 import { useState } from "react";
 import { useStore } from "../store/react.js";
+import { BriefSettings } from "./brief-settings.js";
 import {
   type FieldContext,
   Group,
@@ -332,6 +333,7 @@ function Agents({ context }: { context: FieldContext }) {
         ))}
       </Group>
       <ResearchSettings context={context} />
+      <BriefSettings />
       <Group title="Main">
         <Row
           field={main}

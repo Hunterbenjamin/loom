@@ -1,29 +1,7 @@
 /* Daily brief: the Reviews list for history, the Reviews detail for one brief. */
-.briefs-toolbar {
-  padding: 8px 22px;
-}
-.briefs-toolbar > .faint {
-  font-size: 12px;
-}
 .briefs-list .list-row-age {
   width: auto;
   min-width: 48px;
-}
-.briefs-schedule {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-dim);
-}
-.briefs-run {
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  padding: 5px 13px;
-  background: var(--bg-raised);
-}
-.briefs-run:disabled,
-.briefs-schedule:has(input:disabled) {
-  opacity: 0.45;
 }
 .brief-detail .pr-description p {
   line-height: 1.65;

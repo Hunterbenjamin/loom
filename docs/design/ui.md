@@ -19,10 +19,11 @@ Tracker lists, board, search, review lists and counts follow the selected projec
 ## Issues and Inbox
 
 `c` opens a create palette, separate from the ⌘K command palette. Each entry describes what it
-creates and opens its own modal. Issue and Research are registered in `ui/creatables.tsx`; adding
-a kind requires its dialog and one registry entry. ⌘K generates its Create group from that registry,
+creates and opens its own modal. Issue, Research and Daily brief are registered in
+`ui/creatables.tsx`; adding a kind requires its dialog and one registry entry. ⌘K generates its Create group from that registry,
 and its create-palette hint and the `?` map use `ui/tracker-keymap.ts`. Escape dismisses the palette
-and restores focus. Daily brief retains Run now on its page; cron is not yet available.
+and restores focus. Daily brief’s run-only dialog offers Run now with running and error feedback;
+its schedule lives in Settings → Agents → Daily brief. Cron is not yet available.
 
 The Issue modal offers Backlog/Todo,
 Normal/Small and plan-approval policy. Cmd+Enter submits; edited drafts require confirmation before
@@ -180,10 +181,13 @@ summary behavior live in [agent layers](agents.md#main).
 
 ## Daily brief
 
-Daily brief lists recent runs and opens an edition in the shared detail layout. It shows research
-items, sources, evidence/limitations and practical next steps. Pause schedule and Run now act through
-authenticated commands. The page is a disposable cache: [architecture](../architecture.md#daily-ai-builder-brief)
-owns schedule, research limits and interrupted-run behavior.
+Daily brief lists recent runs under shared collapsible month headers with counts and opens an
+edition in the shared detail layout. Headers are cursor stops: h toggles, }/{ jump, and l/Enter
+expands or opens. Its list has no top strip; the schedule belongs to Settings → Agents → Daily brief
+and Run now to the create palette. It shows research items, sources, evidence/limitations and
+practical next steps. Pause schedule and Run now act through authenticated commands. The page is a
+disposable cache: [architecture](../architecture.md#daily-ai-builder-brief) owns schedule, research
+limits and interrupted-run behavior.
 
 ## Research
 
@@ -192,13 +196,18 @@ keyboard help. The create palette’s Research modal accepts an editable Directo
 selected repository root) and a Question. Cmd+Enter submits; edited drafts require confirmation
 before discard. A successful acknowledgement opens the new research entry. Refusals, including
 another research already running, stay in the modal with the draft intact. The Research page
-retains its Archived filter and list/detail navigation. Settings under Agents → Research
-choose provider, model, reasoning and depth for the next request. Only one request runs at a time.
-History groups entries by month, supports filtering and keyboard selection, and opens the shared
-detail layout with the original question, rendered markdown and clickable sources. Running,
-failed and interrupted entries remain visible with their status and explanation.
+shows Active and Archived sections with counts; Archived starts collapsed and remembers manual
+toggles for this window. Both states arrive in one list read; toggling a section does not fetch.
+The shared section headers are cursor stops: h toggles, }/{ jump, and l/Enter expands or opens.
+Archive/unarchive (a) is available on a selected row or open entry and in the command palette and
+keyboard sheet; it reconciles the coordinator’s answer without a confirmation dialog. Rows use
+shared status glyphs, a width-capped name and date, and a Saved by Main marker, with no status column.
+Settings under Agents → Research choose provider, model, reasoning and depth for the next request.
+Only one request runs at a time. History supports keyboard selection and opens the shared detail
+layout with the original question, rendered markdown and clickable sources. Running, failed and
+interrupted entries remain visible with their status and explanation.
 
 Saved-by-Main entries are labeled in the list and detail and explicitly make no live-web
-verification claim. Archive hides an entry from the default history; the Archived toggle lists
-archived entries, which remain fully readable and can be unarchived. Window state and polling are
+verification claim. Archive moves an entry to the Archived section, where it remains fully readable
+and can be unarchived. Window state and polling are
 disposable; documents, archive state and running identity belong to the coordinator.

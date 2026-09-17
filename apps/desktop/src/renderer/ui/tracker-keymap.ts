@@ -87,7 +87,7 @@ export const trackerKeymap = [
     id,
     keys: [key],
     label,
-    group: "Issues and Review",
+    group: "Sections",
     scope: "section-list" as const,
   })),
   {
@@ -173,6 +173,13 @@ export const trackerKeymap = [
     label: "Edit Backlog issue",
     group: "Issue detail",
     scope: "detail",
+  },
+  {
+    id: "archive",
+    keys: ["a"],
+    label: "Archive / unarchive research",
+    group: "Research",
+    scope: "row-action",
   },
   {
     id: "approve",

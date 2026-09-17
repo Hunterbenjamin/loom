@@ -40,6 +40,8 @@ export const sectionCollapsed = (sections: ListSections, stage: Stage) =>
 export interface UiState {
   /** Presentation only; owned by this window and never persisted. */
   listSections: ListSections;
+  briefSections: Partial<Record<string, boolean>>;
+  researchSections: Partial<Record<"active" | "archived", boolean>>;
   trackerVisible: boolean;
   prTab: "for-you" | "created";
   prSections: Partial<Record<ReviewSection, boolean>>;
@@ -76,6 +78,8 @@ export interface UiState {
 
 export const initialUi: UiState = {
   listSections: {},
+  briefSections: {},
+  researchSections: {},
   trackerVisible: false,
   prTab: "for-you",
   prSections: {},

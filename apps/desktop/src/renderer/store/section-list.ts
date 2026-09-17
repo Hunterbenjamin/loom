@@ -139,3 +139,28 @@ export function runSectionCommand<R, S extends string, P extends S>(
       return false;
   }
 }
+
+// Local history projections have no paging; each group still owns an empty header.
+export function historySectionItems<R extends { id: string }, S extends string>(
+  sections: { id: S; rows: R[]; collapsed: boolean }[],
+): SectionItem<R, S>[] {
+  return indexSectionItems(
+    sections.flatMap(({ id, rows, collapsed }) => [
+      {
+        kind: "header" as const,
+        key: `header:${id}`,
+        section: id,
+        count: rows.length,
+        collapsed,
+      },
+      ...(!collapsed
+        ? rows.map((row) => ({
+            kind: "row" as const,
+            key: row.id,
+            section: id,
+            row,
+          }))
+        : []),
+    ]),
+  );
+}

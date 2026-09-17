@@ -114,3 +114,15 @@ test("research comments require a stable UUID request identity", () => {
     true,
   );
 });
+
+test("research list accepts both archive states in one request", () => {
+  for (const archived of [true, false, "all"]) {
+    expect(command.parse({ kind: "list_research", archived })).toEqual({
+      kind: "list_research",
+      archived,
+    });
+  }
+  expect(
+    command.safeParse({ kind: "list_research", archived: "archived" }).success,
+  ).toBe(false);
+});

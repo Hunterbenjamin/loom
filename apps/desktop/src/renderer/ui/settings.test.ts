@@ -5,7 +5,11 @@ import {
   MODEL_CATALOG,
   SETTINGS_CATALOG,
 } from "@loom/core";
-import { type AckOutcome, stateFromSnapshot } from "@loom/protocol";
+import {
+  type AckOutcome,
+  type BriefState,
+  stateFromSnapshot,
+} from "@loom/protocol";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
@@ -107,7 +111,7 @@ async function mount() {
     return found;
   };
   const settle = () => act(async () => new Promise((r) => setTimeout(r, 0)));
-  return { host, send, repo, button, section, group, settle };
+  return { host, send, store, repo, button, section, group, settle };
 }
 
 const press = (init: KeyboardEventInit) =>
@@ -275,4 +279,36 @@ test("Keyboard settings exposes every action in its source group, including term
       button(`Add shortcut for ${action.label}`, group(action.group)),
     ).toBeDefined();
   }
+});
+
+test("Agents owns the instance daily schedule and reconciles changes", async () => {
+  const h = await mount();
+  act(() => h.store.setConnection("connected"));
+  const state: BriefState = {
+    schedule: { enabled: true, hour: 7, timeZone: "Asia/Makassar" },
+    runs: [],
+  };
+  h.send.mockImplementation(async (input) => {
+    const command = input as { kind: string; enabled?: boolean };
+    if (command.kind === "set_brief_schedule")
+      state.schedule.enabled = command.enabled!;
+    return {
+      ok: true,
+      result: { kind: "briefs", state: structuredClone(state) },
+    };
+  });
+  await act(async () => h.button("Agents").click());
+  const checkbox = h.host.querySelector<HTMLInputElement>("#brief-schedule")!;
+  expect(checkbox.checked).toBe(true);
+  expect(h.host.textContent).toContain("7:00 a.m. · Asia/Makassar");
+  await act(async () => checkbox.click());
+  expect(h.send).toHaveBeenCalledWith({
+    kind: "set_brief_schedule",
+    enabled: false,
+  });
+  expect(checkbox.checked).toBe(false);
+  h.send.mockRejectedValueOnce(new Error("Schedule unavailable"));
+  await act(async () => checkbox.click());
+  expect(checkbox.checked).toBe(false);
+  expect(h.host.textContent).toContain("Schedule unavailable");
 });

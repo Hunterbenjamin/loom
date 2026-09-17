@@ -231,7 +231,10 @@ export function createShortcutHandler(
         (entry.scope === "issue" && issue) ||
         (entry.scope === "list" && !detail && ui.view !== "settings") ||
         (entry.scope === "board" && !detail && ui.pane === "board" && issue) ||
-        (entry.scope === "section-list" && hasSectionList(store.getState())),
+        (entry.scope === "row-action" && hasTrackerAction(store, entry.id)) ||
+        (entry.scope === "section-list" &&
+          (hasSectionList(store.getState()) ||
+            hasTrackerAction(store, entry.id))),
     );
     if (!entry) return;
     if (
