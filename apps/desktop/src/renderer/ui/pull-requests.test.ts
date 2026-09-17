@@ -146,11 +146,15 @@ test("live merging task state shows progress until the PR completes", () => {
     return row;
   };
   apply();
-  expect(row().querySelector('[aria-label="All checks passed"]')).not.toBeNull();
+  expect(
+    row().querySelector('[aria-label="All checks passed"]'),
+  ).not.toBeNull();
 
   task.stage = "merging";
   apply();
-  const progress = row().querySelector('.wb-status.working[aria-label="Merging"]');
+  const progress = row().querySelector(
+    '.wb-status.working[aria-label="Merging"]',
+  );
   expect(progress).toBeTruthy();
   expect(progress?.closest<HTMLElement>("[title]")?.title).toBe("Merging");
   expect(row().querySelector('[aria-label="All checks passed"]')).toBeNull();
@@ -158,7 +162,9 @@ test("live merging task state shows progress until the PR completes", () => {
   task.stage = "awaiting_approval";
   apply();
   expect(row().querySelector('[aria-label="Merging"]')).toBeNull();
-  expect(row().querySelector('[aria-label="All checks passed"]')).not.toBeNull();
+  expect(
+    row().querySelector('[aria-label="All checks passed"]'),
+  ).not.toBeNull();
 
   task.stage = "merging";
   pr.state = "merged";
