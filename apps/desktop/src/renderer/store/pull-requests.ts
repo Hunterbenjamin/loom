@@ -3,7 +3,14 @@ import type {
   PullRequestRow,
   Subscription,
 } from "@loom/protocol";
+import { pullRequestKey } from "@loom/protocol";
 import { issuePrNumbers } from "./detail-selection.js";
+import { memo1 } from "./memo.js";
+import {
+  indexSectionItems,
+  retainedCursor,
+  type SectionItem,
+} from "./section-list.js";
 import type { State, StoreContext } from "./store.js";
 import type { UiState } from "./ui-state.js";
 
@@ -92,7 +99,7 @@ function sectionFor(
 }
 
 export function reviewGroups(state: {
-  ui: State["ui"];
+  ui: Pick<UiState, "repo" | "prTab" | "prSections" | "prCompletedCount">;
   snapshot: Pick<State["snapshot"], "pullRequests">;
 }) {
   const { repo, prTab, prSections, prCompletedCount } = state.ui;
@@ -128,9 +135,70 @@ export function reviewGroups(state: {
   return groups;
 }
 
-/** Keyboard navigation sees only expanded, loaded rows, in section order. */
+export type ReviewItem = SectionItem<
+  PullRequestRow,
+  ReviewSection,
+  "completed"
+>;
+const reviewItems = memo1(
+  (
+    pullRequests: PullRequestRow[],
+    repo: string,
+    prTab: UiState["prTab"],
+    prSections: UiState["prSections"],
+    prCompletedCount: number,
+  ): ReviewItem[] => {
+    const groups = reviewGroups({
+      snapshot: { pullRequests },
+      ui: { repo, prTab, prSections, prCompletedCount },
+    });
+    const items: ReviewItem[] = [];
+    for (const group of groups) {
+      if (!group.count && group.id !== "completed") continue;
+      items.push({
+        kind: "header",
+        key: `header-${group.id}`,
+        section: group.id,
+        count: group.count,
+        collapsed: group.collapsed,
+      });
+      for (const row of group.rows)
+        items.push({
+          kind: "row",
+          key: pullRequestKey(row.repoId, row.number),
+          section: group.id,
+          row,
+        });
+      if (!group.collapsed && group.remaining)
+        items.push({
+          kind: "load-more",
+          key: "load-more-completed",
+          section: "completed",
+          count: Math.min(20, group.remaining),
+        });
+    }
+    return indexSectionItems(items);
+  },
+);
+
+export function selectedReviewItems(
+  state: Pick<State, "ui" | "snapshot">,
+): ReviewItem[] {
+  const { repo, prTab, prSections, prCompletedCount } = state.ui;
+  return reviewItems(
+    state.snapshot.pullRequests,
+    repo,
+    prTab,
+    prSections,
+    prCompletedCount,
+  );
+}
+
+/** Detail navigation uses the same visible ordering, without the header stops. */
 export function selectedPullRequests(state: State): PullRequestRow[] {
-  return reviewGroups(state).flatMap((group) => group.rows);
+  return selectedReviewItems(state).flatMap((item) =>
+    item.kind === "row" ? [item.row] : [],
+  );
 }
 
 export function reviewAgentWorking(state: State, pr: PullRequestRow): boolean {
@@ -173,6 +241,15 @@ export function pullRequestSubscriptions(state: State): Subscription[] {
 }
 
 export function pullRequestActions(ctx: StoreContext) {
+  const updateSections = (patch: Partial<UiState>) => {
+    const state = ctx.get();
+    const selected = selectedReviewItems(state)[state.ui.prCursor ?? -1];
+    const next = { ...state, ui: { ...state.ui, ...patch } };
+    ctx.setUi({
+      ...patch,
+      prCursor: retainedCursor(selectedReviewItems(next), selected),
+    });
+  };
   return {
     setPrTab(prTab: UiState["prTab"]) {
       ctx.setUi({ prTab, prCursor: null });
@@ -180,13 +257,12 @@ export function pullRequestActions(ctx: StoreContext) {
     togglePrSection(section: ReviewSection) {
       const { ui } = ctx.get();
       const collapsed = ui.prSections[section] ?? section === "completed";
-      ctx.setUi({
+      updateSections({
         prSections: { ...ui.prSections, [section]: !collapsed },
-        prCursor: null,
       });
     },
     loadMoreCompletedPrs() {
-      ctx.setUi({ prCompletedCount: ctx.get().ui.prCompletedCount + 20 });
+      updateSections({ prCompletedCount: ctx.get().ui.prCompletedCount + 20 });
     },
     openPullRequest(openPr: UiState["openPr"]) {
       ctx.setUi({

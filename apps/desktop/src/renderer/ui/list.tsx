@@ -100,16 +100,16 @@ function ListViewComponent() {
                 {entry.kind === "header" ? (
                   <ListGroupHeader
                     cursor={cursor === item.index}
-                    label={`${stageLabel(entry.stage)} · `}
+                    label={`${stageLabel(entry.section)} · `}
                     count={entry.count}
                     collapsed={entry.collapsed}
-                    onToggle={() => store.toggleListSection(entry.stage)}
+                    onToggle={() => store.toggleListSection(entry.section)}
                   />
                 ) : entry.kind === "load-more" ? (
                   <LoadMore
                     cursor={cursor === item.index}
                     label={`Load ${entry.count} more`}
-                    onClick={() => store.loadMoreListSection(entry.stage)}
+                    onClick={() => store.loadMoreListSection(entry.section)}
                   />
                 ) : (
                   <Row index={item.index} item={entry} cursor={cursor} />

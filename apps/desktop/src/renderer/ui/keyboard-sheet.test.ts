@@ -89,6 +89,19 @@ test("one modal contains every source entry once, with effective bindings and sc
         .querySelector(`[data-key-id="${entry.id}"]`)
         ?.closest('[role="tabpanel"]')?.id,
     ).toBe("keyboard-panel-0");
+  for (const id of [
+    "expand-item",
+    "collapse-section",
+    "next-section",
+    "previous-section",
+  ]) {
+    expect(
+      host
+        .querySelector(`[data-key-id="${id}"]`)
+        ?.closest("section")
+        ?.querySelector("h3")?.textContent,
+    ).toBe("Issues and Review");
+  }
   expect(host.textContent).toContain("Cmd+U");
   expect(host.textContent).toContain("4.2 seconds");
   expect(host.textContent).toContain(bindings.path);

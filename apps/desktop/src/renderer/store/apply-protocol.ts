@@ -1,7 +1,7 @@
 import type { ClientState, PatchFrame } from "@loom/protocol";
 import { repoId as parseRepoId } from "@loom/protocol";
 import { projectSnapshot } from "../live/snapshot.js";
-import { selectedPullRequests } from "./pull-requests.js";
+import { selectedReviewItems } from "./pull-requests.js";
 import { cursorItems, retainedCursor } from "./selectors.js";
 import type { State } from "./store.js";
 import { resetUiForRepo, revealStage } from "./ui-state.js";
@@ -20,7 +20,7 @@ export function applyProtocol(
   const selectedPr =
     state.ui.prCursor === null
       ? undefined
-      : selectedPullRequests(state)[state.ui.prCursor];
+      : selectedReviewItems(state)[state.ui.prCursor];
   const selectedItem =
     state.ui.view === "needs-you" || state.ui.cursor === null
       ? undefined
@@ -73,21 +73,11 @@ export function applyProtocol(
   };
 
   if (selectedPr && !repoChanged) {
-    const rows = selectedPullRequests(next);
-    const index = rows.findIndex(
-      (pr) =>
-        pr.repoId === selectedPr.repoId && pr.number === selectedPr.number,
-    );
     next = {
       ...next,
       ui: {
         ...next.ui,
-        prCursor:
-          index >= 0
-            ? index
-            : rows.length === 0
-              ? null
-              : Math.max(0, Math.min(next.ui.prCursor ?? 0, rows.length - 1)),
+        prCursor: retainedCursor(selectedReviewItems(next), selectedPr),
       },
     };
   }

@@ -1,9 +1,14 @@
 import type { PullRequestRow } from "@loom/protocol";
 import { pullRequestKey } from "@loom/protocol";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef } from "react";
-import { reviewAgentWorking, reviewGroups } from "../store/pull-requests.js";
+import { useEffect, useRef } from "react";
+import {
+  REVIEW_SECTIONS,
+  reviewAgentWorking,
+  selectedReviewItems,
+} from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { listItemKey } from "../store/section-list.js";
 import { issueKeyFor } from "../store/selectors.js";
 import { since } from "./format.js";
 import {
@@ -15,65 +20,31 @@ import {
 } from "./list-rows.js";
 import { PullRequestGlyph } from "./pull-request-glyph.js";
 
-type Group = ReturnType<typeof reviewGroups>[number];
-type Item =
-  | { kind: "header"; group: Group }
-  | { kind: "more"; group: Group }
-  | { kind: "row"; pr: PullRequestRow; cursor: number };
-
 export function PullRequestsView() {
   const store = useStoreApi();
   const ui = useStore((s) => s.ui);
-  const prs = useStore((s) => s.snapshot.pullRequests);
-  const groups = useMemo(
-    () => reviewGroups({ ui, snapshot: { pullRequests: prs } }),
-    [ui, prs],
-  );
+  const items = useStore(selectedReviewItems);
   const loading = useStore((s) =>
     s.pullRequestLists.some(
       (list) => list.repoId === s.ui.repo && list.loading,
     ),
   );
   const scroller = useRef<HTMLDivElement>(null);
-  const items: Item[] = [];
-  let cursor = 0;
-  for (const group of groups) {
-    if (!group.count && group.id !== "completed") continue;
-    items.push({ kind: "header", group });
-    for (const pr of group.rows)
-      items.push({ kind: "row", pr, cursor: cursor++ });
-    if (!group.collapsed && group.remaining)
-      items.push({ kind: "more", group });
-  }
   const virtual = useVirtualizer({
     count: items.length,
-    getItemKey: (index) => {
-      const item = items[index] as Item;
-      return item.kind === "row"
-        ? pullRequestKey(item.pr.repoId, item.pr.number)
-        : `${item.kind}-${item.group.id}`;
-    },
+    getItemKey: (index) => listItemKey(items[index]!),
     getScrollElement: () => scroller.current,
     estimateSize: () => 40,
     overscan: 12,
   });
-  const cursorItem = items.findIndex(
-    (item) => item.kind === "row" && item.cursor === ui.prCursor,
-  );
-  const previousSections = useRef(ui.prSections);
   useEffect(() => {
-    const changed = previousSections.current !== ui.prSections;
-    previousSections.current = ui.prSections;
     const bounded =
-      ui.prCursor === null
+      ui.prCursor === null || !items.length
         ? null
-        : cursor === 0
-          ? null
-          : Math.max(0, Math.min(ui.prCursor, cursor - 1));
+        : Math.max(0, Math.min(ui.prCursor, items.length - 1));
     if (bounded !== ui.prCursor) store.setPrCursor(bounded);
-    if (!changed && cursorItem >= 0)
-      virtual.scrollToIndex(cursorItem, { align: "auto" });
-  }, [ui.prCursor, ui.prSections, cursor, cursorItem, store, virtual]);
+    if (bounded !== null) virtual.scrollToIndex(bounded, { align: "auto" });
+  }, [ui.prCursor, items.length, store, virtual]);
 
   return (
     <>
@@ -109,7 +80,8 @@ export function PullRequestsView() {
             Loading reviews…
           </div>
         ) : null}
-        {!loading && groups.every((group) => group.count === 0) ? (
+        {!loading &&
+        items.every((item) => item.kind === "header" && item.count === 0) ? (
           <div className="pad faint" role="status">
             {ui.prTab === "created"
               ? "No pull requests created by you."
@@ -118,7 +90,7 @@ export function PullRequestsView() {
         ) : null}
         <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
           {virtual.getVirtualItems().map((item) => {
-            const entry = items[item.index] as Item;
+            const entry = items[item.index]!;
             return (
               <div
                 key={item.key}
@@ -133,20 +105,26 @@ export function PullRequestsView() {
               >
                 {entry.kind === "header" ? (
                   <ListGroupHeader
-                    label={entry.group.label}
-                    count={entry.group.count}
-                    collapsed={entry.group.collapsed}
-                    onToggle={() => store.togglePrSection(entry.group.id)}
+                    cursor={ui.prCursor === item.index}
+                    label={
+                      REVIEW_SECTIONS.find(
+                        (section) => section.id === entry.section,
+                      )!.label
+                    }
+                    count={entry.count}
+                    collapsed={entry.collapsed}
+                    onToggle={() => store.togglePrSection(entry.section)}
                   />
-                ) : entry.kind === "more" ? (
+                ) : entry.kind === "load-more" ? (
                   <LoadMore
-                    label={`Load ${Math.min(20, entry.group.remaining)} more`}
+                    cursor={ui.prCursor === item.index}
+                    label={`Load ${entry.count} more`}
                     onClick={() => store.loadMoreCompletedPrs()}
                   />
                 ) : (
                   <ReviewRow
-                    pr={entry.pr}
-                    index={entry.cursor}
+                    pr={entry.row}
+                    index={item.index}
                     cursor={ui.prCursor}
                   />
                 )}

@@ -11,6 +11,7 @@ import {
   reviewGroups,
   reviewNeedsHuman,
   selectedPullRequests,
+  selectedReviewItems,
 } from "./pull-requests.js";
 
 test("live snapshots and PR patches update rows and retain the selected repo/number", () => {
@@ -20,8 +21,9 @@ test("live snapshots and PR patches update rows and retain the selected repo/num
   const store = createStore(emptySnapshot());
   store.applyProtocol(client);
   store.setView("pull-requests");
-  store.setPrCursor(2);
-  const selected = selectedPullRequests(store.getState())[2];
+  store.setPrCursor(5);
+  const selectedItem = selectedReviewItems(store.getState())[5];
+  const selected = selectedItem?.kind === "row" ? selectedItem.row : undefined;
   if (!selected) throw new Error("missing selected PR");
   const newer = {
     ...selected,
@@ -50,10 +52,10 @@ test("live snapshots and PR patches update rows and retain the selected repo/num
     ),
   ).toBe(true);
   expect(
-    selectedPullRequests(store.getState()).at(
+    selectedReviewItems(store.getState()).at(
       store.getState().ui.prCursor ?? -1,
     ),
-  ).toEqual(selected);
+  ).toEqual(selectedItem);
   const removal = {
     ...patch,
     seq: patch.seq + 1,
@@ -244,4 +246,42 @@ test("working glyph follows provider run state, never a stage or native terminal
   expect(reviewAgentWorking(store.getState(), { ...pr, taskId: null })).toBe(
     false,
   );
+});
+
+test("Review headers and paging retain identity through store actions and snapshots", () => {
+  const store = createStore();
+  store.setView("pull-requests");
+  const items = () => selectedReviewItems(store.getState());
+  const selected = () => items()[store.getState().ui.prCursor ?? -1];
+  store.setPrCursor(
+    items().findIndex(
+      (item) => item.kind === "header" && item.section === "waiting",
+    ),
+  );
+  const waiting = selected();
+  store.togglePrSection("ready");
+  expect(selected()).toEqual(waiting);
+  const wire = toSnapshot(store.getState().snapshot);
+  wire.body.pullRequests = wire.body.pullRequests.filter(
+    (pr) => pr.number !== 203,
+  );
+  store.applyProtocol(stateFromSnapshot(wire.meta, wire.body));
+  expect(selected()).toEqual(waiting);
+  store.togglePrSection("completed");
+  store.setPrCursor(items().findIndex((item) => item.kind === "load-more"));
+  store.loadMoreCompletedPrs();
+  // Final page removes load-more; mouse activation retains its owning header.
+  expect(selected()).toMatchObject({ kind: "header", section: "completed" });
+  store.setPrCursor(
+    items().findIndex(
+      (item) => item.kind === "row" && item.section === "completed",
+    ),
+  );
+  store.togglePrSection("completed");
+  expect(selected()).toMatchObject({
+    kind: "header",
+    section: "completed",
+    collapsed: true,
+  });
+  expect(store.getState().ui.prCompletedCount).toBe(40);
 });

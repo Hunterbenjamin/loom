@@ -87,8 +87,8 @@ export const trackerKeymap = [
     id,
     keys: [key],
     label,
-    group: "Issue list",
-    scope: "issue-list" as const,
+    group: "Issues and Review",
+    scope: "section-list" as const,
   })),
   {
     id: "view",

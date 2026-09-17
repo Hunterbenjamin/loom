@@ -120,3 +120,40 @@ test("command palette registers a direct creation command for every entry", () =
     act(() => h.store.setCreate(null));
   }
 });
+
+test("section commands appear once for Issues and Review and use the active adapter", () => {
+  const h = setup();
+  const commands = () => [
+    ...h.host.querySelectorAll<HTMLElement>(
+      '[cmdk-group][data-value="Issues and Review"] [cmdk-item]',
+    ),
+  ];
+  for (const view of ["all", "pull-requests"] as const) {
+    act(() => {
+      h.store.setView(view);
+      h.store.setPalette(true);
+    });
+    expect(
+      commands().map((item) => item.querySelector("kbd")?.textContent),
+    ).toEqual(["l", "h", "}", "{"]);
+    act(() => commands()[2]!.click());
+    expect(
+      view === "all"
+        ? h.store.getState().ui.cursor
+        : h.store.getState().ui.prCursor,
+    ).toBe(0);
+    expect(h.store.getState().ui.palette).toBe(false);
+  }
+  for (const view of ["needs-you", "briefs", "research", "settings"] as const) {
+    act(() => {
+      h.store.setView(view);
+      h.store.setPalette(true);
+    });
+    expect(commands()).toHaveLength(0);
+  }
+  act(() => {
+    h.store.setView("all");
+    h.store.setPane("board");
+  });
+  expect(commands()).toHaveLength(0);
+});

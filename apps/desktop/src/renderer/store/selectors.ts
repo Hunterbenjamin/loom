@@ -1,3 +1,8 @@
+import { memo1 } from "./memo.js";
+import { indexSectionItems, type SectionItem } from "./section-list.js";
+
+export { listItemKey, retainedCursor } from "./section-list.js";
+
 import {
   type Finding,
   issueKey,
@@ -70,24 +75,6 @@ export interface Row {
 }
 
 const stageOrder = new Map(STAGES.map((stage, index) => [stage, index]));
-
-function memo1<A extends unknown[], R>(
-  fn: (...args: A) => R,
-): (...args: A) => R {
-  let last: { args: A; value: R } | null = null;
-  return (...args: A) => {
-    if (
-      last &&
-      last.args.length === args.length &&
-      last.args.every((a, i) => a === args[i])
-    ) {
-      return last.value;
-    }
-    const value = fn(...args);
-    last = { args, value };
-    return value;
-  };
-}
 
 const liveStatuses: Run["status"][] = [
   "starting",
@@ -259,10 +246,7 @@ export const sortRows = memo1(
 );
 
 /** List rows are grouped by stage and then flattened, so one virtualizer covers headers too. */
-export type ListItem =
-  | { kind: "header"; stage: Stage; count: number; collapsed: boolean }
-  | { kind: "load-more"; stage: "done" | "canceled"; count: number }
-  | { kind: "row"; row: Row };
+export type ListItem = SectionItem<Row, Stage, "done" | "canceled">;
 
 const defaultSections: ListSections = {};
 
@@ -279,7 +263,13 @@ export const groupRows = memo1(
       const group = byStage.get(stage);
       if (!group || group.length === 0) continue;
       const collapsed = sectionCollapsed(sections, stage);
-      items.push({ kind: "header", stage, count: group.length, collapsed });
+      items.push({
+        kind: "header",
+        section: stage,
+        key: `header-${stage}`,
+        count: group.length,
+        collapsed,
+      });
       if (collapsed) continue;
       if (stage === "done" || stage === "canceled") {
         // Transition time, not creation age or the chosen column sort.
@@ -291,19 +281,31 @@ export const groupRows = memo1(
         );
         const limit = sections[stage]?.visibleCount ?? LIST_PAGE_SIZE;
         for (const row of group.slice(0, limit))
-          items.push({ kind: "row", row });
+          items.push({
+            kind: "row",
+            row,
+            section: row.task.stage,
+            key: row.task.id,
+          });
         if (group.length > limit) {
           items.push({
             kind: "load-more",
-            stage,
+            section: stage,
+            key: `load-more-${stage}`,
             count: Math.min(LIST_PAGE_SIZE, group.length - limit),
           });
         }
       } else {
-        for (const row of group) items.push({ kind: "row", row });
+        for (const row of group)
+          items.push({
+            kind: "row",
+            row,
+            section: row.task.stage,
+            key: row.task.id,
+          });
       }
     }
-    return items;
+    return indexSectionItems(items);
   },
 );
 
@@ -312,7 +314,14 @@ export function selectedListItems(state: State): ListItem[] {
 }
 
 const wrapRows = memo1((rows: Row[]): ListItem[] =>
-  rows.map((row) => ({ kind: "row", row })),
+  indexSectionItems(
+    rows.map((row) => ({
+      kind: "row",
+      row,
+      section: row.task.stage,
+      key: row.task.id,
+    })),
+  ),
 );
 
 /** Cursor consumers must agree with the rendered ordering and visibility. */
@@ -391,25 +400,4 @@ export function terminalsForTask(snapshot: Snapshot, task: Task): Run[] {
 
 export function taskFindings(snapshot: Snapshot, task: Task): Finding[] {
   return snapshot.findings.filter((finding) => finding.taskId === task.id);
-}
-
-/** Stable identity shared by the virtualizer and selection reconciliation. */
-export const listItemKey = (item: ListItem): string =>
-  item.kind === "row" ? item.row.task.id : `${item.kind}-${item.stage}`;
-
-export function retainedCursor(
-  items: ListItem[],
-  selected: ListItem | undefined,
-): number | null {
-  if (!selected) return null;
-  const index = items.findIndex(
-    (item) => listItemKey(item) === listItemKey(selected),
-  );
-  if (index >= 0) return index;
-  const stage =
-    selected.kind === "row" ? selected.row.task.stage : selected.stage;
-  const header = items.findIndex(
-    (item) => item.kind === "header" && item.stage === stage,
-  );
-  return header >= 0 ? header : null;
 }
