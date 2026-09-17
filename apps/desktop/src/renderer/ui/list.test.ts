@@ -148,6 +148,7 @@ function setup() {
 function key(key: string, target: EventTarget = window) {
   const event = new KeyboardEvent("keydown", {
     key,
+    shiftKey: /^[A-Z]$/.test(key),
     bubbles: true,
     cancelable: true,
   });
