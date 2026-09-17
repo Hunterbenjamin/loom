@@ -1,6 +1,4 @@
-import type { KeybindingAction } from "@loom/core";
 import {
-  createContext,
   type ReactNode,
   useCallback,
   useContext,
@@ -9,7 +7,10 @@ import {
   useState,
 } from "react";
 import type { WindowMode } from "../shared/ipc.js";
-import { defaultKeybindings } from "../shared/keybindings.js";
+import {
+  type Dispatch,
+  WindowKeybindingsContext,
+} from "./keybindings-context.js";
 import { useStoreApi } from "./store/react.js";
 import { togglePalette } from "./ui/keys.js";
 import { enterFocusedScrollMode } from "./ui/terminal.js";
@@ -17,17 +18,6 @@ import {
   useKeybindingListener,
   useKeybindings,
 } from "./workbench/use-keybindings.js";
-
-type Dispatch = (action: KeybindingAction) => void;
-const WindowKeybindingsContext = createContext<
-  | (ReturnType<typeof useKeybindings> & {
-      help: boolean;
-      showHelp(): void;
-      closeHelp(): void;
-      workbench: { current: Dispatch | null };
-    })
-  | null
->(null);
 
 /**
  * One listener for the editable bindings in both windows. The Tracker and the Workbench stay
@@ -76,13 +66,6 @@ export function useWorkbenchKeybindings(dispatch: Dispatch) {
     };
   }, [workbench, dispatch]);
   return context;
-}
-
-/** The effective bindings for display; the defaults where no window provider is mounted. */
-export function useKeybindingsConfig() {
-  return (
-    useContext(WindowKeybindingsContext)?.bindings.config ?? defaultKeybindings
-  );
 }
 
 export function useWindowKeybindings() {

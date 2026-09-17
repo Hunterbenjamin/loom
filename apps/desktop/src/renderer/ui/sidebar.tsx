@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { formatBindings } from "../../shared/keybindings.js";
+import { useKeybindingsConfig } from "../keybindings-context.js";
 import { reviewNeedsHuman } from "../store/pull-requests.js";
 import { useStore, useStoreApi } from "../store/react.js";
 import { viewCounts } from "../store/selectors.js";
 import { VIEWS } from "../store/ui-state.js";
-import { useKeybindingsConfig } from "../window-keybindings.js";
 import { keyHint } from "./tracker-keymap.js";
 
 export function Sidebar() {
