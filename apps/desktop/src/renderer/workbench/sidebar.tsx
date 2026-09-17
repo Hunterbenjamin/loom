@@ -37,6 +37,7 @@ export function Sidebar({
   openPinned: (target: "main") => void;
 }) {
   const store = useStoreApi();
+  const instance = useStore((s) => s.instance);
   const devControlAvailable = useDevControlAvailable();
   const sidebar = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -196,6 +197,7 @@ export function Sidebar({
       className="wb-sidebar"
       aria-label="Spaces and terminals"
     >
+      <span className="instance-badge">{instance}</span>
       <section className="wb-terminals" aria-label="Terminal tree">
         <div className="wb-section-heading">
           <h2>spaces</h2>

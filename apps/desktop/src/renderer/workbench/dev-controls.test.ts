@@ -46,9 +46,9 @@ test.each([false, true, "error"])(
       expect(entries.map((entry) => entry.textContent)).toEqual(
         available === true
           ? [
-              "Dev: sync instance",
-              "Dev: restart coordinator",
-              "Dev: restart app",
+              "Instance: sync",
+              "Instance: restart coordinator",
+              "Instance: restart app",
             ]
           : [],
       );

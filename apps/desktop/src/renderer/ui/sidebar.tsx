@@ -26,6 +26,7 @@ export function Sidebar() {
       setBusy(false);
     }
   };
+  const instance = useStore((s) => s.instance);
   const connection = useStore((s) => s.connection);
   const needsYou = useStore((s) =>
     s.snapshot.tasks
@@ -47,6 +48,7 @@ export function Sidebar() {
   return (
     <nav className="sidebar" aria-label="Views">
       <div className="sidebar-top">
+        <span className="instance-badge">{instance}</span>
         <div className="repo-picker">
           <select
             className="repo-select"

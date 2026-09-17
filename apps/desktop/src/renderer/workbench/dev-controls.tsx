@@ -43,7 +43,7 @@ export function devControlActions(
       label: command === "restart-app" ? "Restart app" : "Restart coordinator",
       run: () => run(command),
     },
-    { label: "Sync dev instance", run: () => run("sync") },
+    { label: "Sync instance", run: () => run("sync") },
   ];
 }
 
@@ -54,9 +54,9 @@ export function DevControlCommands({ close }: { close: () => void }) {
     <>
       {(
         [
-          ["sync", "Dev: sync instance"],
-          ["restart-coordinator", "Dev: restart coordinator"],
-          ["restart-app", "Dev: restart app"],
+          ["sync", "Instance: sync"],
+          ["restart-coordinator", "Instance: restart coordinator"],
+          ["restart-app", "Instance: restart app"],
         ] as const
       ).map(([command, label]) => (
         <Command.Item

@@ -15,6 +15,8 @@ The UI calls a unit of work an **issue**; code and MCP tool names call it a **ta
 - [UI](docs/design/ui.md): Tracker, Workbench and detail pages.
 - [Coordinator](apps/coordinator/README.md) and [desktop](apps/desktop/README.md): setup and source maps.
 
+- [Using Loom on a project](docs/instances.md): run a stable instance alongside dev.
+
 ## Development
 
 Use the Node version in [.node-version](.node-version) and pnpm version in
