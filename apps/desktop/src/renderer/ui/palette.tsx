@@ -1,6 +1,7 @@
 import { displayName } from "@loom/core";
 import { Command, defaultFilter } from "cmdk";
 import { useEffect, useLayoutEffect, useState } from "react";
+import { useKeybindingsConfig } from "../keybindings-context.js";
 import { selectedDetailTask } from "../store/detail-selection.js";
 import { inboxRows } from "../store/inbox.js";
 import { useStore, useStoreApi } from "../store/react.js";
@@ -62,6 +63,7 @@ export function paletteIssueRows(
 }
 
 export function Palette() {
+  const keybindings = useKeybindingsConfig();
   const store = useStoreApi();
   const open = useStore((s) => s.ui.palette);
   const rows = useStore(selectedRows);
@@ -110,7 +112,8 @@ export function Palette() {
                   run(() => runTrackerCommand(store, `go-${view.id}`))
                 }
               >
-                {view.label} <kbd>{formatKeys(`go-${view.id}`)}</kbd>
+                {view.label}{" "}
+                <kbd>{formatKeys(`go-${view.id}`, keybindings)}</kbd>
               </Command.Item>
             ))}
             <Command.Item
@@ -126,21 +129,21 @@ export function Palette() {
             <Command.Item
               onSelect={() => run(() => runTrackerCommand(store, "go-briefs"))}
             >
-              Daily brief <kbd>{formatKeys("go-briefs")}</kbd>
+              Daily brief <kbd>{formatKeys("go-briefs", keybindings)}</kbd>
             </Command.Item>
             <Command.Item
               onSelect={() =>
                 run(() => runTrackerCommand(store, "go-research"))
               }
             >
-              Research <kbd>{formatKeys("go-research")}</kbd>
+              Research <kbd>{formatKeys("go-research", keybindings)}</kbd>
             </Command.Item>
             <Command.Item
               onSelect={() =>
                 run(() => runTrackerCommand(store, "go-settings"))
               }
             >
-              Settings <kbd>{formatKeys("go-settings")}</kbd>
+              Settings <kbd>{formatKeys("go-settings", keybindings)}</kbd>
             </Command.Item>
           </Command.Group>
 

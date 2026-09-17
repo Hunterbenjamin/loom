@@ -149,6 +149,7 @@ async function harness(panes = [pane]) {
   };
   return {
     element,
+    store,
     terminal,
     press,
     unsubscribe,
@@ -393,6 +394,86 @@ test("leaving Workbench terminal input returns to Tracker without sending keys a
     expect(document.activeElement).toBe(document.body);
     expect(window.loomHost.setMode).toHaveBeenCalledTimes(2);
     expect(window.loomTerminal.write).not.toHaveBeenCalled();
+  } finally {
+    await h.close();
+  }
+});
+
+test("go-to chords return from Workbench, while Tracker sequences remain terminal input", async () => {
+  const h = await harness();
+  try {
+    const config = structuredClone(defaultKeybindings);
+    config.bindings["go-research"] = ["g r", "Cmd+R", "Prefix r"];
+    config.prefixTimeoutMs = null;
+    await h.push({ config, path: null, error: null });
+    h.terminal.focus();
+    expect((await h.press(h.terminal, "g")).defaultPrevented).toBe(false);
+    expect((await h.press(h.terminal, "r")).defaultPrevented).toBe(false);
+    expect(window.loomHost.setMode).not.toHaveBeenCalled();
+    for (const prefixed of [false, true]) {
+      terminalKeys.mockClear();
+      vi.mocked(window.loomTerminal.write).mockClear();
+      if (prefixed) await h.press(h.terminal, " ", { ctrlKey: true });
+      await h.press(h.terminal, "r", { metaKey: !prefixed });
+      expect(h.store.getState().ui.view).toBe("research");
+      expect(window.loomHost.setMode).toHaveBeenCalledWith("tracker");
+      expect(terminalKeys).not.toHaveBeenCalled();
+      expect(window.loomTerminal.write).not.toHaveBeenCalled();
+    }
+  } finally {
+    await h.close();
+  }
+});
+
+test("an indefinite prefix is canceled on window blur and repeats send literal input", async () => {
+  const h = await harness();
+  try {
+    const config = structuredClone(defaultKeybindings);
+    config.prefixTimeoutMs = null;
+    await h.push({ config, path: null, error: null });
+    await h.press(h.terminal, " ", { ctrlKey: true });
+    expect(h.element.querySelector(".bottom-bar")?.textContent).toContain(
+      "until the next key",
+    );
+    await act(async () => window.dispatchEvent(new Event("blur")));
+    expect(h.element.querySelector(".bottom-bar")?.textContent).not.toContain(
+      "armed",
+    );
+    expect((await h.press(h.terminal, "r")).defaultPrevented).toBe(false);
+    await h.press(h.terminal, " ", { ctrlKey: true });
+    await h.press(h.terminal, " ", { ctrlKey: true });
+    expect(window.loomTerminal.write).toHaveBeenLastCalledWith(
+      expect.any(String),
+      "\x00",
+    );
+    await h.press(h.terminal, " ", { ctrlKey: true });
+    await h.press(h.terminal, "?", { shiftKey: true });
+    expect(h.element.querySelector(".keyboard-sheet")?.textContent).toContain(
+      "Prefix waits until the next key.",
+    );
+  } finally {
+    await h.close();
+  }
+});
+
+test("Workbench palette go-to entries use the window dispatcher and effective hints", async () => {
+  const h = await harness();
+  try {
+    const config = structuredClone(defaultKeybindings);
+    config.bindings["go-briefs"] = ["g b"];
+    await h.push({ config, path: null, error: null });
+    await h.press(h.terminal, "k", { metaKey: true });
+    const item = [
+      ...h.element.querySelectorAll<HTMLElement>("[cmdk-item]"),
+    ].find((element) => element.textContent?.includes("Daily brief"));
+    expect(item?.textContent).toContain("g b");
+    if (!item) throw new Error("Missing Daily brief command");
+    await act(async () => item.click());
+    expect(h.store.getState().ui.view).toBe("briefs");
+    expect(window.loomHost.setMode).toHaveBeenCalledWith("tracker");
+    expect(
+      h.element.querySelector('[aria-label="Workbench commands"]'),
+    ).toBeNull();
   } finally {
     await h.close();
   }

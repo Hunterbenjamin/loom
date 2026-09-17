@@ -6,7 +6,7 @@ import {
   formatBindings,
   type KeybindingsState,
 } from "../../shared/keybindings.js";
-import { useStore, useStoreApi } from "../store/react.js";
+import { useStore } from "../store/react.js";
 import { ChimeMuteCommand } from "./chime.js";
 import { DevControlCommands } from "./dev-controls.js";
 import { spaces } from "./selectors.js";
@@ -26,7 +26,6 @@ export const WorkbenchPalette = ({
   scratch: () => void;
   bindings: KeybindingsState;
 }) => {
-  const store = useStoreApi();
   const panes = useStore((state) => state.panes);
   const runs = useStore((state) => state.snapshot.runs);
   const read = useStore((state) => state.readFinished);
@@ -127,15 +126,6 @@ export const WorkbenchPalette = ({
               }}
             >
               Switch to issue tracker
-            </Command.Item>
-            <Command.Item
-              onSelect={() => {
-                close();
-                store.setView("settings");
-                void window.loomHost.setMode("tracker");
-              }}
-            >
-              Settings
             </Command.Item>
           </Command.List>
         </Command>

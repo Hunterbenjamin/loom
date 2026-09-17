@@ -1,3 +1,4 @@
+import { isGoToAction } from "@loom/core";
 import {
   type ReactNode,
   useCallback,
@@ -12,7 +13,7 @@ import {
   WindowKeybindingsContext,
 } from "./keybindings-context.js";
 import { useStoreApi } from "./store/react.js";
-import { togglePalette } from "./ui/keys.js";
+import { runTrackerCommand, togglePalette } from "./ui/keys.js";
 import { enterFocusedScrollMode } from "./ui/terminal.js";
 import {
   useKeybindingListener,
@@ -37,31 +38,32 @@ export function WindowKeybindings({
   const showHelp = useCallback(() => setHelp(true), []);
   const closeHelp = useCallback(() => setHelp(false), []);
   const workbench = useRef<Dispatch | null>(null);
-  useKeybindingListener({
-    ...state,
-    dispatch(action) {
-      if (action === "terminal-focus") {
-        const active = document.activeElement;
-        if (
-          !(active instanceof HTMLElement) ||
-          !active.closest(".terminal-host, .xterm")
-        )
-          return;
-        const header = active
-          .closest(".detail")
-          ?.querySelector<HTMLElement>(".pr-page-head");
-        if (header) header.focus();
-        else active.blur();
-        if (mode === "workbench") void window.loomHost.setMode("tracker");
-      } else if (action === "scroll-mode") enterFocusedScrollMode();
-      else if (action === "help") showHelp();
-      else if (mode === "workbench") workbench.current?.(action);
-      else if (action === "commands") togglePalette(store);
-    },
-  });
+  const dispatch: Dispatch = (action) => {
+    if (isGoToAction(action)) {
+      runTrackerCommand(store, action);
+      if (mode === "workbench") void window.loomHost.setMode("tracker");
+    } else if (action === "terminal-focus") {
+      const active = document.activeElement;
+      if (
+        !(active instanceof HTMLElement) ||
+        !active.closest(".terminal-host, .xterm")
+      )
+        return;
+      const header = active
+        .closest(".detail")
+        ?.querySelector<HTMLElement>(".pr-page-head");
+      if (header) header.focus();
+      else active.blur();
+      if (mode === "workbench") void window.loomHost.setMode("tracker");
+    } else if (action === "scroll-mode") enterFocusedScrollMode();
+    else if (action === "help") showHelp();
+    else if (mode === "workbench") workbench.current?.(action);
+    else if (action === "commands") togglePalette(store);
+  };
+  useKeybindingListener({ ...state, dispatch });
   return (
     <WindowKeybindingsContext
-      value={{ ...state, workbench, help, showHelp, closeHelp }}
+      value={{ ...state, workbench, help, showHelp, closeHelp, dispatch }}
     >
       {children}
     </WindowKeybindingsContext>

@@ -3,6 +3,7 @@ import {
   DEFAULT_SETTINGS,
   KEYBINDING_ACTIONS,
   MODEL_CATALOG,
+  mergeSettings,
   SETTINGS_CATALOG,
 } from "@loom/core";
 import {
@@ -311,4 +312,94 @@ test("Agents owns the instance daily schedule and reconciles changes", async () 
   await act(async () => checkbox.click());
   expect(checkbox.checked).toBe(false);
   expect(h.host.textContent).toContain("Schedule unavailable");
+});
+
+test("Go to records two keys, names conflicts, and saves a swap after removing the old bindings", async () => {
+  const h = await mount();
+  // Reconcile the acknowledged document as the coordinator does, so every edit uses current values.
+  h.send.mockImplementation(async (raw) => {
+    const command = raw as { patch: Parameters<typeof mergeSettings>[1] };
+    const snapshot = toSnapshot(buildSnapshot());
+    const documents = h.store.getState().settings.map((document) => ({
+      ...document,
+      effective: mergeSettings(document.effective, command.patch),
+      version: document.version + 1,
+    }));
+    snapshot.body.settings = documents;
+    h.store.applyProtocol(stateFromSnapshot(snapshot.meta, snapshot.body));
+    return {
+      ok: true,
+      result: {
+        kind: "settings_updated",
+        scope: { kind: "global" },
+        version: documents[0]!.version,
+      },
+    };
+  });
+  await h.section("Keyboard");
+  const go = h.group("Go to");
+  await act(async () => h.button("Remove g d", go).click());
+  await h.settle();
+  await act(async () => h.button("Add shortcut for Daily brief", go).click());
+  h.send.mockClear();
+  await press({ key: "g", code: "KeyG" });
+  expect(h.send).not.toHaveBeenCalled();
+  expect(go.textContent).toContain("then…");
+  await press({ key: "b", code: "KeyB" });
+  await h.settle();
+  expect(
+    h.store.getState().settings[0]!.effective.appearance.keybindings[
+      "go-briefs"
+    ],
+  ).toEqual(["g b"]);
+  await act(async () => h.button("Add shortcut for Research", go).click());
+  h.send.mockClear();
+  await press({ key: "g", code: "KeyG" });
+  await press({ key: "r", code: "KeyR" });
+  expect(h.send).not.toHaveBeenCalled();
+  expect(go.textContent).toContain("Already used by Review.");
+  for (const binding of ["g r", "g e"]) {
+    await act(async () => h.button(`Remove ${binding}`, go).click());
+    await h.settle();
+  }
+  for (const [action, suffix] of [
+    ["Research", "r"],
+    ["Review", "e"],
+  ]) {
+    await act(async () => h.button(`Add shortcut for ${action}`, go).click());
+    await press({ key: "g", code: "KeyG" });
+    await press({ key: suffix, code: `Key${suffix!.toUpperCase()}` });
+    await h.settle();
+  }
+  expect(
+    h.store.getState().settings[0]!.effective.appearance.keybindings,
+  ).toMatchObject({
+    "go-briefs": ["g b"],
+    "go-research": ["g r"],
+    "go-pull-requests": ["g e"],
+  });
+});
+
+test("prefix wait explicitly saves null for no timeout and the default duration when timed again", async () => {
+  const h = await mount();
+  await h.section("Keyboard");
+  const select = h.host.querySelector<HTMLSelectElement>(
+    '[aria-label="Prefix wait"]',
+  )!;
+  expect(select.value).toBe("timed");
+  for (const [choice, expected] of [
+    ["indefinite", null],
+    ["timed", 3000],
+  ] as const) {
+    await act(async () => {
+      select.value = choice;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await h.settle();
+    expect(h.send).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        patch: { appearance: { keyTimeoutMs: expected } },
+      }),
+    );
+  }
 });

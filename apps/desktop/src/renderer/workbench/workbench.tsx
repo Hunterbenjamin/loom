@@ -46,7 +46,11 @@ export function Workbench() {
   const [filter, setFilter] = useState("");
   const [palette, setPalette] = useState(false);
   const [error, setError] = useState("");
-  const { bindings, prefixArmed } = useWindowKeybindings();
+  const {
+    bindings,
+    prefixArmed,
+    dispatch: windowDispatch,
+  } = useWindowKeybindings();
   const [pendingTab, setPendingTab] = useState<PendingTab | null>(null);
 
   useSpaceTabsMarkRead(spaceTabsState);
@@ -244,7 +248,10 @@ export function Workbench() {
             {prefixArmed && (
               <span className="wb-keybinding-status" role="status">
                 {bindings.config.prefix} armed · waiting for key (
-                {bindings.config.prefixTimeoutMs / 1000}s)
+                {bindings.config.prefixTimeoutMs === null
+                  ? "until the next key"
+                  : `${bindings.config.prefixTimeoutMs / 1000}s`}
+                )
               </span>
             )}
             {bindings.error && (
@@ -267,7 +274,7 @@ export function Workbench() {
       {palette && (
         <WorkbenchPalette
           close={() => setPalette(false)}
-          dispatch={dispatch}
+          dispatch={windowDispatch}
           openGroup={openGroup}
           choose={choose}
           scratch={newTab}

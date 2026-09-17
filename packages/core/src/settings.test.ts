@@ -196,3 +196,29 @@ it("Research defaults to Codex and validates its independent model and reasoning
     ]),
   );
 });
+
+it("accepts indefinite prefix waits and upgrades older go-to settings", () => {
+  expect(DEFAULT_SETTINGS.appearance.keyTimeoutMs).toBe(3000);
+  const settings = mergeSettings(DEFAULT_SETTINGS, {
+    appearance: { keyTimeoutMs: null, keybindings: { "go-briefs": ["g b"] } },
+  });
+  expect(validateSettings(settings)).toEqual([]);
+  expect(settings.appearance.keyTimeoutMs).toBeNull();
+  expect(settings.appearance.keybindings["go-research"]).toEqual(["g e"]);
+  for (const keyTimeoutMs of [0, 50, 90000]) {
+    expect(
+      validateSettings(
+        mergeSettings(settings, { appearance: { keyTimeoutMs } }),
+      ),
+    ).toContain(
+      "Terminal history must be positive; key timeout must be null or 100–60000 ms",
+    );
+  }
+  expect(
+    validateSettings(
+      mergeSettings(settings, {
+        appearance: { keybindings: { "go-research": ["g b"] } },
+      }),
+    ),
+  ).toContain("Duplicate binding");
+});

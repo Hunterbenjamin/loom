@@ -47,3 +47,15 @@ it("research has its own strict profile outside pipeline roles", () => {
     settingsPatch.safeParse({ research: { depth: "unbounded" } }).success,
   ).toBe(false);
 });
+
+it("prefix wait accepts explicit null and retains the timed bounds", () => {
+  for (const keyTimeoutMs of [null, 100, 3000, 60000])
+    expect(
+      settingsPatch.parse({ appearance: { keyTimeoutMs } }).appearance
+        ?.keyTimeoutMs,
+    ).toBe(keyTimeoutMs);
+  for (const keyTimeoutMs of [0, 50, 90000])
+    expect(
+      settingsPatch.safeParse({ appearance: { keyTimeoutMs } }).success,
+    ).toBe(false);
+});
