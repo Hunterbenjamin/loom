@@ -58,7 +58,7 @@ export class TaskInputs {
       failed: null,
       requirePlanApproval:
         input.requirePlanApproval ?? settings.workflow.requirePlanApproval,
-      mergePolicy: settings.workflow.mergePolicy,
+      mergePolicy: input.mergePolicy ?? settings.workflow.mergePolicy,
       reviewRound: 0,
       reviewRoundCap: settings.workflow.reviewRoundCap,
       roleProfiles: Object.fromEntries(
