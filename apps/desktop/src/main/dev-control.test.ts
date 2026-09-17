@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import { devControls, syncSummary } from "./dev-control.js";
+import { devControls, restartsApp, syncSummary } from "./dev-control.js";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 afterEach(() => vi.restoreAllMocks());
@@ -135,6 +135,20 @@ test("sync summaries say whether Loom updated, is current, or could not pull", (
     title: "Update failed",
     detail: "error: boom",
   });
+});
+
+test("a report that stopped this app means a restart is under way", () => {
+  expect(
+    restartsApp(
+      "update: main abc -> def (1 commit(s))\ncoordinator: up to date\napp: stale, restarting\napp: stopped after 2s\napp: up after 3s\ndev-control-exit 0\n",
+    ),
+  ).toBe(true);
+  expect(
+    restartsApp(
+      "coordinator: stale, restarting\ncoordinator: stopped after 1s\napp: up to date\ndev-control-exit 0",
+    ),
+  ).toBe(false);
+  expect(restartsApp("")).toBe(false);
 });
 
 test("runAndReport writes the script's output to the report and resolves when it ends", async () => {

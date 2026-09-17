@@ -23,6 +23,14 @@ export function syncSummary(output: string): { title: string; detail: string } {
   return { title: "Loom is up to date", detail };
 }
 
+/** Whether the report says the script stopped this app: a restart is under way, and the new
+ * instance is the one to talk to. The old one must only get out of the way. */
+export function restartsApp(output: string): boolean {
+  return output
+    .split("\n")
+    .some((line) => line.trim().startsWith("app: stopped"));
+}
+
 export function devControls(
   appPath: string,
   isPackaged: boolean,

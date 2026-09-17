@@ -149,6 +149,7 @@ port_pids() {  # every listener the coordinator holds: protocol, MCP host, hook 
 }
 coordinator_running() { [ -n "$(port_pids)" ]; }
 app_running() { pgrep -f "electron-vite.js dev" >/dev/null 2>&1; }
+app_processes() { pgrep -f "electron-vite.js dev|Electron.app/Contents/MacOS/Electron" 2>/dev/null; }
 
 start_coordinator() {
   if coordinator_running; then echo "coordinator: already running (pid $(port_pids | head -1))"; return; fi
@@ -192,10 +193,19 @@ start_app() {
 
 stop_app() {
   pgrep -f "electron-vite.js dev" | xargs -I{} kill {} 2>/dev/null || true
-  sleep 1
   pgrep -f 'Electron.app/Contents/MacOS/Electron' | xargs -I{} kill {} 2>/dev/null || true
+  # Wait for the old app to be gone. Otherwise the next start sees it, reports "up" at once, and
+  # two windows overlap until the old one has finished quitting.
+  local i=0
+  while [ $i -lt 15 ] && app_processes >/dev/null; do sleep 1; i=$((i+1)); done
+  if app_processes >/dev/null; then
+    echo "app: not stopped after 15s, killing"
+    pgrep -f 'Electron.app/Contents/MacOS/Electron' | xargs -I{} kill -9 {} 2>/dev/null || true
+    pgrep -f "electron-vite.js dev" | xargs -I{} kill -9 {} 2>/dev/null || true
+    sleep 1
+  fi
   tm kill-session -t "=loom-desktop" 2>/dev/null || true
-  echo "app: stopped"
+  echo "app: stopped after ${i}s"
 }
 
 sync() {  # start what is down, restart what is stale, leave the rest alone
