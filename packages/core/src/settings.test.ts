@@ -27,11 +27,17 @@ describe("settings resolution", () => {
   });
 
   it("adds new default bindings without replacing saved shortcuts or unbound actions", () => {
-    const keybindings = structuredClone(DEFAULT_SETTINGS.appearance.keybindings);
+    const keybindings = structuredClone(
+      DEFAULT_SETTINGS.appearance.keybindings,
+    );
     delete keybindings["terminal-focus"];
     keybindings.new = ["Cmd+U"];
     keybindings.close = [];
-    const resolved = resolveSettings({ appearance: { keybindings } }, null, null);
+    const resolved = resolveSettings(
+      { appearance: { keybindings } },
+      null,
+      null,
+    );
     expect(resolved.effective.appearance.keybindings["terminal-focus"]).toEqual(
       ["Prefix q"],
     );
