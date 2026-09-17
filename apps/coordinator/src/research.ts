@@ -261,6 +261,16 @@ export class Research {
             ...entry,
             sessionId: recipe.sessionId,
           });
+        // A finished entry needs no provider session until a comment reopens it; one with a
+        // comment waiting is resumed like a running one. Resuming every past research here kept
+        // an idle Codex app-server per entry alive from boot.
+        if (
+          entry.status !== "running" &&
+          !this.deps.store.research
+            .comments(entry.id)
+            .some((comment) => !comment.delivered)
+        )
+          continue;
         try {
           if (recipe.provider === "codex" && recipe.sessionId) {
             const launch = this.deps.launch();
@@ -566,6 +576,7 @@ export class Research {
       for (const entry of this.deps.store.research.list({ archived: "all" }))
         if (
           entry.origin === "agent" &&
+          entry.status === "running" &&
           (!provider || entry.provider === provider)
         )
           await this.observe(entry.id);
