@@ -21,6 +21,10 @@ Commit these three files at the repository root so they travel with its worktree
 example commands and conventions with your project's own. Loom's own copies remain useful when
 Loom itself is the target project.
 
+### AGENTS.md
+
+<!-- loom-template:AGENTS.md:start -->
+
 `AGENTS.md` gives Codex the project's architecture, conventions and safety rules. For example:
 
 ```markdown
@@ -32,11 +36,23 @@ Run the test files covering your change; record the command and result.
 Never commit credentials or change production data.
 ```
 
+<!-- loom-template:AGENTS.md:end -->
+
+### CLAUDE.md
+
+<!-- loom-template:CLAUDE.md:start -->
+
 `CLAUDE.md` gives Claude Code the same house rules. Keep a single source by importing them:
 
 ```markdown
 @AGENTS.md
 ```
+
+<!-- loom-template:CLAUDE.md:end -->
+
+### WORKFLOW.md
+
+<!-- loom-template:WORKFLOW.md:start -->
 
 `WORKFLOW.md` gives Loom named commands. Each `##` heading immediately followed by a fenced block
 is a command; `setup` runs in each new task worktree before the agent starts. For an npm project:
@@ -67,6 +83,8 @@ npm run typecheck
 ```
 ````
 
+<!-- loom-template:WORKFLOW.md:end -->
+
 Only include commands your project provides. Issue agents receive the commands through
 `get_task_context`. Without `WORKFLOW.md`, Loom runs no setup step and has no known commands;
 agents must inspect the repository to determine how to check their work. A malformed file also
@@ -95,3 +113,19 @@ and observes GitHub checks before starting review. Configure CI to run on branch
 is opened after successful review. Without reported CI checks, review starts after a five-minute
 grace from the successful push; that does not mean tests passed. Review and merge approval still
 follow the issue's policy. Agents submit results; Loom's code moves issues between stages.
+
+## Check and draft repository files
+
+After **Add repository…**, Loom shows the three repository files and whether each is present,
+missing or unusable. Repository scope in Settings shows the same check with **Re-check**, so you
+can see changes made on disk without restarting Loom. Existing prose is not graded; an empty
+instruction file is still present. A rejected workflow shows the parser's reason and supplies
+no commands to agents.
+
+When files are missing or unusable, **Draft files as a PR** creates and opens an ordinary Todo
+issue. It asks the agents to inspect the project and adapt the templates above, preserving usable
+files. Planning uses your planner settings, and implementation and review use their normal role
+settings. Plan approval follows repository settings; merging always requires your approval.
+The draft runs in an isolated task worktree and returns through the normal CI and PR workflow.
+You can ask for edits to existing thin instructions in the drafting issue. If all three files
+are usable, Loom offers no drafting run.

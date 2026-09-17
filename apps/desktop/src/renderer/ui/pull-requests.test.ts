@@ -130,6 +130,50 @@ test("renders the reference sections, compact glyph rows and viewer count", () =
   expect(h.host.querySelector("[data-tracker-search]")).toBeNull();
 });
 
+test("live merging task state shows progress until the PR completes", () => {
+  const h = setup();
+  const wire = toSnapshot(buildSnapshot());
+  const pr = wire.body.pullRequests.find((pr) => pr.taskId);
+  const task = wire.body.tasks.find((task) => task.id === pr?.taskId);
+  if (!pr || !task) throw new Error("Missing linked PR");
+  wire.body.runs = [];
+  task.stage = "awaiting_approval";
+  const apply = () =>
+    act(() => h.store.applyProtocol(stateFromSnapshot(wire.meta, wire.body)));
+  const row = () => {
+    const row = h.rows().find((row) => row.textContent?.includes(pr.title));
+    if (!row) throw new Error("Missing linked PR row");
+    return row;
+  };
+  apply();
+  expect(
+    row().querySelector('[aria-label="All checks passed"]'),
+  ).not.toBeNull();
+
+  task.stage = "merging";
+  apply();
+  const progress = row().querySelector(
+    '.wb-status.working[aria-label="Merging"]',
+  );
+  expect(progress).toBeTruthy();
+  expect(progress?.closest<HTMLElement>("[title]")?.title).toBe("Merging");
+  expect(row().querySelector('[aria-label="All checks passed"]')).toBeNull();
+
+  task.stage = "awaiting_approval";
+  apply();
+  expect(row().querySelector('[aria-label="Merging"]')).toBeNull();
+  expect(
+    row().querySelector('[aria-label="All checks passed"]'),
+  ).not.toBeNull();
+
+  task.stage = "merging";
+  pr.state = "merged";
+  apply();
+  act(() => h.button("Completed25▸").click());
+  expect(row().querySelector(".pr-merged")).not.toBeNull();
+  expect(row().querySelector('[aria-label="Merging"]')).toBeNull();
+});
+
 test("keyboard visits headers and skips collapsed rows; Enter opens the PR and issue links open only the issue", () => {
   const h = setup();
   expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();

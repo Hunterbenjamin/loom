@@ -12,6 +12,7 @@ import type { SettingsDocument } from "@loom/protocol";
 import { useState } from "react";
 import { useStore } from "../store/react.js";
 import { BriefSettings } from "./brief-settings.js";
+import { RepositoryFiles } from "./repo-files.js";
 import {
   type FieldContext,
   Group,
@@ -600,6 +601,12 @@ export function SettingsView() {
             </fieldset>
           ) : null}
         </header>
+        {scoped.scope.kind === "repository" ? (
+          <RepositoryFiles
+            key={scoped.scope.repoId}
+            repoId={scoped.scope.repoId}
+          />
+        ) : null}
         {section === "general" ? <General context={context} /> : null}
         {section === "agents" ? <Agents context={context} /> : null}
         {section === "workflow" ? <Workflow context={context} /> : null}

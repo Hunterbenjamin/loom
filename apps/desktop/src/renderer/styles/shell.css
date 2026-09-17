@@ -204,3 +204,18 @@
     animation: none;
   }
 }
+
+.repo-onboarding {
+  min-height: 0;
+  max-height: 50%;
+  overflow: auto;
+  border-bottom: 1px solid var(--line);
+}
+
+.repo-files {
+  overflow-wrap: anywhere;
+}
+
+.repo-files ul {
+  padding-left: 16px;
+}

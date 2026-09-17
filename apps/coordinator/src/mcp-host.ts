@@ -60,7 +60,7 @@ export interface McpHostDeps {
   adapters: Adapters;
   recipes: RecipeStore;
   loop: Loop;
-  workflow: WorkflowReader;
+  workflow: Pick<WorkflowReader, "read">;
   repo(taskId: TaskId): Repo;
   /** Bounded: an input is consumed within one pass per input queued ahead of it. */
   maxPasses?: number;

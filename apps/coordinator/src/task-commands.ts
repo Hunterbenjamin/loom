@@ -2,6 +2,7 @@ import type {
   HumanCommand,
   InputDisposition,
   InputId,
+  MergePolicy,
   ProviderRules,
   RepoId,
   TaskId,
@@ -15,6 +16,7 @@ import type { RecipeStore } from "./recipes.js";
 import { taskRows, type ViewDeps } from "./views.js";
 
 export interface CreateTaskInput {
+  mergePolicy?: MergePolicy;
   repoId: RepoId;
   title: string;
   name?: string | null;

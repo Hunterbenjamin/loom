@@ -7,10 +7,10 @@
 //   - Missing file: no commands. The agent is told the repo has none.
 //   - Malformed file: no commands, and one warning. Half-parsed commands are worse than none,
 //     because an agent would run them.
-//   - Cache: keyed by absolute path, invalidated on size or mtime change, so editing the file
-//     in a worktree takes effect without restarting the coordinator.
+//   - Cache: parsed results keyed by absolute path and content. Each read checks disk so even
+//     same-size edits with preserved timestamps take effect immediately.
 
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 
@@ -41,46 +41,49 @@ export function parseWorkflow(text: string): WorkflowCommands {
   return commands.parse(found);
 }
 
-interface Entry {
-  key: string;
-  value: WorkflowCommands;
-}
+export type WorkflowStatus =
+  | { status: "present"; commands: WorkflowCommands }
+  | { status: "missing"; commands: WorkflowCommands }
+  | { status: "unusable"; commands: WorkflowCommands; reason: string };
 
 export interface WorkflowReader {
   read(repoRoot: string): Promise<WorkflowCommands>;
+  inspect(repoRoot: string): Promise<WorkflowStatus>;
 }
 
-/** One reader per coordinator. `onWarning` receives a malformed file once per content change. */
+/** One reader per coordinator; parsing and warnings share a single content cache. */
 export function createWorkflowReader(
   onWarning: (message: string) => void = () => {},
 ): WorkflowReader {
-  const cache = new Map<string, Entry>();
+  const cache = new Map<string, { text: string; value: WorkflowStatus }>();
+  const inspect = async (repoRoot: string): Promise<WorkflowStatus> => {
+    const path = join(repoRoot, WORKFLOW_FILE);
+    let text: string;
+    try {
+      text = await readFile(path, "utf8");
+    } catch (error) {
+      cache.delete(path);
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        return { status: "missing", commands: {} };
+      return { status: "unusable", commands: {}, reason: String(error) };
+    }
+    const cached = cache.get(path);
+    if (cached?.text === text) return cached.value;
+    let value: WorkflowStatus;
+    try {
+      value = { status: "present", commands: parseWorkflow(text) };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      value = { status: "unusable", commands: {}, reason };
+      onWarning(
+        `${path} is malformed; no workflow commands are exposed: ${reason}`,
+      );
+    }
+    cache.set(path, { text, value });
+    return value;
+  };
   return {
-    async read(repoRoot) {
-      const path = join(repoRoot, WORKFLOW_FILE);
-      let key: string;
-      try {
-        const info = await stat(path);
-        key = `${info.size}:${info.mtimeMs}`;
-      } catch {
-        cache.delete(path);
-        return {};
-      }
-      const cached = cache.get(path);
-      if (cached?.key === key) return cached.value;
-      let value: WorkflowCommands = {};
-      try {
-        value = parseWorkflow(await readFile(path, "utf8"));
-      } catch (error) {
-        onWarning(
-          `${path} is malformed; no workflow commands are exposed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-        value = {};
-      }
-      cache.set(path, { key, value });
-      return value;
-    },
+    inspect,
+    read: async (repoRoot) => (await inspect(repoRoot)).commands,
   };
 }

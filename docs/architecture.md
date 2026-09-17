@@ -265,3 +265,20 @@ rows, and prevents older builds from reading the new entry shape. Main's
 `save_research` still stores conversation documents without a research session or live-web claim.
 List, archive and unarchive operate on stored documents. Agent settings sit under Agents & models;
 research panes and observed agent status appear in Workbench.
+
+## Repository onboarding
+
+`check_repo_files` reads the registered root on every request and returns one line each for
+`AGENTS.md`, `CLAUDE.md` and `WORKFLOW.md`: present, missing or unusable. Read failures include
+a reason; workflow parse failures use the same reader as task context and expose no commands.
+The workflow reader caches parsing by content, never file metadata alone. No check result is
+stored in SQLite. Desktop registration and repository Settings share this projection and a
+re-check action; prose quality is left to the human.
+
+`start_repo_onboarding` checks again and refuses a complete repository. Otherwise it creates
+one ordinary issue and submits the existing move-to-Todo command. Its description scopes work
+to missing or unusable files and embeds their canonical templates from `docs/using-loom.md`,
+since the registered project need not contain Loom's documentation. Existing role settings
+control planning, implementation and review. The normal worktree, run, CI and PR machinery
+handles the draft; onboarding creates no separate launcher and writes no project files directly.
+The issue captures `require-human` merge policy even when defaults allow automatic merging.

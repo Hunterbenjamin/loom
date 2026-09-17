@@ -38,6 +38,7 @@ export const sectionCollapsed = (sections: ListSections, stage: Stage) =>
   sections[stage]?.collapsed ?? stage === "canceled";
 
 export interface UiState {
+  onboardingRepo: string | null;
   /** Presentation only; owned by this window and never persisted. */
   listSections: ListSections;
   briefSections: Partial<Record<string, boolean>>;
@@ -77,6 +78,7 @@ export interface UiState {
 }
 
 export const initialUi: UiState = {
+  onboardingRepo: null,
   listSections: {},
   briefSections: {},
   researchSections: {},

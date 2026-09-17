@@ -495,3 +495,65 @@ test("the project picker follows window controls and keeps its inset chevron int
     style.remove();
   }
 });
+
+test.each([false, true])(
+  "registration shows fresh file status and offers a draft only for gaps (complete=%s)",
+  async (complete) => {
+    const h = setup({ open: false });
+    const repo = h.snapshot.repos[0];
+    if (!repo) throw new Error("Missing repo");
+    const previous = window.loomHost;
+    window.loomHost = {
+      ...previous,
+      chooseRepository: async () => ({
+        root: "/tmp/sandbox",
+        github: repo.github,
+      }),
+    };
+    h.send.mockImplementation(async (raw) => {
+      const command = raw as { kind: string };
+      if (command.kind === "add_repo")
+        return { ok: true, result: { kind: "repo_added", repoId: repo.id } };
+      if (command.kind === "start_repo_onboarding") return created;
+      return {
+        ok: true,
+        result: {
+          kind: "repo_files",
+          repoId: repo.id,
+          files: [
+            { file: "AGENTS.md", status: complete ? "present" : "missing" },
+            { file: "CLAUDE.md", status: complete ? "present" : "missing" },
+            { file: "WORKFLOW.md", status: "present" },
+          ],
+        },
+      };
+    });
+    try {
+      await act(async () => h.change('[aria-label="Repository"]', "__add__"));
+      const section = h.get<HTMLElement>('[aria-label="Repository files"]');
+      expect(section.querySelectorAll("li")).toHaveLength(3);
+      expect(section.textContent).toContain("WORKFLOW.md: present");
+      const draft = [...section.querySelectorAll("button")].find(
+        (button) => button.textContent === "Draft files as a PR",
+      );
+      if (complete) {
+        expect(draft).toBeUndefined();
+        expect(h.send).not.toHaveBeenCalledWith(
+          expect.objectContaining({ kind: "start_repo_onboarding" }),
+        );
+      } else {
+        expect(section.textContent).toContain("AGENTS.md: missing");
+        if (!draft) throw new Error("Missing draft action");
+        await act(async () => draft.click());
+        expect(h.send).toHaveBeenCalledWith({
+          kind: "start_repo_onboarding",
+          repoId: repo.id,
+        });
+        expect(h.store.getState().ui.openTask).toBe(id);
+        expect(section.textContent).toContain("Drafting issue created");
+      }
+    } finally {
+      window.loomHost = previous;
+    }
+  },
+);
