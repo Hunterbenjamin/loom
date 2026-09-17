@@ -7,10 +7,10 @@ import { openStore, type Store } from "@loom/store";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   base,
-  command as humanCommand,
   finding,
   fixture,
   head,
+  command as humanCommand,
   run,
 } from "../../../packages/core/test/fixtures.js";
 import {
@@ -359,9 +359,9 @@ test("inspection reports an approvable reviewed head before and after base synch
     observations.inputs = [
       humanCommand({ type: "approve", headSha: approvals[0].headSha }),
     ];
-    expect(reconcile(store.loadTaskState(taskId), observations).inputs).toEqual([
-      { inputId: "input1", accepted: true, reply: null },
-    ]);
+    expect(reconcile(store.loadTaskState(taskId), observations).inputs).toEqual(
+      [{ inputId: "input1", accepted: true, reply: null }],
+    );
   }
 
   await expectApprovableHead(head);
