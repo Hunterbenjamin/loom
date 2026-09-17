@@ -25,7 +25,11 @@ export function deriveStatus(
     // A failed read is uncertainty, but `resumable: false` is the owner's own answer that the
     // session is gone (design §5.2). A Codex thread with no rollout can never be read again, so
     // without this a run stays `unknown` forever. Found by the first real reviewer run.
-    if (observation?.resumable === false && run.sessionId)
+    if (
+      run.provider === "codex" &&
+      observation?.resumable === false &&
+      run.sessionId
+    )
       return run.mode === "interactive"
         ? { ...status("ended"), endReason: "vanished" }
         : { ...status("failed"), endReason: "crashed" };
@@ -98,12 +102,20 @@ export function deriveStatus(
   if (provider.agentsEntry?.status === "idle") return status("idle");
   if (provider.agentsEntry) return status("unknown");
   if (hooks.sessionEnd) return { ...status("ended"), endReason: "submitted" };
+  if (run.mode === "interactive") {
+    // Claude's SessionStart hook can precede registration in `claude agents`. Neither a
+    // missing entry nor a missing transcript proves the process exited; Claude owns that
+    // registration order. Use the existing unknown-status grace until the pane host proves
+    // absence/death or the provider supplies live status.
+    return observation.pane?.ok &&
+      (observation.pane.value === null || observation.pane.value.dead)
+      ? { ...status("ended"), endReason: "vanished" }
+      : status("unknown");
+  }
   // No provider evidence yet. A dead pane proves the launch failed; nothing else does.
   if (!run.seenAt && !hooks.sessionStart)
     return paneDead(observation)
       ? { ...status("ended"), endReason: "vanished" }
       : status("starting");
-  return run.mode === "interactive"
-    ? { ...status("ended"), endReason: "vanished" }
-    : { ...status("failed"), endReason: "crashed" };
+  return { ...status("failed"), endReason: "crashed" };
 }

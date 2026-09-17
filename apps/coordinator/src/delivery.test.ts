@@ -108,3 +108,118 @@ test("early native receipt survives delayed transport completion and result reco
     await h.close();
   }
 }, 30_000);
+
+test.each([false, true])(
+  "Claude registration after the first observation delivers the brief (early SessionStart: %s)",
+  async (earlySessionStart) => {
+    const h = await createHarness();
+    try {
+      const registerAt = Date.parse(h.clock.now()) + 2_000;
+      const listSessions = h.adapters.claude.listSessions;
+      const hookSummary = h.adapters.claude.hookSummary;
+      h.adapters.claude.listSessions = async () =>
+        Date.parse(h.clock.now()) < registerAt ? [] : listSessions();
+      h.adapters.claude.hookSummary = async (id) => {
+        const hooks = await hookSummary(id);
+        if (!earlySessionStart && Date.parse(h.clock.now()) < registerAt)
+          hooks.sessionStart = null;
+        return hooks;
+      };
+      const { task } = h.coordinator.createTask({
+        repoId: h.repo.id,
+        title: "Delayed Claude registration",
+        description: "The hook and registry become available independently.",
+        providers: {
+          planner: "claude",
+          implementer: "codex",
+          reviewer: "claude",
+        },
+      });
+      h.coordinator.submitHuman(task.id, { type: "move", to: "todo" });
+      await h.coordinator.settle();
+      const run = h.store.loadTaskState(task.id).runs[0];
+      if (!run?.sessionId || !run.pane) throw Error("Missing planner");
+      expect(run).toMatchObject({
+        status: "unknown",
+        endedAt: null,
+        attempts: 1,
+      });
+      expect(await h.paneHost.getPane(run.pane)).toMatchObject({ dead: false });
+      expect(h.store.messages(task.id)[0]).toMatchObject({
+        status: "pending",
+        attempts: 0,
+      });
+      expect(
+        h.store.loadTaskState(task.id).task.attention.reasons,
+      ).not.toContain("run_vanished");
+
+      h.clock.advance(2_000);
+      h.coordinator.loop.enqueue(task.id);
+      await h.coordinator.settle();
+      expect(h.providers.confirm(run.sessionId)?.text).toContain(
+        "You are Loom's planner",
+      );
+      await h.coordinator.settle();
+      expect(h.store.messages(task.id)[0]).toMatchObject({
+        status: "delivered",
+        attempts: 1,
+      });
+      expect(h.store.loadTaskState(task.id).runs[0]).toMatchObject({
+        status: "working",
+        endedAt: null,
+        unknownSince: null,
+        attempts: 1,
+      });
+      expect(h.paneHost.writes).toHaveLength(1);
+    } finally {
+      await h.close();
+    }
+  },
+  30_000,
+);
+
+test("missing Claude registration uses unknown grace, then confirmed process death surfaces vanished", async () => {
+  const h = await createHarness();
+  try {
+    h.adapters.claude.listSessions = async () => [];
+    const { task } = h.coordinator.createTask({
+      repoId: h.repo.id,
+      title: "Missing Claude registration",
+      description: "Uncertainty is distinct from process death.",
+      providers: {
+        planner: "claude",
+        implementer: "codex",
+        reviewer: "claude",
+      },
+    });
+    h.coordinator.submitHuman(task.id, { type: "move", to: "todo" });
+    await h.coordinator.settle();
+    let state = h.store.loadTaskState(task.id);
+    const run = state.runs[0];
+    if (!run?.pane) throw Error("Missing planner pane");
+    h.clock.advance(state.config.unknownGraceMs);
+    h.coordinator.loop.enqueue(task.id);
+    await h.coordinator.settle();
+    state = h.store.loadTaskState(task.id);
+    expect(state.runs[0]).toMatchObject({ status: "unknown", endedAt: null });
+    expect(state.task.attention.reasons).toContain("observability_failure");
+    expect(state.task.attention.reasons).not.toContain("run_vanished");
+
+    h.paneHost.exit(run.pane, 1);
+    await h.coordinator.settle();
+    state = h.store.loadTaskState(task.id);
+    expect(state.runs[0]).toMatchObject({
+      status: "ended",
+      endReason: "vanished",
+      attempts: 1,
+    });
+    expect(state.task.attention.reasons).toContain("run_vanished");
+    expect(h.store.messages(task.id)[0]).toMatchObject({
+      status: "failed",
+      attempts: 0,
+    });
+    expect(state.runs).toHaveLength(1);
+  } finally {
+    await h.close();
+  }
+}, 30_000);

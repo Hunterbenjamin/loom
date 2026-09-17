@@ -137,11 +137,27 @@ export async function setup(stage: Stage = "todo", withPr = true) {
           const exists = adapters.providers.sessions.has(id);
           adapters.providers.create(action.provider, cwd, id, action.mode);
           if (exists && action.resume) adapters.providers.recover(id);
+          let pane = null;
+          if (action.mode === "interactive") {
+            const { workspaceId } = await adapters.paneHost.ensureWorkspace({
+              taskId: action.taskId,
+              cwd,
+              label: runner.state.task.title,
+            });
+            pane = await adapters.paneHost.ensurePane({
+              workspaceId,
+              runId: action.runId,
+              cwd,
+              executable: `fake-${action.provider}`,
+              args: [],
+              env: {},
+            });
+          }
           output = {
             sessionId: id,
             codexGeneration:
               action.provider === "codex" ? adapters.codex.generation() : null,
-            pane: null,
+            pane,
           };
           break;
         }

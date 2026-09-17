@@ -90,6 +90,16 @@ test("vanished committed work is pushed to the remote once, survives restart, an
   const push = vi.spyOn(h.adapters.git, "push");
   h.providers.crash(sessionId);
   await h.coordinator.loop.pass(task.id);
+  const uncertain = h.store.loadTaskState(task.id);
+  expect(uncertain.runs.find((r) => r.id === run.id)).toMatchObject({
+    status: "unknown",
+    endedAt: null,
+  });
+  expect(uncertain.outbox.some((a) => a.kind === "push_branch")).toBe(false);
+  // Registry absence is uncertainty; the pane host supplies evidence of process death.
+  if (!run.pane) throw new Error("Missing implementer pane");
+  h.paneHost.exit(run.pane, 1);
+  await h.coordinator.loop.pass(task.id);
   await h.coordinator.settle();
   expect(
     await h.git(
@@ -125,6 +135,8 @@ test("a rescue queued before the worktree becomes dirty is refused by the execut
     "Implement",
   );
   h.providers.crash(sessionId);
+  if (!run.pane) throw new Error("Missing implementer pane");
+  h.paneHost.exit(run.pane, 1);
   await h.coordinator.loop.pass(task.id);
   expect(
     h.store.outbox.list(task.id).some((a) => a.kind === "push_branch"),

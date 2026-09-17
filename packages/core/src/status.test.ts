@@ -331,17 +331,19 @@ describe("Claude status table", () => {
       null,
     ],
     [
-      "interactive disappearance",
-      (r, p) => {
+      "interactive disappearance confirmed by pane host",
+      (r, p, o) => {
         r.mode = "interactive";
         p.agentsEntry = null;
+        o.pane = { ok: true, at: now, value: null };
       },
       "ended",
       null,
     ],
     [
-      "never present",
+      "headless never present",
       (r, p) => {
+        r.mode = "headless";
         r.seenAt = null;
         p.agentsEntry = null;
         p.hooks.sessionStart = null;
@@ -351,8 +353,8 @@ describe("Claude status table", () => {
     ],
     [
       // The pane host has no agent awareness: a folder-trust dialog looks exactly like a
-      // slow start. It stays `starting` until the provider says otherwise (spike 06).
-      "a live pane with no provider evidence stays starting",
+      // slow start. Missing provider status uses the existing unknown-status grace.
+      "a live pane with no provider evidence stays unknown",
       (r, p, o) => {
         r.mode = "interactive";
         r.seenAt = null;
@@ -360,7 +362,7 @@ describe("Claude status table", () => {
         p.hooks.sessionStart = null;
         o.pane = { ok: true, at: now, value: pane(r.worktreePath) };
       },
-      "starting",
+      "unknown",
       null,
     ],
     [
@@ -405,6 +407,43 @@ describe("Claude status table", () => {
         blockedOn,
       });
     });
+  it.each(["live", "unreadable", "unobserved"] as const)(
+    "SessionStart without a registry entry and a %s pane is unknown",
+    (paneState) => {
+      const f = claude();
+      f.run.mode = "interactive";
+      f.run.seenAt = null;
+      f.provider.agentsEntry = null;
+      f.observation.pane =
+        paneState === "live"
+          ? { ok: true, at: now, value: pane(f.run.worktreePath) }
+          : paneState === "unreadable"
+            ? { ok: false, at: now, reason: "Unavailable" }
+            : null;
+      expect(deriveStatus(f.run, f.observation).status).toBe("unknown");
+    },
+  );
+  it("a dead pane proves a Claude launch vanished before registration", () => {
+    const f = claude();
+    f.run.mode = "interactive";
+    f.run.seenAt = null;
+    f.provider.agentsEntry = null;
+    f.observation.pane = {
+      ok: true,
+      at: now,
+      value: { ...pane(f.run.worktreePath), dead: true, exitCode: 1 },
+    };
+    expect(deriveStatus(f.run, f.observation)).toMatchObject({
+      status: "ended",
+      endReason: "vanished",
+    });
+  });
+  it("a missing Claude transcript does not prove an unreadable session vanished", () => {
+    const f = claude();
+    f.observation.provider = { ok: false, at: now, reason: "Unavailable" };
+    f.observation.resumable = false;
+    expect(deriveStatus(f.run, f.observation).status).toBe("unknown");
+  });
   it("a later event supersedes StopFailure", () => {
     const f = claude();
     f.provider.hooks.stopFailure = { error: "rate limit", at: now };
