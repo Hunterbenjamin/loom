@@ -1,10 +1,18 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { reconcile, type Sha } from "@loom/core";
 import { command, decodeClientFrame, encodeFrame } from "@loom/protocol";
 import { openStore, type Store } from "@loom/store";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { finding, run } from "../../../packages/core/test/fixtures.js";
+import {
+  base,
+  finding,
+  fixture,
+  head,
+  command as humanCommand,
+  run,
+} from "../../../packages/core/test/fixtures.js";
 import {
   config,
   notify,
@@ -332,10 +340,72 @@ test.each(["plan_approval", "awaiting_approval"] as const)(
     expect(JSON.parse(output).pendingApprovals).toEqual([
       stage === "plan_approval"
         ? { kind: "plan", planVersion: 1 }
-        : { kind: "merge", headSha: null },
+        : { kind: "merge", headSha: head },
     ]);
   },
 );
+
+test("inspection reports an approvable reviewed head before and after base synchronization", async () => {
+  const { state, observations } = fixture("awaiting_approval");
+  const worktree = required(state.worktree);
+  worktree.git = { headSha: base, dirty: false, aheadOfBase: 0, at: now };
+  expect(store.commit(taskId, result(state), 0).ok).toBe(true);
+
+  async function expectApprovableHead(expectedHead: Sha) {
+    output = "";
+    await main(["issue", "inspect", "--json", taskId]);
+    const approvals = JSON.parse(output).pendingApprovals;
+    expect(approvals).toEqual([{ kind: "merge", headSha: expectedHead }]);
+    observations.inputs = [
+      humanCommand({ type: "approve", headSha: approvals[0].headSha }),
+    ];
+    expect(reconcile(store.loadTaskState(taskId), observations).inputs).toEqual(
+      [{ inputId: "input1", accepted: true, reply: null }],
+    );
+  }
+
+  await expectApprovableHead(head);
+
+  // Persist the next completed review after syncing an advanced base. The
+  // worktree's creation-time Git cache still points at the original base.
+  const rereviewed = store.loadTaskState(taskId);
+  const syncedHead = "c".repeat(40) as Sha;
+  const advancedBase = "d".repeat(40) as Sha;
+  required(rereviewed.worktree).baseSha = advancedBase;
+  rereviewed.review = {
+    ...required(rereviewed.review),
+    headSha: syncedHead,
+    lastReviewedHead: syncedHead,
+  };
+  rereviewed.task.reviewRound++;
+  const version = rereviewed.task.version++;
+  expect(store.commit(taskId, result(rereviewed), version).ok).toBe(true);
+  if (!observations.git?.ok || !observations.github?.ok)
+    throw new Error("Missing owner observations");
+  observations.git.value.headSha = syncedHead;
+  observations.git.value.remoteHeadSha = syncedHead;
+  observations.git.value.reachableCommits = [head, syncedHead];
+  const pr = required(observations.github.value);
+  pr.headSha = syncedHead;
+  pr.ci.headSha = syncedHead;
+  await expectApprovableHead(syncedHead);
+});
+
+test("inspection does not substitute a Git head for a missing reviewed head", async () => {
+  const { state } = fixture("awaiting_approval");
+  required(state.worktree).git = {
+    headSha: head,
+    dirty: false,
+    aheadOfBase: 1,
+    at: now,
+  };
+  state.review = null;
+  expect(store.commit(taskId, result(state), 0).ok).toBe(true);
+  await main(["issue", "inspect", "--json", taskId]);
+  expect(JSON.parse(output).pendingApprovals).toEqual([
+    { kind: "merge", headSha: null },
+  ]);
+});
 
 test("answer-request CLI command requires correct arguments", async () => {
   const _stderr = vi
