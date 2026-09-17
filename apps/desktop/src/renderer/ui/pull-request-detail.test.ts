@@ -73,9 +73,7 @@ function setup(change: Partial<PullRequestDetailRow["detail"]> = {}) {
   update();
   store.openPullRequest(selection);
   const sender = vi.fn(
-    async (
-      command: import("@loom/protocol").Command,
-    ): Promise<AckOutcome> => ({
+    async (command: import("@loom/protocol").Command): Promise<AckOutcome> => ({
       ok: true,
       result:
         command.kind === "list_research"
