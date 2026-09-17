@@ -88,6 +88,7 @@ async function harness(panes = [pane]) {
   let changed: (state: KeybindingsState) => void = () => {};
   const unsubscribe = vi.fn();
   window.loomHost = {
+    setMode: vi.fn(async () => {}),
     chooseRepository: vi.fn(),
     interactive: vi.fn(),
     keybindings: async () => ({
@@ -362,6 +363,35 @@ test("reading follows terminal focus, including Prefix h/l, and retains recency 
     await read(header);
     expect(panels[1]?.textContent).toContain("SCROLL");
     expect(panels[0]?.textContent).not.toContain("SCROLL");
+    expect(window.loomTerminal.write).not.toHaveBeenCalled();
+  } finally {
+    await h.close();
+  }
+});
+
+test("leaving Workbench terminal input returns to Tracker without sending keys and can be rebound", async () => {
+  const h = await harness();
+  try {
+    h.terminal.focus();
+    terminalKeys.mockClear();
+    await h.press(h.terminal, " ", { ctrlKey: true });
+    expect((await h.press(h.terminal, "q")).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(document.body);
+    expect(window.loomHost.setMode).toHaveBeenCalledWith("tracker");
+    expect(terminalKeys).not.toHaveBeenCalled();
+    expect(window.loomTerminal.write).not.toHaveBeenCalled();
+
+    const config = structuredClone(defaultKeybindings);
+    config.bindings["terminal-focus"] = ["Prefix e"];
+    await h.push({ config, path: "/fixture/keybindings.json", error: null });
+    h.terminal.focus();
+    await h.press(h.terminal, " ", { ctrlKey: true });
+    await h.press(h.terminal, "q");
+    expect(document.activeElement).toBe(h.terminal);
+    await h.press(h.terminal, " ", { ctrlKey: true });
+    await h.press(h.terminal, "e");
+    expect(document.activeElement).toBe(document.body);
+    expect(window.loomHost.setMode).toHaveBeenCalledTimes(2);
     expect(window.loomTerminal.write).not.toHaveBeenCalled();
   } finally {
     await h.close();

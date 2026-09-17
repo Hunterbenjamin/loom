@@ -15,6 +15,7 @@ test("the editable defaults include every action, direct Mac chords and legacy s
     KEYBINDING_ACTIONS.map((action) => action.id),
   );
   expect(defaultKeybindings.prefixTimeoutMs).toBe(3000);
+  expect(defaultKeybindings.bindings["terminal-focus"]).toEqual(["Prefix q"]);
   expect(defaultKeybindings.bindings.close).toEqual(["Cmd+W", "Prefix x"]);
   expect(formatBindings(defaultKeybindings, "split-right")).toBe(
     "Cmd+D / Ctrl+Space then |",
@@ -113,4 +114,15 @@ test("native menu arbitration recognizes every configured chord and preserves un
     expect(usesWorkbenchKey(defaultKeybindings, key(k))).toBe(false);
   expect(matchesChord("Cmd+D", { ...key("d"), ctrlKey: true })).toBe(false);
   expect(matchesChord("Prefix ?", key("?"))).toBe(false);
+});
+
+test("version 1 bindings gain terminal exit while retaining custom and unbound actions", () => {
+  const config = structuredClone(defaultKeybindings);
+  config.bindings.new = ["Cmd+U"];
+  config.bindings.close = [];
+  Reflect.deleteProperty(config.bindings, "terminal-focus");
+  expect(keybindingsConfig.parse(config).bindings).toEqual({
+    ...config.bindings,
+    "terminal-focus": ["Prefix q"],
+  });
 });

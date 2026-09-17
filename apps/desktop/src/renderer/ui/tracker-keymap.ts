@@ -258,13 +258,6 @@ export const trackerKeymap = [
     group: "Diff (takes precedence)",
     scope: "diff",
   },
-  {
-    id: "terminal-focus",
-    keys: ["F6"],
-    label: "Leave terminal input",
-    group: "Terminal",
-    scope: "terminal",
-  },
 ] as const;
 export type TrackerActionId = (typeof trackerKeymap)[number]["id"];
 export function formatKeys(id: TrackerActionId): string {

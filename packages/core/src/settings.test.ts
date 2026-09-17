@@ -26,6 +26,23 @@ describe("settings resolution", () => {
     expect(resolved.sources["appearance.chime"]).toBe("default");
   });
 
+  it("adds new default bindings without replacing saved shortcuts or unbound actions", () => {
+    const keybindings = { ...DEFAULT_SETTINGS.appearance.keybindings };
+    delete keybindings["terminal-focus"];
+    keybindings.new = ["Cmd+U"];
+    keybindings.close = [];
+    const resolved = resolveSettings(
+      { appearance: { keybindings } },
+      null,
+      null,
+    );
+    expect(resolved.effective.appearance.keybindings["terminal-focus"]).toEqual(
+      ["Prefix q"],
+    );
+    expect(resolved.effective.appearance.keybindings.new).toEqual(["Cmd+U"]);
+    expect(resolved.effective.appearance.keybindings.close).toEqual([]);
+  });
+
   it("merges role profile fields without drifting other roles", () => {
     const merged = mergeSettings(DEFAULT_SETTINGS, {
       roles: { planner: { runMode: "headless" } },

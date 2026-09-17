@@ -10,6 +10,7 @@ import { toSnapshot } from "../fixtures/protocol.js";
 import { StoreProvider } from "../store/react.js";
 import { createStore } from "../store/store.js";
 import { WindowKeybindings } from "../window-keybindings.js";
+import { createShortcutHandler } from "./keys.js";
 import { TerminalTab } from "./terminal.js";
 
 const created = vi.hoisted(() => vi.fn());
@@ -593,3 +594,43 @@ test("reading keys wait for prefix entry and late flag replies cannot revive an 
   expect(window.loom.focusedTerminal).toBeUndefined();
   expect(window.loomTerminal.write).not.toHaveBeenCalled();
 });
+
+test.each(["run", "task shell"])(
+  "Prefix q leaves a Tracker %s terminal and permits Inbox navigation",
+  async (kind) => {
+    const { snapshot, makeRun } = terminalFixture();
+    const { host, store } = renderTerminal({
+      ...snapshot,
+      runs: kind === "run" ? [makeRun("exit", 1)] : [],
+    });
+    await act(async () => {});
+    const terminal = host.querySelector("textarea")!;
+    expect(terminal).not.toBeNull();
+    terminal.focus();
+    const handler = createShortcutHandler(store);
+    window.addEventListener("keydown", handler);
+    try {
+      const press = async (key: string, modifiers: KeyboardEventInit = {}) => {
+        const event = new KeyboardEvent("keydown", {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...modifiers,
+        });
+        await act(async () => {
+          document.activeElement!.dispatchEvent(event);
+        });
+        return event;
+      };
+      await press(" ", { ctrlKey: true });
+      expect((await press("q")).defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(document.body);
+      await press("g");
+      await press("n");
+      expect(store.getState().ui.view).toBe("needs-you");
+      expect(window.loomTerminal.write).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", handler);
+    }
+  },
+);

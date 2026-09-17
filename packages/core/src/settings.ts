@@ -474,7 +474,14 @@ const merge = (
     main: { ...base.main, ...patch.main },
     research: { ...base.research, ...patch.research },
     runtime: { ...base.runtime, ...patch.runtime },
-    appearance: { ...base.appearance, ...patch.appearance },
+    appearance: {
+      ...base.appearance,
+      ...patch.appearance,
+      keybindings: {
+        ...base.appearance.keybindings,
+        ...patch.appearance?.keybindings,
+      },
+    },
   };
 };
 

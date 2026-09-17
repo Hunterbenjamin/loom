@@ -17,8 +17,14 @@ const readingIds = new Set<string>(scrollBindings.map((entry) => entry.id));
 const trackerEntries = trackerKeymap.filter(
   (entry) => entry.id !== "help" && !readingIds.has(entry.id),
 );
+const sharedEntries = KEYBINDING_ACTIONS.filter(
+  (entry) =>
+    entry.id === "help" ||
+    entry.id === "scroll-mode" ||
+    entry.id === "terminal-focus",
+);
 const workbenchEntries = KEYBINDING_ACTIONS.filter(
-  (entry) => entry.id !== "help" && entry.id !== "scroll-mode",
+  (entry) => !sharedEntries.some((shared) => shared.id === entry.id),
 );
 
 function BindingRow({
@@ -184,7 +190,7 @@ export function KeyboardSheet({
               </p>
               <div className="keyboard-sheet-grid">
                 <section>
-                  <h3>Open the map &amp; terminal history</h3>
+                  <h3>Keyboard map &amp; terminal input</h3>
                   <dl>
                     <BindingRow
                       source="tracker"
@@ -192,10 +198,7 @@ export function KeyboardSheet({
                       label="Keyboard map · Tracker"
                       keys={formatKeys("help")}
                     />
-                    {KEYBINDING_ACTIONS.filter(
-                      (entry) =>
-                        entry.id === "help" || entry.id === "scroll-mode",
-                    ).map((entry) => (
+                    {sharedEntries.map((entry) => (
                       <BindingRow
                         key={entry.id}
                         source="workbench"

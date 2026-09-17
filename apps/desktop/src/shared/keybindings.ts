@@ -26,9 +26,20 @@ export const keybindingsConfig = z
     version: z.literal(1),
     prefix: chord.nullable(),
     prefixTimeoutMs: z.number().int().min(100).max(60000),
-    bindings: z.record(
-      z.enum(KEYBINDING_ACTIONS.map((action) => action.id)),
-      z.array(binding).max(20),
+    bindings: z.preprocess(
+      // Version 1 files predate terminal-focus. Add only the new action so saved
+      // shortcuts survive the upgrade; all other missing actions remain invalid.
+      (raw) =>
+        raw && typeof raw === "object" && !Array.isArray(raw)
+          ? {
+              "terminal-focus": DEFAULT_KEYBINDINGS.bindings["terminal-focus"],
+              ...raw,
+            }
+          : raw,
+      z.record(
+        z.enum(KEYBINDING_ACTIONS.map((action) => action.id)),
+        z.array(binding).max(20),
+      ),
     ),
   })
   .superRefine((config, ctx) => {

@@ -66,6 +66,7 @@ test("one modal contains every source entry once, with effective bindings and sc
   const { root, host } = mount();
   const bindings = structuredClone(defaultKeybindingsState);
   bindings.config.bindings.new = ["Cmd+U"];
+  bindings.config.bindings["terminal-focus"] = ["Prefix e"];
   bindings.config.prefixTimeoutMs = 4200;
   bindings.path = "/fixture/keybindings.json";
   bindings.error = "Invalid configuration";
@@ -103,6 +104,9 @@ test("one modal contains every source entry once, with effective bindings and sc
     ).toBe("Sections");
   }
   expect(host.textContent).toContain("Cmd+U");
+  const leave = host.querySelector('[data-action-id="terminal-focus"]');
+  expect(leave?.closest('[role="tabpanel"]')?.id).toBe("keyboard-panel-0");
+  expect(leave?.textContent).toContain("Ctrl+Space then e");
   expect(host.textContent).toContain("4.2 seconds");
   expect(host.textContent).toContain(bindings.path);
   expect(host.textContent).toContain("Escape cancels");
