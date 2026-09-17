@@ -97,3 +97,37 @@ conflict, not evidence that this instance is already running.
 If you initially clone a feature branch to try an unreleased change, `sync` deliberately leaves
 that branch alone. After it merges, explicitly switch the stable clone to `main` and run `sync`.
 Do not share a working checkout or Electron build directory between running instances.
+
+## Live verification (2026-09-17)
+
+Main reported the following observations through this issue's human-answer channel. Stable ran
+from `~/Projects/loom-stable` at `117f0a1`, with protocol/MCP/hooks on 47810/47811/47812,
+renderer on 5174 and tmux socket `loom-stable`. Dev's coordinator remained on 47800.
+
+The initial dev desktop came from a checkout predating this feature, so it had no instance label.
+Main then ran `scripts/dev.sh restart app` with dev's environment from this task's worktree at
+`5fd8b8d`. Only the desktop restarted; the dev coordinator and its active tasks kept running.
+With both desktops open, macOS System Events reported:
+
+| Desktop | Window title |
+|---|---|
+| Dev, feature worktree build | `Loom (dev) · 0 need you` |
+| Stable, second checkout | `Loom (stable) · 0 need you` |
+
+Stable's renderer also reported `document.title` as `Loom (stable) · 0 need you` and an
+`instance-badge` element containing `stable`.
+
+The first test project, `loom-sandbox`, was already registered in dev, so it could not establish
+absence there. Main instead registered `~/Projects/bloom_platform` (GitHub
+`Hunterbenjamin/bloom_platform`) through stable's `add_repo` protocol command. The acknowledgement
+was `repo_added` with repository ID `Hunterbenjamin-bloom_platform`. Subsequent snapshots were:
+
+| Instance | Repository IDs |
+|---|---|
+| Stable | `Hunterbenjamin-loom-sandbox`, `Hunterbenjamin-bloom_platform` |
+| Dev | `Hunterbenjamin-loom-sandbox`, `Hunterbenjamin-loom` |
+
+`bloom_platform` was visible in stable's repository list and selected repository, and absent from
+dev's snapshot. Dev's existing sandbox registration and tasks were preserved. After recording
+these observations, Main stopped stable with `scripts/dev.sh down` in its instance environment
+and returned the dev desktop to the main checkout. No acceptance criteria were waived.
