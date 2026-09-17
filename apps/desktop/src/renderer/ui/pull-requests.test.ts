@@ -12,6 +12,8 @@ import { useShortcuts } from "./keys.js";
 import { PullRequestsView } from "./pull-requests.js";
 import { Sidebar } from "./sidebar.js";
 
+const { scrollToIndex } = vi.hoisted(() => ({ scrollToIndex: vi.fn() }));
+
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (options: {
     count: number;
@@ -26,7 +28,7 @@ vi.mock("@tanstack/react-virtual", () => ({
         start: (options.scrollMargin ?? 0) + index * 40,
         size: 40,
       })),
-    scrollToIndex() {},
+    scrollToIndex,
   }),
 }));
 (
@@ -127,7 +129,7 @@ test("renders the reference sections, compact glyph rows and viewer count", () =
   expect(h.host.querySelector("[data-tracker-search]")).toBeNull();
 });
 
-test("keyboard skips collapsed sections; Enter opens the PR and issue links open only the issue", () => {
+test("keyboard visits headers and skips collapsed rows; Enter opens the PR and issue links open only the issue", () => {
   const h = setup();
   expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
   key("Enter");
@@ -135,9 +137,19 @@ test("keyboard skips collapsed sections; Enter opens the PR and issue links open
   act(() => h.button("Needs attention1▾").click());
   expect(h.host.querySelector('[data-cursor="true"]')).toBeNull();
   key("j");
-  expect(h.host.querySelector('[data-cursor="true"]')).toBe(h.rows()[0]);
+  expect(h.host.querySelector('[data-cursor="true"]')).toBe(
+    h.button("Ready to merge1▾"),
+  );
   key("k");
-  expect(h.host.querySelector('[data-cursor="true"]')).toBe(h.rows()[0]);
+  expect(h.host.querySelector('[data-cursor="true"]')).toBe(
+    h.button("Ready to merge1▾"),
+  );
+  key("j");
+  key("}");
+  expect(h.host.querySelector('[data-cursor="true"]')).toBe(
+    h.button("Needs attention1▸"),
+  );
+  key("j");
   key("j");
   expect(h.rows()[1]?.textContent).toContain("Improve keyboard navigation");
   key("Enter");
@@ -198,6 +210,11 @@ test("Completed starts collapsed, loads 20 at a time, newest completion first, a
   expect(h.rows()).toHaveLength(40);
   act(() => h.button("Load 5 more").click());
   expect(h.rows()).toHaveLength(45);
+  key("G");
+  key("{");
+  expect(h.host.querySelector('[data-cursor="true"]')).toBe(
+    h.button("Completed45▾"),
+  );
   act(() => {
     h.store.setView("all");
     h.store.setView("pull-requests");
@@ -257,4 +274,56 @@ test("the Issues count in the sidebar leaves out done and canceled issues", () =
   expect(h.host.querySelector('[data-view="all"] .count')?.textContent).toBe(
     String(open),
   );
+});
+
+test("Review section commands work even after leaving the Issues board", () => {
+  const h = setup();
+  act(() => h.store.setPane("board"));
+  const selected = () => h.host.querySelector('[data-cursor="true"]');
+  key("j");
+  key("j");
+  expect(selected()).toBe(h.rows()[0]);
+  key("h");
+  expect(selected()).toBe(h.button("Ready to merge1▸"));
+  expect(scrollToIndex).toHaveBeenLastCalledWith(0, { align: "auto" });
+  key("h");
+  expect(selected()).toBe(h.button("Ready to merge1▾"));
+  key("}");
+  expect(selected()).toBe(h.button("Needs attention1▾"));
+  key("{");
+  expect(selected()).toBe(h.button("Ready to merge1▾"));
+  key("j");
+  key("l");
+  expect(h.store.getState().ui.openPr?.number).toBe(201);
+  key("]");
+  expect(h.store.getState().ui.openPr?.number).toBe(203);
+  key("[");
+  expect(h.store.getState().ui.openPr?.number).toBe(201);
+  key("Escape");
+  key("h");
+  act(() => {
+    h.store.setView("all");
+    h.store.setView("pull-requests");
+  });
+  expect(h.button("Ready to merge1▸")).toBeTruthy();
+});
+
+test("keyboard loads Completed and mouse toggles retain the selected stop", () => {
+  const h = setup();
+  const selected = () => h.host.querySelector('[data-cursor="true"]');
+  key("G");
+  expect(selected()).toBe(h.button("Completed24▸"));
+  key("l");
+  key("G");
+  expect(selected()).toBe(h.button("Load 4 more"));
+  key("l");
+  expect(h.rows()).toHaveLength(28);
+  expect(selected()).toBe(h.rows()[24]);
+  act(() => h.button("Completed24▾").click());
+  expect(selected()).toBe(h.button("Completed24▸"));
+  key("h");
+  expect(h.rows()).toHaveLength(28);
+  key("j");
+  key("{");
+  expect(selected()).toBe(h.button("Completed24▾"));
 });

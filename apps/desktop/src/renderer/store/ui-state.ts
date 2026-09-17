@@ -44,6 +44,7 @@ export interface UiState {
   prTab: "for-you" | "created";
   prSections: Partial<Record<ReviewSection, boolean>>;
   prCompletedCount: number;
+  /** Index into selectedReviewItems, including headers and load-more. */
   prCursor: number | null;
   openPr: { repoId: PullRequestRow["repoId"]; number: number } | null;
   /** The brief open over the Daily brief list. */

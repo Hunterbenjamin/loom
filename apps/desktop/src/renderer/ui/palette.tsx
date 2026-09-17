@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { selectedDetailTask } from "../store/detail-selection.js";
 import { inboxRows } from "../store/inbox.js";
 import { useStore, useStoreApi } from "../store/react.js";
+import { hasSectionList } from "../store/section-adapter.js";
 import {
   cursorItems,
   issueKeyFor,
@@ -74,16 +75,7 @@ export function Palette() {
       ["all", "needs-you"].includes(s.ui.view),
   );
   const pane = useStore((s) => s.ui.pane);
-  const canNavigateSections = useStore(
-    (s) =>
-      s.ui.pane === "list" &&
-      s.ui.view !== "needs-you" &&
-      !["briefs", "research", "settings", "pull-requests"].includes(
-        s.ui.view,
-      ) &&
-      !s.ui.openTask &&
-      !s.ui.openPr,
-  );
+  const canNavigateSections = useStore(hasSectionList);
   const repos = useStore((s) => s.snapshot.repos);
   const [value, setValue] = useState("");
 
@@ -244,10 +236,10 @@ export function Palette() {
             </Command.Item>
           </Command.Group>
 
-          <Command.Group heading="Issue list">
+          <Command.Group heading="Issues and Review">
             {canNavigateSections &&
               trackerKeymap
-                .filter((entry) => entry.scope === "issue-list")
+                .filter((entry) => entry.scope === "section-list")
                 .map((entry) => (
                   <Command.Item
                     key={entry.id}

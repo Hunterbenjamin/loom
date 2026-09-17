@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { selectedDetailTask } from "../store/detail-selection.js";
 import { inboxRows, reasonTab } from "../store/inbox.js";
 import { selectedPullRequests } from "../store/pull-requests.js";
+import { hasSectionList, sectionAdapter } from "../store/section-adapter.js";
+import { moveCursor } from "../store/section-list.js";
 import { cursorItems, selectedRows } from "../store/selectors.js";
 import type { Store } from "../store/store.js";
 import { STAGES } from "./format.js";
@@ -106,65 +108,25 @@ export function runTrackerCommand(
     return;
   const inbox =
     ui.view === "needs-you" && ui.pane === "list" ? inboxRows(state) : null;
-  const review = ui.view === "pull-requests";
-  const rows = review
-    ? selectedPullRequests(state)
-    : (inbox ?? cursorItems(state));
-  const cursor = review ? ui.prCursor : ui.cursor;
-  const setCursor = review ? store.setPrCursor : store.setCursor;
-  const board = ui.pane === "board" && !review && !inbox;
-  const items = cursorItems(state);
-  const issueList = !board && !review && !inbox;
-  if (issueList && (id === "next-section" || id === "previous-section")) {
-    const headers = items.flatMap((item, index) =>
-      item.kind === "header" ? [index] : [],
-    );
-    const next =
-      id === "next-section"
-        ? headers.find((index) => index > (cursor ?? -1))
-        : headers.findLast((index) => index < (cursor ?? items.length));
-    if (next !== undefined) store.setCursor(next);
-    return;
-  }
-  if (issueList && id === "collapse-section") {
-    const item = items[cursor ?? -1];
-    if (!item) return;
-    const stage = item.kind === "row" ? item.row.task.stage : item.stage;
-    const header = items.findIndex(
-      (item) => item.kind === "header" && item.stage === stage,
-    );
-    store.setCursor(header);
-    const entry = items[header];
-    // One key both ways: from a row the section is open, so this collapses it; on a collapsed
-    // header it expands again, so h never becomes a no-op the human has to follow with l.
-    if (entry?.kind === "header") store.toggleListSection(stage);
-    return;
-  }
-  if (id === "open" || (id === "expand-item" && issueList)) {
-    if (review) {
-      const pr = selectedPullRequests(state)[cursor ?? -1];
-      if (pr) store.openPullRequest({ repoId: pr.repoId, number: pr.number });
+  const sections = sectionAdapter(store);
+  if (sections?.run(id)) return;
+  const rows = inbox ?? cursorItems(state);
+  const cursor = ui.cursor;
+  const setCursor = store.setCursor;
+  const board = ui.pane === "board" && !inbox;
+  if (id === "open") {
+    const attention = inbox?.[cursor ?? -1];
+    if (attention) {
+      const run = attention.runs[0] ?? null;
+      store.openAttention(
+        attention.task.id,
+        attention.reason,
+        reasonTab(attention.reason, run),
+        run?.id ?? null,
+      );
     } else {
-      const attention = inbox?.[cursor ?? -1];
-      if (attention) {
-        const run = attention.runs[0] ?? null;
-        store.openAttention(
-          attention.task.id,
-          attention.reason,
-          reasonTab(attention.reason, run),
-          run?.id ?? null,
-        );
-      } else {
-        const item = items[cursor ?? -1];
-        if (item?.kind === "row") store.open(item.row.task.id);
-        else if (item?.kind === "header" && item.collapsed)
-          store.toggleListSection(item.stage);
-        else if (item?.kind === "load-more") {
-          // Inserting the page at this stop makes its index the first newly revealed row.
-          store.loadMoreListSection(item.stage);
-          store.setCursor(cursor);
-        }
-      }
+      const item = cursorItems(state)[cursor ?? -1];
+      if (item?.kind === "row") store.open(item.row.task.id);
     }
     return;
   }
@@ -181,25 +143,12 @@ export function runTrackerCommand(
     )
       setCursor(boardCursor(selectedRows(state), cursor, id));
   } else if (
-    ["next-row", "previous-row", "first-row", "last-row"].includes(id)
+    id === "next-row" ||
+    id === "previous-row" ||
+    id === "first-row" ||
+    id === "last-row"
   ) {
-    setCursor(
-      !rows.length
-        ? null
-        : id === "first-row"
-          ? 0
-          : id === "last-row"
-            ? rows.length - 1
-            : cursor === null
-              ? 0
-              : Math.max(
-                  0,
-                  Math.min(
-                    rows.length - 1,
-                    cursor + (id === "next-row" ? 1 : -1),
-                  ),
-                ),
-    );
+    setCursor(moveCursor(rows.length, cursor, id));
   }
 }
 
@@ -282,11 +231,7 @@ export function createShortcutHandler(
         (entry.scope === "issue" && issue) ||
         (entry.scope === "list" && !detail && ui.view !== "settings") ||
         (entry.scope === "board" && !detail && ui.pane === "board" && issue) ||
-        (entry.scope === "issue-list" &&
-          !detail &&
-          ui.pane === "list" &&
-          issue &&
-          ui.view !== "needs-you"),
+        (entry.scope === "section-list" && hasSectionList(store.getState())),
     );
     if (!entry) return;
     if (

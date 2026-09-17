@@ -322,7 +322,13 @@ describe("list section paging", () => {
     const canceled = setup("canceled", 3);
     const rows = rowsFor(canceled.getState().snapshot, "all", "repo-loom");
     expect(groupRows(rows)).toEqual([
-      { kind: "header", stage: "canceled", count: 3, collapsed: true },
+      {
+        kind: "header",
+        section: "canceled",
+        key: "header-canceled",
+        count: 3,
+        collapsed: true,
+      },
     ]);
     expect(cursorItems(canceled.getState())).toEqual(groupRows(rows));
     canceled.toggleListSection("canceled");
@@ -344,7 +350,8 @@ describe("list section paging", () => {
           const items = groupRows(sortRows(rows, sort, descending), sections);
           expect(items[0]).toEqual({
             kind: "header",
-            stage,
+            section: stage,
+            key: `header-${stage}`,
             count: 26,
             collapsed: false,
           });
@@ -357,7 +364,8 @@ describe("list section paging", () => {
           );
           expect(items.at(-1)).toEqual({
             kind: "load-more",
-            stage,
+            section: stage,
+            key: `load-more-${stage}`,
             count: LIST_PAGE_SIZE,
           });
         }
@@ -367,7 +375,8 @@ describe("list section paging", () => {
       expect(cursorItems(store.getState())).toHaveLength(22);
       expect(groupRows(rows, store.getState().ui.listSections).at(-1)).toEqual({
         kind: "load-more",
-        stage,
+        section: stage,
+        key: `load-more-${stage}`,
         count: 6,
       });
       store.loadMoreListSection(stage);
@@ -405,7 +414,13 @@ describe("list section paging", () => {
     ).toEqual(Array.from({ length: 46 }, (_, i) => `task-${i}`));
     store.toggleListSection("in_progress");
     expect(cursorItems(store.getState())).toEqual([
-      { kind: "header", stage: "in_progress", count: 46, collapsed: true },
+      {
+        kind: "header",
+        section: "in_progress",
+        key: "header-in_progress",
+        count: 46,
+        collapsed: true,
+      },
     ]);
     store.setPane("board");
     expect(cursorItems(store.getState())).toHaveLength(46);
