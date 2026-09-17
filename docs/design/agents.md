@@ -58,8 +58,14 @@ they do not create another fix round. Reviewers also start fresh per round.
 Main is one interactive Claude session per repository, separate from issue runs. It launches at the
 repository root with broad machine access, including shell, files, web and subagents. It can act on
 the human's request or create issues for work needing tracking and review. It introduces the
-repository and waits; launch notes do not authorize maintenance or drills. Issue scoping follows
-the review question: batch related mechanical work, separate judgment calls and structural changes.
+repository and waits; launch notes do not authorize maintenance or drills. Issues are sized by the
+files they touch and the design they share, not by session length: parts that touch the same files
+or need one design go in one issue, mechanical work is batched, and work is split only when the
+parts can run in parallel or need different reviewers' questions. Chaining issues that serialize on
+shared code pays every planner cold start and gains no parallelism. Measured on 2026-09-17: one
+combined issue (LOOM-134, two pages plus an action) merged in 39 minutes for 7M tokens with one
+review finding, where three chained issues of LOOM-130's size would have taken about 60 minutes
+and 9M tokens.
 
 **Existing instruction conflict:** [prompts.ts](../../apps/coordinator/src/prompts.ts) permits Main
 to read and repair the coordinator's log/store directly when asked. [AGENTS.md](../../AGENTS.md#safety)
