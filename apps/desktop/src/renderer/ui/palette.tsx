@@ -149,7 +149,7 @@ export function Palette() {
             {trackerKeymap
               .filter(
                 (entry) =>
-                  entry.scope === "detail" &&
+                  (entry.scope === "detail" || entry.scope === "row-action") &&
                   entry.group !== "Pull request" &&
                   hasTrackerAction(store, entry.id),
               )
@@ -236,20 +236,21 @@ export function Palette() {
             </Command.Item>
           </Command.Group>
 
-          <Command.Group heading="Issues and Review">
-            {canNavigateSections &&
-              trackerKeymap
-                .filter((entry) => entry.scope === "section-list")
-                .map((entry) => (
-                  <Command.Item
-                    key={entry.id}
-                    onSelect={() =>
-                      run(() => runTrackerCommand(store, entry.id))
-                    }
-                  >
-                    {entry.label} <kbd>{formatKeys(entry.id)}</kbd>
-                  </Command.Item>
-                ))}
+          <Command.Group heading="Sections">
+            {trackerKeymap
+              .filter(
+                (entry) =>
+                  entry.scope === "section-list" &&
+                  (canNavigateSections || hasTrackerAction(store, entry.id)),
+              )
+              .map((entry) => (
+                <Command.Item
+                  key={entry.id}
+                  onSelect={() => run(() => runTrackerCommand(store, entry.id))}
+                >
+                  {entry.label} <kbd>{formatKeys(entry.id)}</kbd>
+                </Command.Item>
+              ))}
           </Command.Group>
 
           <Command.Group heading="Issues">

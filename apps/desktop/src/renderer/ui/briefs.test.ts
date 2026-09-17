@@ -7,6 +7,7 @@ import { buildSnapshot } from "../fixtures/index.js";
 import { createFixtureStore as createStore } from "../fixtures/store.js";
 import { StoreProvider } from "../store/react.js";
 import { BriefsView } from "./briefs.js";
+import { CreateDialog } from "./creatables.js";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -14,6 +15,7 @@ import { BriefsView } from "./briefs.js";
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
+  vi.useRealTimers();
 });
 const completed: BriefRun = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -91,7 +93,12 @@ async function mount(runs: BriefRun[] = []) {
       createElement(StoreProvider, {
         store,
         // biome-ignore lint/correctness/noChildrenProp: createElement with required typed children.
-        children: createElement(BriefsView),
+        children: createElement(
+          "div",
+          null,
+          createElement(BriefsView),
+          createElement(CreateDialog),
+        ),
       }),
     ),
   );
@@ -114,23 +121,29 @@ async function mount(runs: BriefRun[] = []) {
   return { host, send, store, button, row };
 }
 
-test("manual run starts from the empty state, lists the running brief and disables overlapping launches", async () => {
-  const { host, send, button } = await mount();
-  expect(host.textContent).toContain("7:00 a.m.");
+test("manual run moves to the create dialog, with running and error feedback", async () => {
+  const { host, send, store, button } = await mount();
+  expect(host.querySelector(".list-toolbar")).toBeNull();
+  expect(host.querySelector('input[type="checkbox"]')).toBeNull();
+  expect(host.textContent).toContain("create palette (c)");
+  expect(host.textContent).not.toContain("7:00 a.m.");
+  await act(async () => store.setCreate("brief"));
+  send.mockRejectedValueOnce(new Error("Search unavailable"));
+  await act(async () => button("Run now").click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(
+    "Search unavailable",
+  );
   await act(async () => button("Run now").click());
   expect(send).toHaveBeenCalledWith({
     kind: "run_brief",
     id: expect.any(String),
   });
   expect(button("Researching…").disabled).toBe(true);
-  expect(
-    host.querySelector('[data-testid="briefs-list"]')?.textContent,
-  ).toContain("Researching live sources");
   expect(host.querySelector('[data-testid="brief-detail"]')).toBeNull();
 });
 
 test("the history lists each brief by headline, and a click opens it in the Reviews layout", async () => {
-  const { host, send, store, button, row } = await mount([completed]);
+  const { host, store, button, row } = await mount([completed]);
   expect(row(completed.id).textContent).toContain(
     "A useful workflow experiment",
   );
@@ -158,15 +171,6 @@ test("the history lists each brief by headline, and a click opens it in the Revi
 
   await act(async () => button("Daily brief").click());
   expect(host.querySelector('[data-testid="brief-detail"]')).toBeNull();
-
-  const toggle = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
-  if (!toggle) throw new Error("Missing schedule control");
-  await act(async () => toggle.click());
-  expect(send).toHaveBeenCalledWith({
-    kind: "set_brief_schedule",
-    enabled: false,
-  });
-  expect(toggle.checked).toBe(false);
 });
 
 test("failed research stays readable and can be run again", async () => {
@@ -176,13 +180,12 @@ test("failed research stays readable and can be run again", async () => {
     error: "Search unavailable",
     content: null,
   };
-  const { host, button, row } = await mount([failed]);
+  const { host, row } = await mount([failed]);
   expect(row(failed.id).textContent).toContain("Research failed");
   await act(async () => row(failed.id).click());
   expect(
     host.querySelector('[data-testid="brief-detail"]')?.textContent,
   ).toContain("Search unavailable");
-  expect(button("Run now").disabled).toBe(false);
 });
 
 test("brief keyboard endpoints open the visible brief", async () => {
@@ -199,11 +202,12 @@ test("brief keyboard endpoints open the visible brief", async () => {
   const press = (key: string) =>
     act(() => handler(new KeyboardEvent("keydown", { key })));
   press("G");
-  expect(h.store.getState().ui.cursor).toBe(1);
+  expect(h.store.getState().ui.cursor).toBe(2);
   press("g");
   press("g");
   expect(h.store.getState().ui.cursor).toBe(0);
   expect(h.host.querySelectorAll("[data-brief]")).toHaveLength(2);
+  press("j");
   press("j");
   await act(async () => press("Enter"));
   expect(h.store.getState().ui.openBrief).toBe(second.id);
@@ -221,4 +225,79 @@ test("a brief with no recorded model keeps an honest agent byline", async () => 
   );
   expect(byline?.textContent).toContain("Manual run");
   expect(byline?.querySelector(".pr-avatar svg")).not.toBeNull();
+});
+
+test("month headers are cursor stops, collapse retains selection, and jumps span months", async () => {
+  const { createShortcutHandler } = await import("./keys.js");
+  const older = {
+    ...completed,
+    id: "00000000-0000-4000-8000-000000000004",
+    startedAt: "2026-08-15T00:00:00.000Z",
+  };
+  const h = await mount([completed, older]);
+  act(() => h.store.setView("briefs"));
+  const handler = createShortcutHandler(h.store);
+  const press = (key: string) =>
+    act(() => handler(new KeyboardEvent("keydown", { key })));
+  press("j");
+  expect(
+    h.host.querySelector('.list-group[data-cursor="true"]')?.textContent,
+  ).toContain("September");
+  press("j");
+  press("h");
+  expect(h.host.querySelectorAll("[data-brief]")).toHaveLength(1);
+  expect(h.store.getState().ui.cursor).toBe(0);
+  press("l");
+  expect(h.host.querySelectorAll("[data-brief]")).toHaveLength(2);
+  press("}");
+  expect(
+    h.host.querySelector('.list-group[data-cursor="true"]')?.textContent,
+  ).toContain("August");
+  press("{");
+  expect(h.store.getState().ui.cursor).toBe(0);
+  // A mouse collapse of an earlier section retains the later selected row.
+  press("G");
+  await act(async () =>
+    h.host.querySelector<HTMLButtonElement>(".list-group")!.click(),
+  );
+  expect(
+    h.host
+      .querySelector('[data-brief][data-cursor="true"]')
+      ?.getAttribute("data-brief"),
+  ).toBe(older.id);
+});
+
+test("a poll adding a month retains the selected brief by identity", async () => {
+  vi.useFakeTimers();
+  const h = await mount([completed]);
+  act(() => {
+    h.store.setView("briefs");
+    h.store.setCursor(1);
+  });
+  const { content, ...summary } = completed;
+  h.send.mockResolvedValueOnce({
+    ok: true,
+    result: {
+      kind: "briefs",
+      state: {
+        schedule: { enabled: true, hour: 7, timeZone: "Asia/Makassar" },
+        runs: [
+          {
+            ...summary,
+            headline: "New month",
+            id: "00000000-0000-4000-8000-000000000005",
+            startedAt: "2026-10-01T00:00:00.000Z",
+          },
+          { ...summary, headline: content?.headline ?? null },
+        ],
+      },
+    },
+  });
+  await act(async () => vi.advanceTimersByTimeAsync(5000));
+  expect(h.store.getState().ui.cursor).toBe(3);
+  expect(
+    h.host
+      .querySelector('[data-brief][data-cursor="true"]')
+      ?.getAttribute("data-brief"),
+  ).toBe(completed.id);
 });

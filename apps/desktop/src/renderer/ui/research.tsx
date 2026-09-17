@@ -3,17 +3,20 @@ import type {
   ResearchComment,
   ResearchEntry,
   ResearchState,
-  ResearchSummary,
 } from "@loom/protocol";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore, useStoreApi } from "../store/react.js";
+import { useSectionAdapter } from "../store/section-adapter.js";
+import { historySectionItems } from "../store/section-list.js";
 import { ActivityList } from "./activity.js";
 import { Byline } from "./byline.js";
 import { CommentComposer } from "./comment-composer.js";
 import { DetailLayout } from "./detail-layout.js";
 import { ListGroupHeader, ListRow } from "./list-rows.js";
 import { PrMarkdown } from "./pull-request-overview.js";
+import { ResearchGlyph } from "./research-glyph.js";
 import { useTrackerActions } from "./tracker-actions.js";
+import { keyHint } from "./tracker-keymap.js";
 
 const dateLabel = (at: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -29,7 +32,7 @@ export function ResearchView() {
   const [state, setState] = useState<ResearchState | null>(null);
   const [entry, setEntry] = useState<ResearchEntry | null>(null);
   const [comments, setComments] = useState<ResearchComment[]>([]);
-  const [archived, setArchived] = useState(false);
+  const sections = useStore((s) => s.ui.researchSections);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const refreshResearch = useRef<(() => Promise<void>) | null>(null);
@@ -42,7 +45,10 @@ export function ResearchView() {
       if (loading) return;
       loading = true;
       try {
-        const result = await store.command({ kind: "list_research", archived });
+        const result = await store.command({
+          kind: "list_research",
+          archived: "all",
+        });
         if (!result.ok) throw new Error(result.error.message);
         if (!disposed && result.result.kind === "research_list")
           setState(result.result.state);
@@ -75,7 +81,7 @@ export function ResearchView() {
       refreshResearch.current = null;
       clearInterval(timer);
     };
-  }, [store, connected, archived, open]);
+  }, [store, connected, open]);
   const act = async (command: Command) => {
     if (submitting.current) return false;
     submitting.current = true;
@@ -98,20 +104,44 @@ export function ResearchView() {
       setBusy(false);
     }
   };
-  const rows = state?.entries ?? [];
-  const select = (index: number) =>
-    store.setCursor(
-      rows.length ? Math.max(0, Math.min(index, rows.length - 1)) : null,
-    );
-  useTrackerActions({
-    "next-row": () => select(cursor === null ? 0 : cursor + 1),
-    "previous-row": () => select(cursor === null ? 0 : cursor - 1),
-    "first-row": () => select(0),
-    "last-row": () => select(rows.length - 1),
-    open: () => {
-      const row = rows[cursor ?? -1];
-      if (row) store.openResearch(row.id);
+  const items = useMemo(
+    () =>
+      historySectionItems(
+        (["active", "archived"] as const).map((id) => ({
+          id,
+          rows: (state?.entries ?? []).filter(
+            (row) => Boolean(row.archivedAt) === (id === "archived"),
+          ),
+          collapsed: sections[id] ?? id === "archived",
+        })),
+      ),
+    [state, sections],
+  );
+  const selected = useSectionAdapter(
+    {
+      items,
+      cursor,
+      setCursor: store.setCursor,
+      toggle: store.toggleResearchSection,
+      loadMore: () => {},
+      open: (row) => store.openResearch(row.id),
     },
+    !open,
+  );
+  const rows = state?.entries ?? [];
+  const current = entry?.id === open ? entry : null;
+  const item = items[selected ?? -1];
+  const target = open ? current : item?.kind === "row" ? item.row : null;
+  const archive = () => {
+    if (target && connected && !busy)
+      void act({
+        kind: "set_research_archived",
+        id: target.id,
+        archived: !target.archivedAt,
+      });
+  };
+  useTrackerActions({
+    ...(target ? { archive } : {}),
     "next-issue": () => {
       const index = rows.findIndex((row) => row.id === open);
       const row = rows[index + 1];
@@ -123,40 +153,19 @@ export function ResearchView() {
       if (index >= 0 && row) store.openResearch(row.id);
     },
   });
-  const cursorId = rows[cursor ?? -1]?.id;
+  const cursorKey = items[selected ?? -1]?.key;
   useEffect(() => {
-    if (cursorId)
-      document
-        .getElementById(`research-${cursorId}`)
-        ?.scrollIntoView({ block: "nearest" });
-  }, [cursorId]);
-  const months: { label: string; entries: ResearchSummary[] }[] = [];
-  for (const row of rows) {
-    const label = new Date(row.startedAt).toLocaleDateString(undefined, {
-      month: "long",
-      year: "numeric",
-    });
-    const last = months.at(-1);
-    if (last?.label === label) last.entries.push(row);
-    else months.push({ label, entries: [row] });
-  }
-  const current = entry?.id === open ? entry : null;
+    if (!cursorKey) return;
+    document
+      .querySelector('.research-list [data-cursor="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [cursorKey]);
   return (
     <>
-      <div className="list-toolbar">
-        <label>
-          <input
-            type="checkbox"
-            checked={archived}
-            onChange={(event) => {
-              setArchived(event.target.checked);
-              store.setCursor(null);
-            }}
-          />
-          Archived
-        </label>
-      </div>
-      <div className="list reviews-list" data-testid="research-list">
+      <div
+        className="list reviews-list research-list"
+        data-testid="research-list"
+      >
         {!connected ? (
           <p className="pad" role="status">
             Waiting for the coordinator…
@@ -170,37 +179,36 @@ export function ResearchView() {
         {connected && !state ? <p className="pad">Loading research…</p> : null}
         {state && !rows.length ? (
           <p className="pad faint">
-            {archived
-              ? "No archived research."
-              : "Create research from the create palette, or ask Main to save research from your conversation."}
+            Create research from the create palette, or ask Main to save
+            research from your conversation.
           </p>
         ) : null}
-        {months.map((month) => (
-          <div key={month.label}>
+        {items.map((item, index) =>
+          item.kind === "header" ? (
             <ListGroupHeader
-              label={month.label}
-              count={month.entries.length}
-              collapsed={false}
+              key={item.key}
+              label={item.section === "active" ? "Active" : "Archived"}
+              count={item.count}
+              collapsed={item.collapsed}
+              cursor={selected === index}
+              onToggle={() => store.toggleResearchSection(item.section)}
             />
-            {month.entries.map((row) => (
-              <ListRow
-                key={row.id}
-                id={`research-${row.id}`}
-                cursor={cursorId === row.id}
-                onOpen={() => store.openResearch(row.id)}
-                leading={<span>{row.status === "completed" ? "✓" : "◌"}</span>}
-                text={row.title ?? row.question}
-                title={row.title ?? row.question}
-                meta={
-                  <span>
-                    {row.origin === "main" ? "Saved by Main" : row.status}
-                  </span>
-                }
-                age={new Date(row.startedAt).toLocaleDateString()}
-              />
-            ))}
-          </div>
-        ))}
+          ) : item.kind === "row" ? (
+            <ListRow
+              key={item.key}
+              id={`research-${item.row.id}`}
+              cursor={selected === index}
+              onOpen={() => store.openResearch(item.row.id)}
+              leading={<ResearchGlyph status={item.row.status} />}
+              text={item.row.title ?? item.row.question}
+              title={item.row.title ?? item.row.question}
+              meta={
+                item.row.origin === "main" ? <span>Saved by Main</span> : null
+              }
+              age={new Date(item.row.startedAt).toLocaleDateString()}
+            />
+          ) : null,
+        )}
       </div>
       {open ? (
         <DetailLayout
@@ -388,13 +396,11 @@ export function ResearchView() {
                     type="button"
                     className="pr-property"
                     disabled={busy || !connected}
-                    onClick={() =>
-                      void act({
-                        kind: "set_research_archived",
-                        id: current.id,
-                        archived: !current.archivedAt,
-                      })
-                    }
+                    {...keyHint(
+                      "archive",
+                      current.archivedAt ? "Unarchive" : "Archive",
+                    )}
+                    onClick={archive}
                   >
                     {current.archivedAt ? "Unarchive" : "Archive"}
                   </button>
