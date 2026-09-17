@@ -22,7 +22,7 @@ import {
 } from "../shared/ipc.js";
 import { usesWorkbenchKey } from "../shared/keybindings.js";
 import { resolveAttach } from "./attach.js";
-import { devControls, syncSummary } from "./dev-control.js";
+import { devControls, restartsApp, syncSummary } from "./dev-control.js";
 import { watchKeybindings } from "./keybindings.js";
 import { readNativeSettings, writeNativeSettings } from "./native-settings.js";
 import { OwnedResources } from "./ownership.js";
@@ -138,8 +138,9 @@ function flush(window: BrowserWindow, id: string): void {
 
 const controls = devControls(app.getAppPath(), app.isPackaged, process.env);
 
-/** Pulls main when safe and restarts whatever is stale. A restart of this app ends the process
- * before the report arrives; otherwise say what happened, including why nothing was pulled. */
+/** Pulls main when safe and restarts whatever is stale. When the script restarts this app, the
+ * old instance quits without a word: the new window is the one to read. Otherwise say what
+ * happened, including why nothing was pulled. */
 async function updateAndRestart() {
   const report = join(
     process.env.LOOM_DATA_ROOT
@@ -148,9 +149,12 @@ async function updateAndRestart() {
     "dev-control-sync.log",
   );
   try {
-    const { title, detail } = syncSummary(
-      await controls.runAndReport("sync", report),
-    );
+    const output = await controls.runAndReport("sync", report);
+    if (quitting || restartsApp(output)) {
+      app.quit();
+      return;
+    }
+    const { title, detail } = syncSummary(output);
     await dialog.showMessageBox({ message: title, detail });
   } catch (error) {
     dialog.showErrorBox(
@@ -501,9 +505,14 @@ app.whenReady().then(async () => {
 });
 
 // Quitting detaches every terminal. Nothing else of ours outlives the window.
+let quitting = false;
 app.on("before-quit", () => {
+  quitting = true;
   keybindings.close();
   for (const owner of windows.keys()) sessions.close(owner);
 });
 
 app.on("window-all-closed", () => app.quit());
+// `dev.sh` stops the app with SIGTERM. Quit properly, so terminals detach and no dialog can
+// hold the old window open while the new one is starting.
+process.on("SIGTERM", () => app.quit());
