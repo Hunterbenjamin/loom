@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { useTrackerActions } from "./tracker-actions.js";
-import { eventKey, keyHint, trackerKeymap } from "./tracker-keymap.js";
+import { keyHint } from "./tracker-keymap.js";
 
 // A mounted nested viewer supplies its scroller; otherwise the detail body owns scrolling.
 const DetailScroller = createContext<
@@ -84,26 +84,6 @@ export function DetailLayout({
       data-testid={testId}
       data-task={taskId}
       data-fullscreen={fullscreen}
-      onKeyDownCapture={(event) => {
-        // Xterm consumes Tab. F6 only returns focus to the detail chrome; it never
-        // dispatches a tracker command or sends a key to the terminal process.
-        if (
-          !event.nativeEvent.isComposing &&
-          !document.querySelector("dialog[open]") &&
-          trackerKeymap
-            .find((entry) => entry.id === "terminal-focus")!
-            .keys.some((key) => key === eventKey(event.nativeEvent)) &&
-          !event.metaKey &&
-          !event.ctrlKey &&
-          !event.altKey &&
-          event.target instanceof Element &&
-          event.target.closest(".xterm")
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          header.current?.focus();
-        }
-      }}
     >
       <header className="pr-page-head" ref={header} tabIndex={-1}>
         <div className="pr-breadcrumb">{breadcrumb}</div>

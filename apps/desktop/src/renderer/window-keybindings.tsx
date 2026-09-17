@@ -40,7 +40,20 @@ export function WindowKeybindings({
   useKeybindingListener({
     ...state,
     dispatch(action) {
-      if (action === "scroll-mode") enterFocusedScrollMode();
+      if (action === "terminal-focus") {
+        const active = document.activeElement;
+        if (
+          !(active instanceof HTMLElement) ||
+          !active.closest(".terminal-host, .xterm")
+        )
+          return;
+        const header = active
+          .closest(".detail")
+          ?.querySelector<HTMLElement>(".pr-page-head");
+        if (header) header.focus();
+        else active.blur();
+        if (mode === "workbench") void window.loomHost.setMode("tracker");
+      } else if (action === "scroll-mode") enterFocusedScrollMode();
       else if (action === "help") showHelp();
       else if (mode === "workbench") workbench.current?.(action);
       else if (action === "commands") togglePalette(store);

@@ -43,7 +43,7 @@ It always starts on Everywhere, with shared reading keys and entry points; Track
 tabs show surface-specific keys from their original maps. Arrow keys or h/l change tabs, reading
 keys scroll, and Escape or Close restores focus. Tracker keys are fixed; configured bindings,
 their path, prefix timeout and errors are shown alongside the editable Workbench map. Shortcuts follow the active list, board or detail and pause in inputs and terminals.
-F6 returns focus from terminal input to detail controls.
+`Prefix q` leaves terminal input and returns focus to Tracker navigation.
 
 ## Combined issue and PR detail
 
@@ -119,6 +119,26 @@ flash; initial discovery and recovery are silent, as is the focused pane in the 
 The bottom-bar sound toggle and palettes control the window's transient mute.
 
 ### Keyboard and terminal input
+
+Choose every new default binding using these three rules:
+
+- Plain vim-style keys belong to Tracker navigation when no input, editor or terminal captures
+  typing. The fixed map is `renderer/ui/tracker-keymap.ts`.
+- Cmd chords belong to window-level actions, such as the palette, tabs and panels.
+- Prefix sequences belong to actions needed while a terminal captures typing. Window actions may
+  also offer prefix aliases. Editable actions have one definition in core, shared by both windows.
+
+The audit retains these existing exceptions: Ctrl+1–9 selects agents without colliding with
+Cmd+1–9 tabs; Cmd+Enter is the established PR merge confirmation shortcut; Ctrl+D/U and
+Shift+PageUp/PageDown / Cmd+ArrowUp/ArrowDown preserve the shared reading vocabulary. The latter
+page shortcuts also work while typing. Escape/q in terminal reading mode belong to that mode,
+not to terminal input. These exceptions are not precedents for unrelated new bindings.
+
+`Prefix q` (Ctrl+Space, then q by default) is the editable **Leave terminal input** action.
+It focuses the detail header in Tracker, or leaves the terminal and returns a Workbench window
+to Tracker, where `g n` reaches Inbox. It does not close the terminal or send input to its process.
+The keyboard map's Everywhere tab and Settings → Keyboard show the effective binding.
+Escape cancels the prefix and cannot be its action suffix.
 
 Settings owns bindings, prefix and timeout; the palette and shortcut help show effective values.
 Defaults and the chord grammar live in [core/keybindings.ts](../../packages/core/src/keybindings.ts).

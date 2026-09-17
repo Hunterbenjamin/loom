@@ -203,14 +203,14 @@ test("a shortcut is recorded from a key press, including prefix sequences, and c
   await act(async () => button("Add shortcut for Zoom panel", panels).click());
   await press({ key: " ", code: "Space", ctrlKey: true });
   expect(host.textContent).toContain("then…");
-  await press({ key: "q", code: "KeyQ" });
+  await press({ key: "e", code: "KeyE" });
   await settle();
   expect(send).toHaveBeenLastCalledWith(
     expect.objectContaining({
       patch: {
         appearance: {
           keybindings: expect.objectContaining({
-            zoom: [...defaultKeybindings.bindings.zoom, "Prefix Q"],
+            zoom: [...defaultKeybindings.bindings.zoom, "Prefix E"],
           }),
         },
       },
