@@ -10,6 +10,7 @@ import {
 import { useStore, useStoreApi } from "../store/react.js";
 import { listItemKey } from "../store/section-list.js";
 import { issueKeyFor } from "../store/selectors.js";
+import { RunDot } from "./bits.js";
 import { since } from "./format.js";
 import {
   ListGroupHeader,
@@ -179,14 +180,18 @@ function ReviewRow({
       data-pr={pullRequestKey(pr.repoId, pr.number)}
       age={since(now, pr.createdAt)}
       meta={
-        <span
-          className={`review-status ${status?.[2] ?? ""}`}
-          role="img"
-          aria-label={status?.[0] ?? "No checks"}
-          title={status?.[0]}
-        >
-          {status?.[1]}
-        </span>
+        pr.state === "open" && linkedTask?.stage === "merging" ? (
+          <RunDot run={null} stage={linkedTask.stage} />
+        ) : (
+          <span
+            className={`review-status ${status?.[2] ?? ""}`}
+            role="img"
+            aria-label={status?.[0] ?? "No checks"}
+            title={status?.[0]}
+          >
+            {status?.[1]}
+          </span>
+        )
       }
     >
       {pr.taskId ? (
