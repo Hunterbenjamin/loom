@@ -1,4 +1,4 @@
-import { repoKey } from "@loom/core";
+import { repoKey, type WorktreePath } from "@loom/core";
 import { expect, test } from "vitest";
 import { leadBrief, mainPanelBrief, roleBrief, taskBrief } from "./prompts.js";
 
@@ -6,7 +6,10 @@ import { leadBrief, mainPanelBrief, roleBrief, taskBrief } from "./prompts.js";
 // names an agent needs, without treating a particular sentence as an executable contract.
 test("Main receives the selected repository and a lossless saved note", () => {
   const note = 'Priority: releases.\n"Restart drill" is historical.';
-  const repo = { github: "example/widgets", root: "/tmp/widgets" };
+  const repo = {
+    github: "example/widgets",
+    root: "/tmp/widgets" as WorktreePath,
+  };
   const prompt = leadBrief(
     note,
     repo.github,
