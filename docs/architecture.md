@@ -142,7 +142,7 @@ then built-ins. Task workflow policy is captured at creation; role profiles are 
 Settings label their effect as immediate, next task, next run or restart. Mutations check the expected
 version and append a redacted audit row. Secret-bearing keys are rejected.
 
-Repository overrides cover roles, workflow defaults, base branch and serialized tests. Capacity,
+Repository overrides cover roles, workflow defaults and base branch. Capacity,
 timing, executable paths, Main, GitHub observation and desktop preferences are instance-wide.
 Identity, storage location, authentication and listener endpoints are bootstrap configuration, not
 editable preferences. Reset resolves from the startup/environment baseline.

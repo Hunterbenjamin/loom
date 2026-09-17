@@ -8,6 +8,8 @@ The UI calls a unit of work an **issue**; code and MCP tool names call it a **ta
 
 ## Start here
 
+- [Using Loom on a project](docs/using-loom.md): register a repository, prepare instructions and configure its workflow.
+
 - [AGENTS.md](AGENTS.md): repository principles, safety and contribution rules.
 - [Architecture](docs/architecture.md): ownership, integrations, recovery and settings.
 - [Core workflow](docs/design/core.md): stages, guards and reconciliation.

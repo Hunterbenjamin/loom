@@ -63,7 +63,6 @@ export interface SettingsValues {
   };
   repository: {
     baseBranch: string;
-    serialTests: boolean;
   };
   main: { model: string | null };
   runtime: {
@@ -196,7 +195,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
     reviewRoundCap: 3,
     mergePolicy: "require-human",
   },
-  repository: { baseBranch: "main", serialTests: false },
+  repository: { baseBranch: "main" },
   main: { model: null },
   research: {
     provider: "codex",
@@ -329,13 +328,6 @@ export const SETTINGS_CATALOG: SettingDefinition[] = [
     timing: "next-task",
     scopes: [...BOTH],
     environment: "LOOM_BASE_BRANCH",
-  },
-  {
-    key: "repository.serialTests",
-    section: "Repositories",
-    label: "Serialize tests",
-    timing: "next-task",
-    scopes: [...BOTH],
   },
   {
     key: "main.model",

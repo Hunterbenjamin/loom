@@ -23,8 +23,10 @@ submission validation is in [core/submissions.ts](../../packages/core/src/submis
 - **Implementer:** meet acceptance criteria, fix causes and record material departures from the
   plan. Tests are evidence of behavior; update a test when the intended behavior changes rather
   than preserving an obsolete design. Commit and submit. Run only test files covering the change;
-  lint, typecheck, full suites, builds and other scripts belong to CI unless the plan asks for them.
-- **Reviewer:** inspect the submitted diff against the issue, acceptance criteria and principles.
+  commands come from the target repository’s WORKFLOW.md via `get_task_context`. Do not run
+  lint, typecheck, full suites, builds or other scripts unless the plan asks for them.
+- **Reviewer:** inspect the submitted diff against the issue, acceptance criteria and the target
+  repository’s architecture and AGENTS.md/CLAUDE.md rules.
   Judge logic, edge cases, ownership and whether tests prove the intended behavior. CI has already
   passed (or the no-check grace has elapsed); run a test only to confirm a suspected bug. Never edit
   or commit, even though launch access permits it. Escalate real bugs, principle violations, unmet

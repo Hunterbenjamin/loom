@@ -381,7 +381,6 @@ function Workflow({ context }: { context: FieldContext }) {
   const rounds = useField(context, "workflow.reviewRoundCap");
   const merge = useField(context, "workflow.mergePolicy");
   const base = useField(context, "repository.baseBranch");
-  const serial = useField(context, "repository.serialTests");
   return (
     <>
       <Group
@@ -442,13 +441,6 @@ function Workflow({ context }: { context: FieldContext }) {
           description="New worktrees start here and pull requests target it."
         >
           <TextInput field={base} />
-        </Row>
-        <Row
-          field={serial}
-          label="Run tests one at a time"
-          description="Serialize test runs across issues."
-        >
-          <Toggle field={serial} label="Run tests one at a time" />
         </Row>
       </Group>
     </>

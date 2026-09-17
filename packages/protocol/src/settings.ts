@@ -43,7 +43,6 @@ export const settingsValues = z.strictObject({
   }),
   repository: z.strictObject({
     baseBranch: z.string().min(1),
-    serialTests: z.boolean(),
   }),
   main: z.strictObject({ model: z.string().min(1).nullable() }),
   runtime: z.strictObject({

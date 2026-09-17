@@ -20,7 +20,6 @@ export interface ExecutorDeps {
   repoById(repoId: RepoId): Repo;
   repositorySettings(repoId: RepoId): {
     baseBranch: string;
-    serialTests: boolean;
   };
   /** Enqueue `reconcile(taskId)` at a time, for a `schedule` action. */
   schedule(taskId: TaskId, at: string, why: string): void;
