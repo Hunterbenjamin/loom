@@ -99,7 +99,7 @@ test("settings updates publish atomically, reject stale/global-only writes, and 
     patch: {
       roles: { planner: { model: "claude-opus-4-6" } },
       workflow: { size: "small", requirePlanApproval: true },
-      repository: { baseBranch: "develop", serialTests: true },
+      repository: { baseBranch: "develop" },
     },
   });
   if (!saved.ok) throw new Error(JSON.stringify(saved.error));
@@ -122,7 +122,7 @@ test("settings updates publish atomically, reject stale/global-only writes, and 
       reviewer: { provider: "claude" },
     },
     workflow: { size: "small", requirePlanApproval: true },
-    repository: { baseBranch: "develop", serialTests: true },
+    repository: { baseBranch: "develop" },
   });
   expect(
     await second.command({
