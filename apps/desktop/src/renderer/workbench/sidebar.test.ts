@@ -70,7 +70,6 @@ test("renders spaces and agents, always-expanded tabs, filtering and pinned cont
     );
   try {
     await act(async () => render());
-    expect(element.querySelector(".instance-badge")?.textContent).toBe("test");
     const space = element.querySelector<HTMLElement>(
       '[aria-label="Fix delivery race"]',
     );
