@@ -69,14 +69,14 @@ scripts/dev.sh status
 scripts/dev.sh install-launcher
 ```
 
-You can also use **Add repository…** in the running stable window. Confirm its `stable` badge
-before opening a project. Both Tracker and Workbench display the instance, and window titles
-include it. Registrations, settings and issues belong only to that instance.
+You can also use **Add repository…** in the running stable window. Confirm `stable` in the bottom
+bar next to the connection state before opening a project. Both Tracker and Workbench show it there,
+and window titles include it. Registrations, settings and issues belong only to that instance.
 
 The Dock launcher is `~/Applications/Loom stable.app`; installing it preserves `Loom Dev.app`.
 It remembers the checkout, instance and data root even when launched from Finder. Its notifications
 name the instance. Desktop **Instance: sync** and **Update and Restart** target that app's checkout.
-The running Electron bundle may still say Loom in the Dock; the window title and sidebar badge
+The running Electron bundle may still say Loom in the Dock; the window title and bottom bar
 identify the instance.
 
 ## Update or stop stable deliberately
@@ -114,8 +114,8 @@ With both desktops open, macOS System Events reported:
 | Dev, feature worktree build | `Loom (dev) · 0 need you` |
 | Stable, second checkout | `Loom (stable) · 0 need you` |
 
-Stable's renderer also reported `document.title` as `Loom (stable) · 0 need you` and an
-`instance-badge` element containing `stable`.
+Stable's renderer also reported `document.title` as `Loom (stable) · 0 need you` and a bottom
+bar reading `connected · stable`.
 
 The first test project, `loom-sandbox`, was already registered in dev, so it could not establish
 absence there. Main instead registered `~/Projects/bloom_platform` (GitHub
